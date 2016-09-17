@@ -1,0 +1,411 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    </Filter>
+    <Filter Include="Tests">
+      <UniqueIdentifier>{26ff71d4-d560-4b3c-8cf4-35a40821d876}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CAPE">
+      <UniqueIdentifier>{f779a9bb-5e60-4fcc-aee2-4f97177a21e1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CAPE\Scylla">
+      <UniqueIdentifier>{5da26505-81ba-4955-b1fb-09fc9660e406}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\CAPE">
+      <UniqueIdentifier>{bc3482e7-c2a6-401f-8485-18aa4ad86196}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\CAPE\Scylla">
+      <UniqueIdentifier>{dde7b0e5-0c75-442b-bbf4-24703756bd05}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CAPE\wow64ext">
+      <UniqueIdentifier>{a39cf6bf-3af9-42f9-971d-fcfbc3e0596d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\CAPE\wow64ext">
+      <UniqueIdentifier>{df6779d0-6bb8-40c0-ab5a-c233ea8726e9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="config.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cuckoomon.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_file.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_misc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_network.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_process.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_reg.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_reg_native.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_services.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_sleep.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_socket.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_special.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_sync.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_thread.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ignore.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="log.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="lookup.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="misc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pipe.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utf8.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\apc-inject.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\apihooks.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\bind-port.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\blacklist.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\child-sleep.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\crash.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\create-file.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\delete-file.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\getcursorpos.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\logging.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\lookup.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\migrate-process.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\mitigate-process.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\mousebutton-count.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\open-protected-pid.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\peb-check.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\sleep.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\sleep2.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\startup-time.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\suspended-process.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\test-dns.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\test-lasterr.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\test-lde.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\wininet.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests\write-file.c">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_crypto.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="unhook.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="alloc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hooking_32.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hooking_64.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hooking.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\decoder.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\distorm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\instructions.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\insts.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\mnemonics.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\operands.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\prefix.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\textdefs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\wstring.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="distorm3.2-package\src\x86defs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\CAPE.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Debugger.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\GetThreadId.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Output.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\ScyllaHarness.cpp">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\DeviceNameResolver.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\NativeWinApi.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\PeParser.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\ProcessAccessHelp.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\wow64ext\wow64ext.cpp">
+      <Filter>Source Files\CAPE\wow64ext</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\WoW64_fix.cpp">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\ApiReader.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\IATReferenceScan.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\IATSearch.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\ImportRebuilder.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\ImportsHandling.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\StringConversion.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Scylla\SystemInformation.cpp">
+      <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hooking.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hooks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hook_file.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hook_sleep.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ignore.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="log.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lookup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="misc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ntapi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pipe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utf8.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bson\bson.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unhook.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="alloc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\include\distorm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\include\mnemonics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\decoder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\instructions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\insts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\operands.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\prefix.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\textdefs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\wstring.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="distorm3.2-package\src\x86defs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\CAPE.h">
+      <Filter>Header Files\CAPE</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Debugger.h">
+      <Filter>Header Files\CAPE</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\DeviceNameResolver.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\NativeWinApi.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\PeParser.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\ProcessAccessHelp.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\wow64ext\internal.h">
+      <Filter>Header Files\CAPE\wow64ext</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\wow64ext\wow64ext.h">
+      <Filter>Header Files\CAPE\wow64ext</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\ApiReader.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\Architecture.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\IATReferenceScan.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\IATSearch.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\ImportRebuilder.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\ImportsHandling.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\multitree.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\StringConversion.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\SystemInformation.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Scylla\Thunks.h">
+      <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
