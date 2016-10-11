@@ -1,5 +1,7 @@
 #pragma once
 
+void* CAPE_var;
+
 #define BP_EXEC        0x00
 #define BP_WRITE       0x01
 #define BP_RESERVED    0x02

@@ -34,3 +34,24 @@ unsigned int DumpSize;
 
 #define	DATA				0
 #define	EXECUTABLE			1
+
+enum {
+    PROCDUMP = 0,
+    INJECTION_DLL = 1,
+    INJECTION_SHELLCODE = 2,
+    INJECTION_RUNPE = 3,
+    COMPRESSION = 4,
+    EXTRACTION = 5
+};
+
+typedef struct CapeMetadata 
+{
+	char*	ProcessPath;
+	char*	ModulePath;
+    DWORD   Pid;
+    DWORD   DumpType;
+    char*	ParentProcess;  // For injection
+    DWORD	ParentPid;      
+    PVOID   Address;        // For shellcode
+	SIZE_T  Size;
+} CAPEMETADATA, *PCAPEMETADATA;

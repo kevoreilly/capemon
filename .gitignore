@@ -16,3 +16,4 @@ Release
 tests/logging-test.*
 *.suo
 *.opendb
+*.VC.db

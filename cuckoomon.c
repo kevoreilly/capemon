@@ -631,16 +631,15 @@ VOID CALLBACK DllLoadNotification(
 	_In_opt_ PVOID                       Context)
 {
 	PWCHAR dllname;
-	COPY_UNICODE_STRING(library, NotificationData->Loaded.BaseDllName);
+	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
 
 	if (g_config.debug) {
 		int ret = 0;
 		/* Just for debug purposes, gives a stripped fake function name */
 		LOQ_void("system", "sup", "NotificationReason", NotificationReason == 1 ? "load" : "unload", "DllName", library.Buffer, "DllBase", NotificationReason == 1 ? NotificationData->Loaded.DllBase : NotificationData->Unloaded.DllBase);
 	}
-
+        
 	if (NotificationReason == 1) {
-
 		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest))
 			set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
 

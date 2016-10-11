@@ -35,13 +35,20 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern void CapeOutputFile(LPCTSTR lpOutputFile);
-extern int ScyllaDumpCurrentProcess(DWORD NewOEP);
-extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP);
-extern int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP);
+extern int ScyllaDumpCurrentProcess(DWORD NewOEP, BOOL CapeFile);
+extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP, BOOL CapeFile);
+extern int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile);
+extern int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP, BOOL CapeFile);
+
+extern wchar_t *our_process_path;
+extern ULONG_PTR base_of_dll_of_interest;
 
 static HMODULE s_hInst = NULL;
 static WCHAR s_wzDllPath[MAX_PATH];
 CHAR s_szDllPath[MAX_PATH];
+
+struct CapeMetadata *CapeMetaData;
+BOOL ProcessDumped;
 
 //**************************************************************************************
 void PrintHexBytes(__in char* TextBuffer, __in BYTE* HexBuffer, __in unsigned int Count)
@@ -541,8 +548,6 @@ int DumpMemory(LPCVOID Buffer, unsigned int Size)
         free(OutputFilename); free(FullPathName);
 		return 0;
 	}
-
-	DoOutputDebugString("Passed file_exists check");
 	
 	if (hOutputFile == INVALID_HANDLE_VALUE)
 	{
@@ -550,7 +555,6 @@ int DumpMemory(LPCVOID Buffer, unsigned int Size)
         free(OutputFilename); free(FullPathName);
 		return 0;		
 	}	
-	DoOutputDebugString("Passed invalid_handle check");
 	
 	dwBytesWritten = 0;
     
@@ -579,7 +583,7 @@ int DumpMemory(LPCVOID Buffer, unsigned int Size)
 int DumpCurrentProcessFixImports(DWORD NewEP)
 //**************************************************************************************
 {
-	if (ScyllaDumpCurrentProcessFixImports(NewEP))
+	if (ScyllaDumpCurrentProcessFixImports(NewEP, TRUE))
 	{
 		return 1;
 	}
@@ -591,7 +595,7 @@ int DumpCurrentProcessFixImports(DWORD NewEP)
 int DumpCurrentProcessNewEP(DWORD NewEP)
 //**************************************************************************************
 {
-	if (ScyllaDumpCurrentProcess(NewEP))
+	if (ScyllaDumpCurrentProcess(NewEP, TRUE))
 	{
 		return 1;
 	}
@@ -603,7 +607,7 @@ int DumpCurrentProcessNewEP(DWORD NewEP)
 int DumpCurrentProcess()
 //**************************************************************************************
 {
-	if (ScyllaDumpCurrentProcess(0))
+	if (ScyllaDumpCurrentProcess(0, TRUE))
 	{
 		return 1;
 	}
@@ -615,7 +619,7 @@ int DumpCurrentProcess()
 int DumpProcess(HANDLE hProcess, DWORD_PTR ImageBase)
 //**************************************************************************************
 {
-	if (ScyllaDumpProcess(hProcess, ImageBase, 0))
+	if (ScyllaDumpProcess(hProcess, ImageBase, 0, TRUE))
 	{
 		return 1;
 	}
@@ -635,10 +639,44 @@ int DumpPE(LPCVOID Buffer)
 	return 0;
 }
 
+//**************************************************************************************
+int RoutineProcessDump()
+//**************************************************************************************
+{
+    if (g_config.procmemdump && ProcessDumped == FALSE)
+    {
+        ProcessDumped = TRUE;   // this prevents a second call before the first is complete
+        if (g_config.import_reconstruction)
+        {   
+            if (base_of_dll_of_interest)
+                ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), base_of_dll_of_interest, 0, FALSE);
+            else
+                ProcessDumped = ScyllaDumpCurrentProcessFixImports(0, FALSE);
+        }        
+        else
+        {
+            if (base_of_dll_of_interest)
+                ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), base_of_dll_of_interest, 0, FALSE);
+            else
+                ProcessDumped = ScyllaDumpCurrentProcess(0, FALSE);
+        }
+    }
+
+	return ProcessDumped;
+}
+
 void init_CAPE()
 {
     // Initialise CAPE global variables
     //
+    CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
+    CapeMetaData->Pid = GetCurrentProcessId();    
+    CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
+    WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path, wcslen(our_process_path)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
+    
+    // This is package (and technique) dependent:
+    CapeMetaData->DumpType = PROCDUMP;
+    ProcessDumped = FALSE;
     
 #ifndef _WIN64	 
     // Start the debugger thread if required

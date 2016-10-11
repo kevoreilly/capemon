@@ -594,7 +594,7 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
-static ULONG_PTR base_of_dll_of_interest;
+ULONG_PTR base_of_dll_of_interest;
 
 void set_dll_of_interest(ULONG_PTR BaseAddress)
 {

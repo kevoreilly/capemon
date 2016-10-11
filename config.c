@@ -23,6 +23,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.h"
 #include "hooking.h"
 
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void* CAPE_var;
+
 int read_config(void)
 {
     // TODO unicode support
@@ -47,6 +50,7 @@ int read_config(void)
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
+    g_config.procmemdump = 0;
 
 	memset(buf, 0, sizeof(buf));
 	while (fgets(buf, sizeof(buf), fp) != NULL)
@@ -214,6 +218,25 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
+            else if (!strcmp(key, "breakpoint")) {
+				CAPE_var = (void*)strtoul(value, NULL, 10);
+                DoOutputDebugString("CAPE_var set to 0x%x", CAPE_var);
+			}
+            else if (!strcmp(key, "procmemdump")) {
+				g_config.procmemdump = value[0] == '1';
+                if (g_config.procmemdump)
+                    DoOutputDebugString("Process memory dumps enabled.\n");
+                else
+                    DoOutputDebugString("Process memory dumps disabled.\n");
+			}
+            else if (!strcmp(key, "import_reconstruction")) {
+				g_config.import_reconstruction = value[0] == '1';
+                if (g_config.import_reconstruction)
+                    DoOutputDebugString("Import reconstruction of process dumps enabled.\n");
+                else
+                    DoOutputDebugString("Import reconstruction of process dumps disabled.\n");
+			}
+
 		}
     }
 
