@@ -176,8 +176,6 @@ void ProcessDumpOutputFile(_In_ LPCTSTR lpOutputFile)
 	char *Buffer;
 	DWORD dwBytesWritten;
 
-    DoOutputDebugString("CAPE debug: ProcessDumpOutputFile entry");
-	
     if (CapeMetaData && CapeMetaData->DumpType == PROCDUMP)
 	{
 		memset(MetadataPath, 0, MAX_PATH * sizeof(TCHAR));
