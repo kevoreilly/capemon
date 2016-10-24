@@ -8,6 +8,9 @@ extern int DumpPE(LPCVOID Buffer);
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 unsigned int DumpSize;
 
+//Global switch for debugger
+#define DEBUGGER_ENABLED    1
+
 //
 // MessageId: STATUS_SUCCESS
 //
@@ -35,15 +38,6 @@ unsigned int DumpSize;
 #define	DATA				0
 #define	EXECUTABLE			1
 
-enum {
-    PROCDUMP = 0,
-    INJECTION_DLL = 1,
-    INJECTION_SHELLCODE = 2,
-    INJECTION_RUNPE = 3,
-    COMPRESSION = 4,
-    EXTRACTION = 5
-};
-
 typedef struct CapeMetadata 
 {
 	char*	ProcessPath;
@@ -51,7 +45,20 @@ typedef struct CapeMetadata
     DWORD   Pid;
     DWORD   DumpType;
     char*	ParentProcess;  // For injection
-    DWORD	ParentPid;      
+    DWORD	ParentPid;      // "
     PVOID   Address;        // For shellcode
-	SIZE_T  Size;
+	SIZE_T  Size;           // "
 } CAPEMETADATA, *PCAPEMETADATA;
+
+enum {
+    PROCDUMP = 0,
+
+    COMPRESSION = 1,
+
+    INJECTION_DLL = 3,
+    INJECTION_SHELLCODE = 4,
+    INJECTION_RUNPE = 5,
+
+    EXTRACTION_PE        = 8,
+    EXTRACTION_SHELLCODE = 9
+};

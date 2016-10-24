@@ -4,9 +4,10 @@
 #include <vector>
 //#include "DumpSectionGui.h"
 
-#define SCYLLA_OUTPUT_FILE "ScyllaOutput.bin"
+#define CAPE_OUTPUT_FILE "CapeOutput.bin"
 
 extern "C" char* GetHashFromHandle(HANDLE hFile);
+extern "C" char* GetName();
 
 class PeFileSection {
 public:
