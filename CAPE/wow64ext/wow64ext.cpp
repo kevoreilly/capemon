@@ -1,4 +1,5 @@
-/**
+#ifndef _WIN64
+#/**
  *
  * WOW64Ext Library
  *
@@ -334,3 +335,4 @@ extern "C" BOOL WriteProcessMemory64(HANDLE hProcess, DWORD64 lpBaseAddress, LPV
 	else
 		return TRUE;
 }
+#endif

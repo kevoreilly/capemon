@@ -958,7 +958,7 @@ int DumpImageInCurrentProcess(DWORD ImageBase)
     // not a 'raw' file image, so try dumping this way first
     DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
     
-    if (!ScyllaDumpProcess(GetCurrentProcess(), ImageBase, 0, TRUE))
+    if (!ScyllaDumpProcess(GetCurrentProcess(), ImageBase, 0))
     // if this fails, let's try dumping 'raw' just in case
         if (!ScyllaDumpPE(ImageBase))
             return 0;

@@ -24,7 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hooking.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void* CAPE_var;
+extern DWORD_PTR CAPE_var;
 
 int read_config(void)
 {
@@ -219,7 +219,7 @@ int read_config(void)
 				}
 			}
             else if (!strcmp(key, "breakpoint")) {
-				CAPE_var = (void*)strtoul(value, NULL, 10);
+				CAPE_var = (DWORD_PTR)strtoul(value, NULL, 10);
                 DoOutputDebugString("CAPE_var set to 0x%x", CAPE_var);
 			}
             else if (!strcmp(key, "procmemdump")) {
