@@ -7,7 +7,7 @@ void* CAPE_var;
 #define BP_RESERVED    0x02
 #define BP_READWRITE   0x03
 
-DWORD Injection_ProcessId;
+DWORD ChildProcessId;
 DWORD RemoteFuncAddress;
 
 typedef struct BreakpointInfo 
@@ -67,11 +67,12 @@ BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, unsigned int* Register,
 BOOL ContextClearHardwareBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL ClearSingleStepMode(PCONTEXT Context);
-BOOL ContextClearAllDebugRegisters(PCONTEXT Context);
-BOOL ClearAllDebugRegisters(HANDLE hThread);
+BOOL ContextClearAllBreakpoints(PCONTEXT Context);
+BOOL ClearAllBreakpoints(HANDLE hThread);
 BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext);
 BOOL InitialiseDebugger(void);
 BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD CreationFlags);
+BOOL SendDebuggerMessage(DWORD Input);
 int launch_debugger(void);
 
 #ifdef __cplusplus

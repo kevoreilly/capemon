@@ -8,7 +8,6 @@
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
-extern "C" void ProcessDumpOutputFile(LPCTSTR lpOutputFile);
 
 char CapeOutputPath[MAX_PATH];
 
@@ -662,7 +661,7 @@ DWORD PeParser::isMemoryNotNull( BYTE * data, int dataSize )
 	return 0;
 }
 
-bool PeParser::savePeFileToDisk(const CHAR *newFile, BOOL CapeFile)
+bool PeParser::savePeFileToDisk(const CHAR *newFile)
 {
 	bool retValue = true;
 	char *HashString;
@@ -807,7 +806,8 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile, BOOL CapeFile)
                     return 0;            
                 }
 
-				CapeOutputFile(CapeOutputPath);
+                CapeOutputFile(CapeOutputPath);
+                
                 return 1;
             }
             else
@@ -825,11 +825,6 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile, BOOL CapeFile)
     }
     
 	return retValue;
-}
-
-bool PeParser::savePeFileToDisk(const CHAR *newFile)
-{
-    return savePeFileToDisk(newFile, TRUE);
 }
 
 bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
@@ -887,8 +882,9 @@ bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
                     return 0;            
                 }
 
-				CapeOutputFile(CapeOutputPath);
-                return 1;
+                CapeOutputFile(CapeOutputPath);
+                
+				return 1;
             }
             else
             {
@@ -1217,27 +1213,6 @@ void PeParser::alignAllSectionHeaders()
 	}
 
 	std::sort(listPeSection.begin(), listPeSection.end(), PeFileSectionSortByVirtualAddress); //sort by VirtualAddress ascending
-}
-
-bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath, BOOL CapeFile)
-{
-	moduleBaseAddress = modBase;
-
-	if (readPeSectionsFromProcess())
-	{
-		setDefaultFileAlignment();
-
-		setEntryPointVa(entryPoint);
-
-		alignAllSectionHeaders();
-		fixPeHeader();
-
-		getFileOverlay();
-
-		return savePeFileToDisk(dumpFilePath, CapeFile);
-	}
-	
-	return false;
 }
 
 bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath)

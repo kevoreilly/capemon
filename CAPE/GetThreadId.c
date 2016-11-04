@@ -117,5 +117,5 @@ DWORD MyGetThreadId
 
     FreeLibrary(hModule);        
     
-	return (DWORD)ThreadBasicInfo.ClientId.UniqueThread;
+	return (DWORD)(UINT_PTR)ThreadBasicInfo.ClientId.UniqueThread;
 }
