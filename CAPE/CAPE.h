@@ -89,5 +89,10 @@ enum {
     EXTRACTION_SHELLCODE    = 9,
     
     PLUGX_PAYLOAD           = 0x10,
-    PLUGX_CONFIG            = 0x11    
+    PLUGX_CONFIG            = 0x11,   
+    
+    EVILGRAB_PAYLOAD        = 0x14,
+    EVILGRAB_DATA           = 0x15
 };
+
+HANDLE EvilGrabRegHandle;

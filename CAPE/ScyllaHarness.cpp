@@ -31,11 +31,10 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
-#define CAPE_OUTPUT_FILE "CapeOutput.bin"
-
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
-extern char CapeOutputPath[MAX_PATH];
+
+char *CapeOutputPath;
 
 //**************************************************************************************
 void ScyllaInitCurrentProcess()
@@ -51,7 +50,7 @@ void ScyllaInitCurrentProcess()
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcess(DWORD NewOEP)
+extern "C" int ScyllaDumpCurrentProcess(DWORD NewOEP, BOOL CapeFile)
 //**************************************************************************************
 {
 	DWORD_PTR entrypoint = 0;
@@ -111,7 +110,7 @@ void ScyllaInit(HANDLE hProcess)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD NewOEP)
+extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD NewOEP, BOOL CapeFile)
 //**************************************************************************************
 {
 	DWORD_PTR entrypoint = 0;
@@ -224,7 +223,7 @@ bool isIATOutsidePeImage (DWORD_PTR addressIAT)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP)
+extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile)
 //**************************************************************************************
 {
     DWORD addressIAT, sizeIAT;
@@ -273,8 +272,10 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP)
 
         DoOutputDebugString("Module entry point VA is 0x%x", ModuleBase + entrypointRVA);
         
+        CapeOutputPath = GetName();
+        
         //  Let's dump then fix the dump on disk
-        if (peFile->dumpProcess((DWORD_PTR)ModuleBase, (DWORD)ModuleBase + entrypointRVA, CAPE_OUTPUT_FILE))
+        if (peFile->dumpProcess((DWORD_PTR)ModuleBase, (DWORD)ModuleBase + entrypointRVA, CapeOutputPath))
         {
             DoOutputDebugString("Module image dump success %s", CapeOutputPath);
         }
@@ -337,7 +338,7 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP)
                 DoOutputDebugString("Warning, IAT is not inside the PE image, requires rebasing.");
             }
             
-            ImportRebuilder importRebuild(CAPE_OUTPUT_FILE);
+            ImportRebuilder importRebuild(CapeOutputPath);
             
             if (OFT_SUPPORT)
             {
@@ -392,7 +393,7 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD NewOEP)
+extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD NewOEP, BOOL CapeFile)
 //**************************************************************************************
 {
     BOOL isAfter;
@@ -437,8 +438,10 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
 
         DoOutputDebugString(TEXT("Module entry point VA is 0x%x"), ModuleBase + entrypointRVA);
         
+        CapeOutputPath = GetName();
+        
         //  Let's dump then fix the dump on disk
-        if (peFile->dumpProcess(ModuleBase, ModuleBase + entrypointRVA, CAPE_OUTPUT_FILE))
+        if (peFile->dumpProcess(ModuleBase, ModuleBase + entrypointRVA, CapeOutputPath, CapeFile))
         {
             DoOutputDebugString("Module image dump success %s", CapeOutputPath);
         }
@@ -501,7 +504,7 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
                 DoOutputDebugString("WARNING! IAT is not inside the PE image, requires rebasing.");
             }
             
-            ImportRebuilder importRebuild(CAPE_OUTPUT_FILE);
+            ImportRebuilder importRebuild(CapeOutputPath);
             
             if (OFT_SUPPORT)
             {
@@ -526,7 +529,7 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
                 importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
             }
             
-            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
+            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList, CapeFile))
             {
                 DoOutputDebugString("Import table rebuild success.\n");
                 delete peFile;
@@ -535,7 +538,7 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
             else
             {
                 DoOutputDebugString("Import table rebuild failed, falling back to unfixed dump.\n");
-                peFile->savePeFileToDisk(NULL);
+                peFile->savePeFileToDisk(NULL, CapeFile);
             }         
         }
         else

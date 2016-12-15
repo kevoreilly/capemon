@@ -37,7 +37,7 @@ extern "C" {
 #endif
 
 
-BOOL SetHardwareBreakpoint
+BOOL SetBreakpoint
 (
     DWORD	ThreadId,
     int		Register,
@@ -47,9 +47,9 @@ BOOL SetHardwareBreakpoint
 	PVOID	Callback
 );
 
-BOOL ClearHardwareBreakpoint(DWORD ThreadId, int Register);
+BOOL ClearBreakpoint(DWORD ThreadId, int Register);
 
-BOOL ContextSetHardwareBreakpoint
+BOOL ContextSetBreakpoint
 (
     PCONTEXT	Context,
     int			Register,
@@ -64,11 +64,12 @@ BOOL ContextGetNextAvailableBreakpoint(PCONTEXT Context, unsigned int* Register)
 BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, PVOID Callback);
 BOOL SetNextAvailableBreakpoint(DWORD ThreadId, unsigned int* Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
 BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, unsigned int* Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
-BOOL ContextClearHardwareBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
+BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
+BOOL ClearBreakpointsInRange(DWORD ThreadId, PVOID BaseAddress, SIZE_T Size);
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL ClearSingleStepMode(PCONTEXT Context);
 BOOL ContextClearAllBreakpoints(PCONTEXT Context);
-BOOL ClearAllBreakpoints(HANDLE hThread);
+BOOL ClearAllBreakpoints(DWORD ThreadId);
 BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext);
 BOOL InitialiseDebugger(void);
 BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD CreationFlags);

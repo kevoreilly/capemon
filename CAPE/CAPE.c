@@ -45,10 +45,10 @@ extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buf
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern void CapeOutputFile(LPCTSTR lpOutputFile);
-extern int ScyllaDumpCurrentProcess(DWORD NewOEP);
-extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP);
-extern int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP);
-extern int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP);
+extern int ScyllaDumpCurrentProcess(DWORD NewOEP, BOOL CapeFile);
+extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP, BOOL CapeFile);
+extern int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile);
+extern int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP, BOOL CapeFile);
 
 extern wchar_t *our_process_path;
 extern ULONG_PTR base_of_dll_of_interest;
@@ -288,7 +288,8 @@ PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId)
 char* GetName()
 //**************************************************************************************
 {
-    char *OutputFilename;
+    char *OutputFilename, *FullPathName;
+    DWORD RetVal;
     SYSTEMTIME Time;
 
     OutputFilename = (char*)malloc(MAX_PATH);
@@ -300,9 +301,43 @@ char* GetName()
     }
     
     GetSystemTime(&Time);
+    
     sprintf_s(OutputFilename, MAX_PATH*sizeof(char), "%d_%d%d%d%d%d%d%d%d", GetCurrentProcessId(), Time.wMilliseconds, Time.wSecond, Time.wMinute, Time.wHour, Time.wDay, Time.wDayOfWeek, Time.wMonth, Time.wYear);
     
-	return OutputFilename;
+	FullPathName = (char*)malloc(MAX_PATH);
+
+    if (FullPathName == NULL)
+    {
+		DoOutputErrorString("GetName: Error allocating memory for strings");
+		return 0;    
+    }
+    
+	// We want to dump CAPE output to the 'analyzer' directory
+    memset(FullPathName, 0, MAX_PATH);
+	
+    strncpy_s(FullPathName, MAX_PATH, g_config.analyzer, strlen(g_config.analyzer)+1);
+
+	if (strlen(FullPathName) + strlen("\\CAPE\\") + strlen(OutputFilename) >= MAX_PATH)
+	{
+		DoOutputDebugString("GetName: Error, CAPE destination path too long.");
+        free(OutputFilename); free(FullPathName);
+		return 0;
+	}
+
+    PathAppend(FullPathName, "CAPE");
+
+	RetVal = CreateDirectory(FullPathName, NULL);
+
+	if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
+	{
+		DoOutputErrorString("GetName: Error creating CAPE output directory");
+        free(OutputFilename); free(FullPathName);
+		return 0;
+	}
+
+    PathAppend(FullPathName, OutputFilename);
+	
+   	return FullPathName;
 }
 
 //**************************************************************************************
@@ -677,9 +712,17 @@ int ScanForNonZero(LPCVOID Buffer, unsigned int Size)
 {
     unsigned int p;
     
-    for (p=0; p<Size-1; p++)
-        if (*((char*)Buffer+p) != 0)
-            return 1;
+    __try  
+    {  
+        for (p=0; p<Size-1; p++)
+            if (*((char*)Buffer+p) != 0)
+                return 1;
+    }  
+    __except(EXCEPTION_EXECUTE_HANDLER)  
+    {  
+        DoOutputDebugString("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+        return 0;
+    }
 
     return 0;
 }
@@ -700,48 +743,57 @@ int ScanForPE(LPCVOID Buffer, unsigned int Size, LPCVOID* Offset)
     
     for (p=0; p<Size-1; p++)
     {
-        if (*((char*)Buffer+p) == 'M' && *((char*)Buffer+p+1) == 'Z')
-        {
-            pDosHeader = (PIMAGE_DOS_HEADER)((char*)Buffer+p);
+        __try  
+        {  
+            if (*((char*)Buffer+p) == 'M' && *((char*)Buffer+p+1) == 'Z')
+            {
+                pDosHeader = (PIMAGE_DOS_HEADER)((char*)Buffer+p);
 
-            if ((ULONG)pDosHeader->e_lfanew == 0) 
-            {
-                // e_lfanew is zero
-                continue;
-            }
+                if ((ULONG)pDosHeader->e_lfanew == 0) 
+                {
+                    // e_lfanew is zero
+                    continue;
+                }
 
-            if ((ULONG)pDosHeader->e_lfanew > Size-p)
-            {
-                // e_lfanew points beyond end of region
-                continue;
+                //if ((ULONG)pDosHeader->e_lfanew > Size-p)
+                //{
+                //    // e_lfanew points beyond end of region
+                //    continue;
+                //}
+                
+                pNtHeader = (PIMAGE_NT_HEADERS)((PCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+                
+                if (pNtHeader->Signature != IMAGE_NT_SIGNATURE) 
+                {
+                    // No 'PE' header
+                    continue;                
+                }
+                
+                if ((pNtHeader->FileHeader.Machine == 0) || (pNtHeader->FileHeader.SizeOfOptionalHeader == 0 || pNtHeader->OptionalHeader.SizeOfHeaders == 0)) 
+                {
+                    // Basic requirements
+                    DoOutputDebugString("ScanForPE: Basic requirements failure.\n");
+                    continue;
+                }
+                
+                if (Offset)
+                {
+                    *Offset = (LPCVOID)((char*)Buffer+p);
+                }
+                
+                DoOutputDebugString("ScanForPE: PE image located at: 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
+                
+                return 1;
             }
-            
-            pNtHeader = (PIMAGE_NT_HEADERS)((PCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
-            
-            if (pNtHeader->Signature != IMAGE_NT_SIGNATURE) 
-            {
-                // No 'PE' header
-                continue;                
-            }
-            
-            if ((pNtHeader->FileHeader.Machine == 0) || (pNtHeader->FileHeader.SizeOfOptionalHeader == 0)) 
-            {
-                // Basic requirements
-                DoOutputDebugString("ScanForPE: Basic requirements failure.\n");
-                continue;
-            }
-            
-            if (Offset)
-            {
-                *Offset = (LPCVOID)((char*)Buffer+p);
-            }
-            
-            DoOutputDebugString("ScanForPE: success!\n");
-            
-            return 1;
+        }  
+        __except(EXCEPTION_EXECUTE_HANDLER)  
+        {  
+            DoOutputDebugString("ScanForPE: Exception occured reading memory address 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
+            return 0;
         }
     }
     
+    DoOutputDebugString("ScanForPE: No PE image located\n");
     return 0;
 }
 
@@ -749,67 +801,34 @@ int ScanForPE(LPCVOID Buffer, unsigned int Size, LPCVOID* Offset)
 int DumpMemory(LPCVOID Buffer, unsigned int Size)
 //**************************************************************************************
 {
-	char *OutputFilename, *FullPathName;
-	DWORD RetVal, dwBytesWritten;
+	char *OutputFilename;
+	DWORD dwBytesWritten;
 	HANDLE hOutputFile;
     LPVOID BufferCopy;
 
-	FullPathName = (char*) malloc(MAX_PATH);
+    SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, (PVOID)Buffer);
 
-    if (FullPathName == NULL)
-    {
-		DoOutputErrorString("DumpMemory: Error allocating memory for strings");
-		return 0;    
-    }
-    
     OutputFilename = GetName();
     
-	// We want to dump CAPE output to the 'analyzer' directory
-    memset(FullPathName, 0, MAX_PATH);
-	
-    strncpy_s(FullPathName, MAX_PATH, g_config.analyzer, strlen(g_config.analyzer)+1);
-
-	if (strlen(FullPathName) + strlen("\\CAPE\\") + strlen(OutputFilename) >= MAX_PATH)
-	{
-		DoOutputDebugString("DumpMemory: Error, CAPE destination path too long.");
-        free(OutputFilename); free(FullPathName);
-		return 0;
-	}
-
-    PathAppend(FullPathName, "CAPE");
-
-	RetVal = CreateDirectory(FullPathName, NULL);
-
-	if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
-	{
-		DoOutputDebugString("DumpMemory: Error creating output directory");
-        free(OutputFilename); free(FullPathName);
-		return 0;
-	}
-
-    PathAppend(FullPathName, OutputFilename);
-	
-    DoOutputDebugString("DumpMemory: FullPathName = %s", FullPathName);
-    
-	hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+	hOutputFile = CreateFile(OutputFilename, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     
 	if (hOutputFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS)
 	{
-		DoOutputDebugString("DumpMemory: CAPE output filename exists already: %s", FullPathName);
-        free(OutputFilename); free(FullPathName);
+		DoOutputDebugString("DumpMemory: CAPE output filename exists already: %s", OutputFilename);
+        free(OutputFilename);
 		return 0;
 	}
 
 	if (hOutputFile == INVALID_HANDLE_VALUE)
 	{
 		DoOutputErrorString("DumpMemory: Could not create CAPE output file");
-        free(OutputFilename); free(FullPathName);
+        free(OutputFilename);
 		return 0;		
 	}	
 	
 	dwBytesWritten = 0;
     
-    DoOutputDebugString("DumpMemory: CAPE output file succssfully created: %s", FullPathName);
+    DoOutputDebugString("DumpMemory: CAPE output file succssfully created: %s", OutputFilename);
 
 	BufferCopy = (LPVOID)((BYTE*)malloc(Size));
     
@@ -824,16 +843,18 @@ int DumpMemory(LPCVOID Buffer, unsigned int Size)
     if (FALSE == WriteFile(hOutputFile, BufferCopy, Size, &dwBytesWritten, NULL))
 	{
 		DoOutputErrorString("DumpMemory: WriteFile error on CAPE output file");
-        free(OutputFilename); free(FullPathName); free(BufferCopy);
+        free(OutputFilename); free(BufferCopy);
 		return 0;
 	}
 
 	CloseHandle(hOutputFile);
     
-    CapeOutputFile(FullPathName);
+    CapeOutputFile(OutputFilename);
     
     // We can free the filename buffers
-    free(OutputFilename); free(FullPathName); free(BufferCopy);
+    free(OutputFilename); free(BufferCopy);
+
+    //ExtractionClearAll();
 	
     return 1;
 }
@@ -842,7 +863,7 @@ int DumpMemory(LPCVOID Buffer, unsigned int Size)
 int DumpCurrentProcessFixImports(DWORD NewEP)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcessFixImports(NewEP))
+	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcessFixImports(NewEP, TRUE))
 	{
 		DumpCount++;
 		return 1;
@@ -855,7 +876,7 @@ int DumpCurrentProcessFixImports(DWORD NewEP)
 int DumpCurrentProcessNewEP(DWORD NewEP)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess(NewEP))
+	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess(NewEP, TRUE))
 	{
 		DumpCount++;
 		return 1;
@@ -868,7 +889,7 @@ int DumpCurrentProcessNewEP(DWORD NewEP)
 int DumpCurrentProcess()
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess(0))
+	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess(0, TRUE))
 	{
 		DumpCount++;
 		return 1;
@@ -881,8 +902,11 @@ int DumpCurrentProcess()
 int DumpModuleInCurrentProcess(DWORD ModuleBase)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpProcess(GetCurrentProcess(), ModuleBase, 0))
+    SetCapeMetaData(EXTRACTION_PE, 0, NULL, (PVOID)ModuleBase);
+
+    if (DumpCount < DUMP_MAX && ScyllaDumpProcess(GetCurrentProcess(), ModuleBase, 0, TRUE))
 	{
+        //ExtractionClearAll();
         DumpCount++;
 		return 1;
 	}
@@ -932,6 +956,8 @@ int DumpImageInCurrentProcess(DWORD ImageBase)
         return 0;
     }
         
+    SetCapeMetaData(EXTRACTION_PE, 0, NULL, (PVOID)ImageBase);
+    
     // we perform a couple of tests to determine whether this is a 'raw' or 'virtual' image
     // first we check if the SizeOfHeaders is a multiple of FileAlignment
     if (pNtHeader->OptionalHeader.SizeOfHeaders % pNtHeader->OptionalHeader.FileAlignment
@@ -958,11 +984,12 @@ int DumpImageInCurrentProcess(DWORD ImageBase)
     // not a 'raw' file image, so try dumping this way first
     DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
     
-    if (!ScyllaDumpProcess(GetCurrentProcess(), ImageBase, 0))
+    if (!ScyllaDumpProcess(GetCurrentProcess(), ImageBase, 0, TRUE))
     // if this fails, let's try dumping 'raw' just in case
         if (!ScyllaDumpPE(ImageBase))
             return 0;
 
+    //ExtractionClearAll();        
     DumpCount++;
     return 1;	
 }
@@ -971,7 +998,7 @@ int DumpImageInCurrentProcess(DWORD ImageBase)
 int DumpProcess(HANDLE hProcess, DWORD_PTR ImageBase)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpProcess(hProcess, ImageBase, 0))
+	if (DumpCount < DUMP_MAX && ScyllaDumpProcess(hProcess, ImageBase, 0, TRUE))
 	{
 		DumpCount++;
 		return 1;
@@ -984,8 +1011,11 @@ int DumpProcess(HANDLE hProcess, DWORD_PTR ImageBase)
 int DumpPE(LPCVOID Buffer)
 //**************************************************************************************
 {
+    SetCapeMetaData(EXTRACTION_PE, 0, NULL, (PVOID)Buffer);
+    
     if (DumpCount < DUMP_MAX && ScyllaDumpPE((DWORD_PTR)Buffer))
 	{
+        //ExtractionClearAll();
         DumpCount++;
         return 1;
 	}
@@ -1003,16 +1033,16 @@ int RoutineProcessDump()
         if (g_config.import_reconstruction)
         {   
             if (base_of_dll_of_interest)
-                ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), base_of_dll_of_interest, 0);
+                ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), base_of_dll_of_interest, 0, FALSE);
             else
-                ProcessDumped = ScyllaDumpCurrentProcessFixImports(0);
+                ProcessDumped = ScyllaDumpCurrentProcessFixImports(0, FALSE);
         }        
         else
         {
             if (base_of_dll_of_interest)
-                ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), base_of_dll_of_interest, 0);
+                ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), base_of_dll_of_interest, 0, FALSE);
             else
-                ProcessDumped = ScyllaDumpCurrentProcess(0);
+                ProcessDumped = ScyllaDumpCurrentProcess(0, FALSE);
         }
     }
 

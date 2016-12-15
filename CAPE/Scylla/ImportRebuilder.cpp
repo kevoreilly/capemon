@@ -17,7 +17,7 @@ New Scylla section contains:
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 
-bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
+bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList, BOOL CapeFile)
 {
 	bool retValue = false;
 
@@ -52,7 +52,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 				}
 
 				DoOutputDebugString("Successfully built new import table, saving fixed file to disk.\n");
-                retValue = savePeFileToDisk(newFilePath);
+                retValue = savePeFileToDisk(newFilePath, CapeFile);
 			}
 		}
         else if (moduleBaseAddress && readPeSectionsFromProcess())
@@ -84,7 +84,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 
                     getFileOverlay();
 
-                    retValue = savePeFileToDisk(newFilePath);
+                    retValue = savePeFileToDisk(newFilePath, CapeFile);
                 }
                
                 if (!retValue) DoOutputDebugString("dumpProcess() failed.\n");
@@ -95,6 +95,11 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
     else DoOutputDebugString("Invalid PE file: import table rebuild failed.\n");
     
     return retValue;
+}
+
+bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
+{
+    return rebuildImportTable(newFilePath, moduleList, TRUE);
 }
 
 bool ImportRebuilder::buildNewImportTable(std::map<DWORD_PTR, ImportModuleThunk> & moduleList)

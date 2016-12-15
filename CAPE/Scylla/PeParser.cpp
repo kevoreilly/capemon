@@ -8,8 +8,9 @@
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
+extern "C" void ProcessDumpOutputFile(LPCTSTR lpOutputFile);
 
-char CapeOutputPath[MAX_PATH];
+extern char *CapeOutputPath;
 
 PeParser::PeParser()
 {
@@ -515,8 +516,10 @@ bool PeParser::openWriteFileHandle( const CHAR * newFile )
 	}
 	else
 	{
-		// If no name was specified, let's give it a temporary name to allow it to be renamed later with its hash value
-        hFile = CreateFile(CAPE_OUTPUT_FILE, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+		// With no name specified (expected for CAPE) we get a 'CAPE' name
+        CapeOutputPath = GetName();
+        
+        hFile = CreateFile(CapeOutputPath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 	}
 
 	return (hFile != INVALID_HANDLE_VALUE);
@@ -661,10 +664,9 @@ DWORD PeParser::isMemoryNotNull( BYTE * data, int dataSize )
 	return 0;
 }
 
-bool PeParser::savePeFileToDisk(const CHAR *newFile)
+bool PeParser::savePeFileToDisk(const CHAR *newFile, BOOL CapeFile)
 {
 	bool retValue = true;
-	char *HashString;
 
 	DWORD dwFileOffset = 0, dwWriteSize = 0;
 
@@ -786,52 +788,23 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
             closeFileHandle();
         else
         {
-            closeFileHandle();
-            
-            if (!GetFullPathName(CAPE_OUTPUT_FILE, MAX_PATH, CapeOutputPath, NULL))
-            {
-                DoOutputErrorString("There was a problem obtaining the full file path");
-                return 0;            
-            }
-            
-            HashString = GetName();
-            
-            if (MoveFile(CapeOutputPath, HashString))
-            {
-                memset(CapeOutputPath, 0, MAX_PATH);
-                
-                if (!GetFullPathName(HashString, MAX_PATH, CapeOutputPath, NULL))
-                {
-                    DoOutputErrorString("There was a problem obtaining the full file path");
-                    return 0;            
-                }
-
-                CapeOutputFile(CapeOutputPath);
-                
-                return 1;
-            }
-            else
-            {
-                DoOutputErrorString("There was a problem renaming the file");
-				
-                if (!DeleteFile(CapeOutputPath))
-                {
-                    DoOutputErrorString("There was a problem deleting the file: %s", CapeOutputPath);
-                }
-                
-                return 0;
-            }
+            CapeOutputFile(CapeOutputPath);
+            closeFileHandle();            
         }
     }
     
 	return retValue;
 }
 
+bool PeParser::savePeFileToDisk(const CHAR *newFile)
+{
+    return savePeFileToDisk(newFile, TRUE);
+}
+
 bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
 {
 	bool retValue = true;
 	DWORD dwWriteSize = 0;
-	char *HashString;
 
 	if (getNumberOfSections() != listPeSection.size())
 	{
@@ -846,11 +819,11 @@ bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
     
 	if (openWriteFileHandle(newFile))
 	{
-        DoOutputDebugString("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData);
-        
-        dwWriteSize = listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData
-            + listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData;
-				
+		DoOutputDebugString("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections() - 1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections() - 1].sectionHeader.SizeOfRawData);
+
+		dwWriteSize = listPeSection[getNumberOfSections() - 1].sectionHeader.PointerToRawData
+			+ listPeSection[getNumberOfSections() - 1].sectionHeader.SizeOfRawData;
+
 		if (!ProcessAccessHelp::writeMemoryToFile(hFile, 0, dwWriteSize, (LPCVOID)moduleBaseAddress))
 		{
 			retValue = false;
@@ -859,46 +832,13 @@ bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
 		SetEndOfFile(hFile);
 
 		if (newFile)
-            closeFileHandle();
-        else
-        {
-            closeFileHandle();
-            
-            if (!GetFullPathName(CAPE_OUTPUT_FILE, MAX_PATH, CapeOutputPath, NULL))
-            {
-                DoOutputErrorString("There was a problem obtaining the full file path");
-                return 0;            
-            }
-            
-            HashString = GetName();
-            
-            if (MoveFile(CapeOutputPath, HashString))
-            {
-                memset(CapeOutputPath, 0, MAX_PATH);
-                
-                if (!GetFullPathName(HashString, MAX_PATH, CapeOutputPath, NULL))
-                {
-                    DoOutputErrorString("There was a problem obtaining the full file path");
-                    return 0;            
-                }
-
-                CapeOutputFile(CapeOutputPath);
-                
-				return 1;
-            }
-            else
-            {
-                DoOutputErrorString("There was a problem renaming the file");
-				
-                if (!DeleteFile(CapeOutputPath))
-                {
-                    DoOutputErrorString("There was a problem deleting the file: %s", CapeOutputPath);
-                }
-                
-                return 0;
-            }
-        }
-    }
+			closeFileHandle();
+		else
+		{
+			CapeOutputFile(CapeOutputPath);
+			closeFileHandle();
+		}
+	}
 
 	return retValue;
 }
@@ -1213,6 +1153,27 @@ void PeParser::alignAllSectionHeaders()
 	}
 
 	std::sort(listPeSection.begin(), listPeSection.end(), PeFileSectionSortByVirtualAddress); //sort by VirtualAddress ascending
+}
+
+bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath, BOOL CapeFile)
+{
+	moduleBaseAddress = modBase;
+
+	if (readPeSectionsFromProcess())
+	{
+		setDefaultFileAlignment();
+
+		setEntryPointVa(entryPoint);
+
+		alignAllSectionHeaders();
+		fixPeHeader();
+
+		getFileOverlay();
+
+		return savePeFileToDisk(dumpFilePath, CapeFile);
+	}
+	
+	return false;
 }
 
 bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath)
