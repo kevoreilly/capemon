@@ -348,7 +348,7 @@ static hook_t g_hooks[] = {
     // Misc Hooks
     //
 
-	//HOOK(ntdll, memcpy),
+	HOOK(ntdll, memcpy),
 	HOOK(msvcrt, memcpy),
     HOOK(msvcrt, srand),
     
