@@ -793,7 +793,71 @@ int ScanForPE(LPCVOID Buffer, unsigned int Size, LPCVOID* Offset)
         }
     }
     
-    DoOutputDebugString("ScanForPE: No PE image located\n");
+    DoOutputDebugString("ScanForPE: No PE image located at 0x%x.\n", Buffer);
+    return 0;
+}
+
+//**************************************************************************************
+int IsDisguisedPE(LPCVOID Buffer, unsigned int Size)
+//**************************************************************************************
+{
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader;
+    
+    if (Size == 0)
+    {
+        DoOutputDebugString("IsDisguisedPE: Error, zero size given\n");
+        return 0;
+    }
+    
+    __try  
+    {  
+        pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
+
+        if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_HEADER_LIMIT)
+        {
+            DoOutputDebugString("IsDisguisedPE: e_lfanew bad.");
+            return 0;
+        }
+            
+        // more tests to establish it's PE
+        pNtHeader = (PIMAGE_NT_HEADERS)((PCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+
+        if ((pNtHeader->FileHeader.Machine == 0) || (pNtHeader->FileHeader.SizeOfOptionalHeader == 0 || pNtHeader->OptionalHeader.SizeOfHeaders == 0)) 
+        {
+            // Basic requirements
+            DoOutputDebugString("IsDisguisedPE: Basic requirements bad.");
+            return 0;
+        }
+
+        if (!(pNtHeader->FileHeader.Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE)) 
+        {
+            DoOutputDebugString("IsDisguisedPE: Characteristics bad.");
+            return 0;
+        }
+
+        if (pNtHeader->FileHeader.SizeOfOptionalHeader & (sizeof (ULONG_PTR) - 1)) 
+        {
+            DoOutputDebugString("IsDisguisedPE: SizeOfOptionalHeader bad.");
+            return 0;
+        }
+
+        if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))
+        {
+            DoOutputDebugString("IsDisguisedPE: OptionalHeader.Magic bad.");
+            return 0;
+        }
+        
+        // To pass the above tests it should now be safe to assume it's a PE image
+        return 1;
+    }  
+    __except(EXCEPTION_EXECUTE_HANDLER)  
+    {  
+        DoOutputDebugString("IsDisguisedPE: Exception occured reading region at 0x%x\n", (DWORD_PTR)(Buffer));
+        return 0;
+    }
+    
+    DoOutputDebugString("IsDisguisedPE: No PE image located\n");
     return 0;
 }
 
