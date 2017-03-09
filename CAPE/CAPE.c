@@ -755,11 +755,11 @@ int ScanForPE(LPCVOID Buffer, unsigned int Size, LPCVOID* Offset)
                     continue;
                 }
 
-                //if ((ULONG)pDosHeader->e_lfanew > Size-p)
-                //{
-                //    // e_lfanew points beyond end of region
-                //    continue;
-                //}
+                if ((ULONG)pDosHeader->e_lfanew > Size-p)
+                {
+                    // e_lfanew points beyond end of region
+                    continue;
+                }
                 
                 pNtHeader = (PIMAGE_NT_HEADERS)((PCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
                 
@@ -963,7 +963,7 @@ int DumpCurrentProcess()
 }
 
 //**************************************************************************************
-int DumpModuleInCurrentProcess(DWORD ModuleBase)
+int DumpModuleInCurrentProcess(DWORD_PTR ModuleBase)
 //**************************************************************************************
 {
     SetCapeMetaData(EXTRACTION_PE, 0, NULL, (PVOID)ModuleBase);
@@ -978,7 +978,7 @@ int DumpModuleInCurrentProcess(DWORD ModuleBase)
 	return 0;
 }
 //**************************************************************************************
-int DumpImageInCurrentProcess(DWORD ImageBase)
+int DumpImageInCurrentProcess(DWORD_PTR ImageBase)
 //**************************************************************************************
 {
     PIMAGE_DOS_HEADER pDosHeader;
@@ -1117,6 +1117,7 @@ void init_CAPE()
 {
     // Initialise CAPE global variables
     //
+#ifndef STANDALONE
     CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
     CapeMetaData->Pid = GetCurrentProcessId();    
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
@@ -1125,6 +1126,7 @@ void init_CAPE()
     // This is package (and technique) dependent:
     CapeMetaData->DumpType = PROCDUMP;
     ProcessDumped = FALSE;
+#endif
  
 #ifndef _WIN64	 
     // Start the debugger thread

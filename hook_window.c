@@ -140,6 +140,54 @@ HOOKDEF(HWND, WINAPI, FindWindowExW,
     return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, PostMessageA,
+	_In_  HWND hWnd,
+	_In_  UINT Msg,
+	_In_  WPARAM wParam,
+	_In_  LPARAM lParam
+) {
+	BOOL ret;
+	/*
+	DWORD pid;
+	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+	GetWindowThreadProcessId(hWnd, &pid);
+	if (pid != GetCurrentProcessId())
+		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	set_lasterrors(&lasterror);
+	*/
+	ret = Old_PostMessageA(hWnd, Msg, wParam, lParam);
+
+	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
+
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, PostMessageW,
+	_In_  HWND hWnd,
+	_In_  UINT Msg,
+	_In_  WPARAM wParam,
+	_In_  LPARAM lParam
+) {
+	BOOL ret;
+	/*
+	DWORD pid;
+	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+	GetWindowThreadProcessId(hWnd, &pid);
+	if (pid != GetCurrentProcessId())
+		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	set_lasterrors(&lasterror);
+	*/
+	ret = Old_PostMessageW(hWnd, Msg, wParam, lParam);
+
+	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
+
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	_In_  HWND hWnd,
 	_In_  UINT Msg,

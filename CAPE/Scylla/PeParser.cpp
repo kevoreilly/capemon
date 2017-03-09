@@ -5,6 +5,8 @@
 
 #pragma comment(lib, "Imagehlp.lib")
 
+#define DEBUG_COMMENTS
+
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
@@ -307,9 +309,15 @@ bool PeParser::readPeSectionsFromProcess()
 
 		if (!readSectionFromProcess(readOffset, listPeSection[i]))
 		{
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::readPeSectionsFromProcess: readSectionFromProcess failed offset 0x%x, section %d\n", readOffset, i+1);
+#endif
 			retValue = false;
 		}
 	}
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::readPeSectionsFromProcess: readSectionFromProcess success.\n");
+#endif
 
 	return retValue;
 }
@@ -668,10 +676,17 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile, BOOL CapeFile)
 {
 	bool retValue = true;
 
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("PeParser::savePeFileToDisk: Function entry.\n");
+#endif
+    
 	DWORD dwFileOffset = 0, dwWriteSize = 0;
 
 	if (getNumberOfSections() != listPeSection.size())
 	{
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("PeParser::savePeFileToDisk: Number of sections mismatch error.\n");
+#endif
 		return false;
 	}
 

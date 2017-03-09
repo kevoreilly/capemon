@@ -157,7 +157,7 @@ static unsigned int get_shellcode(unsigned char *buf, PVOID injstruct)
 static int inject(int pid, int tid, const char *dllpath, BOOLEAN suspended, int injectmode)
 {
     HANDLE prochandle = NULL;
-    HANDLE ThreadHandlele = NULL;
+    HANDLE ThreadHandle = NULL;
     LPVOID dllpathbuf;
     LPVOID injstructbuf;
     LPVOID loadlibraryaddr;
@@ -172,9 +172,12 @@ static int inject(int pid, int tid, const char *dllpath, BOOLEAN suspended, int 
     SIZE_T byteswritten = 0;
     int ret = ERROR_INVALID_PARAM;
 
-    if (pid <= 0 || tid < 0 || (tid == 0 && suspended))
+    if (pid <= 0 || tid < 0)
         goto out;
 
+    if (injectmode == INJECT_QUEUEUSERAPC && tid == 0 && suspended)    
+        goto out;
+        
     if (tid == 0)
         injectmode = INJECT_CREATEREMOTETHREAD;
 
@@ -185,8 +188,8 @@ static int inject(int pid, int tid, const char *dllpath, BOOLEAN suspended, int 
     }
 
     if (tid > 0) {
-        ThreadHandlele = OpenThread(THREAD_ALL_ACCESS, FALSE, tid);
-        if (ThreadHandlele == NULL) {
+        ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, tid);
+        if (ThreadHandle == NULL) {
             ret = ERROR_THREAD_OPEN;
             goto out;
         }
@@ -244,7 +247,7 @@ static int inject(int pid, int tid, const char *dllpath, BOOLEAN suspended, int 
     }
 
     if (injectmode == INJECT_QUEUEUSERAPC) {
-        if (!QueueUserAPC(shellcodeaddr, ThreadHandlele, (ULONG_PTR)injstructbuf)) {
+        if (!QueueUserAPC(shellcodeaddr, ThreadHandle, (ULONG_PTR)injstructbuf)) {
             ret = ERROR_QUEUEUSERAPC;
             goto out;
         }
@@ -307,8 +310,8 @@ success:
 out:
     if (prochandle)
         CloseHandle(prochandle);
-    if (ThreadHandlele)
-        CloseHandle(ThreadHandlele);
+    if (ThreadHandle)
+        CloseHandle(ThreadHandle);
     if (wbuf)
         free(wbuf);
 
@@ -568,24 +571,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
         // usage: loader.exe debug <binary> <commandline> <dll debugger>
         int pid, tid;
-        //PROCESS_INFORMATION pi;
-        //STARTUPINFOA si;
-        BOOL fSuccess, fConnected;
         int RetVal;
-        CONTEXT ctx;
         TCHAR DebugOutput[MAX_PATH];
-        DWORD cbBytesRead, cbWritten, cbReplyBytes, OEP, RemoteFuncAddress; 
-        HANDLE hPipe, hProcess, hThread; 
-        char lpszPipename[MAX_PATH];
+        HANDLE hProcess, hThread; 
 
-                
         if (__argc != 7)
             return ERROR_ARGCOUNT;
         pid = atoi(__argv[2]);
         tid = atoi(__argv[3]);
-
-        memset(lpszPipename, 0, MAX_PATH*sizeof(CHAR));
-        sprintf_s(lpszPipename, MAX_PATH, "\\\\.\\pipe\\CAPEpipe_%x", pid);
     
         hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, pid);
         if (hProcess == NULL) 
@@ -601,6 +594,52 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         {
             memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
             _stprintf_s(DebugOutput, MAX_PATH, TEXT("OpenThread failed, GLE=%d.\n"), GetLastError());
+            OutputDebugString(DebugOutput);
+            return -19;
+        }
+    
+        RetVal = inject(pid, tid, __argv[6], TRUE, INJECT_CREATEREMOTETHREAD);
+
+        CloseHandle(hProcess);
+        CloseHandle(hThread);
+        
+        return RetVal;
+    } 
+    else if (!strcmp(__argv[1], "debug_load")) 
+    {
+        // usage: loader.exe debug <binary> <commandline> <dll debugger>
+        int pid, tid;
+        BOOL fSuccess, fConnected;
+        int RetVal;
+        CONTEXT ctx;
+        TCHAR DebugOutput[MAX_PATH];
+        DWORD cbBytesRead, cbWritten, cbReplyBytes;
+        DWORD_PTR OEP, RemoteFuncAddress;
+        HANDLE hPipe, hProcess, hThread; 
+        char lpszPipename[MAX_PATH];
+
+        if (__argc != 7)
+            return ERROR_ARGCOUNT;
+        pid = atoi(__argv[2]);
+        tid = atoi(__argv[3]);
+
+        memset(lpszPipename, 0, MAX_PATH*sizeof(CHAR));
+        sprintf_s(lpszPipename, MAX_PATH, "\\\\.\\pipe\\CAPEpipe_%x", pid);
+    
+        hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, pid);
+        if (hProcess == NULL) 
+        {
+            memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
+            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: OpenProcess failed, GLE=%d.\n"), GetLastError());
+            OutputDebugString(DebugOutput);
+            return -18;
+        }
+        
+        hThread = OpenThread(THREAD_ALL_ACCESS, TRUE, tid);
+        if (hThread == NULL) 
+        {
+            memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
+            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: OpenThread failed, GLE=%d.\n"), GetLastError());
             OutputDebugString(DebugOutput);
             return -19;
         }
@@ -626,7 +665,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (hPipe == INVALID_HANDLE_VALUE) 
         {
             memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-            _stprintf_s(DebugOutput, MAX_PATH, TEXT("CreateNamedPipe failed, GLE=%d.\n"), GetLastError());
+            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: CreateNamedPipe failed, GLE=%d.\n"), GetLastError());
             OutputDebugString(DebugOutput);
             return -14;
         }
@@ -644,14 +683,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (fConnected) 
         { 
             memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Client connected\n"));
+            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: Client connected\n"));
             OutputDebugString(DebugOutput);	
             
             fSuccess = ReadFile
             ( 
                 hPipe,        			// handle to pipe 
                 &RemoteFuncAddress,     // buffer to receive data 
-                sizeof(DWORD),			// size of buffer 
+                sizeof(DWORD_PTR),			// size of buffer 
                 &cbBytesRead, 			// number of bytes read 
                 NULL          			// not overlapped I/O
             );
@@ -659,7 +698,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         else 
         {
             memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-            _stprintf_s(DebugOutput, MAX_PATH, TEXT("The client could not connect, closing pipe.\n"));
+            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: The client could not connect, closing pipe.\n"));
             OutputDebugString(DebugOutput);		
             CloseHandle(hPipe);
             return -15;
@@ -670,13 +709,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             if (GetLastError() == ERROR_BROKEN_PIPE)
             {
                 memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Client disconnected, GLE=%d.\n"), GetLastError());
+                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: Client disconnected, GLE=%d.\n"), GetLastError());
                 OutputDebugString(DebugOutput);
             }
             else
             {
                 memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-                _stprintf_s(DebugOutput, MAX_PATH, TEXT("ReadFile failed, last error=%d.\n"), GetLastError());
+                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: ReadFile failed, last error=%d.\n"), GetLastError());
                 OutputDebugString(DebugOutput);
             }
         }
@@ -684,13 +723,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (!RemoteFuncAddress)
         {
             memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Successfully read from pipe, however RemoteFuncAddress = 0, last error=%d.\n"), GetLastError());
+            _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: Successfully read from pipe, however RemoteFuncAddress = 0, last error=%d.\n"), GetLastError());
             OutputDebugString(DebugOutput);
             return -16;
         }
         
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _stprintf_s(DebugOutput, MAX_PATH, TEXT("Successfully received debugger init address: 0x%x.\n"), RemoteFuncAddress);
+        _stprintf_s(DebugOutput, MAX_PATH, TEXT("Loader: Successfully received debugger init address: 0x%x.\n"), RemoteFuncAddress);
         OutputDebugString(DebugOutput);		
 
         ctx.ContextFlags = CONTEXT_ALL;
@@ -703,9 +742,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
 
 #ifndef _WIN64       
-        OEP = ctx.Eax;
+        OEP = ctx.Eax;  // eax holds eip on 32-bit
 #else
-        OEP = ctx.Rax;
+        OEP = ctx.Rcx;  // rcx holds rip on 64-bit
 #endif        
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
 #ifndef _WIN64       
@@ -716,7 +755,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         OutputDebugString(DebugOutput);		
         
         cbWritten = 0;
-        cbReplyBytes = sizeof(DWORD);
+        cbReplyBytes = sizeof(DWORD_PTR);
         
         // Write the reply to the pipe. 
         fSuccess = WriteFile
@@ -750,7 +789,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN64       
             ctx.Eax = RemoteFuncAddress;		// eax holds new entry point
 #else
-            ctx.Rax = RemoteFuncAddress;		// eax holds new entry point
+            ctx.Rcx = RemoteFuncAddress;		// rcx holds new entry point
 #endif        
             if (!SetThreadContext(hThread, &ctx))
             {
@@ -775,7 +814,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         
         return 1;
         
-    } else if (!strcmp(__argv[1], "test")) 
+    } 
+    else if (!strcmp(__argv[1], "test")) 
     {
         // usage: loader.exe test <binary> <commandline> <dll debugger>
         PROCESS_INFORMATION pi;
@@ -784,7 +824,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         int RetVal;
         CONTEXT ctx;
         TCHAR DebugOutput[MAX_PATH];
-        DWORD  dwThreadId, cbBytesRead, cbWritten, cbReplyBytes, OEP, RemoteFuncAddress, ExitCode; 
+        DWORD  dwThreadId, cbBytesRead, cbWritten, cbReplyBytes, ExitCode;
+        DWORD_PTR OEP, RemoteFuncAddress;
         HANDLE hPipe; 
         char lpszPipename[MAX_PATH]; 
                 
@@ -866,7 +907,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             ( 
                 hPipe,        			// handle to pipe 
                 &RemoteFuncAddress,     // buffer to receive data 
-                sizeof(DWORD),			// size of buffer 
+                sizeof(DWORD_PTR),			// size of buffer 
                 &cbBytesRead, 			// number of bytes read 
                 NULL          			// not overlapped I/O
             );
@@ -918,9 +959,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
 
 #ifndef _WIN64       
-        OEP = ctx.Eax;
-#else
-        OEP = ctx.Rax;
+        OEP = ctx.Eax;  // eax holds eip on 32-bit
+#else                 
+        OEP = ctx.Rcx;  // rcx holds rip on 64-bit
 #endif        
         
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
@@ -932,7 +973,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         OutputDebugString(DebugOutput);	
         
         cbWritten = 0;
-        cbReplyBytes = sizeof(DWORD);
+        cbReplyBytes = sizeof(DWORD_PTR);
         
         // Write the reply to the pipe. 
         fSuccess = WriteFile
@@ -966,7 +1007,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN64       
             ctx.Eax = RemoteFuncAddress;		// eax holds new entry point
 #else
-            ctx.Rax = RemoteFuncAddress;		// eax holds new entry point
+            ctx.Rcx = RemoteFuncAddress;		// rcx holds new entry point
 #endif        
             if (!SetThreadContext(pi.hThread, &ctx))
             {

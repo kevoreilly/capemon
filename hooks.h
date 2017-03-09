@@ -761,6 +761,20 @@ extern HOOKDEF(BOOL, WINAPI, EnumWindows,
     _In_  LPARAM lParam
 );
 
+extern HOOKDEF(BOOL, WINAPI, PostMessageA,
+	_In_  HWND hWnd,
+	_In_  UINT Msg,
+	_In_  WPARAM wParam,
+	_In_  LPARAM lParam
+);
+
+extern HOOKDEF(BOOL, WINAPI, PostMessageW,
+	_In_  HWND hWnd,
+	_In_  UINT Msg,
+	_In_  WPARAM wParam,
+	_In_  LPARAM lParam
+);
+
 extern HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	_In_  HWND hWnd,
 	_In_  UINT Msg,

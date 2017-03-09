@@ -268,6 +268,8 @@ static hook_t g_hooks[] = {
 	// won't end up logging. We need another hook type which logs the hook and then every function
 	// called by that hook (modulo perhaps some blacklisted functions for this specific hook type)
     //HOOK(user32, EnumWindows),
+	HOOK(user32, PostMessageA),
+	HOOK(user32, PostMessageW),
 	HOOK(user32, SendNotifyMessageA),
 	HOOK(user32, SendNotifyMessageW),
 	HOOK(user32, SetWindowLongA),
