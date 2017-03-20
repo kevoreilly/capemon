@@ -236,7 +236,6 @@ int read_config(void)
                 else
                     DoOutputDebugString("Import reconstruction of process dumps disabled.\n");
 			}
-
 		}
     }
 

@@ -139,6 +139,25 @@ int is_stack_pivoted(void)
 	return 1;
 }
 
+PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
+{
+  if (nlen > hlen)
+    return NULL;
+
+  ULONG i;
+  for (i = 0; i < hlen - nlen + 1; i++) {
+    if (!memcmp(haystack + i, needle, nlen))
+      return haystack + i;
+  }
+
+  return NULL;
+}
+
+BOOL is_bytes_in_buf(PCHAR buf, ULONG len, PCHAR memstr, ULONG memlen, ULONG maxsearchbytes)
+{
+    return memmem(buf, min(maxsearchbytes, len), memstr, memlen) ? TRUE : FALSE;
+}
+
 void replace_string_in_buf(PCHAR buf, ULONG len, PCHAR findstr, PCHAR repstr)
 {
 	unsigned int findlen = (unsigned int)strlen(findstr);
@@ -332,6 +351,12 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 		replace_string_in_buf(Data, DataLength, "Xeon(R) ", "Core(TM)");
 	}
 
+	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS\\SystemManufacturer") ||
+		!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS\\SystemProductName")) {
+		replace_string_in_buf(Data, DataLength, "VMware", "Lenovo");
+		replace_string_in_buf(Data, DataLength, "Virtual Platform", "X230 ThinkPad PC");
+	}
+
 	// fake the manufacturer name
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\SystemInformation\\SystemManufacturer"))
 		replace_string_in_buf(Data, DataLength, "QEMU", "DELL");
@@ -390,7 +415,13 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 	if (!wcsnicmp(keypath, L"HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor", 63) &&
 		!wcsicmp(keypath + wcslen(keypath) - wcslen(L"ProcessorNameString"), L"ProcessorNameString")) {
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"QEMU Virtual CPU version 2.0.0", L"Intel(R) Core(TM) i7 CPU @3GHz");
-		replace_wstring_in_buf(Data, DataLength, L"Xeon(R) ", L"Core(TM)");
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"Xeon(R) ", L"Core(TM)");
+	}
+
+	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS\\SystemManufacturer") ||
+		!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\HARDWARE\\DESCRIPTION\\System\\BIOS\\SystemProductName")) {
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"Virtual Platform", L"X230 ThinkPad PC");
 	}
 
 	// fake the manufacturer name
@@ -830,13 +861,13 @@ out:
 
 wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 {
-	wchar_t *tmpout;
-	wchar_t *nonexistent;
+	wchar_t *tmpout = NULL;
+	wchar_t *nonexistent = NULL;
 	unsigned int lenchars;
 	unsigned int nonexistentidx;
-	wchar_t *pathcomponent;
+	wchar_t *pathcomponent = NULL;
 	unsigned int pathcomponentlen;
-	const wchar_t *inadj;
+	const wchar_t *inadj = NULL;
 	unsigned int inlen;
 	int is_globalroot = 0;
 

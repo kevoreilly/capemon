@@ -177,6 +177,8 @@ ULONG_PTR get_cdocument_write_addr(HMODULE mod);
 ULONG_PTR get_olescript_compile_addr(HMODULE mod);
 ULONG_PTR get_olescript_parsescripttext_addr(HMODULE mod);
 
+PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen);
+BOOL is_bytes_in_buf(PCHAR buf, ULONG len, PCHAR memstr, ULONG memlen, ULONG maxsearchbytes);
 void replace_string_in_buf(PCHAR buf, ULONG len, PCHAR findstr, PCHAR repstr);
 void replace_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR repstr);
 void replace_ci_string_in_buf(PCHAR buf, ULONG len, PCHAR findstr, PCHAR repstr);

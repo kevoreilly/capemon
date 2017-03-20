@@ -255,13 +255,28 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
     DWORD dwReserved,
     LPVOID lpfnCB
 ) {
-    HRESULT ret = Old_URLDownloadToFileW(pCaller, szURL, szFileName,
-        dwReserved, lpfnCB);
-	LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-    if(ret == S_OK) {
-        pipe("FILE_NEW:%S", -1, szFileName);
-    }
+    HRESULT ret = Old_URLDownloadToFileW(pCaller, szURL, szFileName, dwReserved, lpfnCB);
+    LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+    if(ret == S_OK)
+      pipe("FILE_NEW:%Z", szFileName);
+
     return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
+  _In_ LPUNKNOWN lpUnkcalled,
+  _In_ LPCWSTR szURL,
+  _Out_ LPWSTR szFilename,
+  _In_ DWORD cchFilename,
+  _Reserved_ DWORD dwReserved,
+  _In_opt_ VOID *pBSC
+) {
+  HRESULT ret = Old_URLDownloadToCacheFileW(lpUnkcalled, szURL, szFilename, cchFilename, dwReserved, pBSC);
+  LOQ_hresult("network", "uFs", "URL", szURL, "Filename", ret == S_OK ? szFilename : L"", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+  if (ret == S_OK)
+    pipe("FILE_NEW:%Z", szFilename);
+
+  return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, InternetGetConnectedState,
@@ -647,10 +662,12 @@ HOOKDEF(BOOL, WINAPI, InternetReadFile,
     _In_   DWORD dwNumberOfBytesToRead,
     _Out_  LPDWORD lpdwNumberOfBytesRead
 ) {
-    BOOL ret = Old_InternetReadFile(hFile, lpBuffer, dwNumberOfBytesToRead,
-        lpdwNumberOfBytesRead);
-    LOQ_bool("network", "pB", "InternetHandle", hFile,
-        "Buffer", lpdwNumberOfBytesRead, lpBuffer);
+    BOOL ret = Old_InternetReadFile(hFile, lpBuffer, dwNumberOfBytesToRead, lpdwNumberOfBytesRead);
+    if (is_bytes_in_buf(lpBuffer, *lpdwNumberOfBytesRead, "\x00\x50\x4f\x4c\x49\x4d\x4f\x52\x46\x00", 10, 256))
+      LOQ_bool("network", "pCI", "InternetHandle", hFile, "Buffer", lpdwNumberOfBytesRead, lpBuffer, "BytesRead", lpdwNumberOfBytesRead);
+    else
+      LOQ_bool("network", "pBI", "InternetHandle", hFile, "Buffer", lpdwNumberOfBytesRead, lpBuffer, "BytesRead", lpdwNumberOfBytesRead);
+
     return ret;
 }
 

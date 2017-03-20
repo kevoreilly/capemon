@@ -184,16 +184,17 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		Buffer = malloc(BufferSize);
 
         CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
-            
+        
 		if (CapeMetaData->DumpType == EXTRACTION_PE || CapeMetaData->DumpType == EXTRACTION_SHELLCODE)
         {
             // Extraction-specific format
             _snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n0x%x\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, (DWORD)CapeMetaData->Address);
         }
-		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE || CapeMetaData->DumpType == EVILGRAB_PAYLOAD || CapeMetaData->DumpType == EVILGRAB_DATA)
+		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE)
         {
+            if (CapeMetaData->TargetProcess && CapeMetaData->ProcessPath)
             // Injection-specific format
-            _snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n%s\n%d\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
+                _snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n%s\n%d\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
         }
 
         if (FALSE == WriteFile(hMetadata, Buffer, strlen(Buffer), &dwBytesWritten, NULL))

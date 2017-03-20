@@ -126,6 +126,9 @@ do { \
 #define ENSURE_LARGE_INTEGER(param) \
     LARGE_INTEGER _##param; _##param.QuadPart = 0; if(param == NULL) param = &_##param
 
+#define ENSURE_RTL_ATOM(param) \
+    RTL_ATOM _##param = 0; if(param == NULL) param = &_##param
+
 #define ENSURE_DWORD(param) \
     DWORD _##param = 0; if(param == NULL) param = &_##param
 

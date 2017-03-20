@@ -423,7 +423,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 		if (CreateSuspended == FALSE) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
-			ResumeThread(ThreadHandle);
+			ResumeThread(*ThreadHandle);
 			set_lasterrors(&lasterror);
 		}
 	}

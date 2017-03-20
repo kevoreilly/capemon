@@ -1,34 +1,56 @@
 extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
+BOOL TranslatePathFromDeviceToLetter(__in TCHAR *DeviceFilePath, __out TCHAR* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize);
+int DumpMemory(LPCVOID Buffer, unsigned int Size);
 extern int DumpCurrentProcessNewEP(DWORD NewEP);
 extern int DumpCurrentProcess();
 extern int DumpProcess(HANDLE hProcess, DWORD_PTR ImageBase);
 extern int DumpPE(LPCVOID Buffer);
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
-unsigned int DumpSize;
 int ScanForNonZero(LPCVOID Buffer, unsigned int Size);
 int ScanForPE(LPCVOID Buffer, unsigned int Size, LPCVOID* Offset);
+int DumpImageInCurrentProcess(DWORD ImageBase);
+void DumpSectionViewsForPid(DWORD Pid);
+unsigned int DumpSize;
 
 //Global switch for debugger
 #define DEBUGGER_ENABLED    0
 
+typedef struct InjectionSectionView
+{
+    HANDLE                          SectionHandle;
+    PVOID                           LocalView;
+    SIZE_T                          ViewSize;
+	int                             TargetProcessId;
+    struct InjectionSectionView     *NextSectionView;
+} INJECTIONSECTIONVIEW, *PINJECTIONSECTIONVIEW;
+
+PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE_T ViewSize);
+PINJECTIONSECTIONVIEW GetSectionView(HANDLE SectionHandle);
+BOOL DropSectionView(PINJECTIONSECTIONVIEW SectionView);
+
 typedef struct InjectionInfo
 {
-    int                     ProcessId;
-	HANDLE	                ProcessHandle;
-    DWORD_PTR               ImageBase;
-    DWORD_PTR               EntryPoint;
-    BOOL                    ImageDumped;
-    LPCVOID                 BufferBase;
-    unsigned int            BufferSizeOfImage;
-    struct InjectionInfo    *NextInjectionInfo;
+    int                         ProcessId;
+	HANDLE	                    ProcessHandle;
+    DWORD_PTR                   ImageBase;
+    DWORD_PTR                   EntryPoint;
+    BOOL                        WriteDetected;
+    BOOL                        ImageDumped;
+    LPCVOID                     BufferBase;
+    unsigned int                BufferSizeOfImage;
+    HANDLE                      SectionHandle;
+//    struct InjectionSectionView *SectionViewList;
+    struct InjectionInfo        *NextInjectionInfo;
 } INJECTIONINFO, *PINJECTIONINFO;
 
 struct InjectionInfo *InjectionInfoList;
 
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId);
 PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId);
+
+struct InjectionSectionView *SectionViewList;
 
 //
 // MessageId: STATUS_SUCCESS
@@ -63,13 +85,14 @@ PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId);
 
 typedef struct CapeMetadata 
 {
-    DWORD   DumpType;
 	char*	ProcessPath;
 	char*	ModulePath;
     DWORD   Pid;
+    DWORD   DumpType;
     char*	TargetProcess;  // For injection
     DWORD	TargetPid;      // "
     PVOID   Address;        // For shellcode
+	SIZE_T  Size;           // "
 } CAPEMETADATA, *PCAPEMETADATA;
 
 struct CapeMetadata *CapeMetaData;
@@ -89,10 +112,11 @@ enum {
     EXTRACTION_SHELLCODE    = 9,
     
     PLUGX_PAYLOAD           = 0x10,
-    PLUGX_CONFIG            = 0x11,   
+    PLUGX_CONFIG            = 0x11,
     
     EVILGRAB_PAYLOAD        = 0x14,
-    EVILGRAB_DATA           = 0x15
+    EVILGRAB_DATA           = 0x15    
 };
 
 HANDLE EvilGrabRegHandle;
+

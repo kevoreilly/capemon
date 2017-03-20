@@ -1049,7 +1049,31 @@ HOOKDEF(BOOL, WINAPI, CopyFileW,
 	return ret;
 }
 
-HOOKDEF(BOOL, WINAPI, CopyFileExW,
+HOOKDEF_NOTAIL(WINAPI, CopyFileExW,
+	_In_      LPWSTR lpExistingFileName,
+	_In_      LPWSTR lpNewFileName,
+	_In_opt_  LPPROGRESS_ROUTINE lpProgressRoutine,
+	_In_opt_  LPVOID lpData,
+	_In_opt_  LPBOOL pbCancel,
+	_In_      DWORD dwCopyFlags
+) {
+	BOOL ret = TRUE;
+	BOOL file_existed = FALSE;
+
+	if (GetFileAttributesW(lpNewFileName) != INVALID_FILE_ATTRIBUTES)
+		file_existed = TRUE;
+
+	if (lpProgressRoutine) {
+		LOQ_bool("filesystem", "FFis", "ExistingFileName", lpExistingFileName,
+			"NewFileName", lpNewFileName, "CopyFlags", dwCopyFlags, "ExistedBefore", file_existed ? "yes" : "no");
+		return 0;
+	}
+
+	return 1;
+}
+
+
+HOOKDEF_ALT(BOOL, WINAPI, CopyFileExW,
     _In_      LPWSTR lpExistingFileName,
     _In_      LPWSTR lpNewFileName,
     _In_opt_  LPPROGRESS_ROUTINE lpProgressRoutine,
@@ -1065,14 +1089,13 @@ HOOKDEF(BOOL, WINAPI, CopyFileExW,
 	ret = Old_CopyFileExW(lpExistingFileName, lpNewFileName,
         lpProgressRoutine, lpData, pbCancel, dwCopyFlags);
 	LOQ_bool("filesystem", "FFis", "ExistingFileName", lpExistingFileName,
-        "NewFileName", lpNewFileName, "CopyFlags", dwCopyFlags, file_existed ? "yes" : "no");
+        "NewFileName", lpNewFileName, "CopyFlags", dwCopyFlags, "ExistedBefore", file_existed ? "yes" : "no");
 
 	if (ret)
 		new_file_path_unicode(lpNewFileName);
 
 	return ret;
 }
-
 HOOKDEF(BOOL, WINAPI, DeleteFileA,
     __in  LPCSTR lpFileName
 ) {
@@ -1295,7 +1318,7 @@ HOOKDEF(BOOL, WINAPI, GetVolumeInformationByHandleW,
 	if (ret && lpVolumeSerialNumber && g_config.serial_number)
 		*lpVolumeSerialNumber = g_config.serial_number;
 
-	LOQ_bool("filesystem", "uH", "VolumeName", lpVolumeNameBuffer, "VolumeSerial", lpVolumeSerialNumber);
+	LOQ_bool("filesystem", "puH", "Handle", hFile, "VolumeName", lpVolumeNameBuffer, "VolumeSerial", lpVolumeSerialNumber);
 
 	return ret;
 }

@@ -52,7 +52,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 				}
 
 				DoOutputDebugString("Successfully built new import table, saving fixed file to disk.\n");
-                retValue = savePeFileToDisk(newFilePath, CapeFile);
+                retValue = savePeFileToDisk(newFilePath);
 			}
 		}
         else if (moduleBaseAddress && readPeSectionsFromProcess())
@@ -84,7 +84,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 
                     getFileOverlay();
 
-                    retValue = savePeFileToDisk(newFilePath, CapeFile);
+                    retValue = savePeFileToDisk(newFilePath);
                 }
                
                 if (!retValue) DoOutputDebugString("dumpProcess() failed.\n");

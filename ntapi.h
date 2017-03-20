@@ -661,6 +661,8 @@ static inline void __writefsdword(unsigned int index, unsigned int value)
 (( HKEY ) (ULONG_PTR)((LONG)0x80000007) )
 #endif
 
+typedef unsigned short RTL_ATOM, *PRTL_ATOM;
+
 typedef struct _SECTION_IMAGE_INFORMATION {
     VOID*               TransferAddress;
     uint32_t            ZeroBits;

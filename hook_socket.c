@@ -48,24 +48,30 @@ static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 	return retbuf;
 }
 
-static void get_ip_port(const struct sockaddr *addr,
+static BOOLEAN get_ip_port(const struct sockaddr *addr,
     char *ip, int *port)
 {
 	lasterror_t lasterror;
+	BOOLEAN ret = TRUE;
 
 	if (addr == NULL)
-		return;
+		return FALSE;
 
 	get_lasterrors(&lasterror);
 
-    // TODO IPv6 support.
-    if(addr->sa_family == AF_INET) {
-        const struct sockaddr_in *addr4 = (const struct sockaddr_in *) addr;
-        addr_to_string(addr4->sin_addr, ip);
-        *port = our_htons(addr4->sin_port);
-    }
-
+	__try {
+		// TODO IPv6 support.
+		if (addr->sa_family == AF_INET) {
+			const struct sockaddr_in *addr4 = (const struct sockaddr_in *) addr;
+			addr_to_string(addr4->sin_addr, ip);
+			*port = our_htons(addr4->sin_port);
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		ret = FALSE;
+	}
 	set_lasterrors(&lasterror);
+	return ret;
 }
 
 HOOKDEF(int, WINAPI, WSAStartup,

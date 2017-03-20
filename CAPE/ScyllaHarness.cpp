@@ -31,10 +31,11 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
+#define CAPE_OUTPUT_FILE "CapeOutput.bin"
+
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
-
-char *CapeOutputPath;
+extern char CapeOutputPath[MAX_PATH];
 
 //**************************************************************************************
 void ScyllaInitCurrentProcess()
@@ -50,43 +51,43 @@ void ScyllaInitCurrentProcess()
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcess(DWORD NewOEP, BOOL CapeFile)
+extern "C" int ScyllaDumpCurrentProcess(DWORD NewOEP)
 //**************************************************************************************
 {
 	DWORD_PTR entrypoint = 0;
 	PeParser * peFile = 0;
-    DWORD ModuleBase;
+    DWORD modBase;
     
-    ModuleBase = (DWORD)(ULONG_PTR)GetModuleHandle(NULL);
+    modBase = (DWORD)(ULONG_PTR)GetModuleHandle(NULL);
 	ScyllaInitCurrentProcess();
     
-    DoOutputDebugString("DumpCurrentProcess: Instantiating PeParser with address: 0x%x", ModuleBase);
+    DoOutputDebugString("Instantiating PeParser with address: 0x%x", modBase);
 
-    peFile = new PeParser(ModuleBase, TRUE);
+    peFile = new PeParser(modBase, TRUE);
 
     if (peFile->isValidPeFile())
     {
         if (NewOEP)
             entrypoint = NewOEP;
         else
-            entrypoint = peFile->getEntryPoint() + ModuleBase;
+            entrypoint = peFile->getEntryPoint() + modBase;
             
-        DoOutputDebugString("DumpCurrentProcess: Module entry point VA is 0x%x", entrypoint);
+        DoOutputDebugString("Module entry point VA is 0x%x", entrypoint);
     
-        if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+        if (peFile->dumpProcess(modBase, entrypoint, NULL))
         {
-            DoOutputDebugString("DumpCurrentProcess: Module image dump success.\n");
+            DoOutputDebugString("Module image dump success.\n");
         }
         else
         {
-            DoOutputErrorString("DumpCurrentProcess: Error - Cannot dump image");
+            DoOutputDebugString("Error: Cannot dump image.");
             delete peFile;
             return 0;
         }
     }
     else
     {
-        DoOutputDebugString("DumpCurrentProcess: Invalid PE file or invalid PE header.");
+        DoOutputDebugString("Error: Invalid PE file or invalid PE header. Try reading PE header from disk/process.");
         delete peFile;
         return 0;
     }
@@ -110,7 +111,7 @@ void ScyllaInit(HANDLE hProcess)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD NewOEP, BOOL CapeFile)
+extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP)
 //**************************************************************************************
 {
 	DWORD_PTR entrypoint = 0;
@@ -118,9 +119,9 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD Ne
 
 	ScyllaInit(hProcess);
     
-    DoOutputDebugString("DumpProcess: Instantiating PeParser with address: 0x%x", ModuleBase);
+    DoOutputDebugString("Instantiating PeParser with address: 0x%x", modBase);
 
-    peFile = new PeParser(ModuleBase, TRUE);
+    peFile = new PeParser(modBase, TRUE);
 
     if (peFile->isValidPeFile())
     {
@@ -128,25 +129,24 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD Ne
             entrypoint = NewOEP;
         else
             entrypoint = peFile->getEntryPoint();
-
-        entrypoint = entrypoint + ModuleBase;
+        entrypoint = entrypoint + modBase;
         
-        DoOutputDebugString("DumpProcess: Module entry point VA is 0x%x", entrypoint);
+        DoOutputDebugString("Module entry point VA is 0x%x", entrypoint);
         
-        if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+        if (peFile->dumpProcess(modBase, entrypoint, NULL))
         {
-            DoOutputDebugString("DumpProcess: Module image dump success");
+            DoOutputDebugString("Module image dump success");
         }
         else
         {
-            DoOutputErrorString("DumpProcess: Error - Cannot dump image");
+            DoOutputDebugString("Error: Cannot dump image.");
             delete peFile;
             return 0;
         }
     }
     else
     {
-        DoOutputDebugString("DumpProcess: Invalid PE file or invalid PE header.");
+        DoOutputDebugString("Error: Invalid PE file or invalid PE header. Try reading PE header from disk/process.");
         delete peFile;
         return 0;
     }
@@ -167,7 +167,7 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 
 	ProcessAccessHelp::setCurrentProcessAsTarget();
    
-    DoOutputDebugString("DumpPE: Instantiating PeParser with address: 0x%x", Buffer);
+    DoOutputDebugString("Instantiating PeParser with address: 0x%x", Buffer);
 
     peFile = new PeParser((DWORD_PTR)Buffer, TRUE);
     
@@ -175,18 +175,18 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
     {        
         if (peFile->saveCompletePeToDisk(NULL))
         {
-            DoOutputDebugString("DumpPE: PE file in memory dumped successfully.");
+            DoOutputDebugString("PE file in memory dumped successfully.");
         }
         else
         {
-            DoOutputDebugString("DumpPE: Error: Cannot dump PE file from memory.");
+            DoOutputDebugString("Error: Cannot dump PE file from memory.");
             delete peFile;
             return 0;
         }
     }
     else
     {
-        DoOutputDebugString("DumpPE: Error: Invalid PE file or invalid PE header.");
+        DoOutputDebugString("Error: Invalid PE file or invalid PE header. Try reading PE header from disk/process.");
         delete peFile;
         return 0;
     }
@@ -224,13 +224,13 @@ bool isIATOutsidePeImage (DWORD_PTR addressIAT)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile)
+extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP)
 //**************************************************************************************
 {
     DWORD addressIAT, sizeIAT;
     BOOL IAT_Found, AdvancedIATSearch = FALSE;
     bool isAfter;
-    DWORD ModuleBase;
+    DWORD modBase;
     
     IATSearch iatSearch;
 	ApiReader apiReader;
@@ -240,7 +240,7 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile)
 	DWORD_PTR entrypointRVA = 0;
 	PeParser * peFile = 0;
 
-    ModuleBase = (DWORD)(ULONG_PTR)GetModuleHandle(NULL);
+    modBase = (DWORD)(ULONG_PTR)GetModuleHandle(NULL);
     
     //Clear stuff first
     ProcessAccessHelp::ownModuleList.clear();
@@ -254,39 +254,37 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile)
 
     ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::ownModuleList);
     ProcessAccessHelp::moduleList = ProcessAccessHelp::ownModuleList;
-    ProcessAccessHelp::targetImageBase = ModuleBase;
+    ProcessAccessHelp::targetImageBase = modBase;
     ProcessAccessHelp::getSizeOfImageCurrentProcess();
     
     // Enumerate DLLs and imported functions
     apiReader.readApisFromModuleList();
 
-    DoOutputDebugString("DumpCurrentProcessFixImports: Instantiating PeParser with address: 0x%x", ModuleBase);
+    DoOutputDebugString("Instantiating PeParser with address: 0x%x", modBase);
 
-    peFile = new PeParser(ModuleBase, TRUE);
+    peFile = new PeParser(modBase, TRUE);
 
     if (peFile->isValidPeFile())
     {
         if (NewOEP)
-            entrypointRVA = NewOEP - ModuleBase;
+            entrypointRVA = NewOEP - modBase;
         else
             entrypointRVA = peFile->getEntryPoint();
 
-        DoOutputDebugString("DumpCurrentProcessFixImports: Module entry point VA is 0x%x", ModuleBase + entrypointRVA);
-        
-        CapeOutputPath = GetName();
+        DoOutputDebugString("Module entry point VA is 0x%x", modBase + entrypointRVA);
         
         //  Let's dump then fix the dump on disk
-        if (peFile->dumpProcess((DWORD_PTR)ModuleBase, (DWORD)ModuleBase + entrypointRVA, CapeOutputPath))
+        if (peFile->dumpProcess(modBase, modBase + entrypointRVA, CAPE_OUTPUT_FILE))
         {
-            DoOutputDebugString("DumpCurrentProcessFixImports: Module image dump success %s", CapeOutputPath);
+            DoOutputDebugString("Module image dump success %s", CapeOutputPath);
         }
         
         //  IAT search - we'll try the simple search first
-        IAT_Found = iatSearch.searchImportAddressTableInProcess((DWORD_PTR)ModuleBase + entrypointRVA, (DWORD_PTR*)&addressIAT, &sizeIAT, FALSE);
+        IAT_Found = iatSearch.searchImportAddressTableInProcess(modBase + entrypointRVA, (DWORD_PTR*)&addressIAT, &sizeIAT, FALSE);
         
         //  Let's try the advanced search now
         if (IAT_Found == FALSE)
-            IAT_Found = iatSearch.searchImportAddressTableInProcess((DWORD_PTR)ModuleBase + entrypointRVA, (DWORD_PTR*)&addressIAT, &sizeIAT, TRUE);
+            IAT_Found = iatSearch.searchImportAddressTableInProcess(modBase + entrypointRVA, (DWORD_PTR*)&addressIAT, &sizeIAT, TRUE);
         
         if (addressIAT && sizeIAT)
         {
@@ -336,10 +334,10 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile)
 
             if (isIATOutsidePeImage(addressIAT))
             {
-                DoOutputDebugString("Warning - IAT is not inside the PE image, requires rebasing.");
+                DoOutputDebugString("Warning, IAT is not inside the PE image, requires rebasing.");
             }
             
-            ImportRebuilder importRebuild(CapeOutputPath);
+            ImportRebuilder importRebuild(CAPE_OUTPUT_FILE);
             
             if (OFT_SUPPORT)
             {
@@ -394,7 +392,7 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD NewOEP, BOOL CapeFile)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD NewOEP, BOOL CapeFile)
+extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR modBase, DWORD NewOEP)
 //**************************************************************************************
 {
     BOOL isAfter;
@@ -419,41 +417,42 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
 	ProcessAccessHelp::ownModuleList.clear();
 	ProcessAccessHelp::hProcess = hProcess;
     ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
-    ProcessAccessHelp::targetImageBase = ModuleBase;
+    ProcessAccessHelp::targetImageBase = modBase;
+
+    //ProcessAccessHelp::moduleList = ProcessAccessHelp::ownModuleList;
+    //ProcessAccessHelp::getSizeOfImageCurrentProcess();
     
     apiReader.readApisFromModuleList();
 
-    DoOutputDebugString(TEXT("DumpProcessFixImports: Instantiating PeParser with address: 0x%x"), ModuleBase);
+    DoOutputDebugString(TEXT("Instantiating PeParser with address: 0x%x"), modBase);
 
-    peFile = new PeParser(ModuleBase, true);
+    peFile = new PeParser(modBase, true);
 
     if (peFile->isValidPeFile())
     {
         if (NewOEP)
-            entrypointRVA = NewOEP - ModuleBase;
+            entrypointRVA = NewOEP - modBase;
         else
             entrypointRVA = peFile->getEntryPoint();
 
-        DoOutputDebugString(TEXT("DumpProcessFixImports: Module entry point VA is 0x%x"), ModuleBase + entrypointRVA);
-        
-        CapeOutputPath = GetName();
+        DoOutputDebugString(TEXT("Module entry point VA is 0x%x"), modBase + entrypointRVA);
         
         //  Let's dump then fix the dump on disk
-        if (peFile->dumpProcess(ModuleBase, ModuleBase + entrypointRVA, CapeOutputPath, CapeFile))
+        if (peFile->dumpProcess(modBase, modBase + entrypointRVA, CAPE_OUTPUT_FILE))
         {
-            DoOutputDebugString("DumpProcessFixImports: Module image dump success %s", CapeOutputPath);
+            DoOutputDebugString("Module image dump success %s", CapeOutputPath);
         }
         
         //  We'll try the simple search first
-        IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase + entrypointRVA, &addressIAT, &sizeIAT, FALSE);
+        IAT_Found = iatSearch.searchImportAddressTableInProcess(modBase + entrypointRVA, &addressIAT, &sizeIAT, FALSE);
         
         //  Let's try the advanced search now
         if (IAT_Found == FALSE)
-            IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase + entrypointRVA, &addressIAT, &sizeIAT, TRUE);
+            IAT_Found = iatSearch.searchImportAddressTableInProcess(modBase + entrypointRVA, &addressIAT, &sizeIAT, TRUE);
         
         if (addressIAT && sizeIAT)
         {
-            DoOutputDebugString(TEXT("DumpProcessFixImports: Found IAT - 0x%x, size: 0x%x"), addressIAT, sizeIAT);
+            DoOutputDebugString(TEXT("Found IAT: 0x%x, size: 0x%x"), addressIAT, sizeIAT);
             
             apiReader.readAndParseIAT(addressIAT, sizeIAT, importsHandling.moduleList);
             importsHandling.scanAndFixModuleList();
@@ -499,10 +498,10 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
 
             if (isIATOutsidePeImage(addressIAT))
             {
-                DoOutputDebugString("Warning - IAT is not inside the PE image, requires rebasing.");
+                DoOutputDebugString("WARNING! IAT is not inside the PE image, requires rebasing.");
             }
             
-            ImportRebuilder importRebuild(CapeOutputPath);
+            ImportRebuilder importRebuild(CAPE_OUTPUT_FILE);
             
             if (OFT_SUPPORT)
             {
@@ -527,7 +526,7 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
                 importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
             }
             
-            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList, CapeFile))
+            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
             {
                 DoOutputDebugString("Import table rebuild success.\n");
                 delete peFile;
@@ -536,13 +535,14 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
             else
             {
                 DoOutputDebugString("Import table rebuild failed, falling back to unfixed dump.\n");
-                peFile->savePeFileToDisk(NULL, CapeFile);
+                peFile->savePeFileToDisk(NULL);
             }         
         }
         else
         {
             DoOutputDebugString("Warning: Unable to find IAT in scan.\n");
         }
+    
     }
     else
     {
