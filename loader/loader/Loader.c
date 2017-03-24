@@ -688,11 +688,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             
             fSuccess = ReadFile
             ( 
-                hPipe,        			// handle to pipe 
-                &RemoteFuncAddress,     // buffer to receive data 
+                hPipe,        			    // handle to pipe 
+                &RemoteFuncAddress,         // buffer to receive data 
                 sizeof(DWORD_PTR),			// size of buffer 
-                &cbBytesRead, 			// number of bytes read 
-                NULL          			// not overlapped I/O
+                &cbBytesRead, 			    // number of bytes read 
+                NULL          			    // not overlapped I/O
             );
         } 
         else 
@@ -750,7 +750,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN64       
         _stprintf_s(DebugOutput, MAX_PATH, TEXT("GetThreadContext gives OEP=0x%x\n"), ctx.Eax);
 #else
-        _stprintf_s(DebugOutput, MAX_PATH, TEXT("GetThreadContext gives OEP=0x%x\n"), ctx.Rax);
+        _stprintf_s(DebugOutput, MAX_PATH, TEXT("GetThreadContext gives OEP=0x%x\n"), ctx.Rcx);
 #endif        
         OutputDebugString(DebugOutput);		
         
@@ -803,7 +803,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN64       
                 _stprintf_s(DebugOutput, MAX_PATH, TEXT("Set new EP to 0x%x\n"), ctx.Eax);
 #else
-                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Set new EP to 0x%x\n"), ctx.Rax);
+                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Set new EP to 0x%x\n"), ctx.Rcx);
 #endif        
                 OutputDebugString(DebugOutput);                
             }
@@ -905,11 +905,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             
             fSuccess = ReadFile
             ( 
-                hPipe,        			// handle to pipe 
-                &RemoteFuncAddress,     // buffer to receive data 
+                hPipe,        			    // handle to pipe 
+                &RemoteFuncAddress,         // buffer to receive data 
                 sizeof(DWORD_PTR),			// size of buffer 
-                &cbBytesRead, 			// number of bytes read 
-                NULL          			// not overlapped I/O
+                &cbBytesRead, 			    // number of bytes read 
+                NULL          			    // not overlapped I/O
             );
         } 
         else 
@@ -968,7 +968,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN64       
         _stprintf_s(DebugOutput, MAX_PATH, TEXT("GetThreadContext gives OEP=0x%x\n"), ctx.Eax);
 #else
-        _stprintf_s(DebugOutput, MAX_PATH, TEXT("GetThreadContext gives OEP=0x%x\n"), ctx.Rax);
+        _stprintf_s(DebugOutput, MAX_PATH, TEXT("GetThreadContext gives OEP=0x%x\n"), ctx.Rcx);
 #endif        
         OutputDebugString(DebugOutput);	
         
@@ -1021,7 +1021,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN64       
                 _stprintf_s(DebugOutput, MAX_PATH, TEXT("Set new EP to 0x%x\n"), ctx.Eax);
 #else
-                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Set new EP to 0x%x\n"), ctx.Rax);
+                _stprintf_s(DebugOutput, MAX_PATH, TEXT("Set new EP to 0x%x\n"), ctx.Rcx);
 #endif        
                 OutputDebugString(DebugOutput);                
             }

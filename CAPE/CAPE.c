@@ -1405,6 +1405,12 @@ void init_CAPE()
     // if required by package
     if (DEBUGGER_ENABLED)
         launch_debugger();
+
+#ifdef _WIN64
+    DoOutputDebugString("CAPE initialised (64-bit).\n");
+#else
+    DoOutputDebugString("CAPE initialised (32-bit).\n");
+#endif
     
     return;
 }

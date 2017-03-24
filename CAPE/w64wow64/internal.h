@@ -62,10 +62,12 @@
 #define X64_Push(r) EMIT(0x48 | ((r) >> 3)) EMIT(0x50 | ((r) & 7))
 #define X64_Pop(r) EMIT(0x48 | ((r) >> 3)) EMIT(0x58 | ((r) & 7))
 
+#define REX_W EMIT(0x48) __asm
+
 //to fool M$ inline asm compiler I'm using 2 DWORDs instead of DWORD64
 //use of DWORD64 will generate wrong 'pop word ptr[]' and it will break stack
 union reg64
 {
-	DWORD dw[2];
-	DWORD64 v;
+    DWORD64 v;
+    DWORD dw[2];
 };

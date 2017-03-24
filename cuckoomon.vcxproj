@@ -213,8 +213,8 @@
     <ClCompile Include="CAPE\Scylla\ProcessAccessHelp.cpp" />
     <ClCompile Include="CAPE\Scylla\StringConversion.cpp" />
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp" />
-    <ClCompile Include="CAPE\wow64ext\wow64ext.cpp" />
-    <ClCompile Include="CAPE\WoW64_fix.cpp" />
+    <ClCompile Include="CAPE\w64wow64\w64wow64.c" />
+    <ClCompile Include="CAPE\wow64_fix.c" />
     <ClCompile Include="config.c" />
     <ClCompile Include="cuckoomon.c" />
     <ClCompile Include="distorm3.2-package\src\decoder.c" />
@@ -421,8 +421,10 @@
     <ClInclude Include="CAPE\Scylla\StringConversion.h" />
     <ClInclude Include="CAPE\Scylla\SystemInformation.h" />
     <ClInclude Include="CAPE\Scylla\Thunks.h" />
-    <ClInclude Include="CAPE\wow64ext\internal.h" />
-    <ClInclude Include="CAPE\wow64ext\wow64ext.h" />
+    <ClInclude Include="CAPE\w64wow64\internal.h" />
+    <ClInclude Include="CAPE\w64wow64\w64wow64.h" />
+    <ClInclude Include="CAPE\w64wow64\w64wow64defs.h" />
+    <ClInclude Include="CAPE\w64wow64\windef.h" />
     <ClInclude Include="config.h" />
     <ClInclude Include="distorm3.2-package\include\distorm.h" />
     <ClInclude Include="distorm3.2-package\include\mnemonics.h" />

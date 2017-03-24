@@ -28,11 +28,11 @@
     <Filter Include="Header Files\CAPE\Scylla">
       <UniqueIdentifier>{dde7b0e5-0c75-442b-bbf4-24703756bd05}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\CAPE\wow64ext">
-      <UniqueIdentifier>{a39cf6bf-3af9-42f9-971d-fcfbc3e0596d}</UniqueIdentifier>
+    <Filter Include="Header Files\CAPE\w64wow64">
+      <UniqueIdentifier>{2870ff64-a1ae-437b-b93d-b815724102e4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\CAPE\wow64ext">
-      <UniqueIdentifier>{df6779d0-6bb8-40c0-ab5a-c233ea8726e9}</UniqueIdentifier>
+    <Filter Include="Source Files\CAPE\w64wow64">
+      <UniqueIdentifier>{cf36b66e-1611-4be7-abe4-482a5fbacbe2}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -249,12 +249,6 @@
     <ClCompile Include="CAPE\Scylla\ProcessAccessHelp.cpp">
       <Filter>Source Files\CAPE\Scylla</Filter>
     </ClCompile>
-    <ClCompile Include="CAPE\wow64ext\wow64ext.cpp">
-      <Filter>Source Files\CAPE\wow64ext</Filter>
-    </ClCompile>
-    <ClCompile Include="CAPE\WoW64_fix.cpp">
-      <Filter>Source Files\CAPE</Filter>
-    </ClCompile>
     <ClCompile Include="CAPE\Scylla\ApiReader.cpp">
       <Filter>Source Files\CAPE\Scylla</Filter>
     </ClCompile>
@@ -275,6 +269,12 @@
     </ClCompile>
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp">
       <Filter>Source Files\CAPE\Scylla</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\w64wow64\w64wow64.c">
+      <Filter>Source Files\CAPE\w64wow64</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\wow64_fix.c">
+      <Filter>Source Files\CAPE</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -371,12 +371,6 @@
     <ClInclude Include="CAPE\Scylla\ProcessAccessHelp.h">
       <Filter>Header Files\CAPE\Scylla</Filter>
     </ClInclude>
-    <ClInclude Include="CAPE\wow64ext\internal.h">
-      <Filter>Header Files\CAPE\wow64ext</Filter>
-    </ClInclude>
-    <ClInclude Include="CAPE\wow64ext\wow64ext.h">
-      <Filter>Header Files\CAPE\wow64ext</Filter>
-    </ClInclude>
     <ClInclude Include="CAPE\Scylla\ApiReader.h">
       <Filter>Header Files\CAPE\Scylla</Filter>
     </ClInclude>
@@ -406,6 +400,18 @@
     </ClInclude>
     <ClInclude Include="CAPE\Scylla\Thunks.h">
       <Filter>Header Files\CAPE\Scylla</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\w64wow64\internal.h">
+      <Filter>Header Files\CAPE\w64wow64</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\w64wow64\w64wow64.h">
+      <Filter>Header Files\CAPE\w64wow64</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\w64wow64\w64wow64defs.h">
+      <Filter>Header Files\CAPE\w64wow64</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\w64wow64\windef.h">
+      <Filter>Header Files\CAPE\w64wow64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -74,10 +74,10 @@ private:
 	CHAR stringBuffer[600];
 
 	//CMultiSelectTreeViewCtrl& TreeImports;
-	CImageList TreeIcons;
-	CIcon hIconCheck;
-	CIcon hIconWarning;
-	CIcon hIconError;
+	//CImageList TreeIcons;
+	//CIcon hIconCheck;
+	//CIcon hIconWarning;
+	//CIcon hIconError;
 
 	// They have to be added to the image list in that order!
 	enum Icon {

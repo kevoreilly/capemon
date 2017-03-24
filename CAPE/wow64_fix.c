@@ -16,8 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
 #ifndef _WIN64
-#include "wow64ext\wow64ext.h"
-// ReWolf's wow64ext library: https://github.com/rwfpl/rewolf-wow64ext
+#include "w64wow64\w64wow64.h"
+// Based upon ReWolf's wow64ext library:
+// https://github.com/rwfpl/rewolf-wow64ext
 
 #define DR7_MASK_RWE0 0xFFFDFFFF    // 11111111111111011111111111111111
 #define DR7_MASK_RWE1 0xFFDFFFFF    // 11111111110111111111111111111111
@@ -26,20 +27,20 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 const int PAGE_SIZE = 0x1000;
 
-extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 
 BOOL WoW64HookInstalled;
 
-LPVOID lpHookCode = nullptr;
-LPVOID lpNewJumpLocation;
+DWORD64 lpHookCode = (DWORD64)NULL;
+DWORD64 lpNewJumpLocation;
 
-DWORD pfnKiUserExceptionDispatcher;
-DWORD pfnNtSetContextThread;
-DWORD pfnWow64PrepareForException;
+DWORD64 pfnKiUserExceptionDispatcher;
+DWORD64 pfnNtSetContextThread;
+DWORD64 pfnWow64PrepareForException;
 
 //**************************************************************************************
-extern "C" BOOL WoW64PatchBreakpoint(unsigned int Register)
+extern BOOL WoW64PatchBreakpoint(unsigned int Register)
 //**************************************************************************************
 {
     if (WoW64HookInstalled == FALSE)
@@ -69,7 +70,7 @@ extern "C" BOOL WoW64PatchBreakpoint(unsigned int Register)
 }
 
 //**************************************************************************************
-extern "C" BOOL WoW64UnpatchBreakpoint(unsigned int Register)
+extern BOOL WoW64UnpatchBreakpoint(unsigned int Register)
 //**************************************************************************************
 {
     if (WoW64HookInstalled == FALSE)
@@ -99,7 +100,7 @@ extern "C" BOOL WoW64UnpatchBreakpoint(unsigned int Register)
 }
 
 //**************************************************************************************
-const LPVOID CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD_PTR pNtSetContextThread64, const DWORD_PTR pWow64PrepareForException)
+const DWORD64 CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD_PTR pNtSetContextThread64, const DWORD_PTR pWow64PrepareForException)
 //**************************************************************************************
 // credit to Omega Red http://pastebin.ca/raw/475547
 {
@@ -130,7 +131,7 @@ const LPVOID CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD_
         0xC3                                                                //ret                                                           94
     };                                                                      //                                                              86
 
-    lpHookCode = (LPVOID)VirtualAllocEx64((HANDLE) -1, NULL, PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    lpHookCode = VirtualAllocEx64((HANDLE) -1, (DWORD64)NULL, PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     
     //insert relative address of NtSetContextThread64 from instruction after call
     DWORD RelativeOffset = pNtSetContextThread64 - ((DWORD)lpHookCode + 56);
@@ -144,7 +145,7 @@ const LPVOID CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD_
     memcpy(&HookBytes[82], &ReturnAddress, sizeof(DWORD_PTR)); //(8 is address of third instruction)    
     
     //copy it to newly created page
-    (void)memcpy(lpHookCode, (const void *)HookBytes, sizeof(HookBytes));
+    memcpy((LPVOID)lpHookCode, (const void *)HookBytes, sizeof(HookBytes));
     
     return lpHookCode;
 }
@@ -159,7 +160,7 @@ const void EnableWow64Hook()
         0xCC, 0xCC, 0xCC                                           // 
     };
     DWORD pNew = (DWORD)lpNewJumpLocation;
-	DWORD pOrig = pfnKiUserExceptionDispatcher + 5;
+	DWORD pOrig = (DWORD)pfnKiUserExceptionDispatcher + 5;
     DWORD RelativeOffset = pNew - pOrig;
     memcpy(&trampolineBytes[1], (PVOID)&RelativeOffset, sizeof(DWORD_PTR));
 
@@ -180,7 +181,7 @@ const void EnableWow64Hook()
 }
 
 //**************************************************************************************
-extern "C" BOOL WoW64fix(void)
+extern BOOL WoW64fix(void)
 //**************************************************************************************
 {
     IsWow64Process(GetCurrentProcess(), &WoW64HookInstalled);
@@ -190,9 +191,12 @@ extern "C" BOOL WoW64fix(void)
         return FALSE;
     }
   
-    DWORD ntdll64 = getNTDLL64();
-    DWORD wow64dll = GetModuleHandle64(L"wow64.dll");
-    DWORD pfnWow64PrepareForException = GetProcAddress64(wow64dll, "Wow64PrepareForException");
+    //DWORD ntdll64 = getNTDLL64();
+    //DWORD wow64dll = GetModuleHandle64(L"wow64.dll");
+	
+    DWORD64 ntdll64 = GetModuleBase64(L"ntdll.dll");
+    DWORD64 wow64dll = GetModuleBase64(L"wow64.dll");
+    DWORD64 pfnWow64PrepareForException = GetProcAddress64(wow64dll, "Wow64PrepareForException");
     pfnKiUserExceptionDispatcher = GetProcAddress64(ntdll64, "KiUserExceptionDispatcher");
     pfnNtSetContextThread = GetProcAddress64(ntdll64, "NtSetContextThread");  
 

@@ -59,7 +59,7 @@ ImportsHandling::ImportsHandling()
 
 ImportsHandling::~ImportsHandling()
 {
-	TreeIcons.Destroy();
+    //TreeIcons.Destroy();
 }
 
 bool ImportsHandling::isModule(CTreeItem item) 
