@@ -5,7 +5,7 @@
 
 #include <atlmisc.h>
 #include <atlcrack.h>
-#include "multitree.h" // CMultiSelectTreeViewCtrl
+//#include "multitree.h" // CMultiSelectTreeViewCtrl
 
 //#include "resource.h"
 
@@ -59,7 +59,7 @@ ImportsHandling::ImportsHandling()
 
 ImportsHandling::~ImportsHandling()
 {
-    //TreeIcons.Destroy();
+	//TreeIcons.Destroy();
 }
 
 bool ImportsHandling::isModule(CTreeItem item) 

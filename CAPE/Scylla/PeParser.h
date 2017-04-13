@@ -5,8 +5,6 @@
 //#include "DumpSectionGui.h"
 
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
-
-extern "C" char* GetHashFromHandle(HANDLE hFile);
 extern "C" char* GetName();
 
 class PeFileSection {
@@ -93,6 +91,8 @@ public:
 	DWORD getSectionAddressRVAByIndex( int index );
 
     PIMAGE_NT_HEADERS getCurrentNtHeader();
+	std::vector<PeFileSection> listPeSection;
+    
 protected:
 	PeParser();
 
@@ -116,7 +116,6 @@ protected:
 	DWORD dosStubSize;
 	PIMAGE_NT_HEADERS32 pNTHeader32;
 	PIMAGE_NT_HEADERS64 pNTHeader64;
-	std::vector<PeFileSection> listPeSection;
 	BYTE * overlayData;
 	DWORD overlaySize;
 	/************************************************************************/

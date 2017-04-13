@@ -1405,6 +1405,11 @@ extern HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter
     _In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 );
 
+extern HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
+    __in    ULONG First,
+    __out   PVECTORED_EXCEPTION_HANDLER Handler
+);
+
 extern HOOKDEF(UINT, WINAPI, SetErrorMode,
 	_In_ UINT uMode
 );

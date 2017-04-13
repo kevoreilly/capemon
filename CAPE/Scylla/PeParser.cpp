@@ -5,6 +5,8 @@
 
 #pragma comment(lib, "Imagehlp.lib")
 
+//#define DEBUG_COMMENTS
+
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
@@ -307,9 +309,15 @@ bool PeParser::readPeSectionsFromProcess()
 
 		if (!readSectionFromProcess(readOffset, listPeSection[i]))
 		{
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::readPeSectionsFromProcess: readSectionFromProcess failed offset 0x%x, section %d\n", readOffset, i+1);
+#endif
 			retValue = false;
 		}
 	}
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::readPeSectionsFromProcess: readSectionFromProcess success.\n");
+#endif
 
 	return retValue;
 }
@@ -519,7 +527,6 @@ bool PeParser::openWriteFileHandle( const CHAR * newFile )
 		// If no name was specified, let's give it a temporary name to allow it to be renamed later with its hash value
         hFile = CreateFile(CAPE_OUTPUT_FILE, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 	}
-
 	return (hFile != INVALID_HANDLE_VALUE);
 }
 
@@ -667,10 +674,17 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 	bool retValue = true;
 	char *CapeName;
 
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("PeParser::savePeFileToDisk: Function entry.\n");
+#endif
+    
 	DWORD dwFileOffset = 0, dwWriteSize = 0;
 
 	if (getNumberOfSections() != listPeSection.size())
 	{
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("PeParser::savePeFileToDisk: Number of sections mismatch error.\n");
+#endif
 		return false;
 	}
 
@@ -877,7 +891,9 @@ bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
     
 	if (openWriteFileHandle(newFile))
 	{
-        //DoOutputDebugString("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData);
+#ifdef DEBUG_COMMENTS
+		DoOutputDebugString("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections() - 1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections() - 1].sectionHeader.SizeOfRawData);
+#endif
         
         dwWriteSize = listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData
             + listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData;

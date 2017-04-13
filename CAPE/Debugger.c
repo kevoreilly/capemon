@@ -82,10 +82,13 @@ DWORD MainThreadId;
 struct ThreadBreakpoints *MainThreadBreakpointList;
 LPTOP_LEVEL_EXCEPTION_FILTER OriginalExceptionHandler;
 SINGLE_STEP_HANDLER SingleStepHandler;
-DWORD WINAPI PipeThread(LPVOID lpParam);
+GUARD_PAGE_HANDLER GuardPageHandler;
 HANDLE hParentPipe;
 
+extern ULONG_PTR g_our_dll_base;
+extern DWORD g_our_dll_size;
 extern LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
+
 extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL WoW64fix(void);
 extern BOOL WoW64PatchBreakpoint(unsigned int Register);
@@ -103,6 +106,302 @@ BOOL ResumeAfterExecutionBreakpoint(PCONTEXT Context);
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL ClearSingleStepMode(PCONTEXT Context);
 unsigned int TrapIndex;
+
+//**************************************************************************************
+BOOL IsInGuardPages(PVOID Address)
+//**************************************************************************************
+{
+    PGUARDPAGES CurrentGuardPages = GuardPageList;
+    
+    if (GuardPageList == NULL)
+        return FALSE;
+
+	while (CurrentGuardPages)
+	{
+        if ((DWORD_PTR)Address >= (DWORD_PTR)CurrentGuardPages->BaseAddress && (DWORD_PTR)Address < ((DWORD_PTR)CurrentGuardPages->BaseAddress + (DWORD_PTR)CurrentGuardPages->RegionSize))
+            return TRUE;
+        
+        CurrentGuardPages = CurrentGuardPages->NextGuardPages;
+	}
+    
+	return FALSE;
+}
+
+//**************************************************************************************
+PGUARDPAGES GetGuardPages(PVOID Address)
+//**************************************************************************************
+{
+    PGUARDPAGES CurrentGuardPages = GuardPageList;
+    
+    if (Address == NULL)
+	{
+        DoOutputDebugString("GetGuardPages: NULL passed as argument - error.\n");
+        return FALSE;
+	}
+
+    if (GuardPageList == NULL)
+    {
+        DoOutputDebugString("GetGuardPages: failed to obtain initial guard page list.\n");
+        return FALSE;
+    }
+    
+	while (CurrentGuardPages)
+	{
+        if ((DWORD_PTR)Address >= (DWORD_PTR)CurrentGuardPages->BaseAddress && (DWORD_PTR)Address < ((DWORD_PTR)CurrentGuardPages->BaseAddress + (DWORD_PTR)CurrentGuardPages->RegionSize))
+            return CurrentGuardPages;
+
+        CurrentGuardPages = CurrentGuardPages->NextGuardPages;
+	}
+    
+	DoOutputDebugString("GetGuardPages: failed to find guard pages in list.\n");
+    
+    return NULL;
+}
+
+//**************************************************************************************
+BOOL DropGuardPages(PGUARDPAGES GuardPages)
+//**************************************************************************************
+{
+    // DEBUG
+    DoOutputDebugString("DropGuardPages entry.\n");
+    
+    PGUARDPAGES CurrentGuardPages, PreviousGuardPages;
+    
+    if (GuardPages == NULL)
+	{
+        DoOutputDebugString("DropGuardPages: NULL passed as argument - error.\n");
+        return FALSE;
+	}
+
+    PreviousGuardPages = NULL;
+    
+    if (GuardPageList == NULL)
+	{
+        DoOutputDebugString("DropGuardPages: failed to obtain initial guard page list.\n");
+        return FALSE;
+	}
+
+    CurrentGuardPages = GuardPageList;
+    
+	while (CurrentGuardPages)
+	{
+        DoOutputDebugString("DropGuardPages: CurrentGuardPages 0x%x.\n", CurrentGuardPages);
+        
+        if (CurrentGuardPages == GuardPages)
+        {
+            DoOutputDebugString("DropGuardPages: About to unlink.\n");
+            // Unlink this from the list and free the memory
+            if (PreviousGuardPages && CurrentGuardPages->NextGuardPages)
+            {
+                DoOutputDebugString("DropGuardPages: removed pages 0x%x-0x%x from guard page list.\n", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+                PreviousGuardPages->NextGuardPages = CurrentGuardPages->NextGuardPages;
+            }
+            else if (PreviousGuardPages && CurrentGuardPages->NextGuardPages == NULL)
+            {
+                DoOutputDebugString("DropGuardPages: removed pages 0x%x-0x%x from the end of the guard page list.\n", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+                PreviousGuardPages->NextGuardPages = NULL;
+            }
+            else if (!PreviousGuardPages)
+            {
+                DoOutputDebugString("DropGuardPages: removed pages 0x%x-0x%x from the head of the guard page list.\n", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+                GuardPageList = NULL;
+            }
+            
+            DoOutputDebugString("DropGuardPages: about to free the memory!\n");
+            free(CurrentGuardPages);
+            
+            return TRUE;            
+        }
+        
+		PreviousGuardPages = CurrentGuardPages;
+        CurrentGuardPages = CurrentGuardPages->NextGuardPages;
+	}
+    
+    DoOutputDebugString("DropGuardPages: failed to find guard pages in list.\n");
+    
+    return FALSE;
+}
+
+//**************************************************************************************
+BOOL ReinstateGuardPages(PGUARDPAGES GuardPages)
+//**************************************************************************************
+{
+    DWORD OldProtect;
+    BOOL GuardPagesFound = FALSE;
+    PGUARDPAGES CurrentGuardPages = GuardPageList;
+    MEMORY_BASIC_INFORMATION MemInfo;
+    SIZE_T MatchingRegionSize;
+    
+    if (GuardPageList == NULL)
+        return FALSE;
+
+	while (CurrentGuardPages)
+	{
+        if (GuardPages->BaseAddress == CurrentGuardPages->BaseAddress)
+            GuardPagesFound = TRUE;
+
+        CurrentGuardPages = CurrentGuardPages->NextGuardPages;
+	}
+   
+    if (GuardPagesFound == FALSE)
+    {
+        DoOutputDebugString("ReinstateGuardPages: failed to locate guard page(s) in guard page list.\n");
+        return FALSE;
+    }
+
+    MatchingRegionSize = VirtualQuery(GuardPages->BaseAddress, &MemInfo, GuardPages->RegionSize);
+    
+    if (!MatchingRegionSize)
+    {
+        DoOutputErrorString("ReinstateGuardPages: failed to query guard page(s) status in region 0x%x-0x%x", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+        return FALSE;
+    }
+    
+    if (MatchingRegionSize == GuardPages->RegionSize && MemInfo.Protect & PAGE_GUARD)
+    {
+        DoOutputDebugString("ReinstateGuardPages: guard page(s) already set in region 0x%x-0x%x", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+        return FALSE;
+    }
+    
+    if (!VirtualProtect(GuardPages->BaseAddress, GuardPages->RegionSize, GuardPages->Protect | PAGE_GUARD, &OldProtect))
+    {
+        DoOutputErrorString("ReinstateGuardPages: failed to reinstate guard page(s) on region 0x%x size 0x%x", GuardPages->BaseAddress, GuardPages->RegionSize);
+        return FALSE;
+    }
+    
+    // This is unreliable if some pages no longer have PAGE_GUARD,
+    // i.e. they have been touched, while others haven't
+    //if (OldProtect != GuardPages->Protect)
+    //{
+    //    DoOutputDebugString("ReinstateGuardPages error: inconsistency in protecton flags for region 0x%x-0x%x - OldProtect = 0x%x, GuardPages->Protect = 0x%x\n", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize, OldProtect, GuardPages->Protect);
+    //}
+    
+    return TRUE;
+}
+
+//**************************************************************************************
+BOOL DisableGuardPages(PGUARDPAGES GuardPages)
+//**************************************************************************************
+{
+    DWORD OldProtect;
+    BOOL GuardPagesFound = FALSE;
+    PGUARDPAGES CurrentGuardPages = GuardPageList;
+    MEMORY_BASIC_INFORMATION MemInfo;
+    SIZE_T MatchingRegionSize;
+    
+    if (GuardPageList == NULL)
+        return FALSE;
+
+	while (CurrentGuardPages)
+	{
+        if (GuardPages->BaseAddress == CurrentGuardPages->BaseAddress)
+            GuardPagesFound = TRUE;
+
+        CurrentGuardPages = CurrentGuardPages->NextGuardPages;
+	}
+   
+    if (GuardPagesFound == FALSE)
+    {
+        DoOutputDebugString("DisableGuardPages: failed to locate guard page(s) in guard page list.\n");
+        return FALSE;
+    }
+
+    MatchingRegionSize = VirtualQuery(GuardPages->BaseAddress, &MemInfo, GuardPages->RegionSize);
+    
+    if (!MatchingRegionSize)
+    {
+        DoOutputErrorString("DisableGuardPages: failed to query guard page(s) status in region 0x%x-0x%x", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+        return FALSE;
+    }
+    
+    if (MatchingRegionSize == GuardPages->RegionSize && !(MemInfo.Protect & PAGE_GUARD))
+    {
+        DoOutputDebugString("DisableGuardPages: guard page(s) not set in region 0x%x-0x%x", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+        return FALSE;
+    }
+
+    if (!VirtualProtect(GuardPages->BaseAddress, GuardPages->RegionSize, GuardPages->Protect, &OldProtect))
+    {
+        DoOutputErrorString("DisableGuardPages: failed to disable guard page(s) on region 0x%x-0x%x", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize);
+        return FALSE;
+    }
+    
+    //if (OldProtect != (GuardPages->Protect & PAGE_GUARD))
+    //{
+    //    DoOutputDebugString("DisableGuardPages error: inconsistency in protecton flags for region 0x%x-0x%x - OldProtect = 0x%x, GuardPages->Protect = 0x%x\n", GuardPages->BaseAddress, (DWORD_PTR)GuardPages->BaseAddress + GuardPages->RegionSize, OldProtect, GuardPages->Protect);
+    //}
+    
+    return TRUE;
+}
+
+//**************************************************************************************
+PGUARDPAGES CreateGuardPages()
+//**************************************************************************************
+{    
+	if (GuardPageList == NULL)
+	{
+		GuardPageList = ((struct GuardPages*)malloc(sizeof(struct GuardPages)));
+		
+        if (GuardPageList == NULL)
+        {
+            DoOutputDebugString("CreateGuardPages: failed to allocate memory for initial thread breakpoint list.\n");
+            return NULL;
+        }
+        memset(GuardPageList, 0, sizeof(struct GuardPages));
+	}
+
+	return GuardPageList;    
+}
+
+//**************************************************************************************
+BOOL AddGuardPages(PVOID Address, SIZE_T RegionSize, ULONG Protect)
+//**************************************************************************************
+{    
+    BOOL PageAlreadyGuarded;
+    PGUARDPAGES CurrentGuardPages, PreviousGuardPages;
+    
+    PreviousGuardPages = NULL;
+    
+    if (GuardPageList == NULL)
+        CreateGuardPages();
+        
+    CurrentGuardPages = GuardPageList;
+    
+	while (CurrentGuardPages)
+	{
+        if ((DWORD_PTR)Address >= (DWORD_PTR)CurrentGuardPages->BaseAddress && (DWORD_PTR)Address < ((DWORD_PTR)CurrentGuardPages->BaseAddress + (DWORD_PTR)CurrentGuardPages->RegionSize))
+            PageAlreadyGuarded = TRUE;
+		else
+            PageAlreadyGuarded = FALSE;
+        
+        PreviousGuardPages = CurrentGuardPages;
+        CurrentGuardPages = CurrentGuardPages->NextGuardPages;
+	}    	
+    
+	if (PageAlreadyGuarded == FALSE)
+	{
+        // We haven't found it in the linked list, so create a new one
+        CurrentGuardPages = PreviousGuardPages;
+        
+        CurrentGuardPages->NextGuardPages = ((struct GuardPages*)malloc(sizeof(struct GuardPages)));
+	
+        if (CurrentGuardPages->NextGuardPages == NULL)
+		{
+			DoOutputDebugString("AddGuardPages: Failed to allocate new guard page struct.\n");
+			return FALSE;
+		}
+        memset(CurrentGuardPages->NextGuardPages, 0, sizeof(struct GuardPages));
+        
+        CurrentGuardPages->BaseAddress = Address;
+        CurrentGuardPages->RegionSize = RegionSize;
+        CurrentGuardPages->Protect = Protect;
+        CurrentGuardPages->WriteDetected = FALSE;
+        CurrentGuardPages->LastWriteAddress = NULL;
+        CurrentGuardPages->PagesDumped = FALSE;
+	}
+    
+    return TRUE;
+}
 
 //**************************************************************************************
 PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId)
@@ -480,6 +779,38 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
         
 		return EXCEPTION_CONTINUE_EXECUTION;
     }
+    // Page guard violations generate STATUS_GUARD_PAGE_VIOLATION
+    else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
+    {    
+        if (ExceptionInfo->ExceptionRecord->NumberParameters < 2)
+		{
+            DoOutputDebugString("CAPEExceptionFilter: Guard page exception with missing parameters, passing.\n");
+            return EXCEPTION_CONTINUE_SEARCH;		
+		}
+		
+		//DoOutputDebugString("Entering CAPEExceptionFilter: guarded page access at 0x%x by 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionInformation[1], ExceptionInfo->ExceptionRecord->ExceptionAddress);
+        
+        if (IsInGuardPages((PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[1]))
+        {
+            if (GuardPageHandler)
+            {
+                if (GuardPageHandler(ExceptionInfo))
+					return EXCEPTION_CONTINUE_EXECUTION;
+				else
+					return EXCEPTION_CONTINUE_SEARCH;
+            }
+            else
+            {
+                DoOutputDebugString("CAPEExceptionFilter: Error, no page guard handler for CAPE guard page exception.\n");
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+        else
+        {
+            DoOutputDebugString("CAPEExceptionFilter: exception at 0x%x not within CAPE guarded page.\n", ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+    }
     else if (ExceptionInfo->ExceptionRecord->ExceptionCode == DBG_PRINTEXCEPTION_C)
     {
         // This is likely our own DoOutputDebugString function!
@@ -488,25 +819,21 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
     }
     else if (OriginalExceptionHandler)
     {
+        if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
+        {
+            // This is a CAPE exception, likely from the try/catch blocks in buffer scans
+            return EXCEPTION_EXECUTE_HANDLER;
+        }
+        
         // As it's not a bp, and the sample has registered its own handler
         // we return EXCEPTION_EXECUTE_HANDLER
-        DoOutputDebugString("CAPEExceptionFilter: Non-breakpoint exception caught, re-registering sample's handler.\n");
+        DoOutputDebugString("CAPEExceptionFilter: Non-breakpoint exception caught, passing to sample's handler.\n");
         SetUnhandledExceptionFilter(OriginalExceptionHandler);
         return EXCEPTION_EXECUTE_HANDLER;
     }
-    else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION)
-    {
-        // We want to know more about this class of crash
-        DoOutputDebugString("CAPEExceptionFilter: Access violation caught, turning up debug level to capture info.\n");
-        g_config.debug = 2;
-        return cuckoomon_exception_handler(ExceptionInfo);
-    }
     
-    // Some other exception occurred. Pass it to next handler
-    DoOutputDebugString("CAPEExceptionFilter: Passing non-breakpoint exception: 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionCode);
-    
-    return cuckoomon_exception_handler(ExceptionInfo);
-    //return EXCEPTION_CONTINUE_SEARCH;
+    // Some other exception occurred. Pass it to next handler.    
+    return EXCEPTION_CONTINUE_SEARCH;
 }
 
 //**************************************************************************************
@@ -1180,7 +1507,7 @@ BOOL ClearDebugRegister
     }	
         
     if (DoCloseHandle == TRUE)
-        CloseHandle(hThread);    
+        CloseHandle(hThread);
     
     return TRUE;
 }
@@ -1440,6 +1767,7 @@ DWORD WINAPI ClearBreakpointThread(LPVOID lpParam)
     {
         DoOutputDebugString("ClearBreakpointThread: Sample thread was suspended, now resumed.\n");
     }
+
     DebugOutputThreadBreakpoints();    
     
     return TRUE; 
@@ -1483,6 +1811,7 @@ BOOL ClearBreakpointWithoutThread(DWORD ThreadId, int Register)
     if (ClearDebugRegister(pBreakpointInfo->ThreadHandle, pBreakpointInfo->Register, pBreakpointInfo->Size, pBreakpointInfo->Address, pBreakpointInfo->Type) == FALSE)
 	{
 		DoOutputDebugString("ClearBreakpointWithoutThread: Call to ClearDebugRegister failed.\n");
+        return FALSE;
 	}
 
 	//pBreakpointInfo->Register = 0;
@@ -1621,7 +1950,7 @@ BOOL SetBreakpoint
         AddVectoredExceptionHandler(1, CAPEExceptionFilter);
     else
         OriginalExceptionHandler = SetUnhandledExceptionFilter(CAPEExceptionFilter);
-	
+
     __try  
     {  
         hSetBreakpointThread = CreateThread( 
@@ -1851,7 +2180,7 @@ BOOL InitialiseDebugger(void)
     // Initialise any global variables
     ChildProcessId = 0;
     SingleStepHandler = NULL;
-    VECTORED_HANDLER = FALSE;
+    VECTORED_HANDLER = TRUE;
 
 #ifndef _WIN64
     // Ensure wow64 patch is installed if needed
@@ -1896,11 +2225,9 @@ __declspec (naked dllexport) void DebuggerInit(void)
 	if (InitialiseDebugger() == FALSE)
         DoOutputDebugString("Debugger initialisation failure!\n");
 	
-// Target specific code
-#ifdef STANDALONE
-    SetNtAllocateVirtualMemoryBP();
-#endif
-// End of target specific code
+// Package specific code
+
+// End of package specific code
 
 	DoOutputDebugString("Debugger initialisation complete, about to execute OEP.\n");
 
@@ -1927,9 +2254,9 @@ void DebuggerInit(void)
 	else
         DoOutputDebugString("Debugger initialised, ESP = 0x%x\n", StackPointer);
     
-// Target specific code
+// Package specific code
 
-// End of target specific code
+// End of package specific code
 
 	DoOutputDebugString("Debugger initialisation complete, about to execute OEP.\n");
 
@@ -2232,7 +2559,7 @@ BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD Creati
     cbWritten = 0;
     cbReplyBytes = sizeof(DWORD_PTR);
 
-    // Write the reply to the pipe. 
+    // Send the OEP to the new process 
     fSuccess = WriteFile
     ( 
         hParentPipe,     
@@ -2252,9 +2579,9 @@ BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD Creati
     Context.ContextFlags = CONTEXT_ALL;
     
 #ifdef _WIN64
-    Context.Rcx = RemoteFuncAddress;		// eax holds new entry point
+    Context.Rcx = RemoteFuncAddress;		// set the new EP to debugger_init
 #else
-    Context.Eax = RemoteFuncAddress;		// eax holds new entry point
+    Context.Eax = RemoteFuncAddress;		
 #endif  
     
     if (!SetThreadContext(hThread, &Context))

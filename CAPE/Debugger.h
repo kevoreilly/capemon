@@ -7,6 +7,16 @@ void* CAPE_var;
 #define BP_RESERVED    0x02
 #define BP_READWRITE   0x03
 
+#define EXTRACTION_MIN_SIZE 0x1001
+
+typedef struct _EXCEPTION_REGISTRATION_RECORD {
+    struct _EXCEPTION_REGISTRATION_RECORD *Next;
+    PEXCEPTION_ROUTINE Handler;
+} EXCEPTION_REGISTRATION_RECORD;
+
+typedef EXCEPTION_REGISTRATION_RECORD *PEXCEPTION_REGISTRATION_RECORD;
+
+PEXCEPTION_ROUTINE SEH_TopLevelHandler;
 LPTOP_LEVEL_EXCEPTION_FILTER OriginalExceptionHandler;
 LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 BOOL VECTORED_HANDLER;
@@ -34,7 +44,23 @@ typedef struct ThreadBreakpoints
 	struct ThreadBreakpoints	*NextThreadBreakpoints;
 } THREADBREAKPOINTS, *PTHREADBREAKPOINTS;	
 
+typedef struct GuardPages	
+{
+    PVOID						BaseAddress;
+	SIZE_T						RegionSize;
+	ULONG 						Protect;
+    BOOL                        WriteDetected;
+    PVOID                       LastWriteAddress;
+    BOOL                        ReadDetected;
+    PVOID                       LastReadBy;
+    BOOL                        PagesDumped;
+	struct GuardPages	        *NextGuardPages;
+} GUARDPAGES, *PGUARDPAGES;	
+
+struct GuardPages *GuardPageList;
+
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);
+typedef BOOL (cdecl *GUARD_PAGE_HANDLER)(struct _EXCEPTION_POINTERS*);
 
 #ifdef __cplusplus
 extern "C" {
@@ -75,10 +101,19 @@ BOOL ClearSingleStepMode(PCONTEXT Context);
 BOOL ContextClearAllBreakpoints(PCONTEXT Context);
 BOOL ClearAllBreakpoints(DWORD ThreadId);
 BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext);
+int CheckDebugRegister(HANDLE hThread, int Register);
+int ContextCheckDebugRegister(CONTEXT Context, int Register);
 BOOL InitialiseDebugger(void);
 BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD CreationFlags);
 BOOL SendDebuggerMessage(DWORD Input);
 int launch_debugger(void);
+BOOL IsInGuardPages(PVOID Address);
+PGUARDPAGES GetGuardPages(PVOID Address);
+BOOL DropGuardPages(PGUARDPAGES GuardPages);
+PGUARDPAGES CreateGuardPagess();
+BOOL AddGuardPages(PVOID Address, SIZE_T RegionSize, ULONG Protect);
+BOOL ReinstateGuardPages(PGUARDPAGES GuardPages);
+BOOL DisableGuardPages(PGUARDPAGES GuardPages);
 
 #ifdef __cplusplus
 }
