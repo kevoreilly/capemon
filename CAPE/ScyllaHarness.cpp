@@ -161,6 +161,25 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD Ne
 }
 
 //**************************************************************************************
+DWORD SafeGetDword(PVOID Address)
+//**************************************************************************************
+{
+    DWORD RetVal = NULL;
+    
+    __try  
+    {  
+        RetVal = *(DWORD*)Address;
+    }  
+    __except(EXCEPTION_EXECUTE_HANDLER)  
+    {  
+        DoOutputDebugString("SafeGetDword: Exception occured reading memory address 0x%x\n", Address);
+        return NULL;
+    }
+    
+    return RetVal;
+}
+
+//**************************************************************************************
 extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 //**************************************************************************************
 {
@@ -186,22 +205,29 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
             return 0;        
         }
         
-        //__try  
-        //{
-            PointerToLastSection    = (DWORD_PTR)Buffer + peFile->listPeSection[NumberOfSections - 1].sectionHeader.PointerToRawData;
-            SizeOfLastSection       = peFile->listPeSection[NumberOfSections - 1].sectionHeader.SizeOfRawData;
-            
-            if (!ScanForNonZero((LPVOID)PointerToLastSection, SizeOfLastSection))
-            {
-                DoOutputDebugString("DumpPE: Empty last section, file image seems incomplete (from 0x%x to 0x%x).\n", PointerToLastSection, (DWORD_PTR)PointerToLastSection + SizeOfLastSection);
-                return 0;
-            }
-        //}
-        //__except(EXCEPTION_EXECUTE_HANDLER)  
-        //{  
-        //    DoOutputDebugString("DumpPE: Exception occured attempting to read PE section at 0x%x size 0x%x\n", PointerToLastSection, SizeOfLastSection);
-        //    return 0;
-        //}
+        PointerToLastSection = SafeGetDword(&(peFile->listPeSection[NumberOfSections - 1].sectionHeader.PointerToRawData));
+        
+        if (!PointerToLastSection)
+        {
+            DoOutputDebugString("DumpPE: failed to obtain pointer to last section.\n");
+            return 0;        
+        }
+        
+        PointerToLastSection += (DWORD_PTR)Buffer;
+        
+        SizeOfLastSection = SafeGetDword(&(peFile->listPeSection[NumberOfSections - 1].sectionHeader.SizeOfRawData));
+        
+        if (!SizeOfLastSection)
+        {
+            DoOutputDebugString("DumpPE: failed to obtain size of last section.\n");
+            return 0;        
+        }
+
+        if (!ScanForNonZero((LPVOID)PointerToLastSection, SizeOfLastSection))
+        {
+            DoOutputDebugString("DumpPE: Empty last section, file image seems incomplete (from 0x%x to 0x%x).\n", PointerToLastSection, (DWORD_PTR)PointerToLastSection + SizeOfLastSection);
+            return 0;
+        }
 
         entrypoint = peFile->getEntryPoint();        
         
