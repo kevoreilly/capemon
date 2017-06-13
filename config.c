@@ -24,7 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hooking.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern DWORD_PTR CAPE_var;
+extern DWORD_PTR CAPE_var1, CAPE_var2, CAPE_var3, CAPE_var4;
 
 int read_config(void)
 {
@@ -218,9 +218,21 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
-            else if (!strcmp(key, "breakpoint")) {
-				CAPE_var = (DWORD_PTR)strtoul(value, NULL, 10);
-                DoOutputDebugString("CAPE_var set to 0x%x", CAPE_var);
+            else if (!strcmp(key, "CAPE_var1")) {
+				CAPE_var1 = (DWORD_PTR)strtoul(value, NULL, 10);
+                DoOutputDebugString("CAPE_var1 set to 0x%x", CAPE_var1);
+			}
+            else if (!strcmp(key, "CAPE_var2")) {
+				CAPE_var2 = (DWORD_PTR)strtoul(value, NULL, 10);
+                DoOutputDebugString("CAPE_var2 set to 0x%x", CAPE_var2);
+			}
+            else if (!strcmp(key, "CAPE_var3")) {
+				CAPE_var3 = (DWORD_PTR)strtoul(value, NULL, 10);
+                DoOutputDebugString("CAPE_var3 set to 0x%x", CAPE_var3);
+			}
+            else if (!strcmp(key, "CAPE_var4")) {
+				CAPE_var4 = (DWORD_PTR)strtoul(value, NULL, 10);
+                DoOutputDebugString("CAPE_var4 set to 0x%x", CAPE_var4);
 			}
             else if (!strcmp(key, "procmemdump")) {
 				g_config.procmemdump = value[0] == '1';
@@ -236,6 +248,7 @@ int read_config(void)
                 else
                     DoOutputDebugString("Import reconstruction of process dumps disabled.\n");
 			}
+            else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}
     }
 

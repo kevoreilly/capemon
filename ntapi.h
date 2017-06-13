@@ -476,9 +476,12 @@ typedef struct _LDR_MODULE {
 
 #ifdef _WIN64
 typedef struct _PEB {
-	BYTE Reserved1[2];
-	BYTE BeingDebugged;
-	BYTE Reserved2[21];
+    BOOLEAN InheritedAddressSpace;
+    BOOLEAN ReadImageFileExecOptions;
+    BOOLEAN BeingDebugged;
+    BOOLEAN Spare;
+    HANDLE  Mutant;
+    PVOID   ImageBaseAddress;
 	PPEB_LDR_DATA LoaderData;
 	PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
 	BYTE Reserved3[520];
