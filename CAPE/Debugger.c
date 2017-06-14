@@ -21,7 +21,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <assert.h>
 #include <Aclapi.h>
 #include "Debugger.h"
-//#include "..\alloc.h"
+#include "..\alloc.h"
 #include "..\config.h"
 #include "..\pipe.h"
 
@@ -400,7 +400,7 @@ BOOL ActivateGuardPages(PTRACKEDPAGES TrackedPages)
     }
     
     //DoOutputDebugString("ActivateGuardPages: Activated guard page(s) on region 0x%x size 0x%x", TrackedPages->BaseAddress, TrackedPages->RegionSize);
-        
+    
     return TRUE;
 }
 
@@ -1396,7 +1396,7 @@ BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext)
     PDWORD_PTR  Dr1 = &Context.Dr1;
     PDWORD_PTR  Dr2 = &Context.Dr2;
     PDWORD_PTR  Dr3 = &Context.Dr3;
-    PDR7    Dr7 = (PDR7)&(Context.Dr7);
+    PDR7 Dr7 = (PDR7)&(Context.Dr7);
     
     if (!hThread && !pContext)
     {
@@ -1838,7 +1838,7 @@ BOOL ClearDebugRegister
     PDWORD_PTR  Dr1 = &Context.Dr1;
     PDWORD_PTR  Dr2 = &Context.Dr2;
     PDWORD_PTR  Dr3 = &Context.Dr3;
-    PDR7    Dr7 = (PDR7)&(Context.Dr7);
+    PDR7 Dr7 = (PDR7)&(Context.Dr7);
     
     if ((unsigned int)Type > 3)
     {
