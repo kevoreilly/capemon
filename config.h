@@ -106,7 +106,7 @@ struct _g_config {
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
     
     // should we dump each process on exit/analysis timeout?
-    int procmemdump;
+    int procdump;
     
     // should we attempt import reconstruction on each process dump? (slow)
     int import_reconstruction;

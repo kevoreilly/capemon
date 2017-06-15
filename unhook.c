@@ -253,7 +253,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
 	while (1) {
 		WaitForSingleObject(g_terminate_event_handle, INFINITE);
-        if (g_config.procmemdump)
+        if (g_config.procdump)
             RoutineProcessDump();
 		log_flush();
 	}

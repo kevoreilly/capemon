@@ -19,8 +19,8 @@ extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
-//Global debugger switches
-#define DEBUGGER_ENABLED        1
+//Global debugger switch
+#define DEBUGGER_ENABLED 0
 
 PVOID GetPageAddress(PVOID Address);
 BOOL TranslatePathFromDeviceToLetter(__in TCHAR *DeviceFilePath, __out TCHAR* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize);

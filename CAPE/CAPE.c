@@ -1547,7 +1547,7 @@ int DumpPE(LPVOID Buffer)
 int RoutineProcessDump()
 //**************************************************************************************
 {
-    if (g_config.procmemdump && ProcessDumped == FALSE)
+    if (g_config.procdump && ProcessDumped == FALSE)
     {
         ProcessDumped = TRUE;   // this prevents a second call before the first is complete
         if (g_config.import_reconstruction)
@@ -1591,7 +1591,7 @@ void init_CAPE()
     // made at the end of a process' lifetime.
     // It is normally only set in the base packages,
     // or upon submission. (This overrides submission.)
-    // g_config.procmemdump = 0;
+    // g_config.procdump = 0;
 
     // Cuckoo debug output level for development (0=none, 2=max)
     // g_config.debug = 2;

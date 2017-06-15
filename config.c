@@ -50,7 +50,7 @@ int read_config(void)
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
-    g_config.procmemdump = 0;
+    g_config.procdump = 0;
 
 	memset(buf, 0, sizeof(buf));
 	while (fgets(buf, sizeof(buf), fp) != NULL)
@@ -234,9 +234,9 @@ int read_config(void)
 				CAPE_var4 = (DWORD_PTR)strtoul(value, NULL, 10);
                 DoOutputDebugString("CAPE_var4 set to 0x%x", CAPE_var4);
 			}
-            else if (!strcmp(key, "procmemdump")) {
-				g_config.procmemdump = value[0] == '1';
-                if (g_config.procmemdump)
+            else if (!strcmp(key, "procdump")) {
+				g_config.procdump = value[0] == '1';
+                if (g_config.procdump)
                     DoOutputDebugString("Process memory dumps enabled.\n");
                 else
                     DoOutputDebugString("Process memory dumps disabled.\n");
