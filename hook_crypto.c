@@ -119,8 +119,8 @@ HOOKDEF(BOOL, WINAPI, CryptDecrypt,
 ) {
     BOOL ret = Old_CryptDecrypt(hKey, hHash, Final, dwFlags, pbData,
         pdwDataLen);
-	LOQ_bool("crypto", "ppBi", "CryptKey", hKey, "CryptHash", hHash,
-        "Buffer", pdwDataLen, pbData, "Final", Final);
+	LOQ_bool("crypto", "ppBii", "CryptKey", hKey, "CryptHash", hHash,
+        "Buffer", pdwDataLen, pbData, "Length", *pdwDataLen, "Final", Final);
     return ret;
 }
 
@@ -134,8 +134,8 @@ HOOKDEF(BOOL, WINAPI, CryptEncrypt,
     _In_     DWORD dwBufLen
 ) {
     BOOL ret = 1;
-	LOQ_bool("crypto", "ppbi", "CryptKey", hKey, "CryptHash", hHash,
-        "Buffer", dwBufLen, pbData, "Final", Final);
+	LOQ_bool("crypto", "ppbii", "CryptKey", hKey, "CryptHash", hHash,
+        "Buffer", dwBufLen, pbData, "Length", *pdwDataLen, "Final", Final);
     ret = Old_CryptEncrypt(hKey, hHash, Final, dwFlags, pbData, pdwDataLen, dwBufLen);
 	disable_tail_call_optimization();
 	return ret;

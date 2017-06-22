@@ -1048,6 +1048,18 @@ HOOKDEF(void, WINAPIV, memcpy,
 	return;
 }
 
+HOOKDEF(unsigned int, WINAPIV, SizeofResource,
+    _In_opt_ HMODULE hModule,
+    _In_     HRSRC   hResInfo
+)
+{
+	unsigned int ret = Old_SizeofResource(hModule, hResInfo);
+
+	LOQ_nonzero("misc", "ppi", "ModuleHandle", hModule, "ResourceInfo", hResInfo, "Size", ret);
+    
+    return ret;
+}
+
 HOOKDEF(void, WINAPIV, srand,
 	unsigned int seed
 )

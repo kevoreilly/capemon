@@ -2798,6 +2798,11 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemInformation,
 	_Out_opt_ PULONG ReturnLength
 );
 
+extern HOOKDEF(unsigned int, WINAPIV, SizeofResource,
+    _In_opt_ HMODULE hModule,
+    _In_     HRSRC   hResInfo
+);
+
 extern HOOKDEF(void, WINAPIV, srand,
    unsigned int seed
 );   

@@ -358,6 +358,7 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, memcpy),
 #endif
 	HOOK(msvcrt, memcpy),
+	HOOK(kernel32, SizeofResource),
     HOOK(msvcrt, srand),
     
 	// for debugging only
