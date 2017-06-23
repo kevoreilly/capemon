@@ -141,8 +141,10 @@ enum {
     EVILGRAB_PAYLOAD        = 0x14,
     EVILGRAB_DATA           = 0x15,
     
-    SEDRECO_DATA            = 0x20
+    SEDRECO_DATA            = 0x20,
+	
+    CERBER_CONFIG           = 0x30,
+    CERBER_PAYLOAD          = 0x31
 };
 
 HANDLE EvilGrabRegHandle;
-
