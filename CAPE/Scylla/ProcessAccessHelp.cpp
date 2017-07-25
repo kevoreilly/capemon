@@ -609,6 +609,7 @@ LPVOID ProcessAccessHelp::createFileMappingView(const CHAR * filePath, DWORD acc
 #ifdef DEBUG_COMMENTS
 		DoOutputDebugString("createFileMappingView :: GetLastError() == ERROR_ALREADY_EXISTS");
 #endif
+		CloseHandle(hMappedFile);
 		return NULL;
 	}
 
