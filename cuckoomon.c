@@ -292,6 +292,7 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, NtAddAtomEx),
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
+	HOOK(ntdll, NtQueryInformationAtom),
 	
 	//
     // Process Hooks

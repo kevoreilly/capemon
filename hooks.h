@@ -894,6 +894,14 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtAddAtomEx,
 	IN	PVOID	Unknown
 );
 
+extern HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationAtom,
+	IN	RTL_ATOM Atom,
+	IN	ATOM_INFORMATION_CLASS AtomInformationClass,
+    OUT PVOID AtomInformation,
+    IN  ULONG AtomInformationLength,
+    OUT PULONG ReturnLength OPTIONAL
+);
+
 //
 // Process Hooks
 //

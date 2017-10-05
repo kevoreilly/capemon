@@ -666,6 +666,23 @@ static inline void __writefsdword(unsigned int index, unsigned int value)
 
 typedef unsigned short RTL_ATOM, *PRTL_ATOM;
 
+typedef enum _ATOM_INFORMATION_CLASS {
+    AtomBasicInformation,
+    AtomTableInformation
+} ATOM_INFORMATION_CLASS;
+
+typedef struct _ATOM_BASIC_INFORMATION {
+    USHORT UsageCount;
+    USHORT Flags;
+    USHORT NameLength;
+    WCHAR Name[ 1 ];
+} ATOM_BASIC_INFORMATION, *PATOM_BASIC_INFORMATION;
+
+typedef struct _ATOM_TABLE_INFORMATION {
+    ULONG NumberOfAtoms;
+    RTL_ATOM Atoms[ 1 ];
+} ATOM_TABLE_INFORMATION, *PATOM_TABLE_INFORMATION;
+
 typedef struct _SECTION_IMAGE_INFORMATION {
     VOID*               TransferAddress;
     uint32_t            ZeroBits;
