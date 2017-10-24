@@ -174,7 +174,11 @@ hook_info_t *hook_info()
 
 void get_lasterrors(lasterror_t *errors)
 {
-	char *teb = (char *)NtCurrentTeb();
+	char *teb;
+    
+    errors->Eflags = __readeflags();
+    
+    teb = (char *)NtCurrentTeb();
 
 	errors->Win32Error = *(DWORD *)(teb + TLS_LAST_WIN32_ERROR);
 	errors->NtstatusError = *(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR);
@@ -187,6 +191,8 @@ void set_lasterrors(lasterror_t *errors)
 
 	*(DWORD *)(teb + TLS_LAST_WIN32_ERROR) = errors->Win32Error;
 	*(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR) = errors->NtstatusError;
+    
+    __writeeflags(errors->Eflags);
 }
 
 void hook_enable()
