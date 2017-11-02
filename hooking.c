@@ -176,7 +176,7 @@ void get_lasterrors(lasterror_t *errors)
 {
 	char *teb;
     
-    errors->Eflags = __readeflags();
+    errors->Eflags = (DWORD)__readeflags();
     
     teb = (char *)NtCurrentTeb();
 
