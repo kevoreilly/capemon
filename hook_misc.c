@@ -1048,12 +1048,12 @@ HOOKDEF(void, WINAPIV, memcpy,
    size_t count
 ) 
 {
-	int ret = 0;	// seems this is needed for LOQ_void.
+	int ret = 0;	// needed for LOQ_void
 
 	Old_memcpy(dest, src, count);
 	
     if (count > 0xa00)
-        LOQ_void("misc", "bi", "DestinationBuffer", count, dest, "count", count);
+        LOQ_void("misc", "bppi", "DestinationBuffer", count, dest, "source", src, "destination", dest, "count", count);
 	
 	return;
 }
@@ -1074,7 +1074,7 @@ HOOKDEF(void, WINAPIV, srand,
 	unsigned int seed
 )
 {
-	int ret = 0;	// seems this is needed for LOQ_void.
+	int ret = 0;	// needed for LOQ_void
 
 	Old_srand(seed);
 
