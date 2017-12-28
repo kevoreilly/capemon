@@ -460,9 +460,9 @@ HOOKDEF(void, WINAPI, GetLocalTime,
     ft.dwLowDateTime = li.LowPart;
     FileTimeToSystemTime(&ft, lpSystemTime);
 
-	set_lasterrors(&lasterror);
-
 	LOQ_void("system", "");
+
+	set_lasterrors(&lasterror);
 }
 
 HOOKDEF(void, WINAPI, GetSystemTime,
@@ -484,9 +484,9 @@ HOOKDEF(void, WINAPI, GetSystemTime,
     ft.dwLowDateTime = li.LowPart;
     FileTimeToSystemTime(&ft, lpSystemTime);
 
-	set_lasterrors(&lasterror);
-
 	LOQ_void("system", "");
+
+	set_lasterrors(&lasterror);
 }
 
 DWORD raw_gettickcount(void)

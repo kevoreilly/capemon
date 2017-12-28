@@ -957,7 +957,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		if (!memcmp((PUCHAR)WaitForDebugEvent, "\x8b\xff\xff\x25", 4) || !memcmp((PUCHAR)WaitForDebugEvent, "\xff\x25", 2) ||
 			!memcmp((PUCHAR)WaitForDebugEvent, "\x8b\xff\xe9", 3) || !memcmp((PUCHAR)WaitForDebugEvent, "\xe9", 1) ||
 			!memcmp((PUCHAR)WaitForDebugEvent, "\xeb\xf9", 2))
-			goto early_abort;
+			goto abort;
 
 		g_our_dll_base = (ULONG_PTR)hModule;
 		g_our_dll_size = get_image_size(g_our_dll_base);
@@ -982,7 +982,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		g_tls_hook_index = TlsAlloc();
 		if (g_tls_hook_index == TLS_OUT_OF_INDEXES)
-			goto early_abort;
+			goto abort;
 
 		// adds our own DLL range as well, since the hiding is done later
 		add_all_dlls_to_dll_ranges();
@@ -993,12 +993,12 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 			;
 #else
 			// if we're not debugging, then failure to read the cuckoomon config should be a critical error
-			goto early_abort;
+			goto abort;
 #endif
 
 		// don't inject into our own binaries run out of the analyzer directory unless they're the first process (intended)
 		if (wcslen(g_config.w_analyzer) && !wcsnicmp(our_process_path, g_config.w_analyzer, wcslen(g_config.w_analyzer)) && !g_config.first_process)
-			goto out;
+			goto abort;
 
 		if (g_config.debug) {
 			AddVectoredExceptionHandler(1, cuckoomon_exception_handler);
@@ -1073,13 +1073,12 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
     }
 
 	g_dll_main_complete = TRUE;
-
-out:
 	set_lasterrors(&lasterror);
 	return TRUE;
-early_abort:
+    
+abort:
 	sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
 	DeleteFileA(config_fname);
 	set_lasterrors(&lasterror);
-	return TRUE;
+	return FALSE;
 }
