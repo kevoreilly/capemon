@@ -2280,6 +2280,16 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtQueryPerformanceCounter,
 	_Out_opt_ PLARGE_INTEGER PerformanceFrequency
 );
 
+extern HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
+  _Out_    PHANDLE             phNewTimer,
+  _In_opt_ HANDLE              TimerQueue,
+  _In_     WAITORTIMERCALLBACK Callback,
+  _In_opt_ PVOID               Parameter,
+  _In_     DWORD               DueTime,
+  _In_     DWORD               Period,
+  _In_     ULONG               Flags
+);
+
 //
 // Socket Hooks
 //

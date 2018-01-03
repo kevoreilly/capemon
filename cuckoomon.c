@@ -515,6 +515,7 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, NtSetTimer),
 	HOOK(ntdll, NtSetTimerEx),
 	HOOK(user32, MsgWaitForMultipleObjectsEx),
+	HOOK(kernel32, CreateTimerQueueTimer),
 
 	//
     // Socket Hooks
