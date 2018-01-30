@@ -59,6 +59,7 @@ extern int ScyllaDumpPE(DWORD_PTR Buffer);
 
 extern wchar_t *our_process_path;
 extern ULONG_PTR base_of_dll_of_interest;
+extern ULONG_PTR g_our_dll_base;
 
 static HMODULE s_hInst = NULL;
 static WCHAR s_wzDllPath[MAX_PATH];
@@ -1544,6 +1545,34 @@ int DumpPE(LPVOID Buffer)
 }
 
 //**************************************************************************************
+void DumpModules()
+//**************************************************************************************
+{
+    PUCHAR Address;
+    MEMORY_BASIC_INFORMATION MemInfo;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    for (Address = (PUCHAR)SystemInfo.lpMinimumApplicationAddress; Address < (PUCHAR)SystemInfo.lpMaximumApplicationAddress;)
+    {
+        if (VirtualQuery(Address, &MemInfo, sizeof(MemInfo)))
+        {
+            if ((MemInfo.State & MEM_COMMIT) && (MemInfo.Type & (MEM_IMAGE | MEM_MAPPED | MEM_PRIVATE)))
+            {
+                if (IsDisguisedPEHeader(Address))
+                    ScyllaDumpProcess(GetCurrentProcess(), Address, 0);
+            }
+            Address += MemInfo.RegionSize;
+        }
+        else
+            Address += SystemInfo.dwPageSize;
+    }
+
+    return;
+}
+
+//**************************************************************************************
 int RoutineProcessDump()
 //**************************************************************************************
 {
@@ -1602,9 +1631,9 @@ void init_CAPE()
         launch_debugger();
 
 #ifdef _WIN64
-    DoOutputDebugString("CAPE initialised (64-bit).\n");
+    DoOutputDebugString("CAPE initialised (64-bit): Loaded at 0x%p\n", g_our_dll_base);
 #else
-    DoOutputDebugString("CAPE initialised (32-bit).\n");
+    DoOutputDebugString("CAPE initialised (32-bit): Loaded at 0x%x\n", g_our_dll_base);
 #endif
     
     return;

@@ -25,6 +25,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern int RoutineProcessDump();
+extern ULONG_PTR base_of_dll_of_interest;
+
 HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
     __in_opt    PWCHAR PathToFile,
     __in_opt    PULONG Flags,
@@ -64,7 +68,7 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 			LOQ_ntstatus("system", "HoP", "Flags", Flags, "FileName", &library,
 			"BaseAddress", ModuleHandle);
 
-		if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
+        if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
 										  !wcsnicmp(library.Buffer, L"c:\\windows\\syswow64\\", 20) ||
 										  !wcsnicmp(library.Buffer, L"c:\\windows\\sysnative\\", 21))) {
 			ret = 1;
@@ -95,11 +99,16 @@ HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
 	__out       PHANDLE ModuleHandle
 ) {
 	NTSTATUS ret;
+
+	COPY_UNICODE_STRING(library, ModuleFileName);
+
 	hook_info_t saved_hookinfo;
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_LdrLoadDll(PathToFile, Flags, ModuleFileName, ModuleHandle);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
+
+    //DoOutputDebugString("LdrLoadDll hook2: ModuleBase 0x%p: %ws.\n", *ModuleHandle, library.Buffer);
 
 	disable_tail_call_optimization();
 	return ret;
@@ -111,7 +120,14 @@ extern void revalidate_all_hooks(void);
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 ) {
-	return 0;
+    DoOutputDebugString("DLL unloaded from 0x%p.\n", DllImageBase);
+
+    if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest) {
+        //DoOutputDebugString("LdrUnloadDll hook: Dumping DLL-of-interest prior to unloading.\n");
+        RoutineProcessDump();
+    }
+
+    return 0;
 }
 
 
