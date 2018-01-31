@@ -114,22 +114,20 @@ HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
 	return ret;
 }
 
-
 extern void revalidate_all_hooks(void);
 
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 ) {
-    DoOutputDebugString("DLL unloaded from 0x%p.\n", DllImageBase);
-
     if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest) {
         //DoOutputDebugString("LdrUnloadDll hook: Dumping DLL-of-interest prior to unloading.\n");
         RoutineProcessDump();
     }
 
+    DoOutputDebugString("DLL unloaded from 0x%p.\n", DllImageBase);
+
     return 0;
 }
-
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
     __in_opt    LPVOID lpUnknown1,
@@ -164,8 +162,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 			pipe("PROCESS:%d:%d,%d", (dwCreationFlags & CREATE_SUSPENDED) ? 1 : 0, lpProcessInformation->dwProcessId,
 			    lpProcessInformation->dwThreadId);
 
-        // if the CREATE_SUSPENDED flag was not set, then we have to resume
-        // the main thread ourself
+        // if the CREATE_SUSPENDED flag was not set, then we have to resume the main thread ourself
         if((dwCreationFlags & CREATE_SUSPENDED) == 0) {
             ResumeThread(lpProcessInformation->hThread);
         }
