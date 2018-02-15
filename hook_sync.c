@@ -144,3 +144,27 @@ HOOKDEF(NTSTATUS, WINAPI, NtAddAtomEx,
 	LOQ_ntstatus("synchronization", "uh", "AtomName", AtomName, "Atom", *Atom);
 	return ret;
 }
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationAtom,
+	IN	RTL_ATOM Atom,
+	IN	ATOM_INFORMATION_CLASS AtomInformationClass,
+    OUT PVOID AtomInformation,
+    IN  ULONG AtomInformationLength,
+    OUT PULONG ReturnLength OPTIONAL
+) {
+    WCHAR* AtomName;
+    ULONG AtomNameLength;
+    
+	NTSTATUS ret = Old_NtQueryInformationAtom(Atom, AtomInformationClass, AtomInformation, AtomInformationLength, ReturnLength);
+    
+    if (NT_SUCCESS(ret) && AtomInformationClass == AtomBasicInformation)
+    {
+        AtomNameLength = (ULONG)((PATOM_BASIC_INFORMATION)AtomInformation)->NameLength;
+        AtomName = ((PATOM_BASIC_INFORMATION)AtomInformation)->Name;
+        LOQ_ntstatus("synchronization", "bih", "AtomName", AtomNameLength, AtomName, "Size", AtomNameLength, "Atom", Atom);
+    }
+    else
+        LOQ_ntstatus("synchronization", "h", "Atom", Atom);
+	
+    return ret;
+}

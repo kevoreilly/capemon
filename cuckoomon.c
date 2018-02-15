@@ -80,7 +80,7 @@ static hook_t g_hooks[] = {
     //
 
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
-	//HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
+	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
     HOOK_SPECIAL(kernel32, CreateProcessInternalW),
 	//HOOK_SPECIAL(ntdll, NtCreateThread),
 	//HOOK_SPECIAL(ntdll, NtCreateThreadEx),
@@ -125,6 +125,8 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, NtCreateDirectoryObject),
     HOOK(ntdll, NtQueryDirectoryObject),
 
+    HOOK(kernel32, CreateFileTransactedA),
+    HOOK(kernel32, CreateFileTransactedW),
     // CreateDirectoryExA calls CreateDirectoryExW
     // CreateDirectoryW does not call CreateDirectoryExW
     HOOK(kernel32, CreateDirectoryW),
@@ -292,6 +294,7 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, NtAddAtomEx),
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
+	HOOK(ntdll, NtQueryInformationAtom),
 	
 	//
     // Process Hooks
@@ -515,6 +518,7 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, NtSetTimer),
 	HOOK(ntdll, NtSetTimerEx),
 	HOOK(user32, MsgWaitForMultipleObjectsEx),
+	HOOK(kernel32, CreateTimerQueueTimer),
 
 	//
     // Socket Hooks
@@ -659,6 +663,8 @@ VOID CALLBACK DllLoadNotification(
 
 		dllname = get_dll_basename(&library);
 		set_hooks_dll(dllname);
+
+        DoOutputDebugString("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
 	}
 	else {
 		// unload

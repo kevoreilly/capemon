@@ -1391,7 +1391,8 @@ bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR *
         
         setDefaultFileAlignment();
 
-		setEntryPointVa(entryPoint);
+		if (entryPoint)
+            setEntryPointVa(entryPoint);
 
 		alignAllSectionHeaders();
 		fixPeHeader();
