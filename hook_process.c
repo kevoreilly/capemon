@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "unhook.h"
 #include "config.h"
 
+extern void handle_terminate();
 extern int RoutineProcessDump();
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
@@ -331,12 +332,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
 		// for the subsequent call to NtTerminateProcess against our own process handle
+        handle_terminate();
         if (g_config.procdump)
             RoutineProcessDump();
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+        handle_terminate();
         if (g_config.procdump)
             RoutineProcessDump();
 		process_shutting_down = 1;

@@ -48,6 +48,8 @@ typedef struct _file_log_t {
 static lookup_t g_files;
 static lookup_t g_file_logs;
 
+static void new_file(const UNICODE_STRING *obj);
+
 void file_init()
 {
 	specialname_map_init();
@@ -139,17 +141,9 @@ void file_write(HANDLE file_handle)
 	get_lasterrors(&lasterror);
 
 	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
-    if(r != NULL) {
-		UNICODE_STRING str;
-		str.Length = (USHORT)r->length * sizeof(wchar_t);
-		str.MaximumLength = ((USHORT)r->length + 1) * sizeof(wchar_t);
-		str.Buffer = r->filename;
-
-        // we do in fact want to dump this file because it was written to
-        new_file(&str);
-
-        // delete the file record from the list
-        lookup_del(&g_files, (ULONG_PTR)file_handle);
+    if(r == NULL) {
+        r = lookup_add(&g_files, (ULONG_PTR)file_handle, sizeof(file_record_t));
+        memset(r, 0, sizeof(*r));
     }
 
 	set_lasterrors(&lasterror);
@@ -242,12 +236,33 @@ void handle_duplicate(HANDLE old_handle, HANDLE new_handle)
 void file_close(HANDLE file_handle)
 {
 	lasterror_t lasterror;
+	file_record_t *r;
 
 	get_lasterrors(&lasterror);
-    lookup_del(&g_files, (ULONG_PTR) file_handle);
+
+	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
+    if(r != NULL) {
+        UNICODE_STRING str;
+        str.Length = (USHORT)r->length * sizeof(wchar_t);
+        str.MaximumLength = ((USHORT)r->length + 1) * sizeof(wchar_t);
+        str.Buffer = r->filename;
+
+        new_file(&str);
+
+        lookup_del(&g_files, (ULONG_PTR) file_handle);
+    }
+
 	set_lasterrors(&lasterror);
 }
 
+void handle_terminate()
+{
+	entry_t *p;
+
+    for (p = (entry_t*)&(g_files.root); p != NULL; p = p->next) {
+        file_close((HANDLE)p->id);
+    }
+}
 static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
 {
 	wchar_t path[MAX_PATH_PLUS_TOLERANCE];
