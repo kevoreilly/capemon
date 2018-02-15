@@ -20,26 +20,29 @@ extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
 //Global debugger switch
-#define DEBUGGER_ENABLED 0
+#define DEBUGGER_ENABLED 1
 
+void GetHookCallerBase();
 PVOID GetPageAddress(PVOID Address);
+PVOID GetAllocationBase(PVOID Address);
 BOOL TranslatePathFromDeviceToLetter(__in TCHAR *DeviceFilePath, __out TCHAR* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize);
 BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size);
-int DumpMemory(LPVOID Buffer, unsigned int Size);
+BOOL DumpRegion(PVOID Address);
+int DumpMemory(LPVOID Buffer, SIZE_T Size);
 int DumpCurrentProcessNewEP(LPVOID NewEP);
 int DumpCurrentProcess();
 int DumpProcess(HANDLE hProcess, LPVOID ImageBase);
 int DumpPE(LPVOID Buffer);
-int ScanForNonZero(LPVOID Buffer, unsigned int Size);
+int ScanForNonZero(LPVOID Buffer, SIZE_T Size);
 int ScanPageForNonZero(LPVOID Address);
-int ScanForPE(LPVOID Buffer, unsigned int Size, LPVOID* Offset);
-int ScanForDisguisedPE(LPVOID Buffer, unsigned int Size, LPVOID* Offset);
+int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
+int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
 int IsDisguisedPEHeader(LPVOID Buffer);
 int DumpImageInCurrentProcess(LPVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
 
-unsigned int DumpSize;
 SYSTEM_INFO SystemInfo;
+PVOID CallingModule;
 
 typedef struct InjectionSectionView
 {
@@ -142,6 +145,9 @@ enum {
     EVILGRAB_DATA           = 0x15,
     
     SEDRECO_DATA            = 0x20,
+    
+    URSNIF_CONFIG           = 0x24,
+    URSNIF_PAYLOAD          = 0x25,
 	
     CERBER_CONFIG           = 0x30,
     CERBER_PAYLOAD          = 0x31
