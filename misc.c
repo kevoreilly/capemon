@@ -1805,25 +1805,21 @@ void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify)
 #endif
 }
 
-unsigned int address_is_in_stack(DWORD Address)
+unsigned int address_is_in_stack(PVOID Address)
 {
-#ifdef _WIN64
-	return 0;
-#else
-		__try {
-            PNT_TIB pTib = (PNT_TIB)(NtCurrentTeb());
+    __try {
+        PNT_TIB pTib = (PNT_TIB)(NtCurrentTeb());
 
-            if ((Address < (DWORD)pTib->StackBase) && (Address > (DWORD)pTib->StackLimit))
-                DoOutputDebugString("Address:0x%x within stack base = %p, limit = %p\r\n", Address, pTib->StackBase, pTib->StackLimit);
-                return 1;
-			
-            DoOutputDebugString("Address:0x%x not within stack base = %p, limit = %p\r\n", Address, pTib->StackBase, pTib->StackLimit);
-            return 0;
-		}
-		__except (EXCEPTION_EXECUTE_HANDLER) {
-			return 0;
+        if ((Address < pTib->StackBase) && (Address > pTib->StackLimit))
+            DoOutputDebugString("Address 0x%p within stack base = 0x%p, limit = 0x%p\r\n", Address, pTib->StackBase, pTib->StackLimit);
+            return 1;
+
+        DoOutputDebugString("Address 0x%x not within stack base = 0x%p, limit = 0x%p\r\n", Address, pTib->StackBase, pTib->StackLimit);
+        return 0;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
 	}
-#endif
 }
 
 PVOID get_process_image_base(HANDLE process_handle)
