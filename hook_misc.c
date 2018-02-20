@@ -781,6 +781,9 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 	char idbuf[40];
 	char *known;
 	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+
 	HDEVINFO ret = Old_SetupDiGetClassDevsW(ClassGuid, Enumerator, hwndParent, Flags);
 	if (ClassGuid) {
 		memcpy(&id1, ClassGuid, sizeof(id1));
