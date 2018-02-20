@@ -1663,9 +1663,9 @@ void init_CAPE()
             DoOutputDebugString("Failed to initialise debugger.\n");
 
 #ifdef _WIN64
-    DoOutputDebugString("CAPE initialised: 64-bit base package. Loaded at 0x%p\n", g_our_dll_base);
+    DoOutputDebugString("CAPE initialised: 64-bit base package loaded at 0x%p, process image base 0x%p\n", g_our_dll_base, GetModuleHandle(NULL));
 #else
-    DoOutputDebugString("CAPE initialised: 32-bit base package. Loaded at 0x%x\n", g_our_dll_base);
+    DoOutputDebugString("CAPE initialised: 32-bit base package loaded at 0x%p, process image base 0x%p\n", g_our_dll_base, GetModuleHandle(NULL));
 #endif
     
     return;

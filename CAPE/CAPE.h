@@ -20,7 +20,7 @@ extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
 //Global debugger switch
-#define DEBUGGER_ENABLED 1
+#define DEBUGGER_ENABLED 0
 
 void GetHookCallerBase();
 PVOID GetPageAddress(PVOID Address);
