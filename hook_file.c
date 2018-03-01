@@ -28,11 +28,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "lookup.h"
 #include "config.h"
 
-#define DUMP_FILE_MASK ((GENERIC_ALL | GENERIC_WRITE | FILE_GENERIC_WRITE | \
-    FILE_WRITE_DATA | FILE_APPEND_DATA | STANDARD_RIGHTS_WRITE | MAXIMUM_ALLOWED) & ~SYNCHRONIZE)
+#define DUMP_FILE_MASK ((GENERIC_ALL | GENERIC_WRITE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_APPEND_DATA | MAXIMUM_ALLOWED) & ~SYNCHRONIZE)
 
 // length of a hardcoded unicode string
 #define UNILEN(x) (sizeof(x) / sizeof(wchar_t) - 1)
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 
 typedef struct _file_record_t {
     unsigned int attributes;
@@ -193,12 +193,18 @@ static void handle_new_file(HANDLE file_handle, const OBJECT_ATTRIBUTES *obj)
 			len = lstrlenW(absolutename);
 			// cache this file
 			if (is_ignored_file_unicode(absolutename, len) == 0)
-				cache_file(file_handle, absolutename, len, obj->Attributes);
+            {
+                DoOutputDebugString("NtOpenFile hook: %ws.\n", absolutename);
+                cache_file(file_handle, absolutename, len, obj->Attributes);
+            }
 			free(absolutename);
 		}
 		else {
 			if (is_ignored_file_objattr(obj) == 0)
+            {
+                DoOutputDebugString("NtOpenFile hook: %ws.\n", fname);
 				cache_file(file_handle, fname, lstrlenW(fname), obj->Attributes);
+            }
 		}
 		free(fname);
     }
@@ -343,7 +349,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenFile,
 	if (NT_SUCCESS(ret)) {
 		add_file_to_log_tracking(*FileHandle);
 		if (DesiredAccess & DUMP_FILE_MASK)
+        {
+            DoOutputDebugString("NtOpenFile hook: DesiredAccess 0x%x & DUMP_FILE_MASK 0x%x.\n", DesiredAccess, DUMP_FILE_MASK);
 			handle_new_file(*FileHandle, ObjectAttributes);
+        }
 	}
 
 	return ret;
