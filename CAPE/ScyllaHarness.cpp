@@ -115,7 +115,7 @@ extern "C" int ScyllaDumpCurrentProcess(DWORD_PTR NewOEP)
         }
         else
         {
-            DoOutputErrorString("DumpCurrentProcess: Error - Cannot dump image");
+            DoOutputDebugString("DumpCurrentProcess: Error - image dump failure.\n");
             delete peFile;
             return 0;
         }

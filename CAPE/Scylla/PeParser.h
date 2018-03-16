@@ -94,7 +94,7 @@ public:
 	std::vector<PeFileSection> listPeSection;
 
 	DWORD dumpSize;
-    
+
 protected:
 	PeParser();
 
@@ -162,6 +162,4 @@ protected:
 	
 	void removeIatDirectory();
 	bool getFileOverlay();
-	
 };
-

@@ -1626,7 +1626,23 @@ int RoutineProcessDump()
         }
     }
 
-	return ProcessDumped;
+	// Region dumps are a lot better than nothing
+    if (!ProcessDumped)
+    {
+        SIZE_T RegionSize;
+        PVOID ImageBase;
+
+        if (base_of_dll_of_interest)
+            ImageBase = (PVOID)base_of_dll_of_interest;
+        else
+            ImageBase = GetModuleHandle(NULL);
+
+        RegionSize = GetAllocationSize(ImageBase);
+
+        ProcessDumped = DumpMemory(ImageBase, RegionSize);
+    }
+
+    return ProcessDumped;
 }
 
 void init_CAPE()
