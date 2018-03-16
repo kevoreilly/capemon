@@ -805,7 +805,6 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			dwFileOffset += dwWriteSize;
 		}
 
-
 		//Pe Header
 		if (isPE32())
 		{
@@ -855,8 +854,11 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
 			dwWriteSize = listPeSection[i].dataSize;
 
-			if (dwWriteSize)
+			if (dwWriteSize >= pNTHeader32->OptionalHeader.FileAlignment)
 			{
+#ifdef DEBUG_COMMENTS
+                DoOutputDebugString("PeParser::savePeFileToDisk: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
+#endif
 				if (!ProcessAccessHelp::writeMemoryToFile(hFile, listPeSection[i].sectionHeader.PointerToRawData, dwWriteSize, listPeSection[i].data))
 				{
 					retValue = false;
@@ -984,7 +986,8 @@ bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
 		return false;
 	}
 
-	if (!listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData || !listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData)
+	if (listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData < pNTHeader32->OptionalHeader.FileAlignment
+        || listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData < pNTHeader32->OptionalHeader.FileAlignment)
 	{
         DoOutputDebugString("PE Parser: Error - image seems incomplete: (%d sections, PointerToRawData: 0x%x, SizeOfRawData: 0x%x) - dump failed.\n", getNumberOfSections(), listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData);
 		return false;
