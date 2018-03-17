@@ -712,6 +712,53 @@ void DumpSectionViewsForPid(DWORD Pid)
 }
 
 //**************************************************************************************
+void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
+//**************************************************************************************
+{
+    DWORD BufferSize = MAX_PATH;
+    LPVOID PEPointer = NULL;
+    BOOL Dumped = FALSE;
+    
+    if (!SectionView->LocalView)
+    {
+        DoOutputDebugString("DumpSectionView: Section view local view address not set.\n");
+        return;
+    }
+
+    if (!SectionView->TargetProcessId)
+    {
+        DoOutputDebugString("DumpSectionView: Section view has no target process - error.\n");
+        return;
+    }
+    
+    Dumped = DumpPEsInRange(SectionView->LocalView, SectionView->ViewSize);
+    
+    if (Dumped)
+        DoOutputDebugString("DumpSectionView: Dumped PE image from shared section view, local address 0x%p.\n", SectionView->LocalView);
+    else
+    {
+        DoOutputDebugString("DumpSectionView: no PE file found in shared section view, attempting raw dump.\n");
+        
+        CapeMetaData->DumpType = INJECTION_SHELLCODE;
+        
+        CapeMetaData->TargetPid = SectionView->TargetProcessId;
+        
+        if (DumpMemory(SectionView->LocalView, SectionView->ViewSize))
+        {
+            DoOutputDebugString("DumpSectionView: Dumped shared section view.");
+            Dumped = TRUE;
+        }
+        else
+            DoOutputDebugString("DumpSectionView: Failed to dump shared section view.");                    
+    }
+    
+    if (Dumped == TRUE)
+        DropSectionView(SectionView);
+    
+    return;
+}
+
+//**************************************************************************************
 char* GetName()
 //**************************************************************************************
 {
@@ -1136,13 +1183,13 @@ int IsDisguisedPEHeader(LPVOID Buffer)
 //**************************************************************************************
 {
     PIMAGE_DOS_HEADER pDosHeader;
-    PIMAGE_NT_HEADERS pNtHeader;
+    PIMAGE_NT_HEADERS pNtHeader = NULL;
     
     __try  
     {  
         pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
 
-        if (!pDosHeader->e_lfanew || (ULONG)pDosHeader->e_lfanew > PE_HEADER_LIMIT || ((ULONG)pDosHeader->e_lfanew & 3) != 0)
+        if ((ULONG)pDosHeader->e_lfanew > PE_HEADER_LIMIT || ((ULONG)pDosHeader->e_lfanew & 3) != 0)
         {
             //DoOutputDebugString("IsDisguisedPEHeader: e_lfanew bad. (0x%x)", (DWORD_PTR)Buffer);
             return 0;
@@ -1150,7 +1197,22 @@ int IsDisguisedPEHeader(LPVOID Buffer)
         //else
         //    DoOutputDebugString("IsDisguisedPEHeader: e_lfanew ok!: 0x%x (0x%x)", (ULONG)pDosHeader->e_lfanew, (DWORD_PTR)Buffer);
         
-        pNtHeader = (PIMAGE_NT_HEADERS)((PCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+        if (!pDosHeader->e_lfanew)
+        {
+            // In case the header until and including 'PE' has been zeroed
+            WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+            while ((PCHAR)MachineProbe < (PCHAR)&pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+            {
+                if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                    pNtHeader = (PIMAGE_NT_HEADERS)(&(PCHAR)MachineProbe - 4);
+                MachineProbe += sizeof(WORD);
+            }
+            
+            if (!pNtHeader)
+                return 0;
+        }
+        else
+            pNtHeader = (PIMAGE_NT_HEADERS)((PCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
 
         if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))
         {
@@ -1223,7 +1285,7 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
         return 0;
     }
     
-    for (p=0; p < Size - 0x41; p++) // we want to stop short of the look-ahead to e_lfanew
+    for (p=0; p < Size - PE_HEADER_LIMIT; p++) // we want to stop short of the max look-ahead in IsDisguisedPEHeader
     {
         RetVal = IsDisguisedPEHeader((BYTE*)Buffer+p);
         
@@ -1261,7 +1323,7 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
     
     DoOutputDebugString("DumpPEsInRange: Scanning range 0x%x - 0x%x.\n", Buffer, (BYTE*)Buffer + Size);
 
-    if (ScanForDisguisedPE(PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), &PEPointer))
+    while (ScanForDisguisedPE(PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), &PEPointer))
     {
         pDosHeader = (PIMAGE_DOS_HEADER)PEPointer;
         if (*(WORD*)PEPointer != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
@@ -1272,6 +1334,24 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
             PEImage = (BYTE*)malloc(Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer));
             memcpy(PEImage, PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer));
             pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
+
+            if (!pDosHeader->e_lfanew)
+            {
+                // In case the header until and including 'PE' has been zeroed
+                PIMAGE_NT_HEADERS pNtHeader = NULL;
+                WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+                while ((PCHAR)MachineProbe < (PCHAR)&pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+                {
+                    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                        pNtHeader = (PIMAGE_NT_HEADERS)(&(PCHAR)MachineProbe - 4);
+                    MachineProbe += sizeof(WORD);
+                }
+                
+                if (!pNtHeader)
+                    return FALSE;
+                    
+                pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+            }
             
             *(WORD*)PEImage = IMAGE_DOS_SIGNATURE;
             *(DWORD*)(PEImage + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
@@ -1285,6 +1365,9 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
             }
             else
                 DoOutputDebugString("DumpPEsInRange: Failed to dump PE image from 0x%x.\n", PEPointer);
+
+            if (PEImage)
+                free(PEImage);    
         }
         else
         {
@@ -1299,7 +1382,7 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
                 DoOutputDebugString("DumpPEsInRange: Failed to dump PE image from 0x%x.\n", PEPointer);
         }
         
-        //((BYTE*)PEPointer)++;
+        (BYTE*)PEPointer += PE_HEADER_LIMIT;
     }
     
     return RetVal;

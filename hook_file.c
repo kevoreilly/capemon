@@ -259,7 +259,8 @@ void handle_terminate()
 	entry_t *p;
 
     for (p = (entry_t*)&(g_files.root); p != NULL; p = p->next) {
-        file_close((HANDLE)p->id);
+        if (p->id)
+            file_close((HANDLE)p->id);
     }
 }
 static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)

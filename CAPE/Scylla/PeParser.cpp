@@ -336,39 +336,47 @@ bool PeParser::readPeSectionsFromProcess()
 #endif           
             }
 
-            if ((listPeSection[i].sectionHeader.VirtualAddress != (listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize)))
+            if (i)
             {
-                DWORD NewVirtualAddress = listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize;
+                DWORD EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
+            
+                if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != EndOfPreviousSection))
+                {
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualAddress for section %d from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, NewVirtualAddress);
+                    DoOutputDebugString("PeParser::readPeSectionsFromProcess: Correcting VirtualAddress for section %d from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, EndOfPreviousSection);
 #endif
-                listPeSection[i].sectionHeader.VirtualAddress = NewVirtualAddress;
+                    listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
+                }
             }
         }
         else 
         {
             if ((listPeSection[i].sectionHeader.Misc.VirtualSize) > alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment))
             {
-                listPeSection[i].normalSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::readPeSectionsFromProcess: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, listPeSection[i].normalSize);
+                DoOutputDebugString("PeParser::readPeSectionsFromProcess: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment));
 #endif
+                listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
             }
             else
             {
-                listPeSection[i].normalSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);            
+                listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);            
 #ifdef DEBUG_COMMENTS
                 DoOutputDebugString("PeParser::readPeSectionsFromProcess: VirtualSize for last section (%d) ok: 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize);
 #endif
             }
 
-            if ((listPeSection[i].sectionHeader.VirtualAddress != (listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize)))
+            if (i)
             {
-                DWORD NewVirtualAddress = listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize;
+                DWORD EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
+            
+                if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != EndOfPreviousSection))
+                {
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::readPeSectionsFromProcess: Correcting VirtualAddress for last section (%d) from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, NewVirtualAddress);
+                    DoOutputDebugString("PeParser::readPeSectionsFromProcess: Correcting VirtualAddress for last section (%d) from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, EndOfPreviousSection);
 #endif
-                listPeSection[i].sectionHeader.VirtualAddress = NewVirtualAddress;
+                    listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
+                }
             }
         }        
         
@@ -1367,11 +1375,12 @@ void PeParser::alignAllSectionHeaders()
 	{
 		if (i < NumberOfSections - 1)
         {
+            
             if ((listPeSection[i].sectionHeader.Misc.VirtualSize) > (listPeSection[i+1].sectionHeader.VirtualAddress - listPeSection[i].sectionHeader.VirtualAddress))
             {
                 listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i+1].sectionHeader.VirtualAddress - listPeSection[i].sectionHeader.VirtualAddress, sectionAlignment);
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualSize for section %d from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, listPeSection[i].sectionHeader.Misc.VirtualSize);
+                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment));
 #endif
             }
             else
@@ -1382,23 +1391,27 @@ void PeParser::alignAllSectionHeaders()
 #endif
             }
 
-            if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != (listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize)))
+            if (i)
             {
-                DWORD NewVirtualAddress = listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize;
+                DWORD EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
+            
+                if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != EndOfPreviousSection))
+                {
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualAddress for section %d from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, NewVirtualAddress);
+                    DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualAddress for section %d from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, EndOfPreviousSection);
 #endif
-                listPeSection[i].sectionHeader.VirtualAddress = NewVirtualAddress;
+                    listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
+                }
             }
         }
         else 
         {
             if ((listPeSection[i].sectionHeader.Misc.VirtualSize) > alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment))
             {
-                listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, listPeSection[i].sectionHeader.Misc.VirtualSize);
+                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment));
 #endif
+                listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
             }
             else
             {
@@ -1408,13 +1421,17 @@ void PeParser::alignAllSectionHeaders()
 #endif
             }
 
-            if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != (listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize)))
+            if (i)
             {
-                DWORD NewVirtualAddress = listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize;
+                DWORD EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
+            
+                if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != EndOfPreviousSection))
+                {
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualAddress for last section (%d) from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, NewVirtualAddress);
+                    DoOutputDebugString("PeParser::alignAllSectionHeaders: Correcting VirtualAddress for last section (%d) from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, EndOfPreviousSection);
 #endif
-                listPeSection[i].sectionHeader.VirtualAddress = NewVirtualAddress;
+                    listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
+                }
             }
         }
 

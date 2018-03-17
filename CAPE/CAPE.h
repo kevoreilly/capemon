@@ -56,6 +56,8 @@ typedef struct InjectionSectionView
 PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE_T ViewSize);
 PINJECTIONSECTIONVIEW GetSectionView(HANDLE SectionHandle);
 BOOL DropSectionView(PINJECTIONSECTIONVIEW SectionView);
+void DumpSectionViewsForPid(DWORD Pid);
+void DumpSectionView(PINJECTIONSECTIONVIEW SectionView);
 
 typedef struct InjectionInfo
 {
