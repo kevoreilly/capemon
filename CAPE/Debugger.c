@@ -2939,7 +2939,7 @@ __declspec (naked dllexport) void DebuggerInit(void)
 #else
 #pragma optimize("", off)
 //**************************************************************************************
-void DebuggerInit(void)
+__declspec(dllexport) void DebuggerInit(void)
 //**************************************************************************************
 {   
     DWORD_PTR StackPointer;
