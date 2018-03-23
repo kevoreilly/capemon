@@ -77,12 +77,16 @@ extern "C" DWORD_PTR FileOffsetToVA(DWORD_PTR modBase, DWORD_PTR dwOffset)
     
     peFile = new PeParser(modBase, true);
 
-	//return peFile->convertOffsetToRVAVector(dwOffset) + modBase;
-	Test = peFile->convertOffsetToRVAVector(dwOffset) + modBase;
+    if (peFile->isValidPeFile())
+    {
+        //return peFile->convertOffsetToRVAVector(dwOffset) + modBase;
+        Test = peFile->convertOffsetToRVAVector(dwOffset) + modBase;
         
-    DoOutputDebugString("FileOffsetToVA: Debug - VA = 0x%p.\n", Test);
-    
-    return Test;
+        DoOutputDebugString("FileOffsetToVA: Debug - VA = 0x%p.\n", Test);
+
+        return Test;
+    }
+    else return NULL;
 }
 
 //**************************************************************************************
@@ -115,7 +119,7 @@ extern "C" int ScyllaDumpCurrentProcess(DWORD_PTR NewOEP)
         }
         else
         {
-            DoOutputDebugString("DumpCurrentProcess: Error - image dump failure.\n");
+            DoOutputDebugString("DumpCurrentProcess: Error - Cannot dump image.\n");
             delete peFile;
             return 0;
         }
@@ -184,7 +188,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
         }
         else
         {
-            DoOutputErrorString("DumpProcess: Error - Cannot dump image");
+            DoOutputDebugString("DumpProcess: Error - Cannot dump image.\n");
             delete peFile;
             return 0;
         }

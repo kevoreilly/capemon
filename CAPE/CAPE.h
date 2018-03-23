@@ -67,7 +67,8 @@ typedef struct InjectionInfo
     DWORD_PTR                   EntryPoint;
     BOOL                        WriteDetected;
     BOOL                        ImageDumped;
-    LPVOID                     BufferBase;
+    LPVOID                      BufferBase;
+    LPVOID                      StackPointer;
     unsigned int                BufferSizeOfImage;
     HANDLE                      SectionHandle;
 //    struct InjectionSectionView *SectionViewList;
@@ -110,7 +111,6 @@ struct InjectionSectionView *SectionViewList;
 #define	DLL			        2
 
 #define PLUGX_SIGNATURE		0x5658	// 'XV'
-#define	PE_HEADER_LIMIT		0x200	// Range to look for PE header within candidate buffer
 
 typedef struct CapeMetadata 
 {

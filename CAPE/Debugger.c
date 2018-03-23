@@ -28,6 +28,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define PIPEBUFSIZE 512
 
 // eflags register
+#define FL_ZF           0x00000040      // Zero Flag
 #define FL_TF           0x00000100      // Trap flag
 #define FL_RF           0x00010000      // Resume flag
 
@@ -1767,6 +1768,18 @@ BOOL SetResumeFlag(PCONTEXT Context)
         return FALSE;
 	
     Context->EFlags |= FL_RF;
+    
+    return TRUE;
+}
+
+//**************************************************************************************
+BOOL SetZeroFlag(PCONTEXT Context)
+//**************************************************************************************
+{
+    if (Context == NULL)
+        return FALSE;
+	
+    Context->EFlags |= FL_ZF;
     
     return TRUE;
 }

@@ -49,7 +49,7 @@ PeParser::PeParser(const DWORD_PTR moduleBase, bool readSectionHeaders)
 	if (moduleBaseAddress)
 	{
 		readPeHeaderFromProcess(readSectionHeaders);
-
+        
 		if (readSectionHeaders)
 		{
 			if (isValidPeFile())
@@ -225,7 +225,10 @@ bool PeParser::readPeHeaderFromProcess(bool readSectionHeaders)
 
 			if (readSize < correctSize)
 			{
-				readSize = correctSize;
+#ifdef DEBUG_COMMENTS
+				DoOutputDebugString("PeParser::readPeHeaderFromProcess: Correcting header size to 0x%x.\n", correctSize);
+#endif
+                readSize = correctSize;
 				delete [] headerMemory;
 				headerMemory = new BYTE[readSize];
 
@@ -482,7 +485,8 @@ std::vector<PeFileSection> & PeParser::getSectionHeaderList()
 void PeParser::getDosAndNtHeader(BYTE * memory, LONG size)
 {
 	pDosHeader = (PIMAGE_DOS_HEADER)memory;
-
+    DWORD readSize = getInitialHeaderReadSize(true);
+    
 	pNTHeader32 = 0;
 	pNTHeader64 = 0;
 	dosStubSize = 0;
@@ -504,6 +508,74 @@ void PeParser::getDosAndNtHeader(BYTE * memory, LONG size)
 			pDosHeader->e_lfanew = sizeof(IMAGE_DOS_HEADER);
 		}
 	}
+    
+    if (!pDosHeader->e_lfanew)
+    {
+        // In case the header until and including 'PE' has been zeroed (e.g. Ursnif)
+        PIMAGE_NT_HEADERS pNtHeader = NULL;
+        WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+        while ((PUCHAR)MachineProbe < (PUCHAR)&pDosHeader + (readSize - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+        {
+            if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+            MachineProbe += sizeof(WORD);
+        }
+        
+        if (pNtHeader)
+            pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+    }
+    
+    if (!pDosHeader->e_lfanew)
+    {
+        // In case the header until and including 'PE' is missing
+        PIMAGE_NT_HEADERS pNtHeader = NULL;
+        WORD* MachineProbe = (WORD*)pDosHeader;
+        while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (readSize - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+        {
+            if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+            {
+                if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4 && !pNtHeader)
+                {
+                    pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+                }
+            }
+            MachineProbe += sizeof(WORD);
+            
+            if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader)
+            {
+                SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
+                delete [] headerMemory;
+                headerMemory = new BYTE[readSize];
+                memset(headerMemory, 0, readSize);
+                if (ProcessAccessHelp::readMemoryPartlyFromProcess(moduleBaseAddress, readSize - HeaderShift, headerMemory + HeaderShift))
+                {
+                    pDosHeader = (PIMAGE_DOS_HEADER)headerMemory;
+                    pNtHeader = (PIMAGE_NT_HEADERS)(headerMemory + HeaderShift);
+                    pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+                }
+#ifdef DEBUG_COMMENTS
+				DoOutputDebugString("PeParser::getDosAndNtHeader: Corrected: DOS header 0x%x, lfanew 0x%x, NT header 0x%x.\n", pDosHeader, pDosHeader->e_lfanew, pNtHeader);
+#endif                
+            }
+        }
+    }
+
+    if (pDosHeader->e_lfanew && pDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+    {
+        PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+        
+        if ((pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) || (pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC))
+        {
+            pDosHeader->e_magic = IMAGE_DOS_SIGNATURE;
+            pNtHeader->Signature = IMAGE_NT_SIGNATURE;
+        }
+    }
+    
+    if (pDosHeader->e_lfanew)
+    {
+		pNTHeader32 = (PIMAGE_NT_HEADERS32)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
+		pNTHeader64 = (PIMAGE_NT_HEADERS64)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
+    }
 }
 
 DWORD PeParser::calcCorrectPeHeaderSize(bool readSectionHeaders)
@@ -644,7 +716,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 	if (!readOffset || !readSize)
 	{
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser:: readSectionFrom: readOffset or readSize zero: 0x%x, 0x%x\n", readOffset, readSize);
+        DoOutputDebugString("PeParser: readSectionFrom: readOffset or readSize zero: 0x%x, 0x%x\n", readOffset, readSize);
 #endif
 		return true; //section without data is valid
 	}
@@ -655,7 +727,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 		peFileSection.normalSize = readSize;
 
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser:: readSectionFrom: readSize <= maxReadSize: 0x%x.\n", readSize);
+        DoOutputDebugString("PeParser: readSectionFrom: readSize <= maxReadSize: 0x%x.\n", readSize);
 #endif
         
 		if (isProcess)
@@ -677,7 +749,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 	currentOffset = readOffset + readSize - currentReadSize;
 
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser:: About to attempt to read section from 0x%x size 0x%x.\n", readOffset, readSize);
+        DoOutputDebugString("PeParser: About to attempt to read section from 0x%x size 0x%x.\n", readOffset, readSize);
 #endif
 
 	while(currentOffset >= readOffset) //start from the end
@@ -696,7 +768,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 		if (!retValue)
 		{
 #ifdef DEBUG_COMMENTS
-            DoOutputDebugString("PeParser:: readMemory failure reading 0x%x bytes from 0x%x.\n", currentOffset , currentReadSize);
+            DoOutputDebugString("PeParser: readMemory failure reading 0x%x bytes from 0x%x.\n", currentOffset , currentReadSize);
 #endif
 			break;
 		}
@@ -707,7 +779,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 			//found some real code
 
 #ifdef DEBUG_COMMENTS
-            //DoOutputDebugString("PeParser:: readMemory found data at 0x%x.\n", currentOffset);
+            //DoOutputDebugString("PeParser: readMemory found data at 0x%x.\n", currentOffset);
 #endif
 			currentOffset += valuesFound;
 
@@ -730,7 +802,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 		}
 #ifdef DEBUG_COMMENTS
         //else
-        //    DoOutputDebugString("PeParser:: readMemory found nothing at 0x%x.\n", currentOffset);
+        //    DoOutputDebugString("PeParser: readMemory found nothing at 0x%x.\n", currentOffset);
 #endif
 
 		currentReadSize = maxReadSize;
@@ -738,13 +810,13 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 	}
 
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser:: calls to readSectionFrom succeeded.\n");
+        DoOutputDebugString("PeParser: calls to readSectionFrom succeeded.\n");
 #endif
 
 	if (peFileSection.dataSize)
 	{
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser:: readSectionFrom: About to read PE section from 0x%x.\n", readOffset);
+        DoOutputDebugString("PeParser: readSectionFrom: About to read PE section from 0x%x.\n", readOffset);
 #endif
         if (isProcess)
 		{
@@ -1247,12 +1319,15 @@ void PeParser::fixPeHeader()
 
 		pNTHeader32->OptionalHeader.SizeOfImage = getSectionHeaderBasedSizeOfImage();
 
-		if (moduleBaseAddress)
-		{
-			pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
-		}
+		//if (moduleBaseAddress)
+		//{
+		//	pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
+		//}
 		
 		pNTHeader32->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader32->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader32->OptionalHeader.FileAlignment);
+#ifdef DEBUG_COMMENTS
+        //DoOutputDebugString("fixPeHeader: imagebase 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
+#endif
 	}
 	else
 	{
@@ -1272,12 +1347,13 @@ void PeParser::fixPeHeader()
 		
 		pNTHeader64->OptionalHeader.SizeOfImage = getSectionHeaderBasedSizeOfImage();
 
-		if (moduleBaseAddress)
-		{
-			pNTHeader64->OptionalHeader.ImageBase = moduleBaseAddress;
-		}
+		//if (moduleBaseAddress)
+		//{
+		//	pNTHeader64->OptionalHeader.ImageBase = moduleBaseAddress;
+		//}
 
 		pNTHeader64->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader64->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader64->OptionalHeader.FileAlignment);
+        //DoOutputDebugString("fixPeHeader: imagebase 0x%x.\n", pNTHeader64->OptionalHeader.ImageBase);
 	}
 
 	removeIatDirectory();
