@@ -105,6 +105,8 @@ static unsigned int DumpCount;
  
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
 
+#define CAPE_OUTPUT_FILE "CapeOutput.bin"
+
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern void CapeOutputFile(LPCTSTR lpOutputFile);
@@ -115,21 +117,43 @@ extern int ScyllaDumpCurrentProcessFixImports(DWORD_PTR NewOEP);
 extern int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR modBase, DWORD_PTR NewOEP);
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
+extern SIZE_T GetPESize(PVOID Buffer);
 
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path;
+extern ULONG_PTR base_of_dll_of_interest;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 
+extern unsigned int address_is_in_stack(PVOID Address);
 static HMODULE s_hInst = NULL;
 static WCHAR s_wzDllPath[MAX_PATH];
 CHAR s_szDllPath[MAX_PATH];
 
 BOOL ProcessDumped;
+extern PVOID CallingModule;
+extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 
+static __inline ULONG_PTR get_stack_top(void)
+{
+#ifndef _WIN64
+	return __readfsdword(0x04);
+#else
+	return __readgsqword(0x08);
+#endif
+}
+
+static __inline ULONG_PTR get_stack_bottom(void)
+{
+#ifndef _WIN64
+	return __readfsdword(0x08);
+#else
+	return __readgsqword(0x10);
+#endif
+}
 //**************************************************************************************
 BOOL InsideHook(LPVOID* ReturnAddress, LPVOID Address)
 //**************************************************************************************
@@ -1676,13 +1700,42 @@ int DumpCurrentProcess()
 int DumpModuleInCurrentProcess(LPVOID ModuleBase)
 //**************************************************************************************
 {
-    SetCapeMetaData(INJECTION_PE, 0, NULL, (PVOID)ModuleBase);
+    PIMAGE_DOS_HEADER pDosHeader;
 
+    if (!IsDisguisedPEHeader(ModuleBase))
+    {
+        DoOutputDebugString("DumpModuleInCurrentProcess: Not a valid image at 0x%p - cannot dump.\n", ModuleBase);
+        return 0;
+    }
+    
+    pDosHeader = (PIMAGE_DOS_HEADER)ModuleBase;
+    
+    if (*(WORD*)ModuleBase != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
+    {       
+        PBYTE PEImage;
+        SIZE_T ImageSize;
+        
+        DoOutputDebugString("DumpModuleInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
+        
+        // We want to fix the PE header in the dump (for e.g. disassembly etc)
+        ImageSize = GetPESize(ModuleBase);
+        PEImage = (BYTE*)malloc(ImageSize);
+        memcpy(PEImage, ModuleBase, ImageSize);
+        pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
+        
+        *(WORD*)PEImage = IMAGE_DOS_SIGNATURE;
+        *(DWORD*)(PEImage + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
+        
+        ModuleBase = PEImage;
+    }
+
+    SetCapeMetaData(EXTRACTION_PE, 0, NULL, (PVOID)ModuleBase);
+    
     if (DumpCount < DUMP_MAX && ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ModuleBase, 0))
-	{
+    {
         DumpCount++;
-		return 1;
-	}
+        return 1;
+    }
 
 	return 0;
 }

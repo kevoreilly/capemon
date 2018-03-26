@@ -1,6 +1,6 @@
 /*
 CAPE - Config And Payload Extraction
-Copyright(C) 2015, 2016 Context Information Security. (kevin.oreilly@contextis.com)
+Copyright(C) 2015 - 2018 Context Information Security. (kevin.oreilly@contextis.com)
 
 This program is free software : you can redistribute it and / or modify
 it under the terms of the GNU General Public License as published by
@@ -153,8 +153,9 @@ void ScyllaInit(HANDLE hProcess)
 extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP)
 //**************************************************************************************
 {
-	unsigned int entrypoint = 0, SectionBasedFileSize;
+	SIZE_T SectionBasedFileSize;
 	PeParser * peFile = 0;
+	DWORD_PTR entrypoint = NULL;
 
 	ScyllaInit(hProcess);
     
@@ -165,16 +166,16 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
     if (peFile->isValidPeFile())
     {
         if (NewOEP)
-            entrypoint = (unsigned int)NewOEP;
+            entrypoint = NewOEP;
         else
-            entrypoint = (unsigned int)peFile->getEntryPoint();
+            entrypoint = peFile->getEntryPoint();
 
-        SectionBasedFileSize = (unsigned int)peFile->getSectionHeaderBasedFileSize();
+        SectionBasedFileSize = (SIZE_T)peFile->getSectionHeaderBasedFileSize();
 
-        if (entrypoint > SectionBasedFileSize)
+        if ((SIZE_T)entrypoint > SectionBasedFileSize)
         {
             DoOutputDebugString("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
-            entrypoint = 0;
+            entrypoint = NULL;
         }
         else
         {
@@ -333,6 +334,75 @@ extern "C" int LooksLikeSectionBoundary(DWORD_PTR Buffer)
         DoOutputDebugString("LooksLikeSectionBoundary: Exception occured reading around suspected boundary at 0x%p\n", Buffer);
         return 0;
     }
+}
+
+//**************************************************************************************
+extern "C" SIZE_T GetPESize(PVOID Buffer)
+//**************************************************************************************
+{
+	PeParser * peFile = 0;
+    unsigned int NumberOfSections = 0;
+    SIZE_T SectionBasedFileSize, SectionBasedImageSize;
+    
+	NativeWinApi::initialize();
+
+	ProcessAccessHelp::setCurrentProcessAsTarget();
+   
+    peFile = new PeParser((DWORD_PTR)Buffer, TRUE);
+    
+    NumberOfSections = peFile->getNumberOfSections();
+    SectionBasedFileSize = (SIZE_T)peFile->getSectionHeaderBasedFileSize();
+    SectionBasedImageSize = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
+    
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("IsPeImageVirtual: NumberOfSections %d, SectionBasedFileSize 0x%x.\n", NumberOfSections, SectionBasedFileSize);
+#endif         
+    if (NumberOfSections == 0)
+    // makes no difference in this case
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("IsPeImageVirtual: zero sections, therefore meaningless.\n");
+#endif         
+        delete peFile;
+        return SectionBasedFileSize;
+    }
+    
+    for (unsigned int SectionIndex = 0; SectionIndex < NumberOfSections; SectionIndex++)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString
+        (
+            "IsPeImageVirtual: Section %d, PointerToRawData 0x%x, VirtualAddress 0x%x, SizeOfRawData 0x%x, VirtualSize 0x%x.\n",
+            SectionIndex+1, 
+            peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData, 
+            peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress,
+            peFile->listPeSection[SectionIndex].sectionHeader.SizeOfRawData,
+            peFile->listPeSection[SectionIndex].sectionHeader.Misc.VirtualSize
+        );
+#endif         
+        if (peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData != peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
+        {
+            if (LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData))
+            {
+#ifdef DEBUG_COMMENTS
+                DoOutputDebugString("IsPeImageVirtual: Found what looks like a 'raw' section boundary - image looks raw.\n");
+#endif         
+                delete peFile;
+                return SectionBasedFileSize;
+            }
+            else if (LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress))
+            {
+#ifdef DEBUG_COMMENTS
+                DoOutputDebugString("IsPeImageVirtual: Found what looks like a virtual section boundary - image looks virtual.\n");
+#endif         
+                delete peFile;
+                return SectionBasedImageSize;
+            }
+        }
+    }        
+    
+    delete peFile;
+    return SectionBasedImageSize;
 }
 
 //**************************************************************************************
@@ -497,7 +567,7 @@ extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD_PTR NewOEP)
         
         if (addressIAT && sizeIAT)
         {
-            DoOutputDebugString(TEXT("DumpCurrentProcessFixImports: Found IAT: 0x%x, size: 0x%x"), addressIAT, sizeIAT);
+            DoOutputDebugString("DumpCurrentProcessFixImports: Found IAT: 0x%x, size: 0x%x", addressIAT, sizeIAT);
             
             apiReader.readAndParseIAT(addressIAT, sizeIAT, importsHandling.moduleList);
             importsHandling.scanAndFixModuleList();
@@ -659,7 +729,7 @@ extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase
         
         if (addressIAT && sizeIAT)
         {
-            DoOutputDebugString(TEXT("DumpProcessFixImports: Found IAT - 0x%x, size: 0x%x"), addressIAT, sizeIAT);
+            DoOutputDebugString("DumpProcessFixImports: Found IAT - 0x%x, size: 0x%x", addressIAT, sizeIAT);
             
             apiReader.readAndParseIAT(addressIAT, sizeIAT, importsHandling.moduleList);
             importsHandling.scanAndFixModuleList();
