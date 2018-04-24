@@ -790,7 +790,6 @@ LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *Excepti
 		return EXCEPTION_CONTINUE_SEARCH;
 
     if (ExceptionInfo->ExceptionRecord->ExceptionCode == DBG_PRINTEXCEPTION_C)
-
 		return EXCEPTION_CONTINUE_SEARCH;
 
     if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)

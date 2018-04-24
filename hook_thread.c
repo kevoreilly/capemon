@@ -28,6 +28,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 static lookup_t g_ignored_threads;
 
+DWORD LastInjected;
+
 void ignored_threads_init(void)
 {
 	lookup_init(&g_ignored_threads);
@@ -78,10 +80,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	DWORD TID = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-	pipe("PROCESS:%d:%d,%d", is_suspended(PID, TID), PID, TID);
+    pipe("PROCESS:%d:%d,%d", is_suspended(PID, TID), PID, TID);
 
-	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine,
-							   ApcRoutineContext, ApcStatusBlock, ApcReserved);
+    ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
 	LOQ_ntstatus("threading", "iip", "ProcessId", PID, "ThreadId", TID, "ThreadHandle", ThreadHandle);
 
@@ -104,7 +105,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 
 	pipe("PROCESS:%d:%d,%d", is_suspended(PID, TID), PID, TID);
 
-	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine,
+    ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine,
 								 ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
 	LOQ_ntstatus("threading", "iip", "ProcessId", PID, "ThreadId", TID, "ThreadHandle", ThreadHandle);
@@ -176,8 +177,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		//if (called_by_hook() && pid == GetCurrentProcessId())
 		//	add_ignored_thread(tid);
 
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
-		if (!(CreateFlags & 1)) {
+		if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+
+            if (!(CreateFlags & 1)) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(*hThread);
@@ -243,10 +246,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	NTSTATUS ret;
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
-	pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
-	ret = Old_NtSetContextThread(ThreadHandle, Context);
-	if (Context->ContextFlags & CONTEXT_CONTROL)
+    if (pid != GetCurrentProcessId())
+        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+
+    ret = Old_NtSetContextThread(ThreadHandle, Context);
+
+    if (Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
 		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx);
 #else
@@ -374,8 +380,10 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
         lpThreadId);
 
 	if (ret != NULL) {
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
-		if (!(dwCreationFlags & CREATE_SUSPENDED)) {
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
+
+        if (!(dwCreationFlags & CREATE_SUSPENDED)) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(ret);
@@ -419,8 +427,10 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
         "ThreadIdentifier", ClientId->UniqueThread);
 
 	if (NT_SUCCESS(ret)) {
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread), pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread);
-		if (CreateSuspended == FALSE) {
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread), pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread);
+
+        if (CreateSuspended == FALSE) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(*ThreadHandle);

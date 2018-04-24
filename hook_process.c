@@ -817,7 +817,7 @@ HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
 		if (tebtmp[0] != 0xffffffff)
 			seh = ((DWORD *)tebtmp[0])[1];
 		if (seh < g_our_dll_base || seh >= (g_our_dll_base + g_our_dll_size)) {
-			_snprintf(buf, sizeof(buf), "Exception reported at offset 0x%x in cuckoomon itself while accessing 0x%x from hook %s", (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
+			_snprintf(buf, sizeof(buf), "Exception 0x%x reported at offset 0x%x in cuckoomon itself while accessing 0x%x from hook %s", ExceptionRecord->ExceptionCode, (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
 			log_anomaly("cuckoocrash", buf);
 		}
 	}

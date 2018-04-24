@@ -263,6 +263,7 @@ void handle_terminate()
             file_close((HANDLE)p->id);
     }
 }
+
 static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
 {
 	wchar_t path[MAX_PATH_PLUS_TOLERANCE];
