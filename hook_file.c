@@ -240,7 +240,7 @@ void file_close(HANDLE file_handle)
 	get_lasterrors(&lasterror);
 
 	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
-    if(r != NULL) {
+    if (r != NULL) {
         UNICODE_STRING str;
         str.Length = (USHORT)r->length * sizeof(wchar_t);
         str.MaximumLength = ((USHORT)r->length + 1) * sizeof(wchar_t);

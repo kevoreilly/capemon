@@ -680,8 +680,6 @@ VOID CALLBACK DllLoadNotification(
 
 extern _LdrRegisterDllNotification pLdrRegisterDllNotification;
 
-CRITICAL_SECTION g_tmp_hookinfo_lock;
-
 void set_hooks()
 {
 	// before modifying any DLLs, let's first freeze all other threads in our process
@@ -698,13 +696,13 @@ void set_hooks()
 	// the hooks contain executable code as well, so they have to be RWX
 	DWORD old_protect;
 
-	InitializeCriticalSection(&g_tmp_hookinfo_lock);
-
 	VirtualProtect(g_hooks, sizeof(g_hooks), PAGE_EXECUTE_READWRITE,
 		&old_protect);
 
 	memset(&threadInfo, 0, sizeof(threadInfo));
 	threadInfo.dwSize = sizeof(threadInfo);
+
+	hook_init();
 
 	hook_disable();
 

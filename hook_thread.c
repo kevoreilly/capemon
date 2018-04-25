@@ -307,7 +307,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 }
 
 extern DWORD tmphookinfo_threadid;
-extern CRITICAL_SECTION g_tmp_hookinfo_lock;
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
     __in  HANDLE ThreadHandle,
@@ -320,7 +319,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
 
 	if (tmphookinfo_threadid && tid == tmphookinfo_threadid) {
 		tmphookinfo_threadid = 0;
-		LeaveCriticalSection(&g_tmp_hookinfo_lock);
 	}
 
 	//remove_ignored_thread(tid);

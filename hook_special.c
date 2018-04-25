@@ -29,6 +29,8 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern int RoutineProcessDump();
 extern ULONG_PTR base_of_dll_of_interest;
 
+PVOID LastDllUnload;
+
 HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
     __in_opt    PWCHAR PathToFile,
     __in_opt    PULONG Flags,
@@ -124,7 +126,11 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
         RoutineProcessDump();
     }
 
-    DoOutputDebugString("DLL unloaded from 0x%p.\n", DllImageBase);
+    if (DllImageBase && DllImageBase != LastDllUnload)
+    {
+        DoOutputDebugString("DLL unloaded from 0x%p.\n", DllImageBase);
+        LastDllUnload = DllImageBase;
+    }
 
     return 0;
 }

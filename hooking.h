@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define __HOOKING_H
 
 #include "ntapi.h"
+#include "lookup.h"
 #include "config.h"
 #include <Windows.h>
 
@@ -287,5 +288,7 @@ static inline BOOLEAN disable_this_hook(hook_t *h)
 
 	return TRUE;
 }
+
+void hook_init();
 
 #endif
