@@ -33,6 +33,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // length of a hardcoded unicode string
 #define UNILEN(x) (sizeof(x) / sizeof(wchar_t) - 1)
 
+extern BOOL FilesDumped;
+
 typedef struct _file_record_t {
     unsigned int attributes;
     size_t length;
@@ -245,23 +247,41 @@ void file_close(HANDLE file_handle)
         str.Length = (USHORT)r->length * sizeof(wchar_t);
         str.MaximumLength = ((USHORT)r->length + 1) * sizeof(wchar_t);
         str.Buffer = r->filename;
-
         new_file(&str);
-
         lookup_del(&g_files, (ULONG_PTR) file_handle);
     }
 
 	set_lasterrors(&lasterror);
 }
 
-void handle_terminate()
+void file_handle_terminate()
 {
-	entry_t *p;
+    entry_t *p;
+    file_record_t *r;
+	lasterror_t lasterror;
+
+    // ensure this only happens once as we can't lookup_del in the loop
+    if (FilesDumped)
+        return;
+
+	FilesDumped = TRUE;
+
+    get_lasterrors(&lasterror);
 
     for (p = (entry_t*)&(g_files.root); p != NULL; p = p->next) {
-        if (p->id)
-            file_close((HANDLE)p->id);
+        if (p->id) {
+            r = lookup_get(&g_files, (ULONG_PTR)p->id, NULL);
+            if (r != NULL) {
+                UNICODE_STRING str;
+                str.Length = (USHORT)r->length * sizeof(wchar_t);
+                str.MaximumLength = ((USHORT)r->length + 1) * sizeof(wchar_t);
+                str.Buffer = r->filename;
+                new_file(&str);
+            }
+        }
     }
+
+	set_lasterrors(&lasterror);
 }
 
 static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
@@ -827,7 +847,6 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 			// we can do this here because it's not scheduled for deletion until reboot
 			pipe("FILE_DEL:%Z", path);
 		}
-
     }
 
 	free(path);
@@ -886,7 +905,6 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 				// we can do this here because it's not scheduled for deletion until reboot
 				pipe("FILE_DEL:%Z", path);
 			}
-
 		}
 
 		free(path);
@@ -1287,25 +1305,6 @@ HOOKDEF(BOOL, WINAPI, GetVolumeInformationA,
 {
     BOOL ret = Old_GetVolumeInformationA(lpRootPathName, lpVolumeNameBuffer, nVolumeNameSize, lpVolumeSerialNumber, lpMaximumComponentLength, lpFileSystemFlags, lpFileSystemNameBuffer, nFileSystemNameSize);
 	LOQ_bool("filesystem", "s", "RootPathName", lpRootPathName);
-#ifdef KEV
-	if (ret != 0 && lpVolumeSerialNumber != NULL)
-	{
-		char SystemDirectory[MAX_PATH];
-		size_t DirectoryPathLength = GetSystemDirectoryA(SystemDirectory, MAX_PATH);
-		
-		if (DirectoryPathLength == 0)
-			return ret;
-
-		if (!strncmp(lpRootPathName, SystemDirectory, 3))
-		{
-			*lpVolumeSerialNumber = 0x46e70ca9;
-			debug_message("Changed Volume Serial Number.");
-		}
-
-
-
-	}	
-#endif	
     return ret;
 }
 
@@ -1322,22 +1321,6 @@ HOOKDEF(BOOL, WINAPI, GetVolumeInformationW,
 {
     BOOL ret = Old_GetVolumeInformationW(lpRootPathName, lpVolumeNameBuffer, nVolumeNameSize, lpVolumeSerialNumber, lpMaximumComponentLength, lpFileSystemFlags, lpFileSystemNameBuffer, nFileSystemNameSize);
 	LOQ_bool("filesystem", "u", "RootPathName", lpRootPathName);
-#ifdef KEV
-	if (ret != 0 && lpVolumeSerialNumber != NULL)
-	{
-		WCHAR SystemDirectory[MAX_PATH];
-		size_t DirectoryPathLength = GetSystemDirectoryW(SystemDirectory, MAX_PATH);
-		
-		if (DirectoryPathLength == 0)
-			return ret;
-
-		if (!wcsncmp(lpRootPathName, SystemDirectory, 3))
-		{
-			*lpVolumeSerialNumber = 0x46e70ca9;
-			debug_message("Changed Volume Serial Number.");
-		}
-	}
-#endif		
     return ret;
 }
 

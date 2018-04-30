@@ -28,8 +28,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "unhook.h"
 #include "config.h"
 
-extern void handle_terminate();
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void file_handle_terminate();
 extern int RoutineProcessDump();
+extern BOOL ProcessDumped;
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
 	__in DWORD dwFlags,
@@ -332,20 +334,26 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
 		// for the subsequent call to NtTerminateProcess against our own process handle
-        if (g_config.procdump)
+        if (g_config.procdump && !ProcessDumped)
+        {
+            DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
             RoutineProcessDump();
+        }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
-        //handle_terminate();
+        file_handle_terminate();
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
-        if (g_config.procdump)
+        if (g_config.procdump && !ProcessDumped)
+        {
+            DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
             RoutineProcessDump();
+        }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 		pipe("KILL:%d", GetCurrentProcessId());
 		log_free();
-        //handle_terminate();
+        file_handle_terminate();
 	}
 	else {
 		DWORD PID = pid_from_process_handle(ProcessHandle);

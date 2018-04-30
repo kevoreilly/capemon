@@ -101,11 +101,18 @@ typedef struct _hook_info_t {
 	ULONG_PTR parent_caller_retaddr;
 } hook_info_t;
 
-static unsigned int DumpCount;
+#define CAPE_OUTPUT_FILE "CapeOutput.bin"
  
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
-
-#define CAPE_OUTPUT_FILE "CapeOutput.bin"
+extern int called_by_hook(void);
+extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
+extern unsigned int address_is_in_stack(PVOID Address);
+extern hook_info_t *hook_info();
+extern ULONG_PTR base_of_dll_of_interest;
+extern wchar_t *our_process_path;
+extern ULONG_PTR base_of_dll_of_interest;
+extern ULONG_PTR g_our_dll_base;
+extern DWORD g_our_dll_size;
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -118,24 +125,11 @@ extern int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR modBase, DWORD
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
 extern SIZE_T GetPESize(PVOID Buffer);
-
-extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
-extern unsigned int address_is_in_stack(PVOID Address);
-extern hook_info_t *hook_info();
-extern ULONG_PTR base_of_dll_of_interest;
-extern wchar_t *our_process_path;
-extern ULONG_PTR base_of_dll_of_interest;
-extern ULONG_PTR g_our_dll_base;
-extern DWORD g_our_dll_size;
-
-extern unsigned int address_is_in_stack(PVOID Address);
-static HMODULE s_hInst = NULL;
-static WCHAR s_wzDllPath[MAX_PATH];
-CHAR s_szDllPath[MAX_PATH];
-
-BOOL ProcessDumped;
-extern PVOID CallingModule;
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
+extern PVOID CallingModule;
+
+BOOL ProcessDumped, FilesDumped;
+static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
 {
@@ -185,11 +179,6 @@ LPVOID GetReturnAddress(hook_info_t *hookinfo)
 
     __try
     {
-#ifdef _WIN64
-        DoOutputDebugString("GetReturnAddress: operate_on_backtrace call with Rip 0x%p.\n", hookinfo->frame_pointer);
-#else
-        DoOutputDebugString("GetReturnAddress: operate_on_backtrace call with Ebp 0x%x.\n", hookinfo->frame_pointer);
-#endif
         operate_on_backtrace(hookinfo->stack_pointer, hookinfo->frame_pointer, &ReturnAddress, GetCurrentFrame);
         return ReturnAddress;
     }
@@ -205,15 +194,18 @@ LPVOID GetReturnAddress(hook_info_t *hookinfo)
 }
 
 //**************************************************************************************
-void GetHookCallerBase()
+PVOID GetHookCallerBase()
 //**************************************************************************************
 {
     PVOID ReturnAddress, AllocationBase;
+	hook_info_t *hookinfo = hook_info();
 
-    if (CallingModule)
-        return;
-        
-    ReturnAddress = GetReturnAddress(hook_info());    
+    if (hookinfo->main_caller_retaddr)
+        ReturnAddress = (PVOID)hookinfo->main_caller_retaddr;
+    else if (hookinfo->parent_caller_retaddr)
+        ReturnAddress = (PVOID)hookinfo->parent_caller_retaddr;
+    //else
+    //    ReturnAddress = GetReturnAddress(hookinfo);
 
     if (ReturnAddress)
     {
@@ -225,13 +217,14 @@ void GetHookCallerBase()
         if (AllocationBase)
         {
             CallingModule = AllocationBase;
+            return CallingModule;
             // Base-dependent breakpoints can be activated now
         }
     }
     else
         DoOutputDebugString("GetHookCallerBase: failed to get return address.\n");
 
-    return;
+    return NULL;
 }
 
 //**************************************************************************************
@@ -1844,22 +1837,25 @@ int DumpPE(LPVOID Buffer)
 int RoutineProcessDump()
 //**************************************************************************************
 {
+    PVOID ImageBase, CallerBase = GetHookCallerBase();
+
+    if (base_of_dll_of_interest)
+        ImageBase = (PVOID)base_of_dll_of_interest;
+    else
+        ImageBase = GetModuleHandle(NULL);
+
     if (g_config.procdump && ProcessDumped == FALSE)
     {
         ProcessDumped = TRUE;   // this prevents a second call before the first is complete
         if (g_config.import_reconstruction)
-        {   
-            if (base_of_dll_of_interest)
-                ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), base_of_dll_of_interest, 0);
-            else
-                ProcessDumped = ScyllaDumpCurrentProcessFixImports(0);
-        }        
+            ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
         else
+            ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
+
+        if (CallerBase && ImageBase != CallerBase && called_by_hook())
         {
-            if (base_of_dll_of_interest)
-                ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), base_of_dll_of_interest, 0);
-            else
-                ProcessDumped = ScyllaDumpCurrentProcess(0);
+            DoOutputDebugString("RoutineProcessDump: Terminate caller base (0x%p) different to imagebase (0x%p) - dumping.\n", CallerBase, ImageBase);
+            ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)CallerBase, 0);
         }
     }
 
@@ -1886,7 +1882,7 @@ void init_CAPE()
     // made at the end of a process' lifetime.
     // It is normally only set in the base packages,
     // or upon submission. (This overrides submission.)
-    // g_config.procmemdump = 0;
+    // g_config.procdump = 0;
 
     // Cuckoo debug output level for development (0=none, 2=max)
     // g_config.debug = 2;
@@ -1900,9 +1896,9 @@ void init_CAPE()
             DoOutputDebugString("Failed to initialise debugger.\n");
 
 #ifdef _WIN64
-    DoOutputDebugString("CAPE initialised: 64-bit base package loaded at 0x%p, process image base 0x%p\n", g_our_dll_base, GetModuleHandle(NULL));
+    DoOutputDebugString("CAPE initialised: 64-bit base package loaded at 0x%p, process image base 0x%p, stack from 0x%p-0x%p\n", g_our_dll_base, GetModuleHandle(NULL), get_stack_bottom(), get_stack_top());
 #else
-    DoOutputDebugString("CAPE initialised: 32-bit base package loaded at 0x%p, process image base 0x%p\n", g_our_dll_base, GetModuleHandle(NULL));
+    DoOutputDebugString("CAPE initialised: 32-bit base package loaded at 0x%x, process image base 0x%x, stack from 0x%x-0x%x\n", g_our_dll_base, GetModuleHandle(NULL), get_stack_bottom(), get_stack_top());
 #endif
     
     return;
