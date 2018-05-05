@@ -781,8 +781,7 @@ uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
         return copylen;
     }
 
-    length = path_from_handle(obj->RootDirectory,
-        path, buffer_length);
+    length = path_from_handle(obj->RootDirectory, path, buffer_length);
 	
 	path[length++] = L'\\';
 	if (length >= (buffer_length - 1))

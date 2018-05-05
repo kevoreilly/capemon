@@ -110,8 +110,6 @@ HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
 	ret = Old_LdrLoadDll(PathToFile, Flags, ModuleFileName, ModuleHandle);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
 
-    //DoOutputDebugString("LdrLoadDll hook2: ModuleBase 0x%p: %ws.\n", *ModuleHandle, library.Buffer);
-
 	disable_tail_call_optimization();
 	return ret;
 }
@@ -121,10 +119,8 @@ extern void revalidate_all_hooks(void);
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 ) {
-    if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest) {
-        //DoOutputDebugString("LdrUnloadDll hook: Dumping DLL-of-interest prior to unloading.\n");
+    if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest)
         RoutineProcessDump();
-    }
 
     if (DllImageBase && DllImageBase != LastDllUnload)
     {

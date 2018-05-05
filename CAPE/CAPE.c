@@ -110,7 +110,6 @@ extern unsigned int address_is_in_stack(PVOID Address);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path;
-extern ULONG_PTR base_of_dll_of_interest;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 

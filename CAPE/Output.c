@@ -184,6 +184,8 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
 		Buffer = malloc(BufferSize);
 
+        if (!CapeMetaData->ProcessPath)
+            CapeMetaData->ProcessPath = "Unknown path";
         CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
         
 		if (CapeMetaData->DumpType == EXTRACTION_PE || CapeMetaData->DumpType == EXTRACTION_SHELLCODE)

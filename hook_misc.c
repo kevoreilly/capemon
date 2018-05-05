@@ -26,8 +26,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "config.h"
 #include "ignore.h"
+#include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
+
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
     __in  int idHook,
@@ -100,11 +104,34 @@ HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
     __out   PVECTORED_EXCEPTION_HANDLER Handler
 ) {
 	PVOID ret = 0;
-    
-    ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
-	
+
+    if (DEBUGGER_ENABLED && VECTORED_HANDLER && First)
+    {
+        if (!CAPEExceptionFilterHandle)
+        {
+            DoOutputDebugString("RtlAddVectoredExceptionHandler hook: Error - CAPE vectored handler not registered.\n");
+            ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
+            LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
+            return ret;
+        }
+
+        // We register the handler at the bottom, this minimizes
+        // our interference and means the handle is valid
+        ret = Old_RtlAddVectoredExceptionHandler(0, Handler);
+
+        if (ret == NULL)
+            return ret;
+
+        // We record the handler address so that
+        // CAPEExceptionFilter can call it directly
+        DoOutputDebugString("RtlAddVectoredExceptionHandler hook: CAPE vectored handler protected as First.\n");
+        SampleVectoredHandler = (SAMPLE_HANDLER)Handler;
+    }
+    else
+        ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
+
     LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
-    
+
     return ret;
 }
 

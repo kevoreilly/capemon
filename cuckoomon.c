@@ -36,6 +36,7 @@ volatile int dummy_val;
 extern void init_CAPE();
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
+extern ULONG_PTR base_of_dll_of_interest;
 
 void disable_tail_call_optimization(void)
 {
@@ -657,16 +658,21 @@ VOID CALLBACK DllLoadNotification(
 	}
         
 	if (NotificationReason == 1) {
-		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest))
-			set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
+		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) {
+            if (base_of_dll_of_interest)
+                DoOutputDebugString("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+			else
+                set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
+        }
+        else {
+            // unoptimized, but easy
+            add_all_dlls_to_dll_ranges();
 
-		// unoptimized, but easy
-		add_all_dlls_to_dll_ranges();
+            dllname = get_dll_basename(&library);
+            set_hooks_dll(dllname);
 
-		dllname = get_dll_basename(&library);
-		set_hooks_dll(dllname);
-
-        DoOutputDebugString("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            DoOutputDebugString("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+        }
 	}
 	else {
 		// unload

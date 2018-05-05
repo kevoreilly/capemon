@@ -24,7 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hooking.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern DWORD_PTR CAPE_var1, CAPE_var2, CAPE_var3, CAPE_var4;
+extern PVOID bp0, bp1, bp2, bp3;
 
 int read_config(void)
 {
@@ -218,21 +218,37 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
-            else if (!strcmp(key, "CAPE_var1")) {
-				CAPE_var1 = (DWORD_PTR)strtoul(value, NULL, 10);
-                DoOutputDebugString("CAPE_var1 set to 0x%x", CAPE_var1);
+			else if (!strcmp(key, "base-on-api")) {
+				unsigned int x = 0;
+				char *p2;
+				p = value;
+				while (p && x < EXCLUSION_MAX) {
+					p2 = strchr(p, ':');
+					if (p2) {
+						*p2 = '\0';
+					}
+					g_config.base_on_apiname[x++] = strdup(p);
+                    DoOutputDebugString("Added '%s' to base-on-API list.\n", p);
+					if (p2 == NULL)
+						break;
+					p = p2 + 1;
+				}
 			}
-            else if (!strcmp(key, "CAPE_var2")) {
-				CAPE_var2 = (DWORD_PTR)strtoul(value, NULL, 10);
-                DoOutputDebugString("CAPE_var2 set to 0x%x", CAPE_var2);
+            else if (!strcmp(key, "bp0")) {
+				bp0 = (PVOID)strtoul(value, NULL, 10);
+                DoOutputDebugString("bp0 set to 0x%x", bp0);
 			}
-            else if (!strcmp(key, "CAPE_var3")) {
-				CAPE_var3 = (DWORD_PTR)strtoul(value, NULL, 10);
-                DoOutputDebugString("CAPE_var3 set to 0x%x", CAPE_var3);
+            else if (!strcmp(key, "bp1")) {
+				bp1 = (PVOID)strtoul(value, NULL, 10);
+                DoOutputDebugString("bp1 set to 0x%x", bp1);
 			}
-            else if (!strcmp(key, "CAPE_var4")) {
-				CAPE_var4 = (DWORD_PTR)strtoul(value, NULL, 10);
-                DoOutputDebugString("CAPE_var4 set to 0x%x", CAPE_var4);
+            else if (!strcmp(key, "bp2")) {
+				bp2 = (PVOID)strtoul(value, NULL, 10);
+                DoOutputDebugString("bp2 set to 0x%x", bp2);
+			}
+            else if (!strcmp(key, "bp3")) {
+				bp3 = (PVOID)strtoul(value, NULL, 10);
+                DoOutputDebugString("bp3 set to 0x%x", bp3);
 			}
             else if (!strcmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
