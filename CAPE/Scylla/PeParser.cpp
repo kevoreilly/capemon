@@ -5,7 +5,7 @@
 
 #pragma comment(lib, "Imagehlp.lib")
 
-//#define DEBUG_COMMENTS
+#define DEBUG_COMMENTS
 #define SIZE_LIMIT  0x1000000
 
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
@@ -359,11 +359,11 @@ bool PeParser::readPeSectionsFromProcess()
 #ifdef DEBUG_COMMENTS
                 DoOutputDebugString("PeParser::readPeSectionsFromProcess: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment));
 #endif
-                listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
+                listPeSection[i].normalSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
             }
             else
             {
-                listPeSection[i].sectionHeader.Misc.VirtualSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);            
+                listPeSection[i].normalSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);
 #ifdef DEBUG_COMMENTS
                 DoOutputDebugString("PeParser::readPeSectionsFromProcess: VirtualSize for last section (%d) ok: 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize);
 #endif
@@ -1319,11 +1319,6 @@ void PeParser::fixPeHeader()
 
 		pNTHeader32->OptionalHeader.SizeOfImage = getSectionHeaderBasedSizeOfImage();
 
-		//if (moduleBaseAddress)
-		//{
-		//	pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
-		//}
-		
 		pNTHeader32->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader32->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader32->OptionalHeader.FileAlignment);
 #ifdef DEBUG_COMMENTS
         //DoOutputDebugString("fixPeHeader: imagebase 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
@@ -1347,13 +1342,10 @@ void PeParser::fixPeHeader()
 		
 		pNTHeader64->OptionalHeader.SizeOfImage = getSectionHeaderBasedSizeOfImage();
 
-		//if (moduleBaseAddress)
-		//{
-		//	pNTHeader64->OptionalHeader.ImageBase = moduleBaseAddress;
-		//}
-
 		pNTHeader64->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader64->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader64->OptionalHeader.FileAlignment);
+#ifdef DEBUG_COMMENTS
         //DoOutputDebugString("fixPeHeader: imagebase 0x%x.\n", pNTHeader64->OptionalHeader.ImageBase);
+#endif
 	}
 
 	removeIatDirectory();
@@ -1541,9 +1533,11 @@ bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR *
         setEntryPointVa(entryPoint);
 
     alignAllSectionHeaders();
+
     fixPeHeader();
 
     getFileOverlay();
+
 #ifdef DEBUG_COMMENTS
     DoOutputDebugString("dumpProcess DEBUG: Fixups complete, about to save to disk.\n");
 #endif

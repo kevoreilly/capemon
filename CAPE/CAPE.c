@@ -100,8 +100,6 @@ typedef struct _hook_info_t {
 	ULONG_PTR main_caller_retaddr;
 	ULONG_PTR parent_caller_retaddr;
 } hook_info_t;
-
-#define CAPE_OUTPUT_FILE "CapeOutput.bin"
  
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
 extern int called_by_hook(void);

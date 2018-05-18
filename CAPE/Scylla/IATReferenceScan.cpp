@@ -67,8 +67,6 @@ void IATReferenceScan::startScan(DWORD_PTR imageBase, DWORD imageSize, DWORD_PTR
 		iatDirectImportList.reserve(50);
 	}
 
-
-
 	DWORD_PTR section = imageBase;
 
 	do
@@ -410,7 +408,6 @@ void IATReferenceScan::patchNewIat(DWORD_PTR stdImagebase, DWORD_PTR newIatBaseA
 	}
 }
 
-
 void IATReferenceScan::printDirectImportLog()
 {
 	DoOutputDebugString("------------------------------------------------------------");
@@ -454,7 +451,6 @@ void IATReferenceScan::printDirectImportLog()
 
 	DoOutputDebugString("------------------------------------------------------------");
 }
-
 
 void IATReferenceScan::findDirectIatReferenceCallJmp( _DInst * instruction )
 {
@@ -735,5 +731,3 @@ DWORD IATReferenceScan::addAdditionalApisToList()
 
 	return newIatSize;
 }
-
-
