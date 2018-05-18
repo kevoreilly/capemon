@@ -5,7 +5,7 @@
 
 #pragma comment(lib, "Imagehlp.lib")
 
-#define DEBUG_COMMENTS
+//#define DEBUG_COMMENTS
 #define SIZE_LIMIT  0x1000000
 
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
