@@ -749,7 +749,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 	currentOffset = readOffset + readSize - currentReadSize;
 
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser: About to attempt to read section from 0x%x size 0x%x.\n", readOffset, readSize);
+    DoOutputDebugString("PeParser: About to reverse-scan section from 0x%p size 0x%x.\n", readOffset, readSize);
 #endif
 
 	while(currentOffset >= readOffset) //start from the end
@@ -768,10 +768,14 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 		if (!retValue)
 		{
 #ifdef DEBUG_COMMENTS
-            DoOutputDebugString("PeParser: readMemory failure reading 0x%x bytes from 0x%x.\n", currentOffset , currentReadSize);
+            DoOutputDebugString("PeParser: readMemory failure reading from 0x%p (currentReadSize 0x%x).\n", currentOffset, currentReadSize);
 #endif
 			break;
 		}
+#ifdef DEBUG_COMMENTS
+        //else
+        //    DoOutputDebugString("PeParser: Read memory chunk from 0x%p size 0x%x.\n", currentOffset, currentReadSize);
+#endif
 
 		valuesFound = isMemoryNotNull(data, currentReadSize);
 		if (valuesFound)
@@ -779,7 +783,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 			//found some real code
 
 #ifdef DEBUG_COMMENTS
-            //DoOutputDebugString("PeParser: readMemory found data at 0x%x.\n", currentOffset);
+            DoOutputDebugString("PeParser: readMemory found data at 0x%p (currentReadSize 0x%x).\n", currentOffset, currentReadSize);
 #endif
 			currentOffset += valuesFound;
 
@@ -802,21 +806,17 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 		}
 #ifdef DEBUG_COMMENTS
         //else
-        //    DoOutputDebugString("PeParser: readMemory found nothing at 0x%x.\n", currentOffset);
+        //    DoOutputDebugString("PeParser: readMemory found nothing at 0x%p (currentReadSize 0x%x).\n", currentOffset, currentReadSize);
 #endif
 
 		currentReadSize = maxReadSize;
 		currentOffset -= currentReadSize;
 	}
 
-#ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser: calls to readSectionFrom succeeded.\n");
-#endif
-
 	if (peFileSection.dataSize)
 	{
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser: readSectionFrom: About to read PE section from 0x%x.\n", readOffset);
+        DoOutputDebugString("PeParser: readSectionFrom: About to read full PE section from 0x%p size 0x%x.\n", readOffset, peFileSection.dataSize);
 #endif
         if (isProcess)
 		{
@@ -827,6 +827,10 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 			retValue = readPeSectionFromFile((DWORD)readOffset, peFileSection);
 		}
 	}
+#ifdef DEBUG_COMMENTS
+    else
+        DoOutputDebugString("PeParser: No data read from section at 0x%p.\n", readOffset);
+#endif
 
 	return retValue;
 }
@@ -850,7 +854,7 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 	char *CapeName;
 
 #ifdef DEBUG_COMMENTS
-    DoOutputDebugString("PeParser::savePeFileToDisk: Function entry.\n");
+    //DoOutputDebugString("PeParser::savePeFileToDisk: Function entry.\n");
 #endif
     
 	DWORD dwFileOffset = 0, dwWriteSize = 0;
@@ -919,7 +923,6 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			if (!listPeSection[i].sectionHeader.PointerToRawData)
 				continue;
 
-
 			if (listPeSection[i].sectionHeader.PointerToRawData > dwFileOffset)
 			{
 				dwWriteSize = listPeSection[i].sectionHeader.PointerToRawData - dwFileOffset; //padding
@@ -934,7 +937,7 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
 			dwWriteSize = listPeSection[i].dataSize;
 
-			if (dwWriteSize >= pNTHeader32->OptionalHeader.FileAlignment)
+			if (dwWriteSize)
 			{
 #ifdef DEBUG_COMMENTS
                 DoOutputDebugString("PeParser::savePeFileToDisk: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
@@ -960,7 +963,10 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 					dwFileOffset += dwWriteSize;
 				}
 			}
-
+#ifdef DEBUG_COMMENTS
+            else
+                DoOutputDebugString("PeParser::savePeFileToDisk: Nothing to write for section %d.\n", i+1);
+#endif
 		}
 
 		//add overlay?
@@ -1320,9 +1326,14 @@ void PeParser::fixPeHeader()
 		pNTHeader32->OptionalHeader.SizeOfImage = getSectionHeaderBasedSizeOfImage();
 
 		pNTHeader32->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader32->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader32->OptionalHeader.FileAlignment);
+
+		if (moduleBaseAddress && moduleBaseAddress != pNTHeader32->OptionalHeader.ImageBase)
+		{
+			pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
 #ifdef DEBUG_COMMENTS
-        //DoOutputDebugString("fixPeHeader: imagebase 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
+        DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
 #endif
+		}        
 	}
 	else
 	{
@@ -1343,9 +1354,14 @@ void PeParser::fixPeHeader()
 		pNTHeader64->OptionalHeader.SizeOfImage = getSectionHeaderBasedSizeOfImage();
 
 		pNTHeader64->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader64->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader64->OptionalHeader.FileAlignment);
+
+		if (moduleBaseAddress && moduleBaseAddress != pNTHeader64->OptionalHeader.ImageBase)
+		{
+			pNTHeader64->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
 #ifdef DEBUG_COMMENTS
-        //DoOutputDebugString("fixPeHeader: imagebase 0x%x.\n", pNTHeader64->OptionalHeader.ImageBase);
+        DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader64->OptionalHeader.ImageBase);
 #endif
+		}        
 	}
 
 	removeIatDirectory();
