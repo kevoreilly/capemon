@@ -128,16 +128,23 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 	__in      BOOLEAN CreateSuspended
 	) {
 	DWORD pid = pid_from_process_handle(ProcessHandle);
-
 	NTSTATUS ret = Old_NtCreateThread(ThreadHandle, DesiredAccess,
 		ObjectAttributes, ProcessHandle, ClientId, ThreadContext,
 		InitialTeb, TRUE);
 
 	if (NT_SUCCESS(ret)) {
+        DWORD tid = tid_from_thread_handle(*ThreadHandle);
 		//if (called_by_hook() && pid == GetCurrentProcessId())
-		//	add_ignored_thread((DWORD)ClientId->UniqueThread);
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread), pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread);
-		if (CreateSuspended == FALSE) {
+		//	add_ignored_thread(tid);
+
+        if (DEBUGGER_ENABLED && !called_by_hook()) {
+            DoOutputDebugString("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
+            InitNewThreadBreakpoints(tid);
+        }
+
+        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+
+        if (CreateSuspended == FALSE) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(*ThreadHandle);
@@ -179,6 +186,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		//	add_ignored_thread(tid);
 
 		if (pid != GetCurrentProcessId())
+            if (DEBUGGER_ENABLED && !called_by_hook()) {
+                DoOutputDebugString("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
+                InitNewThreadBreakpoints(tid);
+            }
+
             pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
             if (!(CreateFlags & 1)) {
@@ -354,7 +366,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	ret = Old_CreateThread(lpThreadAttributes, dwStackSize,
         lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
 
-    if (DEBUGGER_ENABLED && !called_by_hook()) {
+    if (ret != NULL && DEBUGGER_ENABLED && !called_by_hook()) {
         DoOutputDebugString("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
         InitNewThreadBreakpoints(*lpThreadId);
     }
@@ -393,6 +405,10 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 	if (ret != NULL) {
         if (pid != GetCurrentProcessId())
             pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
+        else if (DEBUGGER_ENABLED && !called_by_hook()) {
+            DoOutputDebugString("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
+            InitNewThreadBreakpoints(*lpThreadId);
+        }
 
         if (!(dwCreationFlags & CREATE_SUSPENDED)) {
 			lasterror_t lasterror;
@@ -438,8 +454,13 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
         "ThreadIdentifier", ClientId->UniqueThread);
 
 	if (NT_SUCCESS(ret)) {
+        DWORD tid = tid_from_thread_handle(ThreadHandle);
         if (pid != GetCurrentProcessId())
-            pipe("PROCESS:%d:%d,%d", is_suspended(pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread), pid, (DWORD)(ULONG_PTR)ClientId->UniqueThread);
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+        else if (DEBUGGER_ENABLED && !called_by_hook()) {
+            DoOutputDebugString("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
+            InitNewThreadBreakpoints(tid);
+        }
 		if (CreateSuspended == FALSE) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);

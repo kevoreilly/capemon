@@ -180,7 +180,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
         else
         {
             DoOutputDebugString("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
-            entrypoint = entrypoint + ModuleBase;
+            entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
         }
         
         if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))

@@ -127,6 +127,7 @@ BOOL SetNextAvailableBreakpoint(DWORD ThreadId, unsigned int* Register, int Size
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);
 BOOL SetZeroFlag(PCONTEXT Context);
+BOOL ClearZeroFlag(PCONTEXT Context);
 PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId);
 
 // Get

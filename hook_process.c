@@ -506,11 +506,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadVirtualMemory,
 	NTSTATUS ret;
     ENSURE_SIZET(NumberOfBytesRead);
 
-    ret = Old_NtReadVirtualMemory(ProcessHandle, BaseAddress, Buffer,
-        NumberOfBytesToRead, NumberOfBytesRead);
+    ret = Old_NtReadVirtualMemory(ProcessHandle, BaseAddress, Buffer, NumberOfBytesToRead, NumberOfBytesRead);
 
-    LOQ_ntstatus("process", "ppB", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-        "Buffer", NumberOfBytesRead, Buffer);
+    LOQ_ntstatus("process", "ppB", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, NumberOfBytesToRead, "Size", "Buffer", NumberOfBytesRead, Buffer);
 
 	return ret;
 }
@@ -525,11 +523,9 @@ HOOKDEF(BOOL, WINAPI, ReadProcessMemory,
 	BOOL ret;
     ENSURE_SIZET(lpNumberOfBytesRead);
 
-    ret = Old_ReadProcessMemory(hProcess, lpBaseAddress, lpBuffer,
-        nSize, lpNumberOfBytesRead);
+    ret = Old_ReadProcessMemory(hProcess, lpBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead);
 
-    LOQ_bool("process", "ppB", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress,
-        "Buffer", lpNumberOfBytesRead, lpBuffer);
+    LOQ_bool("process", "pphB", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress, "Size", nSize, "Buffer", lpNumberOfBytesRead, lpBuffer);
 
     return ret;
 }
