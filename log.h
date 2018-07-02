@@ -145,6 +145,9 @@ do { \
 #define ENSURE_CLIENT_ID(param) \
     CLIENT_ID _##param; memset(&_##param, 0, sizeof(_##param)); if (param == NULL) param = &_##param
 
+#define ENSURE_HANDLE(param) \
+    HANDLE _##param; memset(&_##param, 0, sizeof(_##param)); if (param == NULL) param = &_##param
+
 #define ENSURE_STRUCT(param, type) \
     type _##param; memset(&_##param, 0, sizeof(_##param)); if(param == NULL) param = &_##param
 

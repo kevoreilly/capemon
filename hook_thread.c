@@ -441,6 +441,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 ) {
 	DWORD pid;
 	NTSTATUS ret;
+    ENSURE_HANDLE(ThreadHandle);
 	ENSURE_CLIENT_ID(ClientId);
 
 	pid = pid_from_process_handle(ProcessHandle);
