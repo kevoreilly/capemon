@@ -514,12 +514,12 @@ HOOKDEF(BOOL, WINAPI, GetCursorPos,
 	}
 
 	if (ret){
-    	LOQ_bool("misc", "ii", "x", lpPoint != NULL ? lpPoint->x : 0,
+    	    LOQ_bool("misc", "ii", "x", lpPoint != NULL ? lpPoint->x : 0,
     			 "y", lpPoint != NULL ? lpPoint->y : 0);
-    }
-    else{
-		LOQ_bool("misc", "ii", "x", 0, "y", 0);
-    }
+	}
+	else{
+	    LOQ_bool("misc", "ii", "x", 0, "y", 0);
+	}
 	return ret;
 }
 
