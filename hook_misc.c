@@ -486,7 +486,7 @@ static int lasty;
 HOOKDEF(BOOL, WINAPI, GetCursorPos,
     _Out_ LPPOINT lpPoint
 ) {
-	ENSURE_STRUCT(lpPoint, POINT);
+    ENSURE_STRUCT(lpPoint, POINT);
     BOOL ret = Old_GetCursorPos(lpPoint);
 
 	/* work around the fact that skipping sleeps prevents the human module from making the system look active */
