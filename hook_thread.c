@@ -475,3 +475,40 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 
 	return ret;
 }
+
+HOOKDEF(NTSTATUS, WINAPI, NtSetInformationThread,
+    IN HANDLE ThreadHandle,
+    IN THREADINFOCLASS ThreadInformationClass,
+    IN PVOID ThreadInformation,
+    IN ULONG ThreadInformationLength
+) {
+	NTSTATUS ret;
+    ENSURE_HANDLE(ThreadHandle);
+    
+    ret = Old_NtSetInformationThread(ThreadHandle, ThreadInformationClass, ThreadInformation, ThreadInformationLength);
+    
+    LOQ_ntstatus("threading", "pib", "ThreadHandle", ThreadHandle, 
+        "ThreadInformationClass", ThreadInformationClass,
+        "ThreadInformation", ThreadInformationLength, ThreadInformation);
+    
+    return ret;    
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationThread,
+    IN HANDLE ThreadHandle,
+    IN THREADINFOCLASS ThreadInformationClass,
+    OUT PVOID ThreadInformation,
+    IN ULONG ThreadInformationLength,
+    OUT PULONG ReturnLength OPTIONAL
+) {
+	NTSTATUS ret;
+    ENSURE_HANDLE(ThreadHandle);
+    
+    ret = Old_NtQueryInformationThread(ThreadHandle, ThreadInformationClass, ThreadInformation, ThreadInformationLength, ReturnLength);
+    
+    LOQ_ntstatus("threading", "pib", "ThreadHandle", ThreadHandle, 
+        "ThreadInformationClass", ThreadInformationClass,
+        "ThreadInformation", ThreadInformationLength, ThreadInformation);
+    
+    return ret;
+}
