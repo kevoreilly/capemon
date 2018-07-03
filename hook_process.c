@@ -240,7 +240,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 
 	if (ret) {
 		pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
-		if (!(dwCreationFlags & CREATE_SUSPENDED))
+		if (!(dwCreationFlags & CREATE_SUSPENDED) && is_valid_address_range(lpProcessInfo, sizeof(PROCESS_INFORMATION)))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
 	}
@@ -590,7 +590,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 		}
 	}
 
-
 	return ret;
 }
 
@@ -694,7 +693,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
         NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret) && OldAccessProtection && *OldAccessProtection == NewAccessProtection) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
@@ -737,7 +736,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
         lpflOldProtect);
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (ret) {
+	if (ret && lpflOldProtect && *lpflOldProtect == flNewProtect) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));

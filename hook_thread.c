@@ -240,6 +240,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
     __in     HANDLE ThreadHandle,
     __inout  LPCONTEXT Context
 ) {
+	ENSURE_HANDLE(ThreadHandle);
+	ENSURE_STRUCT(Context, CONTEXT);
     NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
 	if (Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
@@ -265,7 +267,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 
     ret = Old_NtSetContextThread(ThreadHandle, Context);
 
-    if (Context && Context->ContextFlags & CONTEXT_CONTROL)
+	if (Context != NULL && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
 		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx);
 #else
@@ -454,7 +456,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
         "StartParameter", StartParameter, "ThreadHandle", ThreadHandle,
         "ThreadIdentifier", ClientId->UniqueThread);
 
-	if (NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret) && ClientId && ThreadHandle) {
         DWORD tid = tid_from_thread_handle(ThreadHandle);
         if (pid != GetCurrentProcessId())
             pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
@@ -462,7 +464,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
             DoOutputDebugString("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }
-		if (CreateSuspended == FALSE) {
+		if (CreateSuspended == FALSE && is_valid_address_range(ThreadHandle, 4)) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(*ThreadHandle);
