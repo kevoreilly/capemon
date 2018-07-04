@@ -215,7 +215,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 	BOOL ret;
 	LPWSTR origcommandline = NULL;
 	ENSURE_STRUCT(lpProcessInfo, PROCESS_INFORMATION);
-	
+
 	if (lpCommandLine)
 		origcommandline = wcsdup(lpCommandLine);
 
@@ -473,7 +473,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
         map_size = mbi.RegionSize;
     }
     ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
-	
+
     LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
         "RegionSize", map_size);
 
@@ -580,8 +580,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 
 	pid = pid_from_process_handle(ProcessHandle);
 
-    LOQ_ntstatus("process", "ppBhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-        "Buffer", NumberOfBytesWritten, Buffer, "BufferLength", *NumberOfBytesWritten, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	 LOQ_ntstatus("process", "ppBhs",
+	    "ProcessHandle", ProcessHandle,
+	    "BaseAddress", BaseAddress,
+	    "Buffer", NumberOfBytesWritten, Buffer,
+	    "BufferLength", is_valid_address_range(NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
+	    "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
 		if (NT_SUCCESS(ret)) {
@@ -688,7 +692,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
-	
+
 	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress,
         NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
