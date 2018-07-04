@@ -215,7 +215,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 	BOOL ret;
 	LPWSTR origcommandline = NULL;
 	ENSURE_STRUCT(lpProcessInfo, PROCESS_INFORMATION);
-	
+
 	if (lpCommandLine)
 		origcommandline = wcsdup(lpCommandLine);
 
@@ -240,7 +240,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 
 	if (ret) {
 		pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
-		if (!(dwCreationFlags & CREATE_SUSPENDED))
+		if (!(dwCreationFlags & CREATE_SUSPENDED) && is_valid_address_range(lpProcessInfo, sizeof(PROCESS_INFORMATION)))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
 	}
@@ -473,7 +473,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
         map_size = mbi.RegionSize;
     }
     ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
-	
+
     LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
         "RegionSize", map_size);
 
@@ -580,8 +580,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 
 	pid = pid_from_process_handle(ProcessHandle);
 
-    LOQ_ntstatus("process", "ppBhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-        "Buffer", NumberOfBytesWritten, Buffer, "BufferLength", *NumberOfBytesWritten, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	 LOQ_ntstatus("process", "ppBhs",
+	    "ProcessHandle", ProcessHandle,
+	    "BaseAddress", BaseAddress,
+	    "Buffer", NumberOfBytesWritten, Buffer,
+	    "BufferLength", is_valid_address_range(NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
+	    "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
 		if (NT_SUCCESS(ret)) {
@@ -589,7 +593,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 			disable_sleep_skip();
 		}
 	}
-
 
 	return ret;
 }
@@ -689,12 +692,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
-	
+
 	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress,
         NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret) && OldAccessProtection && *OldAccessProtection == NewAccessProtection) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
@@ -737,7 +740,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
         lpflOldProtect);
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (ret) {
+	if (ret && lpflOldProtect && *lpflOldProtect == flNewProtect) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));

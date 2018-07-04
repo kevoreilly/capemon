@@ -486,10 +486,11 @@ static int lasty;
 HOOKDEF(BOOL, WINAPI, GetCursorPos,
     _Out_ LPPOINT lpPoint
 ) {
+    ENSURE_STRUCT(lpPoint, POINT);
     BOOL ret = Old_GetCursorPos(lpPoint);
 
 	/* work around the fact that skipping sleeps prevents the human module from making the system look active */
-	if (lpPoint && time_skipped.QuadPart != last_skipped.QuadPart) {
+	if (ret && time_skipped.QuadPart != last_skipped.QuadPart) {
 		int xres, yres;
 		xres = our_GetSystemMetrics(0);
 		yres = our_GetSystemMetrics(1);
@@ -512,9 +513,13 @@ HOOKDEF(BOOL, WINAPI, GetCursorPos,
 		last_skipped.QuadPart = time_skipped.QuadPart;
 	}
 
-	LOQ_bool("misc", "ii", "x", lpPoint != NULL ? lpPoint->x : 0,
-        "y", lpPoint != NULL ? lpPoint->y : 0);
-	
+	if (ret){
+    	    LOQ_bool("misc", "ii", "x", lpPoint != NULL ? lpPoint->x : 0,
+    			 "y", lpPoint != NULL ? lpPoint->y : 0);
+	}
+	else{
+	    LOQ_bool("misc", "ii", "x", 0, "y", 0);
+	}
 	return ret;
 }
 
