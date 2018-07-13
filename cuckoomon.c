@@ -646,7 +646,7 @@ void revalidate_all_hooks(void)
 
 PVOID g_dll_notify_cookie;
 
-VOID CALLBACK DllLoadNotification(
+VOID CALLBACK New_DllLoadNotification(
 	_In_     ULONG                       NotificationReason,
 	_In_     const PLDR_DLL_NOTIFICATION_DATA NotificationData,
 	_In_opt_ PVOID                       Context)
@@ -742,9 +742,9 @@ void set_hooks()
 	free(suspended_threads);
 
 	if (pLdrRegisterDllNotification)
-		pLdrRegisterDllNotification(0, &DllLoadNotification, NULL, &g_dll_notify_cookie);
+		pLdrRegisterDllNotification(0, &New_DllLoadNotification, NULL, &g_dll_notify_cookie);
 	else
-		register_dll_notification_manually(&DllLoadNotification);
+		register_dll_notification_manually(&New_DllLoadNotification);
 
 	hook_enable();
 }
