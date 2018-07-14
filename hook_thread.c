@@ -464,7 +464,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
             DoOutputDebugString("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }
-		if (CreateSuspended == FALSE && is_valid_address_range(ThreadHandle, 4)) {
+		if (CreateSuspended == FALSE && is_valid_address_range((ULONG_PTR)ThreadHandle, 4)) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(*ThreadHandle);

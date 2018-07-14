@@ -240,7 +240,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 
 	if (ret) {
 		pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
-		if (!(dwCreationFlags & CREATE_SUSPENDED) && is_valid_address_range(lpProcessInfo, sizeof(PROCESS_INFORMATION)))
+		if (!(dwCreationFlags & CREATE_SUSPENDED) && is_valid_address_range((ULONG_PTR)lpProcessInfo, (DWORD)sizeof(PROCESS_INFORMATION)))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
 	}
@@ -584,7 +584,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 	    "ProcessHandle", ProcessHandle,
 	    "BaseAddress", BaseAddress,
 	    "Buffer", NumberOfBytesWritten, Buffer,
-	    "BufferLength", is_valid_address_range(NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
+	    "BufferLength", is_valid_address_range((ULONG_PTR)NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
 	    "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
