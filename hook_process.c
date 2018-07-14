@@ -542,7 +542,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadVirtualMemory,
 
     ret = Old_NtReadVirtualMemory(ProcessHandle, BaseAddress, Buffer, NumberOfBytesToRead, NumberOfBytesRead);
 
-    LOQ_ntstatus("process", "ppB", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, NumberOfBytesToRead, "Size", "Buffer", NumberOfBytesRead, Buffer);
+    LOQ_ntstatus("process", "pphB", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "Size", NumberOfBytesToRead, "Buffer", NumberOfBytesRead, Buffer);
 
 	return ret;
 }
