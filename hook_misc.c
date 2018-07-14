@@ -658,7 +658,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationProcess,
 	__in ULONG ProcessInformationLength
 ) {
 	NTSTATUS ret = Old_NtSetInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength);
-	if (NT_SUCCESS(ret) && (ProcessInformationClass == ProcessExecuteFlags || ProcessInformationClass == ProcessBreakOnTermination) && ProcessInformationLength == 4)
+	if ((ProcessInformationClass == ProcessExecuteFlags || ProcessInformationClass == ProcessBreakOnTermination) && ProcessInformationLength == 4)
 		LOQ_ntstatus("process", "ii", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", *(int*)ProcessInformation);
     else
 		LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
