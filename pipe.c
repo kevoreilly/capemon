@@ -68,42 +68,42 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
 
             ret += _pipe_ascii(&out, s, (int)strlen(s));
         }
-		else if (*fmt == 'c') {
-			char buf[2];
-			buf[0] = va_arg(args, char);
-			buf[1] = '\0';
-			ret += _pipe_ascii(&out, buf, 1);
-		}
+        else if (*fmt == 'c') {
+            char buf[2];
+            buf[0] = va_arg(args, char);
+            buf[1] = '\0';
+            ret += _pipe_ascii(&out, buf, 1);
+        }
         else if(*fmt == 'Z') {
             const wchar_t *s = va_arg(args, const wchar_t *);
             if(s == NULL) return -1;
 
             ret += _pipe_unicode(&out, s, lstrlenW(s));
         }
-		else if (*fmt == 'F') {
-			const wchar_t *s = va_arg(args, const wchar_t *);
-			wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
-			if (s == NULL) return -1;
-			if (absolutepath) {
-				ensure_absolute_unicode_path(absolutepath, s);
-				ret += _pipe_unicode(&out, absolutepath, lstrlenW(absolutepath));
-				free(absolutepath);
-			}
-			else {
-				return -1;
-			}
-		}
-		else if (*fmt == 's') {
+        else if (*fmt == 'F') {
+            const wchar_t *s = va_arg(args, const wchar_t *);
+            wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+            if (s == NULL) return -1;
+            if (absolutepath) {
+                ensure_absolute_unicode_path(absolutepath, s);
+                ret += _pipe_unicode(&out, absolutepath, lstrlenW(absolutepath));
+                free(absolutepath);
+            }
+            else {
+                return -1;
+            }
+        }
+        else if (*fmt == 's') {
             int len = va_arg(args, int);
             const char *s = va_arg(args, const char *);
-            if(s == NULL) return -1;
+            if(s == NULL || !is_valid_address_range((ULONG_PTR)s, len)) return -1;
 
-			ret += _pipe_ascii(&out, s, len < 0 ? (int)strlen(s) : len);
+            ret += _pipe_ascii(&out, s, len < 0 ? (int)strlen(s) : len);
         }
         else if(*fmt == 'S') {
             int len = va_arg(args, int);
             const wchar_t *s = va_arg(args, const wchar_t *);
-            if(s == NULL) return -1;
+            if(s == NULL || !is_valid_address_range((ULONG_PTR)s, len)) return -1;
 
             ret += _pipe_unicode(&out, s, len < 0 ? lstrlenW(s) : len);
         }
@@ -116,43 +116,43 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
         }
         else if(*fmt == 'O') {
             OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
-			wchar_t path[MAX_PATH_PLUS_TOLERANCE];
-			wchar_t *absolutepath;
+            wchar_t path[MAX_PATH_PLUS_TOLERANCE];
+            wchar_t *absolutepath;
 
             if(obj == NULL || obj->ObjectName == NULL) return -1;
 
-			absolutepath = malloc(32768 * sizeof(wchar_t));
-			if (absolutepath) {
-				path_from_object_attributes(obj, path, (unsigned int)MAX_PATH_PLUS_TOLERANCE);
+            absolutepath = malloc(32768 * sizeof(wchar_t));
+            if (absolutepath) {
+                path_from_object_attributes(obj, path, (unsigned int)MAX_PATH_PLUS_TOLERANCE);
 
-				ensure_absolute_unicode_path(absolutepath, path);
+                ensure_absolute_unicode_path(absolutepath, path);
 
-				ret += _pipe_unicode(&out, absolutepath, lstrlenW(absolutepath));
-				free(absolutepath);
-			}
-			else {
-				ret += _pipe_unicode(&out, L"", 0);
-			}
+                ret += _pipe_unicode(&out, absolutepath, lstrlenW(absolutepath));
+                free(absolutepath);
+            }
+            else {
+                ret += _pipe_unicode(&out, L"", 0);
+            }
         }
         else if(*fmt == 'd') {
             char s[32];
-			num_to_string(s, sizeof(s), va_arg(args, int));
-			ret += _pipe_ascii(&out, s, (int)strlen(s));
+            num_to_string(s, sizeof(s), va_arg(args, int));
+            ret += _pipe_ascii(&out, s, (int)strlen(s));
         }
         else if(*fmt == 'x') {
             char s[16];
             sprintf(s, "%x", va_arg(args, int));
-			ret += _pipe_ascii(&out, s, (int)strlen(s));
+            ret += _pipe_ascii(&out, s, (int)strlen(s));
         }
-		else if (*fmt == 'p') {
-			char s[18];
-			sprintf(s, "%p", va_arg(args, void *));
-			ret += _pipe_ascii(&out, s, (int)strlen(s));
-		}
-		else {
-			const char *msg = "-- UNKNOWN FORMAT STRING -- ";
-			ret += _pipe_ascii(&out, msg, (int)strlen(msg));
-		}
+        else if (*fmt == 'p') {
+            char s[18];
+            sprintf(s, "%p", va_arg(args, void *));
+            ret += _pipe_ascii(&out, s, (int)strlen(s));
+        }
+        else {
+            const char *msg = "-- UNKNOWN FORMAT STRING -- ";
+            ret += _pipe_ascii(&out, msg, (int)strlen(msg));
+        }
         fmt++;
     }
     return ret;
