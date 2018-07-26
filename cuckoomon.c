@@ -403,7 +403,7 @@ static hook_t g_hooks[] = {
 	HOOK(user32, GetAsyncKeyState),
 	HOOK(ntdll, NtLoadDriver),
 	HOOK(ntdll, NtSetInformationProcess),
-	HOOK(ntdll, NtQueryInformationProcess),
+	//HOOK(ntdll, NtQueryInformationProcess),
 	HOOK(ntdll, RtlDecompressBuffer),
 	HOOK(ntdll, RtlCompressBuffer),
 	HOOK(kernel32, GetSystemInfo),
