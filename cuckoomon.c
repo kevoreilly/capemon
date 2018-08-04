@@ -86,6 +86,8 @@ static hook_t g_hooks[] = {
 	//HOOK_SPECIAL(ntdll, NtCreateThread),
 	//HOOK_SPECIAL(ntdll, NtCreateThreadEx),
 	//HOOK_SPECIAL(ntdll, NtTerminateThread),
+    //HOOK_SPECIAL(kernel32, lstrcpynA),
+    //HOOK_SPECIAL(kernel32, lstrcmpiA),
 
 	// has special handling
 

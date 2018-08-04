@@ -2887,3 +2887,14 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationThread,
     IN ULONG ThreadInformationLength,
     OUT PULONG ReturnLength OPTIONAL
 );
+
+extern HOOKDEF(LPSTR, WINAPI, lstrcpynA,
+  _Out_ LPSTR  lpString1,
+  _In_  LPSTR  lpString2,
+  _In_  int    iMaxLength
+);
+
+extern HOOKDEF(int, WINAPI, lstrcmpiA,
+  _In_  LPCSTR   lpString1,
+  _In_  LPCSTR   lpString2
+);

@@ -1129,3 +1129,32 @@ HOOKDEF(void, WINAPIV, srand,
 
 	LOQ_void("misc", "h", "seed", seed);
 }
+
+HOOKDEF(LPSTR, WINAPI, lstrcpynA,
+  _Out_ LPSTR   lpString1,
+  _In_  LPSTR   lpString2,
+  _In_  int     iMaxLength
+)
+{
+    LPSTR ret;
+
+    ret = Old_lstrcpynA(lpString1, lpString2, iMaxLength);
+
+	LOQ_nonzero("misc", "u", "String", lpString1);
+
+    return ret;
+}
+
+HOOKDEF(int, WINAPI, lstrcmpiA,
+  _In_  LPCSTR   lpString1,
+  _In_  LPCSTR   lpString2
+)
+{
+    int ret;
+
+    ret = Old_lstrcmpiA(lpString1, lpString2);
+
+	LOQ_nonzero("misc", "ss", "String1", lpString1, "String2", lpString2);
+
+    return ret;
+}
