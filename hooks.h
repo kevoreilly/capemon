@@ -2864,11 +2864,6 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemInformation,
 	_Out_opt_ PULONG ReturnLength
 );
 
-extern HOOKDEF(unsigned int, WINAPIV, SizeofResource,
-    _In_opt_ HMODULE hModule,
-    _In_     HRSRC   hResInfo
-);
-
 extern HOOKDEF(void, WINAPIV, srand,
    unsigned int seed
 );   
@@ -2897,4 +2892,30 @@ extern HOOKDEF(LPSTR, WINAPI, lstrcpynA,
 extern HOOKDEF(int, WINAPI, lstrcmpiA,
   _In_  LPCSTR   lpString1,
   _In_  LPCSTR   lpString2
+);
+
+extern HOOKDEF(HRSRC, WINAPI, FindResourceA,
+  HMODULE hModule,
+  LPCSTR lpName,
+  LPCSTR lpType
+);
+
+extern HOOKDEF(HRSRC, WINAPI, FindResourceW,
+  HMODULE hModule,
+  LPCWSTR lpName,
+  LPCWSTR lpType
+);
+
+extern HOOKDEF(HGLOBAL, WINAPI, LoadResource,
+  _In_opt_ HMODULE hModule,
+  _In_     HRSRC   hResInfo
+);
+
+extern HOOKDEF(LPVOID, WINAPI, LockResource,
+  _In_ HGLOBAL hResData
+);
+
+extern HOOKDEF(DWORD, WINAPI, SizeofResource,
+    _In_opt_ HMODULE hModule,
+    _In_     HRSRC   hResInfo
 );

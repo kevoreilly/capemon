@@ -1107,18 +1107,6 @@ HOOKDEF(void, WINAPIV, memcpy,
 	return;
 }
 
-HOOKDEF(unsigned int, WINAPIV, SizeofResource,
-    _In_opt_ HMODULE hModule,
-    _In_     HRSRC   hResInfo
-)
-{
-	unsigned int ret = Old_SizeofResource(hModule, hResInfo);
-
-	LOQ_nonzero("misc", "ppi", "ModuleHandle", hModule, "ResourceInfo", hResInfo, "Size", ret);
-    
-    return ret;
-}
-
 HOOKDEF(void, WINAPIV, srand,
 	unsigned int seed
 )
@@ -1155,6 +1143,67 @@ HOOKDEF(int, WINAPI, lstrcmpiA,
     ret = Old_lstrcmpiA(lpString1, lpString2);
 
 	LOQ_nonzero("misc", "ss", "String1", lpString1, "String2", lpString2);
+
+    return ret;
+}
+
+HOOKDEF(HRSRC, WINAPI, FindResourceA,
+  HMODULE hModule,
+  LPCSTR lpName,
+  LPCSTR lpType
+)
+{
+    HRSRC ret = Old_FindResourceA(hModule, lpName, lpType);
+
+    LOQ_handle("misc", "ps", "Module", hModule, "Name", lpName);
+
+    return ret;
+}
+
+ HOOKDEF(HRSRC, WINAPI, FindResourceW,
+  HMODULE hModule,
+  LPCWSTR lpName,
+  LPCWSTR lpType
+)
+{
+    HRSRC ret = Old_FindResourceW(hModule, lpName, lpType);
+
+    LOQ_handle("misc", "pu", "Module", hModule, "Name", lpName);
+
+    return ret;
+}
+
+ HOOKDEF(HGLOBAL, WINAPI, LoadResource,
+  _In_opt_ HMODULE hModule,
+  _In_     HRSRC   hResInfo
+)
+{
+    HGLOBAL ret = Old_LoadResource(hModule, hResInfo);
+
+    LOQ_handle("misc", "pp", "Module", hModule, "ResourceInfo", hResInfo);
+
+    return ret;
+}
+
+HOOKDEF(LPVOID, WINAPI, LockResource,
+  _In_ HGLOBAL hResData
+)
+{
+	LPVOID ret = Old_LockResource(hResData);
+
+	LOQ_nonnull("misc", "p", "ResourceData", hResData);
+
+    return ret;
+}
+
+HOOKDEF(DWORD, WINAPI, SizeofResource,
+    _In_opt_ HMODULE hModule,
+    _In_     HRSRC   hResInfo
+)
+{
+	DWORD ret = Old_SizeofResource(hModule, hResInfo);
+
+	LOQ_nonzero("misc", "pp", "ModuleHandle", hModule, "ResourceInfo", hResInfo);
 
     return ret;
 }

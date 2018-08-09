@@ -368,7 +368,6 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, memcpy),
 #endif
 	HOOK(msvcrt, memcpy),
-	//HOOK(kernel32, SizeofResource),
     HOOK(msvcrt, srand),
     
 	// for debugging only
@@ -430,6 +429,11 @@ static hook_t g_hooks[] = {
 	HOOK(user32, SystemParametersInfoW),
 	HOOK(pstorec, PStoreCreateInstance),
 	HOOK(advapi32, SaferIdentifyLevel),
+	HOOK(kernel32, FindResourceA),
+	HOOK(kernel32, FindResourceW),
+	HOOK(kernel32, LoadResource),
+	HOOK(kernel32, LockResource),
+	HOOK(kernel32, SizeofResource),
 
 	//
     // Network Hooks
