@@ -435,6 +435,21 @@ static hook_t g_hooks[] = {
 	HOOK(kernel32, LockResource),
 	HOOK(kernel32, SizeofResource),
 
+	// functions with callbacks (abused for control-flow transfer)
+	HOOK(kernel32, EnumResourceTypesExA),
+	HOOK(kernel32, EnumResourceTypesExW),
+	HOOK(kernel32, EnumCalendarInfoA),
+	HOOK(kernel32, EnumCalendarInfoW),
+	HOOK(kernel32, EnumTimeFormatsA),
+	HOOK(kernel32, EnumTimeFormatsW),
+
+	// transaction functions (for process doppel-ganging)
+	HOOK(ntdll, NtCreateTransaction),
+	HOOK(ntdll, NtOpenTransaction),
+	HOOK(ntdll, NtRollbackTransaction),
+	HOOK(ntdll, NtCommitTransaction),
+	HOOK(ntdll, RtlSetCurrentTransaction),
+
 	//
     // Network Hooks
     //

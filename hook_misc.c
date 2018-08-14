@@ -1207,3 +1207,171 @@ HOOKDEF(DWORD, WINAPI, SizeofResource,
 
     return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, EnumResourceTypesExA,
+	_In_opt_ HMODULE         hModule,
+	_In_     ENUMRESTYPEPROC lpEnumFunc,
+	_In_     LONG_PTR        lParam,
+	_In_     DWORD           dwFlags,
+	_In_     LANGID          LangId
+) {
+	BOOL ret = TRUE;
+	LOQ_bool("misc", "ppphh",
+		"ModuleHandle", hModule,
+		"EnumFunc", lpEnumFunc,
+		"Parameter", lParam,
+		"Flags", dwFlags,
+		"LangId", LangId
+	);
+	return Old_EnumResourceTypesExA(hModule, lpEnumFunc, lParam, dwFlags, LangId);;
+}
+
+HOOKDEF(BOOL, WINAPI, EnumResourceTypesExW,
+	_In_opt_ HMODULE         hModule,
+	_In_     ENUMRESTYPEPROC lpEnumFunc,
+	_In_     LONG_PTR        lParam,
+	_In_     DWORD           dwFlags,
+	_In_     LANGID          LangId
+) {
+	BOOL ret = TRUE;
+	LOQ_bool("misc", "ppphh",
+		"ModuleHandle", hModule,
+		"EnumFunc", lpEnumFunc,
+		"Parameter", lParam,
+		"Flags", dwFlags,
+		"LangId", LangId
+	);
+	return Old_EnumResourceTypesExW(hModule, lpEnumFunc, lParam, dwFlags, LangId);;
+}
+
+HOOKDEF(BOOL, WINAPI, EnumCalendarInfoA,
+	CALINFO_ENUMPROCA lpCalInfoEnumProc,
+	LCID              Locale,
+	CALID             Calendar,
+	CALTYPE           CalType
+) {
+	BOOL ret = TRUE;
+	LOQ_bool("misc", "phhh",
+		"CalInfoEnumProc", lpCalInfoEnumProc,
+		"Locale", Locale,
+		"Calendar", Calendar,
+		"CalType", CalType
+	);
+	return Old_EnumCalendarInfoA(lpCalInfoEnumProc, Locale, Calendar, CalType);
+}
+
+HOOKDEF(BOOL, WINAPI, EnumCalendarInfoW,
+	CALINFO_ENUMPROCA lpCalInfoEnumProc,
+	LCID              Locale,
+	CALID             Calendar,
+	CALTYPE           CalType
+) {
+	BOOL ret = TRUE;
+	LOQ_bool("misc", "phhh",
+		"CalInfoEnumProc", lpCalInfoEnumProc,
+		"Locale", Locale,
+		"Calendar", Calendar,
+		"CalType", CalType
+	);
+	return Old_EnumCalendarInfoW(lpCalInfoEnumProc, Locale, Calendar, CalType);
+}
+
+HOOKDEF(BOOL, WINAPI, EnumTimeFormatsA,
+	TIMEFMT_ENUMPROCA lpTimeFmtEnumProc,
+	LCID              Locale,
+	DWORD             dwFlags
+) {
+	BOOL ret = TRUE;
+	LOQ_bool("misc", "phh",
+		"TimeFmtEnumProc", lpTimeFmtEnumProc,
+		"Locale", Locale,
+		"Flags", dwFlags
+	);
+	return Old_EnumTimeFormatsA(lpTimeFmtEnumProc, Locale, dwFlags);
+}
+
+HOOKDEF(BOOL, WINAPI, EnumTimeFormatsW,
+	TIMEFMT_ENUMPROCA lpTimeFmtEnumProc,
+	LCID              Locale,
+	DWORD             dwFlags
+) {
+	BOOL ret = TRUE;
+	LOQ_bool("misc", "phh",
+		"TimeFmtEnumProc", lpTimeFmtEnumProc,
+		"Locale", Locale,
+		"Flags", dwFlags
+	);
+	return Old_EnumTimeFormatsW(lpTimeFmtEnumProc, Locale, dwFlags);
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtCreateTransaction,
+	PHANDLE            TransactionHandle,
+	ACCESS_MASK        DesiredAccess,
+	POBJECT_ATTRIBUTES ObjectAttributes,
+	LPGUID             Uow,
+	HANDLE             TmHandle,
+	ULONG              CreateOptions,
+	ULONG              IsolationLevel,
+	ULONG              IsolationFlags,
+	PLARGE_INTEGER     Timeout,
+	PUNICODE_STRING    Description
+) {
+	NTSTATUS ret = Old_NtCreateTransaction(TransactionHandle, DesiredAccess, ObjectAttributes, Uow, TmHandle, CreateOptions, IsolationLevel, IsolationFlags, Timeout, Description);
+	LOQ_ntstatus("misc", "PhObphhhio",
+		"TransactionHandle", TransactionHandle,
+		"DesiredAccess", DesiredAccess,
+		"ObjectAttributes", ObjectAttributes,
+		"UnitOfWork", sizeof (GUID), Uow,
+		"TmHandle", TmHandle,
+		"CreateOptions", CreateOptions,
+		"IsolationLevel", IsolationLevel,
+		"IsolationFlags", IsolationFlags,
+		"Timeout", Timeout,
+		"Description", Description
+	);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtOpenTransaction,
+	PHANDLE            TransactionHandle,
+	ACCESS_MASK        DesiredAccess,
+	POBJECT_ATTRIBUTES ObjectAttributes,
+	LPGUID             Uow,
+	HANDLE             TmHandle
+) {
+	NTSTATUS ret = Old_NtOpenTransaction(TransactionHandle, DesiredAccess, ObjectAttributes, Uow, TmHandle);
+	LOQ_ntstatus("misc", "PhObp",
+		"TransactionHandle", TransactionHandle,
+		"DesiredAccess", DesiredAccess,
+		"ObjectAttributes", ObjectAttributes,
+		"UnitOfWork", sizeof (GUID), Uow,
+		"TmHandle", TmHandle
+	);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtRollbackTransaction,
+	HANDLE  TransactionHandle,
+	BOOLEAN Wait
+) {
+	NTSTATUS ret = Old_NtRollbackTransaction(TransactionHandle, Wait);
+	LOQ_ntstatus("misc", "pi", "TransactionHandle", TransactionHandle, "Wait", Wait);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtCommitTransaction,
+	HANDLE  TransactionHandle,
+	BOOLEAN Wait
+) {
+	NTSTATUS ret = Old_NtCommitTransaction(TransactionHandle, Wait);
+	LOQ_ntstatus("misc", "pi", "TransactionHandle", TransactionHandle, "Wait", Wait);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, RtlSetCurrentTransaction,
+	_In_ HANDLE     TransactionHandle
+) {
+	BOOL ret = Old_RtlSetCurrentTransaction(TransactionHandle);
+	LOQ_bool("misc", "p", "TransactionHandle", TransactionHandle);
+	return ret;
+}
