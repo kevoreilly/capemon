@@ -2894,16 +2894,18 @@ extern HOOKDEF(int, WINAPI, lstrcmpiA,
   _In_  LPCSTR   lpString2
 );
 
-extern HOOKDEF(HRSRC, WINAPI, FindResourceA,
+extern HOOKDEF(HRSRC, WINAPI, FindResourceExA,
   HMODULE hModule,
+  LPCSTR lpType,
   LPCSTR lpName,
-  LPCSTR lpType
+  WORD wLanguage
 );
 
-extern HOOKDEF(HRSRC, WINAPI, FindResourceW,
+extern HOOKDEF(HRSRC, WINAPI, FindResourceExW,
   HMODULE hModule,
+  LPCWSTR lpType,
   LPCWSTR lpName,
-  LPCWSTR lpType
+  WORD wLanguage
 );
 
 extern HOOKDEF(HGLOBAL, WINAPI, LoadResource,
