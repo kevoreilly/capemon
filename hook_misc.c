@@ -1147,33 +1147,59 @@ HOOKDEF(int, WINAPI, lstrcmpiA,
     return ret;
 }
 
-HOOKDEF(HRSRC, WINAPI, FindResourceA,
-  HMODULE hModule,
-  LPCSTR lpName,
-  LPCSTR lpType
+HOOKDEF(HRSRC, WINAPI, FindResourceExA,
+    HMODULE hModule,
+    LPCSTR lpType,
+    LPCSTR lpName,
+    WORD wLanguage
 )
 {
-    HRSRC ret = Old_FindResourceA(hModule, lpName, lpType);
+    HRSRC ret = Old_FindResourceExA(hModule, lpType, lpName, wLanguage);
 
-    LOQ_handle("misc", "ps", "Module", hModule, "Name", lpName);
+    char type_id[8];
+    if (IS_INTRESOURCE(lpType)) {
+        snprintf(type_id, sizeof type_id, "#%hu", (WORD)lpType);
+        lpType = type_id;
+    }
+
+    char name_id[8];
+    if (IS_INTRESOURCE(lpName)) {
+        snprintf(name_id, sizeof name_id, "#%hu", (WORD)lpName);
+        lpName = name_id;
+    }
+
+    LOQ_handle("misc", "pssh", "Module", hModule, "Type", lpType, "Name", lpName, "Language", wLanguage);
 
     return ret;
 }
 
- HOOKDEF(HRSRC, WINAPI, FindResourceW,
-  HMODULE hModule,
-  LPCWSTR lpName,
-  LPCWSTR lpType
+HOOKDEF(HRSRC, WINAPI, FindResourceExW,
+    HMODULE hModule,
+    LPCWSTR lpType,
+    LPCWSTR lpName,
+    WORD wLanguage
 )
 {
-    HRSRC ret = Old_FindResourceW(hModule, lpName, lpType);
+    HRSRC ret = Old_FindResourceExW(hModule, lpType, lpName, wLanguage);
 
-    LOQ_handle("misc", "pu", "Module", hModule, "Name", lpName);
+    wchar_t type_id[8];
+    if (IS_INTRESOURCE(lpType)) {
+        swprintf(type_id, sizeof type_id, L"#%hu", (WORD)lpType);
+        lpType = type_id;
+    }
+
+    wchar_t name_id[8];
+    if (IS_INTRESOURCE(lpName)) {
+        swprintf(name_id, sizeof name_id, L"#%hu", (WORD)lpName);
+        lpName = name_id;
+    }
+
+    LOQ_handle("misc", "puuh", "Module", hModule, "Type", lpType, "Name", lpName, "Language", wLanguage);
 
     return ret;
 }
 
- HOOKDEF(HGLOBAL, WINAPI, LoadResource,
+HOOKDEF(HGLOBAL, WINAPI, LoadResource,
   _In_opt_ HMODULE hModule,
   _In_     HRSRC   hResInfo
 )
