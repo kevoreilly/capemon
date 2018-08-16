@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <ctype.h>
 #include "ntapi.h"
+#include <Psapi.h>
 #include <shlwapi.h>
 #include <sddl.h>
 #include "misc.h"
@@ -37,6 +38,7 @@ static _NtQueryObject pNtQueryObject;
 static _NtQueryKey pNtQueryKey;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
+static _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
 _NtProtectVirtualMemory pNtProtectVirtualMemory;
 _NtFreeVirtualMemory pNtFreeVirtualMemory;
@@ -58,6 +60,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pNtFreeVirtualMemory = GetProcAddress(ntdllbase, "NtFreeVirtualMemory");
 	*(FARPROC *)&pLdrRegisterDllNotification = GetProcAddress(ntdllbase, "LdrRegisterDllNotification");
 	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
+	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
 }
 
 ULONG_PTR g_our_dll_base;
@@ -1866,4 +1869,23 @@ BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 		return TRUE;
 	
 	return FALSE;
+}
+
+void prevent_module_reloading(PVOID *BaseAddress) {
+	// prevent hook evasion via mapping system libraries (e.g. ntdll.dll) from disk
+	// this still won't stop reading the file using NtReadFile and mapping it manually
+	wchar_t *filepath = malloc(MAX_PATH * sizeof(wchar_t));
+	GetMappedFileNameW(GetCurrentProcess(), *BaseAddress, filepath, MAX_PATH);
+
+	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+	ensure_absolute_unicode_path(absolutepath, filepath);
+	free(filepath);
+
+	HMODULE address = GetModuleHandleW(absolutepath);
+	if (address != NULL) {
+		pipe("INFO:Sample tried to reload already loaded module '%Z' from disk, returning original module address instead: 0x%x", absolutepath, address);
+		pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
+		*BaseAddress = (LPVOID)address;
+	}
+	free(absolutepath);
 }
