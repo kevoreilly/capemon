@@ -40,12 +40,12 @@ void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
     va_start(args, lpOutputString);
 
     memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _vsntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, lpOutputString, args);
+    _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
 #ifdef STANDALONE
     OutputDebugString(DebugOutput);
 #else
     memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "DEBUG:%s", DebugOutput);
+    _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
     pipe(PipeOutput, strlen(PipeOutput));
 #endif
     va_end(args);
@@ -74,15 +74,15 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 		NULL);
     
     memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _vsntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, lpOutputString, args);
+    _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
     
     memset(ErrorOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _sntprintf_s(ErrorOutput, MAX_PATH, MAX_PATH, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
+    _sntprintf_s(ErrorOutput, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
 #ifdef STANDALONE
     OutputDebugString(ErrorOutput);
 #else
     memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "DEBUG:%s", ErrorOutput);
+    _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
     pipe(PipeOutput, strlen(PipeOutput));
 #endif
     
