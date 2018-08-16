@@ -46,8 +46,10 @@ typedef NTSTATUS(WINAPI *_NtQueryKey)(
 	PULONG  ResultLength);
 typedef NTSTATUS(WINAPI *_NtDelayExecution)(
 	BOOLEAN Alertable,
-	PLARGE_INTEGER Interval
-	);
+	PLARGE_INTEGER Interval);
+typedef NTSTATUS(WINAPI *_NtUnmapViewOfSection)(
+	HANDLE ProcessHandle,
+	PVOID BaseAddress);
 
 typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA {
 	ULONG Flags;
@@ -200,3 +202,5 @@ wchar_t *ascii_to_unicode_dup(char *str);
 int is_stack_pivoted(void);
 
 LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
+
+void prevent_module_reloading(PVOID *BaseAddress);

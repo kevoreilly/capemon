@@ -506,6 +506,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
+		else {
+			prevent_module_reloading(BaseAddress);
+		}
 	}
 	return ret;
 }
