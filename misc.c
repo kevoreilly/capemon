@@ -363,6 +363,12 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 	// fake the manufacturer name
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\SystemInformation\\SystemManufacturer"))
 		replace_string_in_buf(Data, DataLength, "QEMU", "DELL");
+
+	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\IDE\\") ||
+        !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
+		replace_string_in_buf(Data, DataLength, "VMware", "Lenovo");
+		replace_string_in_buf(Data, DataLength, "VMWar", "Lenov");
+	}
 }
 
 void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength)
@@ -430,6 +436,12 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 	// fake the manufacturer name
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\SystemInformation\\SystemManufacturer"))
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"QEMU", L"DELL");
+
+	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\IDE\\") ||
+        !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMWar", L"Lenov");
+	}
 }
 
 
