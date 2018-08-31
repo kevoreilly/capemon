@@ -368,6 +368,7 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
         !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
 		replace_string_in_buf(Data, DataLength, "VMware", "Lenovo");
 		replace_string_in_buf(Data, DataLength, "VMWar", "Lenov");
+		replace_string_in_buf(Data, DataLength, "VBOX", "DELL");
 	}
 }
 
@@ -441,6 +442,7 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
         !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMWar", L"Lenov");
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
 	}
 }
 
