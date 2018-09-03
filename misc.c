@@ -646,10 +646,9 @@ void add_all_dlls_to_dll_ranges(void)
 	for (mod = (LDR_MODULE *)mod->InLoadOrderModuleList.Flink;
 		mod->BaseAddress != NULL;
 		mod = (LDR_MODULE *)mod->InLoadOrderModuleList.Flink) {
-		//if ((ULONG_PTR)mod->BaseAddress != base_of_dll_of_interest)
+		if ((ULONG_PTR)mod->BaseAddress != base_of_dll_of_interest)
 			add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
-
 }
 
 char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset)
