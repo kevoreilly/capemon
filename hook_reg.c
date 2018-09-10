@@ -67,7 +67,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 
 		// fake some values
 		if (!g_config.no_stealth)
-			perform_ascii_registry_fakery(keypath, lpSubKey, (ULONG)strlen(lpSubKey));
+			perform_ascii_registry_fakery(keypath, (LPVOID)lpSubKey, (ULONG)strlen(lpSubKey));
 		free(keybuf);
     }
 

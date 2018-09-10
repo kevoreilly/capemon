@@ -234,6 +234,22 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
+			else if (!strcmp(key, "dump-on-api")) {
+				unsigned int x = 0;
+				char *p2;
+				p = value;
+				while (p && x < EXCLUSION_MAX) {
+					p2 = strchr(p, ':');
+					if (p2) {
+						*p2 = '\0';
+					}
+					g_config.dump_on_apinames[x++] = strdup(p);
+                    DoOutputDebugString("Added '%s' to dump-on-API list.\n", p);
+					if (p2 == NULL)
+						break;
+					p = p2 + 1;
+				}
+			}
             else if (!strcmp(key, "bp0")) {
 				bp0 = (PVOID)strtoul(value, NULL, 10);
                 DoOutputDebugString("bp0 set to 0x%x", bp0);

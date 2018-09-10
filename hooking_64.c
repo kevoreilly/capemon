@@ -28,11 +28,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
-extern DWORD g_tls_hook_index;
-
-// do not change this number
-#define TLS_LAST_ERROR 0x34
-
 // length disassembler engine
 static int lde(void *addr)
 {

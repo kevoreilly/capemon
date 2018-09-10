@@ -687,6 +687,7 @@ VOID CALLBACK New_DllLoadNotification(
 		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) {
             if (!base_of_dll_of_interest)
                 set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
+            
             DoOutputDebugString("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
         }
         else {
@@ -727,8 +728,7 @@ void set_hooks()
 	// the hooks contain executable code as well, so they have to be RWX
 	DWORD old_protect;
 
-	VirtualProtect(g_hooks, sizeof(g_hooks), PAGE_EXECUTE_READWRITE,
-		&old_protect);
+	VirtualProtect(g_hooks, sizeof(g_hooks), PAGE_EXECUTE_READWRITE, &old_protect);
 
 	memset(&threadInfo, 0, sizeof(threadInfo));
 	threadInfo.dwSize = sizeof(threadInfo);
@@ -954,8 +954,6 @@ void init_private_heap(void)
 
 BOOLEAN g_dll_main_complete;
 
-DWORD g_tls_hook_index;
-
 extern void ignored_threads_init(void);
 
 extern CRITICAL_SECTION readfile_critsec;
@@ -1014,10 +1012,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		//ignored_threads_init();
 
 		get_our_process_path();
-
-		g_tls_hook_index = TlsAlloc();
-		if (g_tls_hook_index == TLS_OUT_OF_INDEXES)
-			goto abort;
 
 		// adds our own DLL range as well, since the hiding is done later
 		add_all_dlls_to_dll_ranges();

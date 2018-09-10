@@ -1334,7 +1334,7 @@ void PeParser::fixPeHeader()
 //            DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
 //#endif
 //		}        
-//	}
+	}
 	else
 	{
 		//delete bound import directories

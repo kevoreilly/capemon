@@ -105,10 +105,11 @@ struct _g_config {
 	char *excluded_apinames[EXCLUSION_MAX];
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
 	char *base_on_apiname[EXCLUSION_MAX];
-    
+ 	char *dump_on_apinames[EXCLUSION_MAX];
+
     // should we dump each process on exit/analysis timeout?
     int procdump;
-    
+
     // should we attempt import reconstruction on each process dump? (slow)
     int import_reconstruction;
 };
