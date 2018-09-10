@@ -64,6 +64,10 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 				break;
 			}
 		}
+
+		// fake some values
+		if (!g_config.no_stealth)
+			perform_ascii_registry_fakery(keypath, lpSubKey, (ULONG)strlen(lpSubKey));
 		free(keybuf);
     }
 
@@ -113,6 +117,10 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExW,
 				break;
 			}
 		}
+
+		// fake some values
+		if (!g_config.no_stealth)
+			perform_unicode_registry_fakery(keypath, lpSubKey, (ULONG)wcslen(lpSubKey));
 		free(keybuf);
 	}
 

@@ -370,6 +370,12 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 		replace_string_in_buf(Data, DataLength, "VMWar", "Lenov");
 		replace_string_in_buf(Data, DataLength, "VBOX", "DELL");
 	}
+
+	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\DeviceClasses\\{53f5630d-b6bf-11d0-94f2-00a0c91efb8b}")) {
+		replace_string_in_buf(Data, DataLength, "VMware", "Lenovo");
+		replace_string_in_buf(Data, DataLength, "VMWar", "Lenov");
+		replace_string_in_buf(Data, DataLength, "VBOX", "DELL");
+	}
 }
 
 void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength)
@@ -440,6 +446,12 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\IDE\\") ||
         !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMWar", L"Lenov");
+		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
+	}
+
+	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\DeviceClasses\\{53f5630d-b6bf-11d0-94f2-00a0c91efb8b}")) {
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMWar", L"Lenov");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
