@@ -1327,14 +1327,14 @@ void PeParser::fixPeHeader()
 
 		pNTHeader32->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader32->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader32->OptionalHeader.FileAlignment);
 
-		if (moduleBaseAddress && moduleBaseAddress != pNTHeader32->OptionalHeader.ImageBase)
-		{
-			pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
-#ifdef DEBUG_COMMENTS
-        DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
-#endif
-		}        
-	}
+//		if (moduleBaseAddress && moduleBaseAddress != pNTHeader32->OptionalHeader.ImageBase)
+//		{
+//			pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
+//#ifdef DEBUG_COMMENTS
+//            DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader32->OptionalHeader.ImageBase);
+//#endif
+//		}        
+//	}
 	else
 	{
 		//delete bound import directories
@@ -1355,13 +1355,13 @@ void PeParser::fixPeHeader()
 
 		pNTHeader64->OptionalHeader.SizeOfHeaders = alignValue(dwSize + pNTHeader64->FileHeader.SizeOfOptionalHeader + (getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER)), pNTHeader64->OptionalHeader.FileAlignment);
 
-		if (moduleBaseAddress && moduleBaseAddress != pNTHeader64->OptionalHeader.ImageBase)
-		{
-			pNTHeader64->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
-#ifdef DEBUG_COMMENTS
-        DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader64->OptionalHeader.ImageBase);
-#endif
-		}        
+//		if (moduleBaseAddress && moduleBaseAddress != pNTHeader64->OptionalHeader.ImageBase)
+//		{
+//			    pNTHeader64->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
+//#ifdef DEBUG_COMMENTS
+//            DoOutputDebugString("fixPeHeader: ImageBase set to 0x%x.\n", pNTHeader64->OptionalHeader.ImageBase);
+//#endif
+//		}        
 	}
 
 	removeIatDirectory();
