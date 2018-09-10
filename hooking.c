@@ -26,8 +26,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "pipe.h"
 
-extern DWORD g_tls_hook_index;
-
 #ifdef _WIN64
 #define TLS_LAST_WIN32_ERROR 0x68
 #define TLS_LAST_NTSTATUS_ERROR 0x1250
@@ -37,6 +35,14 @@ extern DWORD g_tls_hook_index;
 #endif
 
 static lookup_t g_hook_info;
+
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern BOOL DumpRegion(PVOID Address);
+extern int DumpModuleInCurrentProcess(LPVOID ModuleBase);
+extern PVOID GetAllocationBase(PVOID Address);
+extern BOOL ModuleDumped;
+
+extern PVOID GetHookCallerBase();
 
 void hook_init()
 {
@@ -105,8 +111,45 @@ int called_by_hook(void)
 	return __called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer);
 }
 
-extern BOOLEAN is_ignored_thread(DWORD tid);
+void dump_on_api(hook_t *h)
+{
+	unsigned int i;
+	hook_info_t *hookinfo = hook_info();
 
+	for (i = 0; i < ARRAYSIZE(g_config.dump_on_apinames); i++) {
+        PVOID AllocationBase;
+		if (!g_config.dump_on_apinames[i])
+			break;
+		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
+            DoOutputDebugString("Dump-on-API: GetHookCallerBase 0x%p main_caller_retaddr 0x%p parent_caller_retaddr 0x%p.\n", GetHookCallerBase(), hookinfo->main_caller_retaddr, hookinfo->parent_caller_retaddr);
+            if (hookinfo->main_caller_retaddr) {
+                AllocationBase = GetAllocationBase((PVOID)hookinfo->main_caller_retaddr);
+                if (!AllocationBase)
+                    AllocationBase = GetAllocationBase((PVOID)hookinfo->parent_caller_retaddr);
+                if (AllocationBase) {
+                    if (DumpModuleInCurrentProcess(AllocationBase)) {
+                        ModuleDumped = TRUE;
+                        DoOutputDebugString("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+                    }
+                    else if (DumpRegion(AllocationBase)) {
+                        ModuleDumped = TRUE;
+                        DoOutputDebugString("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+                    }
+                    else {
+                        DoOutputDebugString("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+                    }
+                }
+                else
+                    DoOutputDebugString("Dump-on-API: Failed to obtain current module base address.\n");
+            }
+            return;
+        }
+	}
+
+	return;
+}
+
+extern BOOLEAN is_ignored_thread(DWORD tid);
 static hook_info_t tmphookinfo;
 DWORD tmphookinfo_threadid;
 
@@ -147,6 +190,10 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 		hookinfo->parent_caller_retaddr = 0;
 
 		operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
+
+#ifdef CAPE_DUMP_ON_API
+		dump_on_api(h);
+#endif
 
 		return 1;
 	}

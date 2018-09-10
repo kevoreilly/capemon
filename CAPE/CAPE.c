@@ -125,7 +125,7 @@ extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
 
-BOOL ProcessDumped, FilesDumped;
+BOOL ProcessDumped, FilesDumped, ModuleDumped;
 static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
