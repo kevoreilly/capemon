@@ -108,6 +108,7 @@ extern unsigned int address_is_in_stack(PVOID Address);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path;
+extern wchar_t *our_commandline;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 
@@ -1861,6 +1862,7 @@ int RoutineProcessDump()
 
 void init_CAPE()
 {
+    char* CommandLine;
     // Initialise CAPE global variables
     //
 #ifndef STANDALONE
@@ -1869,10 +1871,13 @@ void init_CAPE()
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
     WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path, (int)wcslen(our_process_path)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
     
+    CommandLine = (char*)malloc(MAX_PATH);
+    WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_commandline, (int)wcslen(our_commandline)+1, CommandLine, MAX_PATH, NULL, NULL);
+
     // This is package (and technique) dependent:
     CapeMetaData->DumpType = PROCDUMP;
     ProcessDumped = FALSE;
-    
+
     DumpCount = 0;
 
     // This flag controls whether a dump is automatically
@@ -1897,6 +1902,7 @@ void init_CAPE()
 #else
     DoOutputDebugString("CAPE initialised: 32-bit base package loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, GetModuleHandle(NULL), get_stack_bottom(), get_stack_top());
 #endif
-    
+
+    DoOutputDebugString("Commandline: %s.\n", CommandLine);
     return;
 }

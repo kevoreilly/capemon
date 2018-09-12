@@ -344,7 +344,7 @@ int procname_watch_init()
 	if (g_procname_watch_thread_handle != NULL)
 		return 0;
 
-	pipe("CRITICAL:Error initializing terminate event thread!");
+	pipe("CRITICAL:Error initializing procname watch thread!");
 	return -1;
 }
 
