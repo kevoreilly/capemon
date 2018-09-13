@@ -1802,10 +1802,10 @@ BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler)
 {
 	if (Context == NULL)
         return FALSE;
-    
+
     // set the trap flag
     Context->EFlags |= FL_TF;
-    
+
     SingleStepHandler = (SINGLE_STEP_HANDLER)Handler;
 
     return TRUE;
@@ -1841,7 +1841,7 @@ BOOL StepOverExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointIn
         return FALSE;
 
     Dr7 = (PDR7)&(Context->Dr7);
-    
+
 	switch(pBreakpointInfo->Register)
 	{
         case 0:
@@ -2174,8 +2174,6 @@ BOOL ContextSetThreadBreakpoint
 	}
 	else
 	{
-		DoOutputDebugString("ContextSetThreadBreakpoint: Call to ContextSetDebugRegister succeeded.\n");
-          
         CurrentThreadBreakpoint = GetThreadBreakpoints(GetCurrentThreadId());
         
         if (CurrentThreadBreakpoint == NULL)

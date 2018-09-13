@@ -514,7 +514,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationThread,
     ret = Old_NtSetInformationThread(ThreadHandle, ThreadInformationClass, ThreadInformation, ThreadInformationLength);
 
     if (ThreadInformationClass == ThreadHideFromDebugger)
-        LOQ_ntstatus("threading", "pib", "ThreadHandle", ThreadHandle, 
+        LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, 
             "ThreadInformationClass", ThreadInformationClass,
             "ThreadId", tid);
     

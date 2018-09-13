@@ -125,6 +125,10 @@ extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
+#ifdef CAPE_TRACE
+extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL BreakpointsSet;
+#endif
 
 BOOL ProcessDumped, FilesDumped, ModuleDumped;
 static unsigned int DumpCount;

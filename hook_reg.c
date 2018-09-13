@@ -66,7 +66,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 		}
 
 		// fake some values
-		if (!g_config.no_stealth)
+		if (lpSubKey && !g_config.no_stealth)
 			perform_ascii_registry_fakery(keypath, (LPVOID)lpSubKey, (ULONG)strlen(lpSubKey));
 		free(keybuf);
     }
@@ -119,7 +119,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExW,
 		}
 
 		// fake some values
-		if (!g_config.no_stealth)
+		if (lpSubKey && !g_config.no_stealth)
 			perform_unicode_registry_fakery(keypath, lpSubKey, (ULONG)wcslen(lpSubKey));
 		free(keybuf);
 	}
@@ -329,7 +329,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 		}
 
 		// fake some values
-		if (!g_config.no_stealth)
+		if (lpName && !g_config.no_stealth)
 			perform_ascii_registry_fakery(keypath, lpName, (ULONG)strlen(lpName));
 		free(keybuf);
 	}
@@ -379,7 +379,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 		}
 
 		// fake some values
-		if (!g_config.no_stealth)
+		if (lpName && !g_config.no_stealth)
 			perform_unicode_registry_fakery(keypath, lpName, (ULONG)wcslen(lpName));
 		free(keybuf);
 	}
@@ -508,7 +508,7 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExA,
 		wchar_t *keypath = get_full_keyvalue_pathA(hKey, lpValueName, keybuf, allocsize);
 
 		// fake some values
-		if (!g_config.no_stealth)
+		if (lpData && !g_config.no_stealth)
 			perform_ascii_registry_fakery(keypath, lpData, *lpcbData);
 		free(keybuf);
 
@@ -551,7 +551,7 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExW,
 			"FullName", keypath);
 
         // fake some values
-		if (!g_config.no_stealth)
+		if (lpData && !g_config.no_stealth)
 			perform_unicode_registry_fakery(keypath, lpData, *lpcbData);
 		free(keybuf);
 	}

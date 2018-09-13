@@ -40,9 +40,12 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL DumpRegion(PVOID Address);
 extern int DumpModuleInCurrentProcess(LPVOID ModuleBase);
 extern PVOID GetAllocationBase(PVOID Address);
-extern BOOL ModuleDumped;
-
 extern PVOID GetHookCallerBase();
+extern BOOL ModuleDumped;
+#ifdef CAPE_TRACE
+extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL BreakpointsSet;
+#endif
 
 void hook_init()
 {
@@ -148,6 +151,34 @@ void dump_on_api(hook_t *h)
 
 	return;
 }
+
+#ifdef CAPE_TRACE
+void base_on_api(hook_t *h)
+{
+	unsigned int i;
+	hook_info_t *hookinfo = hook_info();
+
+	for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
+		if (!g_config.base_on_apiname[i])
+			break;
+		if (!BreakpointsSet && !called_by_hook() && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
+            DoOutputDebugString("Base-on-API: %s call detected in thread %d.\n", g_config.base_on_apiname[i], GetCurrentThreadId());
+            PVOID AllocationBase = GetHookCallerBase();
+            if (AllocationBase) {
+                BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
+                if (BreakpointsSet)
+                    DoOutputDebugString("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
+                else
+                    DoOutputDebugString("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
+            }
+            else
+                DoOutputDebugString("Base-on-API: GetHookCallerBase fail.\n");
+        }
+	}
+
+	return;
+}
+#endif
 
 extern BOOLEAN is_ignored_thread(DWORD tid);
 static hook_info_t tmphookinfo;

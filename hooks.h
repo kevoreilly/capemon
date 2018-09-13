@@ -961,6 +961,16 @@ extern HOOKDEF(BOOL, WINAPI, Process32NextW,
 	__out LPPROCESSENTRY32W lppe
 );
 
+extern HOOKDEF(BOOL, WINAPI, Module32FirstW,
+	__in HANDLE hSnapshot,
+	__out LPMODULEENTRY32W lpme
+);
+
+extern HOOKDEF(BOOL, WINAPI, Module32NextW,
+	__in HANDLE hSnapshot,
+	__out LPMODULEENTRY32W lpme
+);
+
 extern HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
     __out       PHANDLE ProcessHandle,
     __in        ACCESS_MASK DesiredAccess,
