@@ -32,6 +32,13 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
 extern int RoutineProcessDump();
 extern BOOL ProcessDumped;
+#ifdef CAPE_INJECTION
+extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
+extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
+extern void UnmapSectionViewHandler(PVOID BaseAddress);
+extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
+extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
+#endif
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
 	__in DWORD dwFlags,
@@ -359,8 +366,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
         return ret;
     }
 
-    ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess,
-        ObjectAttributes, ClientId);
+    ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+
+#ifdef CAPE_INJECTION
+    if (NT_SUCCESS(ret))
+        OpenProcessHandler(*ProcessHandle, pid);
+#endif
     LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle,
         "DesiredAccess", DesiredAccess,
         "ProcessIdentifier", pid);
@@ -373,13 +384,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 ) {
 	NTSTATUS ret;
 	DWORD pid = pid_from_process_handle(ProcessHandle);
+#ifdef CAPE_INJECTION
+    ResumeProcessHandler(ProcessHandle, pid);
+#endif
 	pipe("RESUME:%d", pid);
-
 	ret = Old_NtResumeProcess(ProcessHandle);
 	LOQ_ntstatus("process", "p", "ProcessHandle", ProcessHandle);
 	return ret;
 }
-
 
 int process_shutting_down;
 
@@ -500,6 +512,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
             sizeof(mbi)) == sizeof(mbi)) {
         map_size = mbi.RegionSize;
     }
+#ifdef CAPE_INJECTION
+    UnmapSectionViewHandler(BaseAddress);
+#endif
+
     ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
 
     LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
@@ -524,16 +540,20 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
     LARGE_INTEGER InputOffset = *SectionOffset;
     SIZE_T InputSize = *ViewSize;
 
-    if (InputAddress || InputOffset.LowPart || InputSize)
-        DoOutputDebugString("NtMapViewOfSection hook: Specified virtual address: 0x%p, SectionOffset 0x%I64x, size 0x%x.\n", InputAddress, InputOffset.LowPart, InputSize);
-
     NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
 		BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize,
 		InheritDisposition, AllocationType, Win32Protect);
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 
+    LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,
+    "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+    "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+
 	if (NT_SUCCESS(ret)) {
-		if (pid != GetCurrentProcessId()) {
+#ifdef CAPE_INJECTION
+        MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
+#endif
+        if (pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
@@ -541,11 +561,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			prevent_module_reloading(BaseAddress);
 		}
 	}
-
-    LOQ_ntstatus("process", "ppPLPhs", "SectionHandle", SectionHandle,
-    "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-    "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-
 	return ret;
 }
 
@@ -628,6 +643,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 
 	if (pid != GetCurrentProcessId()) {
 		if (NT_SUCCESS(ret)) {
+#ifdef CAPE_INJECTION
+            WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
+#endif            
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
@@ -657,6 +675,9 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 
 	if (pid != GetCurrentProcessId()) {
 		if (ret) {
+#ifdef CAPE_INJECTION
+            WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
+#endif            
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}

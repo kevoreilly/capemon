@@ -29,6 +29,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\Debugger.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+#ifdef CAPE_INJECTION
+extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
+extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
+extern void ResumeThreadHandler(DWORD Pid);
+#endif
 
 static lookup_t g_ignored_threads;
 
@@ -255,14 +260,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
     
     NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
 
-	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
+    if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx, "ThreadId", tid);
+		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx);
 #else
-		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Eax, "ThreadId", tid);
+		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Eax);
 #endif
 	else
-		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ThreadId", tid);
+		LOQ_ntstatus("threading", "p", "ThreadHandle", ThreadHandle);
+#ifdef CAPE_INJECTION
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+    GetThreadContextHandler(pid, Context);
+#endif
     return ret;
 }
 
@@ -271,24 +280,24 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
     __in  const CONTEXT *Context
 ) {
 	NTSTATUS ret;
-	ENSURE_HANDLE(ThreadHandle);
-	ENSURE_STRUCT(Context, CONTEXT);
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 
-    if (pid != GetCurrentProcessId())
-        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
-
     ret = Old_NtSetContextThread(ThreadHandle, Context);
 
-	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
+    if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx, "ThreadId", tid);
+		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx);
 #else
-		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Eax, "ThreadId", tid);
+		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Eax);
 #endif
 	else
-		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ThreadId", tid);
+		LOQ_ntstatus("threading", "p", "ThreadHandle", ThreadHandle);
+#ifdef CAPE_INJECTION
+    SetThreadContextHandler(pid, Context);
+#endif
+    if (pid != GetCurrentProcessId())
+        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
     return ret;
 }
@@ -326,10 +335,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 	ENSURE_ULONG(SuspendCount);
+#ifdef CAPE_INJECTION
+    ResumeThreadHandler(pid);
+#endif
 	pipe("RESUME:%d,%d", pid, tid);
 
     ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
-    LOQ_ntstatus("threading", "pIi", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid);
+    LOQ_ntstatus("threading", "pI", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount);
     return ret;
 }
 
