@@ -520,24 +520,32 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in     ULONG AllocationType,
 	__in     ULONG Win32Protect
 	) {
-	NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
+    PVOID InputAddress = *BaseAddress;
+    LARGE_INTEGER InputOffset = *SectionOffset;
+    SIZE_T InputSize = *ViewSize;
+
+    if (InputAddress || InputOffset.LowPart || InputSize)
+        DoOutputDebugString("NtMapViewOfSection hook: Specified virtual address: 0x%p, SectionOffset 0x%I64x, size 0x%x.\n", InputAddress, InputOffset.LowPart, InputSize);
+
+    NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
 		BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize,
 		InheritDisposition, AllocationType, Win32Protect);
 	DWORD pid = pid_from_process_handle(ProcessHandle);
-
-    LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,
-    "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-    "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
 		if (pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
-		else {
+		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
+
+    LOQ_ntstatus("process", "ppPLPhs", "SectionHandle", SectionHandle,
+    "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+    "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+
 	return ret;
 }
 
