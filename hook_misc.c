@@ -593,6 +593,7 @@ HOOKDEF(SHORT, WINAPI, GetAsyncKeyState,
 	return ret;
 }
 
+#ifndef CAPE_COMPRESSION
 HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 	__in USHORT CompressionFormat,
 	__out PUCHAR UncompressedBuffer,
@@ -615,6 +616,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 
 	return ret;
 }
+#endif
 
 HOOKDEF(NTSTATUS, WINAPI, RtlCompressBuffer,
 	_In_  USHORT CompressionFormatAndEngine,

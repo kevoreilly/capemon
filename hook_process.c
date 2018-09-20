@@ -536,10 +536,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in     ULONG AllocationType,
 	__in     ULONG Win32Protect
 	) {
-    PVOID InputAddress = *BaseAddress;
-    LARGE_INTEGER InputOffset = *SectionOffset;
-    SIZE_T InputSize = *ViewSize;
-
     NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
 		BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize,
 		InheritDisposition, AllocationType, Win32Protect);
@@ -645,7 +641,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 		if (NT_SUCCESS(ret)) {
 #ifdef CAPE_INJECTION
             WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
-#endif            
+#endif
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
@@ -677,7 +673,7 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 		if (ret) {
 #ifdef CAPE_INJECTION
             WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
-#endif            
+#endif
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}

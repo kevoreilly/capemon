@@ -700,6 +700,9 @@ VOID CALLBACK New_DllLoadNotification(
             if (!base_of_dll_of_interest)
                 set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
             DoOutputDebugString("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+#ifdef CAPE_TRACE
+            SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
+#endif
         }
         else if (((!wcsnicmp(our_commandline, L"c:\\windows\\system32\\rundll32.exe", 32) ||
                     !wcsnicmp(our_commandline, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
@@ -711,6 +714,9 @@ VOID CALLBACK New_DllLoadNotification(
                 wcsncpy(g_config.file_of_interest, library.Buffer, wcslen(library.Buffer));
             }
             DoOutputDebugString("rundll32 target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+#ifdef CAPE_TRACE
+            SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
+#endif
         }
         else {
             // unoptimized, but easy
