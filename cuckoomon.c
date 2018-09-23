@@ -367,6 +367,7 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, RtlCreateUserThread),
     HOOK(ntdll, NtSetInformationThread),
     HOOK(ntdll, NtQueryInformationThread),
+    HOOK(ntdll, NtYieldExecution),
 
 	//
     // Misc Hooks

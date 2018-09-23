@@ -3008,3 +3008,7 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtCommitTransaction,
 extern HOOKDEF(BOOL, WINAPI, RtlSetCurrentTransaction,
     _In_ HANDLE     TransactionHandle
 );
+
+extern HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
+    VOID
+);
