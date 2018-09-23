@@ -37,6 +37,7 @@ typedef unsigned __int64 QWORD;
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" int ScanForNonZero(LPVOID Buffer, unsigned int Size);
+extern "C" PVOID GetAllocationBase(PVOID Address);
 
 extern char CapeOutputPath[MAX_PATH];
 
@@ -57,13 +58,19 @@ void ScyllaInitCurrentProcess()
 extern "C" DWORD_PTR GetEntryPointVA(DWORD_PTR modBase)
 //**************************************************************************************
 {
+    DWORD_PTR EntryPointVA;
+
     PeParser * peFile = 0;
 
 	ScyllaInitCurrentProcess();
-    
+
     peFile = new PeParser((DWORD_PTR)modBase, true);
 
-	return peFile->getEntryPoint() + (DWORD_PTR)modBase;
+    EntryPointVA = peFile->getEntryPoint() + (DWORD_PTR)modBase;
+
+    delete peFile;
+
+	return EntryPointVA;
 }
 
 //**************************************************************************************
@@ -866,4 +873,83 @@ extern "C" BOOL ScyllaGetSectionByName(PVOID ImageBase, char* Name, PVOID* Secti
     }
 
     return FALSE;
+}
+
+//**************************************************************************************
+extern "C" PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName)
+//**************************************************************************************
+{
+    ApiReader apiReader;
+    ApiInfo* apiInfo;
+    unsigned int ModuleIndex = 0;
+    bool dummy;
+
+	ScyllaInitCurrentProcess();
+
+ 	for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
+		if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
+			ModuleIndex = i+1;
+	}
+
+    if (!ModuleIndex)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportNameByAddress: Address 0x%p not within loaded modules.\n", Address);
+#endif
+        return NULL;
+    }
+
+    PVOID ModuleBase = GetAllocationBase(Address);
+
+    if (!ModuleBase)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportNameByAddress: GetAllocationBase failed for 0x%p.\n", Address);
+#endif
+        return NULL;
+    }
+
+    PeParser *peFile = new PeParser((DWORD_PTR)ModuleBase, true);
+
+    if (!peFile->isValidPeFile())
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportNameByAddress: Invalid PE image at 0x%p.\n", Address);
+#endif
+        delete peFile;
+        return NULL;
+    }
+
+    if (!peFile->hasExportDirectory())
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportNameByAddress: Module has no exports.\n");
+#endif
+        delete peFile;
+        return NULL;
+    }
+
+    apiReader.clearAll();
+
+    // This creates moduleInfo->apiList
+    apiReader.parseModuleWithOwnProcess(&ProcessAccessHelp::ownModuleList[ModuleIndex-1]);
+    apiInfo = apiReader.getApiByVirtualAddress((DWORD_PTR)Address, &dummy);
+
+    if (apiInfo)
+    {
+        if (ModuleName)
+            *ModuleName = apiInfo->module->fullPath;
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportNameByAddress: Located function %s within module %s.\n", apiInfo->name, apiInfo->module->fullPath);
+#endif
+        delete peFile;
+        return (PCHAR)apiInfo->name;
+    }
+#ifdef DEBUG_COMMENTS
+    else
+        DoOutputDebugString("ScyllaGetExportNameByAddress: Failed to locate function among module exports.\n");
+#endif
+
+    delete peFile;
+    return NULL;
 }
