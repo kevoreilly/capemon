@@ -559,5 +559,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
 ) {
 	NTSTATUS ret = 0;
     LOQ_void("threading", "");
-    return;
+    ret = Old_NtYieldExecution();
+    return ret;
 }

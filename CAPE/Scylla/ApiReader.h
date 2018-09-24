@@ -29,6 +29,7 @@ public:
 	void addFoundApiToModuleList(DWORD_PTR iatAddress, ApiInfo * apiFound, bool isNewModule, bool isSuspect);
 	void clearAll();
     bool isInvalidMemoryForIat( DWORD_PTR address );
+	void parseModuleWithOwnProcess( ModuleInfo * module );
 private:
     bool readExportTableAlwaysFromDisk;
 	void parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size);
@@ -49,7 +50,6 @@ private:
 	void findApiByModule(ModuleInfo * module, char * searchFunctionName, WORD ordinal, DWORD_PTR * vaApi, DWORD_PTR * rvaApi);
 
 	bool isModuleLoadedInOwnProcess( ModuleInfo * module );
-	void parseModuleWithOwnProcess( ModuleInfo * module );
 	bool isPeAndExportTableValid(PIMAGE_NT_HEADERS pNtHeader);
 	void findApiInProcess( ModuleInfo * module, char * searchFunctionName, WORD ordinal, DWORD_PTR * vaApi, DWORD_PTR * rvaApi );
 	bool findApiInExportTable(ModuleInfo *module, PIMAGE_EXPORT_DIRECTORY pExportDir, DWORD_PTR deltaAddress, char * searchFunctionName, WORD ordinal, DWORD_PTR * vaApi, DWORD_PTR * rvaApi);

@@ -27,11 +27,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "unhook.h"
 #include "config.h"
+#ifdef CAPE_EXTRACTION
+#include "CAPE\Debugger.h"
+#endif
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void file_handle_terminate();
-extern int RoutineProcessDump();
-extern BOOL ProcessDumped;
+extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+
 #ifdef CAPE_INJECTION
 extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
@@ -39,6 +41,17 @@ extern void UnmapSectionViewHandler(PVOID BaseAddress);
 extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
 extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
 #endif
+#ifdef CAPE_EXTRACTION
+extern struct TrackedRegion *TrackedRegionList;
+extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
+extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
+extern void FreeHandler(PVOID BaseAddress);
+extern void ProcessTrackedRegion();
+#endif
+
+extern void file_handle_terminate();
+extern int RoutineProcessDump();
+extern BOOL ProcessDumped;
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
 	__in DWORD dwFlags,
@@ -408,6 +421,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
 		// for the subsequent call to NtTerminateProcess against our own process handle
+#ifdef CAPE_EXTRACTION
+        ProcessTrackedRegion();
+#endif
         if (g_config.procdump && !ProcessDumped)
         {
             DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
@@ -418,6 +434,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
         file_handle_terminate();
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+#ifdef CAPE_EXTRACTION
+        ProcessTrackedRegion();
+#endif
         if (g_config.procdump && !ProcessDumped)
         {
             DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
@@ -549,6 +568,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 #ifdef CAPE_INJECTION
         MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
 #endif
+#ifdef CAPE_EXTRACTION
+        ProtectionHandler(*BaseAddress, ViewSize, Win32Protect, 0);
+#endif
         if (pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
@@ -572,10 +594,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
     NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
         ZeroBits, RegionSize, AllocationType, Protect);
 
-	if (ret != STATUS_CONFLICTING_ADDRESSES) {
-		LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-			"RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-	}
+#ifdef CAPE_EXTRACTION
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+        AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
+#endif
+
+    LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+        "RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	return ret;
 }
@@ -744,6 +769,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 ) {
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
+#ifdef CAPE_EXTRACTION
+    PTRACKEDREGION TrackedRegion;
+#endif
 
 	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
@@ -759,6 +787,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
 		set_lasterrors(&lasterrors);
 	}
+
+#ifdef CAPE_EXTRACTION
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+    {
+        ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, *OldAccessProtection);
+
+        if ((TrackedRegion = GetTrackedRegion(*BaseAddress)) && TrackedRegion->Guarded)
+            *OldAccessProtection &= (~PAGE_GUARD);
+    }
+#endif
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
 		(ULONG_PTR)meminfo.AllocationBase >= get_stack_bottom() && (((ULONG_PTR)meminfo.AllocationBase + meminfo.RegionSize) <= get_stack_top())) {
@@ -787,6 +825,9 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 ) {
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
+#ifdef CAPE_EXTRACTION
+    PTRACKEDREGION TrackedRegion;
+#endif
 
 	if (flNewProtect == PAGE_EXECUTE_READ && GetCurrentProcessId() == our_getprocessid(hProcess) &&
 		is_in_dll_range((ULONG_PTR)lpAddress))
@@ -802,6 +843,16 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));
 		set_lasterrors(&lasterrors);
 	}
+
+#ifdef CAPE_EXTRACTION
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
+    {
+        ProtectionHandler(lpAddress, dwSize, flNewProtect, *lpflOldProtect);
+
+        if ((TrackedRegion = GetTrackedRegion(lpAddress)) && TrackedRegion->Guarded)
+            *lpflOldProtect &= (~PAGE_GUARD);
+    }
+#endif
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && GetCurrentProcessId() == our_getprocessid(hProcess) &&
 		(ULONG_PTR)meminfo.AllocationBase >= get_stack_bottom() && (((ULONG_PTR)meminfo.AllocationBase + meminfo.RegionSize) <= get_stack_top())) {
@@ -822,6 +873,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
     IN OUT  PSIZE_T RegionSize,
     IN      ULONG FreeType
 ) {
+#ifdef CAPE_EXTRACTION
+    if (!called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+        FreeHandler(*BaseAddress);
+#endif
+
     NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
         RegionSize, FreeType);
 
