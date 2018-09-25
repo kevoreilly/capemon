@@ -1,7 +1,7 @@
 MAKEFLAGS = -j8
 CFLAGS = -Wall -std=c99 -s -O2 -Wno-strict-aliasing -static
 DLL = -shared
-DIRS = -Idistorm3.2-package/include -Ibson
+DIRS = -Idistorm/include -Ibson
 LIBS = -lws2_32 -lshlwapi
 OBJDIR = objects
 
@@ -16,8 +16,8 @@ else
 	CC = gcc
 endif
 
-DISTORM3 = $(wildcard distorm3.2-package/src/*.c)
-DISTORM3OBJ = $(DISTORM3:distorm3.2-package/src/%.c=$(OBJDIR)/distorm3.2/%.o)
+DISTORM3 = $(wildcard distorm/src/*.c)
+DISTORM3OBJ = $(DISTORM3:distorm/src/%.c=$(OBJDIR)/distorm3.2/%.o)
 
 CUCKOOSRC = $(wildcard *.c)
 CUCKOOOBJ = $(CUCKOOSRC:%.c=$(OBJDIR)/%.o)
@@ -30,7 +30,7 @@ default: $(OBJDIR) cuckoomon.dll
 $(OBJDIR):
 	mkdir $@ $@/bson $@/distorm3.2
 
-$(OBJDIR)/distorm3.2/%.o: distorm3.2-package/src/%.c
+$(OBJDIR)/distorm3.2/%.o: distorm/src/%.c
 	$(CC) $(CFLAGS) $(DIRS) -c $^ -o $@
 
 $(OBJDIR)/bson/%.o: bson/%.c

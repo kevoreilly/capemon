@@ -96,7 +96,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>.\bson;.\distorm3.2-package\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
@@ -120,7 +120,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>.\bson;.\distorm3.2-package\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
@@ -142,7 +142,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\bson;.\distorm3.2-package\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\bson;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <EnablePREfast>false</EnablePREfast>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
@@ -173,7 +173,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\bson;.\distorm3.2-package\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <EnablePREfast>false</EnablePREfast>
     </ClCompile>
@@ -217,16 +217,15 @@
     <ClCompile Include="CAPE\wow64_fix.c" />
     <ClCompile Include="config.c" />
     <ClCompile Include="cuckoomon.c" />
-    <ClCompile Include="distorm3.2-package\src\decoder.c" />
-    <ClCompile Include="distorm3.2-package\src\distorm.c" />
-    <ClCompile Include="distorm3.2-package\src\instructions.c" />
-    <ClCompile Include="distorm3.2-package\src\insts.c" />
-    <ClCompile Include="distorm3.2-package\src\mnemonics.c" />
-    <ClCompile Include="distorm3.2-package\src\operands.c" />
-    <ClCompile Include="distorm3.2-package\src\prefix.c" />
-    <ClCompile Include="distorm3.2-package\src\textdefs.c" />
-    <ClCompile Include="distorm3.2-package\src\wstring.c" />
-    <ClCompile Include="distorm3.2-package\src\x86defs.c" />
+    <ClCompile Include="distorm\src\decoder.c" />
+    <ClCompile Include="distorm\src\distorm.c" />
+    <ClCompile Include="distorm\src\instructions.c" />
+    <ClCompile Include="distorm\src\insts.c" />
+    <ClCompile Include="distorm\src\mnemonics.c" />
+    <ClCompile Include="distorm\src\operands.c" />
+    <ClCompile Include="distorm\src\prefix.c" />
+    <ClCompile Include="distorm\src\textdefs.c" />
+    <ClCompile Include="distorm\src\wstring.c" />
     <ClCompile Include="hooking.c" />
     <ClCompile Include="hooking_32.c" />
     <ClCompile Include="hooking_64.c" />
@@ -426,16 +425,16 @@
     <ClInclude Include="CAPE\w64wow64\w64wow64defs.h" />
     <ClInclude Include="CAPE\w64wow64\windef.h" />
     <ClInclude Include="config.h" />
-    <ClInclude Include="distorm3.2-package\include\distorm.h" />
-    <ClInclude Include="distorm3.2-package\include\mnemonics.h" />
-    <ClInclude Include="distorm3.2-package\src\decoder.h" />
-    <ClInclude Include="distorm3.2-package\src\instructions.h" />
-    <ClInclude Include="distorm3.2-package\src\insts.h" />
-    <ClInclude Include="distorm3.2-package\src\operands.h" />
-    <ClInclude Include="distorm3.2-package\src\prefix.h" />
-    <ClInclude Include="distorm3.2-package\src\textdefs.h" />
-    <ClInclude Include="distorm3.2-package\src\wstring.h" />
-    <ClInclude Include="distorm3.2-package\src\x86defs.h" />
+    <ClInclude Include="distorm\include\distorm.h" />
+    <ClInclude Include="distorm\include\mnemonics.h" />
+    <ClInclude Include="distorm\src\decoder.h" />
+    <ClInclude Include="distorm\src\instructions.h" />
+    <ClInclude Include="distorm\src\insts.h" />
+    <ClInclude Include="distorm\src\operands.h" />
+    <ClInclude Include="distorm\src\prefix.h" />
+    <ClInclude Include="distorm\src\textdefs.h" />
+    <ClInclude Include="distorm\src\wstring.h" />
+    <ClInclude Include="distorm\src\x86defs.h" />
     <ClInclude Include="hooking.h" />
     <ClInclude Include="hooks.h" />
     <ClInclude Include="hook_file.h" />

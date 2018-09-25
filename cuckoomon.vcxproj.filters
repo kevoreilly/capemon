@@ -192,34 +192,31 @@
     <ClCompile Include="hooking.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\decoder.c">
+    <ClCompile Include="distorm\src\decoder.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\distorm.c">
+    <ClCompile Include="distorm\src\distorm.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\instructions.c">
+    <ClCompile Include="distorm\src\instructions.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\insts.c">
+    <ClCompile Include="distorm\src\insts.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\mnemonics.c">
+    <ClCompile Include="distorm\src\mnemonics.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\operands.c">
+    <ClCompile Include="distorm\src\operands.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\prefix.c">
+    <ClCompile Include="distorm\src\prefix.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\textdefs.c">
+    <ClCompile Include="distorm\src\textdefs.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\wstring.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="distorm3.2-package\src\x86defs.c">
+    <ClCompile Include="distorm\src\wstring.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="CAPE\CAPE.c">
@@ -323,34 +320,34 @@
     <ClInclude Include="alloc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\include\distorm.h">
+    <ClInclude Include="distorm\include\distorm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\include\mnemonics.h">
+    <ClInclude Include="distorm\include\mnemonics.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\decoder.h">
+    <ClInclude Include="distorm\src\decoder.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\instructions.h">
+    <ClInclude Include="distorm\src\instructions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\insts.h">
+    <ClInclude Include="distorm\src\insts.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\operands.h">
+    <ClInclude Include="distorm\src\operands.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\prefix.h">
+    <ClInclude Include="distorm\src\prefix.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\textdefs.h">
+    <ClInclude Include="distorm\src\textdefs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\wstring.h">
+    <ClInclude Include="distorm\src\wstring.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="distorm3.2-package\src\x86defs.h">
+    <ClInclude Include="distorm\src\x86defs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CAPE\CAPE.h">
