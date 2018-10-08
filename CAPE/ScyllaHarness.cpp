@@ -160,7 +160,7 @@ void ScyllaInit(HANDLE hProcess)
 extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP)
 //**************************************************************************************
 {
-	SIZE_T SectionBasedFileSize;
+	SIZE_T SectionBasedSizeOfImage;
 	PeParser * peFile = 0;
 	DWORD_PTR entrypoint = NULL;
 
@@ -177,9 +177,9 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
         else
             entrypoint = peFile->getEntryPoint();
 
-        SectionBasedFileSize = (SIZE_T)peFile->getSectionHeaderBasedFileSize();
+        SectionBasedSizeOfImage = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
 
-        if ((SIZE_T)entrypoint > SectionBasedFileSize)
+        if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
         {
             DoOutputDebugString("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
             entrypoint = NULL;
