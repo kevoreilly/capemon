@@ -23,10 +23,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 #include "misc.h"
+#include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 
-// only skip Sleep()'s the first five seconds
+// only skip Sleep()s the first five seconds
 #define MAX_SLEEP_SKIP_DIFF 5000
 
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 
 // skipping sleep calls is done while this variable is set to true
 static int sleep_skip_active = 1;
@@ -587,6 +591,38 @@ HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 	return;
 }
 
+WAITORTIMERCALLBACK HookedCallback;
+
+typedef VOID(CALLBACK *_WaitOrTimerCallback)(
+  _In_ PVOID   lpParameter,
+  _In_ BOOLEAN TimerOrWaitFired
+);
+
+VOID CALLBACK CallbackHook(
+  _In_ PVOID   lpParameter,
+  _In_ BOOLEAN TimerOrWaitFired
+)
+{
+    _WaitOrTimerCallback pWaitOrTimerCallback;
+    
+    if (!HookedCallback) {
+        DoOutputDebugString("Timer callback hook: error, HookedCallback NULL.\n");
+        return;
+    }
+    
+    if (DEBUGGER_ENABLED) {
+        DWORD Tid = GetCurrentThreadId();
+        DoOutputDebugString("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
+        InitNewThreadBreakpoints(Tid);
+    }
+    else
+        DoOutputDebugString("Timer callback hook: passing to callback at 0x%p.\n", HookedCallback);
+    
+    *(FARPROC*)&pWaitOrTimerCallback = (FARPROC)HookedCallback;
+    HookedCallback = NULL;
+    pWaitOrTimerCallback(lpParameter, TimerOrWaitFired);    
+}
+
 HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
   _Out_    PHANDLE             phNewTimer,
   _In_opt_ HANDLE              TimerQueue,
@@ -596,7 +632,18 @@ HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
   _In_     DWORD               Period,
   _In_     ULONG               Flags
 ) {
-    BOOL ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
+    BOOL ret;
+    
+    if (Callback && !HookedCallback) {
+        HookedCallback = Callback;
+        Callback = &CallbackHook;
+    }
+    
+    ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
+
+    if (HookedCallback)
+        Callback = HookedCallback;
+        
     LOQ_bool("system", "Pphhiii", "phNewTimer", phNewTimer, "TimerQueue", TimerQueue, "Callback", Callback, "Parameter", Parameter, "DueTime", DueTime, "Period", Period, "Flags", Flags);
 	return ret;
 }
