@@ -1096,7 +1096,7 @@ extern HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 	__in_opt PLARGE_INTEGER Timeout
 );
 
-extern HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
+extern HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	__in PEXCEPTION_RECORD ExceptionRecord,
 	__in PCONTEXT Context
 );

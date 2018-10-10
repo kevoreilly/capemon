@@ -107,7 +107,7 @@ static hook_t g_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
 
-	HOOK_NOTAIL(ntdll, RtlDispatchException, 2),
+	HOOK_SPECIAL(ntdll, RtlDispatchException),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
 	// lowest variant of MoveFile()

@@ -773,6 +773,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
     PTRACKEDREGION TrackedRegion;
 #endif
 
+	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
+		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
+		unsigned int offset;
+		char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &offset);
+		if (!strcmp(dllname, "ntdll.dll")) {
+			// don't allow writes, this will cause memory access violations
+			// that we are going to handle in the RtlDispatchException hook
+			NewAccessProtection = PAGE_EXECUTE_READ;
+		}
+		if (dllname) free(dllname);
+	}
+
 	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
@@ -958,11 +970,24 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 	return ret;
 }
 
-HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
+HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	__in PEXCEPTION_RECORD ExceptionRecord,
 	__in PCONTEXT Context)
 {
 #ifndef _WIN64
+	if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
+		ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
+		unsigned int offset;
+		char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
+		if (!strcmp(dllname, "ntdll.dll")) {
+			free(dllname);
+			// if trying to write to ntdll.dll, then just skip the instruction
+			Context->Eip += lde((void *)Context->Eip);
+			return TRUE;
+		}
+		if (dllname) free(dllname);
+	}
+
 	if (ExceptionRecord && (ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) {
 		char buf[160];
 		ULONG_PTR seh = 0;
@@ -979,7 +1004,7 @@ HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
 	// flush logs prior to handling of an exception without having to register a vectored exception handler
 	log_flush();
 
-	return 0;
+	return FALSE;
 }
 
 HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
