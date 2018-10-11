@@ -1004,7 +1004,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	// flush logs prior to handling of an exception without having to register a vectored exception handler
 	log_flush();
 
-	return FALSE;
+	return Old_RtlDispatchException(ExceptionRecord, Context);
 }
 
 HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
