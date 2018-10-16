@@ -271,12 +271,12 @@ static int InjectDllViaThread(HANDLE ProcessHandle, HANDLE ThreadHandle, const c
             {
                 SetLastError(ExitCode);
                 DoOutputErrorString("InjectDllViaThread: CreateRemoteThread injection failed");
-                return 0;
+                return ERROR_CREATEREMOTETHREAD;
             }
 
             DoOutputDebugString("InjectDllViaThread: Successfully injected Dll into process via CreateRemoteThread.\n");
             
-            return 1;
+            return 0;
         }
     }
     else
@@ -291,7 +291,7 @@ static int InjectDllViaThread(HANDLE ProcessHandle, HANDLE ThreadHandle, const c
             DoOutputErrorString("InjectDllViaThread: RtlCreateUserThread failed");
             return ERROR_RTLCREATEUSERTHREAD;
         }
-        else if(RemoteThreadHandle)
+        else if (RemoteThreadHandle)
         {
             WaitForSingleObject(RemoteThreadHandle, INFINITE);
             GetExitCodeThread(RemoteThreadHandle, &ExitCode);
@@ -308,7 +308,7 @@ static int InjectDllViaThread(HANDLE ProcessHandle, HANDLE ThreadHandle, const c
         
         DoOutputDebugString("InjectDllViaThread: Successfully injected Dll into process via RtlCreateUserThread.\n");
         
-        return 1;
+        return 0;
     }
 }
 
@@ -407,9 +407,9 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     }
     
 #ifdef _WIN64
-    if (Context.Rcx != (DWORD_PTR)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
+    if (Context.Rcx != (DWORD)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
 #else
-    if (Context.Eax != (DWORD_PTR)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
+    if (Context.Eax != (DWORD)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
 #endif
     {
         DoOutputDebugString("InjectDllViaIAT: Not a new process, bailing.\n");
@@ -629,8 +629,8 @@ out:
 
 static int InjectDll(int ProcessId, int ThreadId, const char *DllPath, BOOLEAN ForceLoad)
 {
-    HANDLE ProcessHandle, ThreadHandle;
-    int RetVal = 0;
+    HANDLE ProcessHandle = NULL, ThreadHandle = NULL;
+    int RetVal = 0, InitialThreadId;
     
     ProcessHandle = NULL;
     ThreadHandle = NULL;
@@ -650,40 +650,57 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath, BOOLEAN F
         goto out;
     }
 
-    // If no thread id supplied, we fetch the initial thread id
-    // from the TEB's CLIENT_ID
-    if (!ThreadId)
-        ThreadId = GetProcessInitialThreadId(ProcessHandle);
-        
+    // If no thread id supplied, we fetch the initial thread id from the TEB's CLIENT_ID
     if (!ThreadId)
     {
-        DoOutputDebugString("InjectDll: GetProcessInitialThreadId failed");
-        ForceLoad = TRUE;
-        //RetVal = ERROR_THREAD_OPEN;
-        //goto out;
-    }
+        InitialThreadId = GetProcessInitialThreadId(ProcessHandle);
+
+        if (!InitialThreadId)
+        {
+            DoOutputDebugString("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed.\n");
+            //RetVal = ERROR_THREAD_OPEN;
+            //goto out;
+            //ForceLoad = TRUE;
+        }
+        else
+        {
+            ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, InitialThreadId);
+            DoOutputDebugString("InjectDll: No thread ID supplied. Initial thread ID %d, handle 0x%x\n", InitialThreadId, ThreadHandle);
+        }
+    }        
     else
+    {
         ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, ThreadId);
     
-    if (ThreadHandle == NULL) 
-    {
-        DoOutputDebugString("InjectDll: OpenThread failed");
-        ForceLoad = TRUE;
-        //RetVal = ERROR_THREAD_OPEN;
-        //goto out;
+        if (ThreadId && ThreadHandle == NULL)
+        {
+            DoOutputDebugString("InjectDll: OpenThread failed");
+            //RetVal = ERROR_THREAD_OPEN;
+            //goto out;
+            ForceLoad = TRUE;
+        }
     }
     
     // We try to use IAT patching in case this is a new process.
     // If it's not, this function is expected to fail.
-    if (!ForceLoad && InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath))
-        DoOutputDebugString("InjectDll: Successfully patched new process IAT.\n");
+    if (!ForceLoad)
+    {
+        RetVal = InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath);
+        if (RetVal)
+        {
+            DoOutputDebugString("InjectDll: Successfully patched new process IAT.\n");
+            goto out;
+        }
+        else
+        {
+            DoOutputDebugString("InjectDll: IAT patching failed, falling back to thread injection.\n");
+            //ForceLoad = TRUE;
+        }
+    }
     
-    // We inject via thread in any case. A new process may have its IAT patching
-    // overwritten by, for example, process hollowing, so we need a fall back.
-    // N.B. ForceLoad is intended for use with the debugger, not normal injection.
     RetVal = InjectDllViaThread(ProcessHandle, ThreadHandle, DllPath, ForceLoad);
     
-    if (RetVal)
+    if (RetVal >= 0)
         DoOutputDebugString("InjectDll: Successfully injected DLL via thread.\n");
     else
         DoOutputDebugString("InjectDll: DLL injection via thread failed.\n");
@@ -702,24 +719,37 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     DoOutputDebugString("CAPE loader.\n");
     
     if (__argc < 2)
+    {
+        DoOutputDebugString("Loader: Error - too few arguments!\n");
         return ERROR_ARGCOUNT;
+    }
     
     if (!GrantDebugPrivileges())
+    {
+        DoOutputDebugString("Loader: Error - unable to obtain debug privileges.\n");
         return ERROR_DEBUGPRIV;
+    }
 
     if (!strcmp(__argv[1], "inject")) 
     {
         // usage: loader.exe inject <pid> <tid> <dll to load>
         int ProcessId, ThreadId, ret;
         char *DllName;
-        if (__argc != 6)
+        if (__argc != 6)    // this includes a dummy for now to maintain compartibility with old loader
+        {
+            DoOutputDebugString("Loader: Error - too few arguments for injection (%d)\n", __argc);
             return ERROR_ARGCOUNT;
+        }
+
         ProcessId = atoi(__argv[2]);
         ThreadId = atoi(__argv[3]);
         DllName = __argv[4];
+
+        DoOutputDebugString("Loader: Injecting process %d (thread %d) with %s.\n", ProcessId, ThreadId, DllName);
+
         ret = InjectDll(ProcessId, ThreadId, DllName, FALSE);
 
-        if (ret)
+        if (ret >= 0)
             DoOutputDebugString("Successfully injected DLL %s.\n", __argv[4]);
         else
             DoOutputDebugString("Failed to inject DLL %s.\n", __argv[4]);
@@ -744,6 +774,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         StringCchCat(szCommand, sizeof(szCommand), " ");
         StringCchCat(szCommand, sizeof(szCommand), __argv[3]);
         
+        DoOutputDebugString("Loader: Loading %s (%s) with DLL %s.\n", __argv[2], szCommand, __argv[3]);
+
         CreateProcess(__argv[2], szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED, NULL, NULL, &si, &pi);
         
         ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[4], FALSE);
@@ -764,6 +796,133 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             DoOutputDebugString("There was a problem resuming the new process %s.\n", __argv[2]);
         
     } 
+    else if (!strcmp(__argv[1], "service")) 
+    {
+        // usage: loader.exe service <binary> <32-bit dll> <64-bit dll>
+        int RetVal;
+        SC_HANDLE hSCManager, hService;
+        HANDLE hProcessSnapshot, hProcess;
+        PROCESSENTRY32 ProcessEntry32;
+        char ServicesName[] = "services.exe", ServiceName[] = "NewService", ServiceDisplayName[] = "New Service";
+        DWORD ServicesPID = 0;
+        
+        // Get a handle to the SCM database
+        hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+     
+        if (!hSCManager) 
+        {
+            DoOutputErrorString("OpenSCManager failed");
+            return 0;
+        }
+
+        // Check the service doesn't already exist
+        hService = OpenService(hSCManager, ServiceName, SERVICE_ALL_ACCESS);
+        
+        if (hService)
+        { 
+            DoOutputDebugString("Service alerady exists.\n"); 
+            CloseServiceHandle(hSCManager);
+            return 0;
+        }
+        
+        hService = CreateService(hSCManager, ServiceName, ServiceDisplayName, SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS | 
+                            SERVICE_INTERACTIVE_PROCESS, SERVICE_DEMAND_START, SERVICE_ERROR_IGNORE, __argv[2], 
+                            NULL, NULL, NULL, NULL, NULL);
+
+        if (!hService)
+        { 
+            DoOutputDebugString("Failed to create service.\n"); 
+            CloseServiceHandle(hSCManager);
+            return 0;
+        }
+        
+        // Now we need to find the PID for services.exe
+        hProcessSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+        if (hProcessSnapshot == INVALID_HANDLE_VALUE)
+        {
+            DoOutputErrorString("CreateToolhelp32Snapshot (of processes)");
+            return FALSE;
+        }
+
+        // Set the size of the structure before using it.
+        ProcessEntry32.dwSize = sizeof(PROCESSENTRY32);
+
+        // Retrieve information about the first process, and exit if unsuccessful
+        if (!Process32First(hProcessSnapshot, &ProcessEntry32))
+        {
+            DoOutputErrorString("Process32First");
+            CloseHandle(hProcessSnapshot);
+            return FALSE;
+        }
+
+        // Now walk the snapshot
+        do
+        {
+            if (!strncmp(ProcessEntry32.szExeFile, ServicesName, strlen(ServicesName)+1))
+            {			
+                ServicesPID = ProcessEntry32.th32ProcessID;
+            }
+        } 
+        while (Process32Next(hProcessSnapshot, &ProcessEntry32));
+        
+        if (!ServicesPID)
+        {
+            DoOutputDebugString("Failed to find PID for services.exe.\n");
+            CloseHandle(hProcessSnapshot);
+            return FALSE;
+        }
+        
+        hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, ServicesPID);
+        
+        if (hProcess == NULL) 
+        {
+            DoOutputErrorString("OpenProcess failed");
+            return -18;
+        }
+        
+        GetNativeSystemInfo(&SystemInfo);
+        
+        if (SystemInfo.dwProcessorType == PROCESSOR_AMD_X8664)
+        {
+            BOOL IsWow64 = FALSE;
+            
+            if (IsWow64Process(hProcess, &IsWow64) && IsWow64)
+            {
+                RetVal = InjectDllViaThread(hProcess, 0, __argv[3], FALSE);
+            }
+            else
+            {
+                RetVal = InjectDllViaThread(hProcess, 0, __argv[4], FALSE);
+            }
+        }
+        else
+        {
+            RetVal = InjectDllViaThread(hProcess, 0, __argv[3], FALSE);
+        }
+
+        CloseHandle(hProcess);
+        
+        if (RetVal)
+        {
+            DoOutputErrorString("Sucessfully injected monitor into services.exe.");
+            
+            RetVal = StartService(hService, 0, NULL);
+
+            if (RetVal)
+                DoOutputErrorString("Sucessfully started service.");
+            else
+                DoOutputErrorString("Failed to start service.");        
+        }
+        else
+            DoOutputErrorString("Failed to inject monitor into services.exe.");
+            
+        CloseServiceHandle(hService);
+        CloseServiceHandle(hSCManager);
+
+        return RetVal;
+        
+    }
     else if (!strcmp(__argv[1], "shellcode")) 
     {
         // usage: loader.exe shellcode <payload file>
@@ -1218,6 +1377,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			return ERROR_ARGCOUNT;
 
 		sprintf_s(PipeName, sizeof(PipeName)-1, "\\\\.\\PIPE\\%s", __argv[2]);
+
+        DoOutputDebugString("Loader: Starting pipe %s (DLL to inject %s).\n", PipeName, __argv[3]);
 
 		while (1) 
         {
