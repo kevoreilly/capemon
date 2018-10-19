@@ -1403,3 +1403,23 @@ HOOKDEF(BOOL, WINAPI, RtlSetCurrentTransaction,
 	LOQ_bool("misc", "p", "TransactionHandle", TransactionHandle);
 	return ret;
 }
+
+HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
+    IN LPOLESTREAM          lpolestream,
+    OUT LPSTORAGE           pstg,
+    IN const DVTARGETDEVICE *ptd
+) {
+    void *buf = NULL; uintptr_t len = 0;
+
+    HRESULT ret = Old_OleConvertOLESTREAMToIStorage(lpolestream, pstg, ptd);
+
+#ifndef _WIN64
+    if (lpolestream != NULL) {
+        buf = (PVOID)*((uint8_t *) lpolestream + 8);
+        len = *((uint8_t *) lpolestream + 12);
+    }
+#endif
+
+	LOQ_bool("misc", "b", "OLE2", len, buf);
+	return ret;
+}

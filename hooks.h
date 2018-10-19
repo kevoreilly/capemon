@@ -3012,3 +3012,9 @@ extern HOOKDEF(BOOL, WINAPI, RtlSetCurrentTransaction,
 extern HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
     VOID
 );
+
+extern HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
+    IN LPOLESTREAM          lpolestream,
+    OUT LPSTORAGE           pstg,
+    IN const DVTARGETDEVICE *ptd
+);
