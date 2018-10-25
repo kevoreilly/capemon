@@ -4,9 +4,9 @@
 #include <map>
 
 // WTL
-#include <atlbase.h>
-#include <atlapp.h>
-#include <atlctrls.h> // CTreeItem
+//#include <atlbase.h>
+//#include <atlapp.h>
+//#include <atlctrls.h> // CTreeItem
 
 class ImportThunk
 {
@@ -21,7 +21,7 @@ public:
 	bool valid;
 	bool suspect;
 
-	CTreeItem hTreeItem;
+//	CTreeItem hTreeItem;
 	DWORD_PTR key;
 
 	void invalidate();
@@ -35,7 +35,7 @@ public:
 
 	DWORD_PTR firstThunk;
 
-	CTreeItem hTreeItem;
+//	CTreeItem hTreeItem;
 	DWORD_PTR key;
 
 	DWORD_PTR getFirstThunk() const;
