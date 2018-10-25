@@ -19,6 +19,9 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <tlhelp32.h>
 #include <strsafe.h>
 
+#pragma warning(push )
+#pragma warning(disable : 4996)
+
 SYSTEM_INFO SystemInfo;
 
 void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
