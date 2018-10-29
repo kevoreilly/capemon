@@ -777,7 +777,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 		unsigned int offset;
 		char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &offset);
-		if (!strcmp(dllname, "ntdll.dll")) {
+		if (dllname && !strcmp(dllname, "ntdll.dll")) {
 			// don't allow writes, this will cause memory access violations
 			// that we are going to handle in the RtlDispatchException hook
 			NewAccessProtection = PAGE_EXECUTE_READ;
@@ -979,7 +979,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 		ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
 		unsigned int offset;
 		char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
-		if (!strcmp(dllname, "ntdll.dll")) {
+		if (dllname && !strcmp(dllname, "ntdll.dll")) {
 			free(dllname);
 			// if trying to write to ntdll.dll, then just skip the instruction
 			Context->Eip += lde((void *)Context->Eip);
@@ -996,7 +996,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 			seh = ((DWORD *)tebtmp[0])[1];
 		if (seh < g_our_dll_base || seh >= (g_our_dll_base + g_our_dll_size)) {
 			_snprintf(buf, sizeof(buf), "Exception 0x%x reported at offset 0x%x in capemon itself while accessing 0x%x from hook %s", ExceptionRecord->ExceptionCode, (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
-			log_anomaly("cuckoocrash", buf);
+			log_anomaly("capemon crash", buf);
 		}
 	}
 #endif
