@@ -399,7 +399,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
             InitNewThreadBreakpoints(*lpThreadId);
         }
 
-        if (!(dwCreationFlags && CREATE_SUSPENDED)) {
+        if (!(dwCreationFlags & CREATE_SUSPENDED)) {
             lasterror_t lasterror;
             get_lasterrors(&lasterror);
             ResumeThread(ret);
