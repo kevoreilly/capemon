@@ -50,7 +50,8 @@ extern void ProcessTrackedRegion();
 #endif
 
 extern void file_handle_terminate();
-extern int RoutineProcessDump();
+extern int DoProcessDump(PVOID CallerBase);
+extern PVOID GetHookCallerBase();
 extern BOOL ProcessDumped;
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
@@ -427,7 +428,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
         if (g_config.procdump && !ProcessDumped)
         {
             DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-            RoutineProcessDump();
+            DoProcessDump(GetHookCallerBase(NULL));
         }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
@@ -440,7 +441,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
         if (g_config.procdump && !ProcessDumped)
         {
             DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-            RoutineProcessDump();
+            DoProcessDump(GetHookCallerBase(NULL));
         }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);

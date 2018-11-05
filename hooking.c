@@ -38,7 +38,7 @@ static lookup_t g_hook_info;
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL DumpRegion(PVOID Address);
-extern int DumpModuleInCurrentProcess(LPVOID ModuleBase);
+extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern PVOID GetAllocationBase(PVOID Address);
 extern PVOID GetHookCallerBase();
 extern BOOL ModuleDumped;
@@ -130,7 +130,7 @@ void dump_on_api(hook_t *h)
                 if (!AllocationBase)
                     AllocationBase = GetAllocationBase((PVOID)hookinfo->parent_caller_retaddr);
                 if (AllocationBase) {
-                    if (DumpModuleInCurrentProcess(AllocationBase)) {
+                    if (DumpImageInCurrentProcess(AllocationBase)) {
                         ModuleDumped = TRUE;
                         DoOutputDebugString("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
                     }

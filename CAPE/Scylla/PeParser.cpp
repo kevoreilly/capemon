@@ -666,7 +666,7 @@ bool PeParser::openFileHandle()
 	return (hFile != INVALID_HANDLE_VALUE);
 }
 
-bool PeParser::openWriteFileHandle( const CHAR * newFile )
+bool PeParser::openWriteFileHandle(const CHAR *newFile)
 {
 	if (newFile)
 	{
@@ -1061,7 +1061,147 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 	return retValue;
 }
 
-bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
+bool PeParser::savePeFileToHandle(HANDLE FileHandle)
+{
+	bool retValue = true, SectionDataWritten = false;
+
+#ifdef DEBUG_COMMENTS
+    //DoOutputDebugString("PeParser::savePeFileToDisk: Function entry.\n");
+#endif
+    
+	DWORD dwFileOffset = 0, dwWriteSize = 0;
+
+	if (getNumberOfSections() != listPeSection.size())
+	{
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("PeParser::savePeFileToDisk: Number of sections mismatch error.\n");
+#endif
+		return false;
+	}
+
+    //Dos header
+    dwWriteSize = sizeof(IMAGE_DOS_HEADER);
+    if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, dwFileOffset, dwWriteSize, pDosHeader))
+    {
+        retValue = false;
+    }
+    dwFileOffset += dwWriteSize;
+
+
+    if (dosStubSize && pDosStub)
+    {
+        //Dos Stub
+        dwWriteSize = dosStubSize;
+        if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, dwFileOffset, dwWriteSize, pDosStub))
+        {
+            retValue = false;
+        }
+        dwFileOffset += dwWriteSize;
+    }
+
+    //Pe Header
+    if (isPE32())
+    {
+        dwWriteSize = sizeof(IMAGE_NT_HEADERS32);
+    }
+    else
+    {
+        dwWriteSize = sizeof(IMAGE_NT_HEADERS64);
+    }
+
+    if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, dwFileOffset, dwWriteSize, pNTHeader32))
+    {
+        retValue = false;
+    }
+    dwFileOffset += dwWriteSize;
+
+    //section headers
+    dwWriteSize = sizeof(IMAGE_SECTION_HEADER);
+
+    for (WORD i = 0; i < getNumberOfSections(); i++)
+    {
+        if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, dwFileOffset, dwWriteSize, &listPeSection[i].sectionHeader))
+        {
+            retValue = false;
+            break;
+        }
+        dwFileOffset += dwWriteSize;
+    }
+
+    for (WORD i = 0; i < getNumberOfSections(); i++)
+    {
+        if (!listPeSection[i].sectionHeader.PointerToRawData)
+            continue;
+
+        if (listPeSection[i].sectionHeader.PointerToRawData > dwFileOffset)
+        {
+            dwWriteSize = listPeSection[i].sectionHeader.PointerToRawData - dwFileOffset; //padding
+
+            if (!writeZeroMemoryToFile(FileHandle, dwFileOffset, dwWriteSize))
+            {
+                retValue = false;
+                break;
+            }
+            dwFileOffset += dwWriteSize;
+        }
+
+        dwWriteSize = listPeSection[i].dataSize;
+
+        if (dwWriteSize)
+        {
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::savePeFileToDisk: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
+#endif
+            if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, listPeSection[i].sectionHeader.PointerToRawData, dwWriteSize, listPeSection[i].data))
+            {
+                retValue = false;
+                break;
+            }
+            dwFileOffset += dwWriteSize;
+
+            SectionDataWritten = true;
+
+            if (listPeSection[i].dataSize < listPeSection[i].sectionHeader.SizeOfRawData) //padding
+            {
+                dwWriteSize = listPeSection[i].sectionHeader.SizeOfRawData - listPeSection[i].dataSize;
+
+                if (!writeZeroMemoryToFile(FileHandle, dwFileOffset, dwWriteSize))
+                {
+                    retValue = false;
+                    break;
+                }
+                dwFileOffset += dwWriteSize;
+            }
+        }
+#ifdef DEBUG_COMMENTS
+        else
+            DoOutputDebugString("PeParser::savePeFileToDisk: Nothing to write for section %d.\n", i+1);
+#endif
+    }
+
+    //add overlay?
+    if (overlaySize && overlayData)
+    {
+        dwWriteSize = overlaySize;
+        if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, dwFileOffset, dwWriteSize, overlayData))
+        {
+            retValue = false;
+        }
+        dwFileOffset += dwWriteSize;
+    }
+
+    //SetEndOfFile(FileHandle);
+    dumpSize = dwFileOffset;
+
+    // If only headers are written, fail
+    // (this will allow a subsequent 'raw' memory dump)
+    if (!SectionDataWritten)
+        return false;
+    
+	return retValue;
+}
+
+bool PeParser::saveCompletePeToDisk(const CHAR *newFile)
 {
 	bool retValue = true;
 	DWORD dwWriteSize = 0;
@@ -1137,6 +1277,41 @@ bool PeParser::saveCompletePeToDisk( const CHAR * newFile )
     }
 
 	return retValue;
+}
+
+bool PeParser::saveCompletePeToHandle(HANDLE FileHandle)
+{
+	DWORD dwWriteSize = 0;
+
+	if (getNumberOfSections() != listPeSection.size())
+	{
+		return false;
+	}
+
+	if (listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData < pNTHeader32->OptionalHeader.FileAlignment
+        || listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData < pNTHeader32->OptionalHeader.FileAlignment)
+	{
+        DoOutputDebugString("PE Parser: Error - image seems incomplete: (%d sections, PointerToRawData: 0x%x, SizeOfRawData: 0x%x) - dump failed.\n", getNumberOfSections(), listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData);
+		return false;
+	}
+    
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections() - 1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections() - 1].sectionHeader.SizeOfRawData);
+#endif
+    
+    dwWriteSize = listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData
+        + listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData;
+            
+    if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, 0, dwWriteSize, (LPCVOID)moduleBaseAddress))
+    {
+        DoOutputDebugString("saveCompletePeToHandle: writeMemoryToFile failed.\n");
+        return false;
+    }
+
+    //SetEndOfFile(FileHandle);
+    dumpSize = dwWriteSize;
+
+	return true;
 }
 
 bool PeParser::writeZeroMemoryToFile(HANDLE hFile, DWORD fileOffset, DWORD size)
@@ -1581,6 +1756,37 @@ bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR *
 	}
 
 	return dumpProcess(modBase, entryPoint, dumpFilePath);
+}
+
+bool PeParser::dumpProcessToHandle(DWORD_PTR modBase, DWORD_PTR entryPoint, HANDLE FileHandle)
+{
+	moduleBaseAddress = modBase;
+
+#ifdef DEBUG_COMMENTS
+	DoOutputDebugString("DumpProcess: called with modBase = 0x%x.\n", modBase);
+#endif
+    
+	if (!readPeSectionsFromProcess())
+        DoOutputDebugString("DumpProcess: There was a problem reading one or more sections, the dump may be incomplete.\n");
+#ifdef DEBUG_COMMENTS
+    else
+		DoOutputDebugString("DumpProcess: Successfully read all sections.\n");
+#endif
+    setDefaultFileAlignment();
+
+    if (entryPoint)
+        setEntryPointVa(entryPoint);
+
+    alignAllSectionHeaders();
+
+    fixPeHeader();
+
+    getFileOverlay();
+
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("dumpProcess DEBUG: Fixups complete, about to save to disk.\n");
+#endif
+    return savePeFileToHandle(FileHandle);
 }
 
 void PeParser::setEntryPointVa(DWORD_PTR entryPoint)

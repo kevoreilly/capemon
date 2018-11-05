@@ -214,6 +214,65 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 }
 
 //**************************************************************************************
+extern "C" unsigned int ScyllaDumpProcessToFileHandle(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP, HANDLE FileHandle)
+//**************************************************************************************
+{
+	unsigned int BytesWritten = 0;
+    SIZE_T SectionBasedSizeOfImage;
+	PeParser * peFile = 0;
+	DWORD_PTR entrypoint = NULL;
+
+	ScyllaInit(hProcess);
+    
+    DoOutputDebugString("DumpProcess: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
+
+    peFile = new PeParser(ModuleBase, TRUE);
+
+    if (peFile->isValidPeFile())
+    {
+        if (NewOEP)
+            entrypoint = NewOEP;
+        else
+            entrypoint = peFile->getEntryPoint();
+
+        SectionBasedSizeOfImage = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
+
+        if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
+        {
+            DoOutputDebugString("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
+            entrypoint = NULL;
+        }
+        else
+        {
+            DoOutputDebugString("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
+            entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
+        }
+        
+        if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+        {
+            BytesWritten = peFile->dumpSize;
+            DoOutputDebugString("DumpProcess: Module image dump success - dump size 0x%x.\n", BytesWritten);
+        }
+        else
+        {
+            DoOutputDebugString("DumpProcess: Error - Cannot dump image.\n");
+            delete peFile;
+            return 0;
+        }
+    }
+    else
+    {
+        DoOutputDebugString("DumpProcess: Invalid PE file or invalid PE header.\n");
+        delete peFile;
+        return 0;
+    }
+
+    delete peFile;
+
+    return BytesWritten;
+}
+
+//**************************************************************************************
 DWORD SafeGetDword(PVOID Address)
 //**************************************************************************************
 {
@@ -298,6 +357,81 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
     else
     {
         DoOutputDebugString("DumpPE: Error: Invalid PE file or invalid PE header.\n");
+        delete peFile;
+        return 0;
+    }
+
+    delete peFile;
+    
+    return 1;
+}
+
+//**************************************************************************************
+extern "C" int ScyllaDumpPEToFileHandle(DWORD_PTR Buffer, HANDLE FileHandle)
+//**************************************************************************************
+{
+	DWORD_PTR PointerToLastSection, entrypoint = 0;
+	PeParser * peFile = 0;
+    unsigned int SizeOfLastSection, NumberOfSections = 0;
+    
+	NativeWinApi::initialize();
+
+	ProcessAccessHelp::setCurrentProcessAsTarget();
+   
+    DoOutputDebugString("DumpPEToFileHandle: Instantiating PeParser with address: 0x%p.\n", Buffer);
+    
+    peFile = new PeParser((DWORD_PTR)Buffer, TRUE);
+
+    if (peFile->isValidPeFile())
+    {        
+        NumberOfSections = peFile->getNumberOfSections();
+
+        if (NumberOfSections == 0)
+        {
+            DoOutputDebugString("DumpPEToFileHandle: no sections in PE image, ignoring.\n");
+            return 0;        
+        }
+        
+        PointerToLastSection = SafeGetDword(&(peFile->listPeSection[NumberOfSections - 1].sectionHeader.PointerToRawData));
+        
+        if (!PointerToLastSection)
+        {
+            DoOutputDebugString("DumpPEToFileHandle: failed to obtain pointer to last section.\n");
+            return 0;        
+        }
+        
+        PointerToLastSection += (DWORD_PTR)Buffer;
+        
+        SizeOfLastSection = SafeGetDword(&(peFile->listPeSection[NumberOfSections - 1].sectionHeader.SizeOfRawData));
+        
+        if (!SizeOfLastSection)
+        {
+            DoOutputDebugString("DumpPEToFileHandle: failed to obtain size of last section.\n");
+            return 0;        
+        }
+
+        if (!ScanForNonZero((LPVOID)PointerToLastSection, SizeOfLastSection))
+        {
+            DoOutputDebugString("DumpPEToFileHandle: Empty or inaccessible last section, file image seems incomplete (from 0x%p to 0x%p).\n", PointerToLastSection, (DWORD_PTR)PointerToLastSection + SizeOfLastSection);
+            return 0;
+        }
+
+        entrypoint = peFile->getEntryPoint();        
+        
+        if (peFile->saveCompletePeToHandle(FileHandle))
+        {
+            DoOutputDebugString("DumpPEToFileHandle: PE file in memory dumped successfully - dump size 0x%x.\n", peFile->dumpSize);
+        }
+        else
+        {
+            DoOutputDebugString("DumpPEToFileHandle: Error: Cannot dump PE file from memory.\n");
+            delete peFile;
+            return 0;
+        }
+    }
+    else
+    {
+        DoOutputDebugString("DumpPEToFileHandle: Error: Invalid PE file or invalid PE header.\n");
         delete peFile;
         return 0;
     }

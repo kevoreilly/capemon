@@ -410,7 +410,7 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     }
     
 #ifdef _WIN64
-    if (Context.Rcx != (DWORD)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
+    if (Context.Rcx != (DWORD_PTR)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
 #else
     if (Context.Eax != (DWORD)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
 #endif

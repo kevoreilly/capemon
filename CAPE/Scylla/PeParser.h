@@ -70,13 +70,16 @@ public:
 	bool readPeSectionsFromProcess();
 	bool readPeSectionsFromFile();
 	bool savePeFileToDisk(const CHAR * newFile);
+	bool savePeFileToHandle(HANDLE FileHandle);
 	bool saveCompletePeToDisk(const CHAR * newFile);
+	bool saveCompletePeToHandle(HANDLE FileHandle);
 	void removeDosStub();
 	void alignAllSectionHeaders();
 	void fixPeHeader();
 	void setDefaultFileAlignment();
 	bool dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath);
 	bool dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath, std::vector<PeSection> & sectionList);
+    bool dumpProcessToHandle(DWORD_PTR modBase, DWORD_PTR entryPoint, HANDLE FileHandle);
 
 	void setEntryPointVa(DWORD_PTR entryPoint);
 	void setEntryPointRva(DWORD entryPoint);

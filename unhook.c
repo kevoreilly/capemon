@@ -30,7 +30,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
-extern int RoutineProcessDump();
+extern int DoProcessDump(PVOID CallerBase);
 extern BOOL ProcessDumped;
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
@@ -254,18 +254,16 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 {
 	hook_disable();
 
-	while (1) {
-		WaitForSingleObject(g_terminate_event_handle, INFINITE);
-        if (g_config.procdump && !ProcessDumped)
-        {
-            DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", GetCurrentProcessId());
-            RoutineProcessDump();
-        }
-        file_handle_terminate();
-		log_flush();
-	}
+    WaitForSingleObject(g_terminate_event_handle, INFINITE);
 
-	return 0;
+    if (g_config.procdump && !ProcessDumped) {
+        DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", GetCurrentProcessId());
+        DoProcessDump(NULL);
+    }
+
+    file_handle_terminate();
+    log_flush();
+	ExitProcess(0);
 }
 
 DWORD g_terminate_event_thread_id;
