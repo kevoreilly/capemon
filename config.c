@@ -317,7 +317,11 @@ int read_config(void)
                     DoOutputDebugString("Process dumps disabled.\n");
 			}
             else if (!strcmp(key, "procmemdump")) {
-				g_config.procmemdump = value[0] == '1';
+				// for backwards compatibility with spender
+                if (!strcmp(value, "yes"))
+                    g_config.procmemdump = 1;
+                else
+                    g_config.procmemdump = value[0] == '1';
                 if (g_config.procmemdump)
                     DoOutputDebugString("Full process memory dumps enabled.\n");
                 else
