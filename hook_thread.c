@@ -89,7 +89,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-    pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+    if (pid != GetCurrentProcessId())
+        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
     ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
@@ -113,7 +114,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-	pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+    if (pid != GetCurrentProcessId())
+        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
     ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
@@ -150,7 +152,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
             InitNewThreadBreakpoints(tid);
         }
 
-        pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
         if (CreateSuspended == FALSE) {
 			lasterror_t lasterror;
@@ -338,7 +341,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 #ifdef CAPE_INJECTION
     ResumeThreadHandler(pid);
 #endif
-	pipe("RESUME:%d,%d", pid, tid);
+    if (pid != GetCurrentProcessId())
+        pipe("RESUME:%d,%d", pid, tid);
 
     ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
     LOQ_ntstatus("threading", "pI", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount);
