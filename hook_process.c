@@ -428,7 +428,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
         if (g_config.procdump && !ProcessDumped)
         {
             DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-            DoProcessDump(GetHookCallerBase(NULL));
+            DoProcessDump(GetHookCallerBase());
         }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
@@ -441,7 +441,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
         if (g_config.procdump && !ProcessDumped)
         {
             DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-            DoProcessDump(GetHookCallerBase(NULL));
+            DoProcessDump(GetHookCallerBase());
         }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
