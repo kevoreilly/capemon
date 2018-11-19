@@ -45,10 +45,10 @@ extern BOOL WoW64PatchBreakpoint(unsigned int Register)
 {
     if (WoW64HookInstalled == FALSE)
         return FALSE;
-        
+
     DoOutputDebugString("WoW64PatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
-    switch(Register) 
+    switch(Register)
 	{
       case 0:
         *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE0);
@@ -63,9 +63,9 @@ extern BOOL WoW64PatchBreakpoint(unsigned int Register)
         *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE3);
         break;
     }
-    
+
     DoOutputDebugString("WoW64PatchBreakpoint: patched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
-    
+
     return TRUE;
 }
 
@@ -78,24 +78,24 @@ extern BOOL WoW64UnpatchBreakpoint(unsigned int Register)
 
     DoOutputDebugString("WoW64UnpatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
-    switch(Register) 
+    switch(Register)
 	{
       case 0:
         *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE0);
-        break;                                                                                 
-      case 1:                                                                                  
+        break;
+      case 1:
         *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE1);
-        break;                                                                                 
-      case 2:                                                                                  
+        break;
+      case 2:
         *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE2);
-        break;                                                                                 
-      case 3:                                                                                  
+        break;
+      case 3:
         *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE3);
         break;
     }
-    
+
     DoOutputDebugString("WoW64UnpatchBreakpoint: unpatched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
-    
+
     return TRUE;
 }
 
@@ -105,7 +105,7 @@ const DWORD64 CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD
 // credit to Omega Red http://pastebin.ca/raw/475547
 {
     unsigned char HookBytes[] =
-    {	
+    {
         0x81, 0xBC, 0x24, 0xF0, 0x04, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x40,   //cmp 	dword [rsp+0x4f0], 0x4000001e	; wow64 single step?    0
         0x75, 0x37,                                                         //jne 	hook_end                                                11
 
@@ -122,8 +122,8 @@ const DWORD64 CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD
         0x4C, 0x89, 0xEA,                                                   //mov     rdx, r13                                              59
         0x4D, 0x89, 0xF0,                                                   //mov     r8, r14                                               62
         0x4D, 0x89, 0xF9,                                                   //mov     r9, r15                                               65
-//hook_end                                                                                                                                  
-        0xFC,                                                               //cld  - first two instructions from KiUserExceptionDispatcher  68                                           
+//hook_end
+        0xFC,                                                               //cld  - first two instructions from KiUserExceptionDispatcher  68
         0x48, 0xB8, 0xDD, 0xCC, 0xBB, 0xAA, 0x00, 0x00, 0x00, 0x00,         //mov     rax, 0AABBCCDDh                                       69
         0x50,                                                               //push    rax - jump back to KiUserExceptionDispatcher+8        79
         0x48, 0xB8, 0xDD, 0xCC, 0xBB, 0xAA, 0x00, 0x00, 0x00, 0x00,         //mov     rax, 0AABBCCDDh                                       80
@@ -132,21 +132,21 @@ const DWORD64 CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD
     };                                                                      //                                                              86
 
     lpHookCode = VirtualAllocEx64((HANDLE) -1, (DWORD64)NULL, PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-    
+
     //insert relative address of NtSetContextThread64 from instruction after call
     DWORD RelativeOffset = pNtSetContextThread64 - ((DWORD)lpHookCode + 56);
     memcpy(&HookBytes[52], &RelativeOffset, sizeof(DWORD_PTR));
-    
+
     //insert VA of Wow64PrepareForException
     memcpy(&HookBytes[71], &pWow64PrepareForException, sizeof(DWORD_PTR));
-    
+
     //insert address to return to from hook code at 8 bytes into KiUserExceptionDispatcher
     DWORD ReturnAddress = pKiUserExceptionDispatcher + 8;
-    memcpy(&HookBytes[82], &ReturnAddress, sizeof(DWORD_PTR)); //(8 is address of third instruction)    
-    
+    memcpy(&HookBytes[82], &ReturnAddress, sizeof(DWORD_PTR)); //(8 is address of third instruction)
+
     //copy it to newly created page
     memcpy((LPVOID)lpHookCode, (const void *)HookBytes, sizeof(HookBytes));
-    
+
     return lpHookCode;
 }
 
@@ -157,7 +157,7 @@ const void EnableWow64Hook()
     unsigned char trampolineBytes[] =
     {
         0xE9, 0xDD, 0xCC, 0xBB, 0xAA,                              // jmp +0xAABBCCDDEE+5
-        0xCC, 0xCC, 0xCC                                           // 
+        0xCC, 0xCC, 0xCC                                           //
     };
     DWORD pNew = (DWORD)lpNewJumpLocation;
 	DWORD pOrig = (DWORD)pfnKiUserExceptionDispatcher + 5;
@@ -170,14 +170,14 @@ const void EnableWow64Hook()
         DoOutputErrorString("VirtualProtectEx64 failed to set PAGE_EXECUTE_READWRITE");
         return;
     }
-	
+
     memcpy((PVOID)pfnKiUserExceptionDispatcher, &trampolineBytes, sizeof(trampolineBytes));
 
     if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, dwOldProtect, &dwOldProtect))
     {
         DoOutputErrorString("VirtualProtect failed to restore dwOldProtect");
         return;
-    }    
+    }
 }
 
 //**************************************************************************************
@@ -190,24 +190,24 @@ extern BOOL WoW64fix(void)
         DoOutputDebugString("WoW64 not detected.\n");
         return FALSE;
     }
-  
+
     //DWORD ntdll64 = getNTDLL64();
     //DWORD wow64dll = GetModuleHandle64(L"wow64.dll");
-	
+
     DWORD64 ntdll64 = GetModuleBase64(L"ntdll.dll");
     DWORD64 wow64dll = GetModuleBase64(L"wow64.dll");
     DWORD64 pfnWow64PrepareForException = GetProcAddress64(wow64dll, "Wow64PrepareForException");
     pfnKiUserExceptionDispatcher = GetProcAddress64(ntdll64, "KiUserExceptionDispatcher");
-    pfnNtSetContextThread = GetProcAddress64(ntdll64, "NtSetContextThread");  
+    pfnNtSetContextThread = GetProcAddress64(ntdll64, "NtSetContextThread");
 
     DoOutputDebugString("WoW64 detected: 64-bit ntdll base: 0x%x, KiUserExceptionDispatcher: 0x%x, NtSetContextThread: 0x%x, Wow64PrepareForException: 0x%x\n", ntdll64, pfnKiUserExceptionDispatcher, pfnNtSetContextThread, pfnWow64PrepareForException);
-    
+
     lpNewJumpLocation = CreateHook((DWORD_PTR)pfnKiUserExceptionDispatcher, (DWORD_PTR)pfnNtSetContextThread, (DWORD_PTR)pfnWow64PrepareForException);
-    
+
     EnableWow64Hook();
-    
+
     DoOutputDebugString("WoW64 workaround: KiUserExceptionDispatcher hook installed at: 0x%x\n", lpNewJumpLocation);
-    
+
     return TRUE;
 }
 #endif

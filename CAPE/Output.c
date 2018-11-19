@@ -59,9 +59,9 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 {
     va_list args;
     LPVOID lpMsgBuf;
-    DWORD ErrorCode; 
+    DWORD ErrorCode;
 
-    ErrorCode = GetLastError(); 
+    ErrorCode = GetLastError();
     va_start(args, lpOutputString);
 
     FormatMessage(
@@ -70,12 +70,12 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
         ErrorCode,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPTSTR)&lpMsgBuf,
-        0, 
+        0,
 		NULL);
-    
+
     memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
     _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
-    
+
     memset(ErrorOutput, 0, MAX_PATH*sizeof(TCHAR));
     _sntprintf_s(ErrorOutput, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
 #ifdef STANDALONE
@@ -85,7 +85,7 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
     _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
     pipe(PipeOutput, strlen(PipeOutput));
 #endif
-    
+
     va_end(args);
 
 	return;
@@ -116,8 +116,8 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         if (hMetadata == INVALID_HANDLE_VALUE)
         {
             DoOutputErrorString("Could not create CAPE metadata file");
-            return;		
-        }	
+            return;
+        }
 
 		BufferSize = 3 * (MAX_PATH + MAX_INT_STRING_LEN + 2) + 2; //// max size string can be
 
@@ -131,13 +131,13 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
                 DoOutputDebugString("CAPE Error: g_config.file_of_interest is NULL.\n", g_config.file_of_interest);
                 return;
             }
-            
+
             CapeMetaData->ModulePath = (char*)malloc(MAX_PATH);
             WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)g_config.file_of_interest, (int)wcslen(g_config.file_of_interest)+1, CapeMetaData->ModulePath, MAX_PATH, NULL, NULL);
         }
         else
             CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
-            
+
 		// This metadata format is specific to process dumps
 		_snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
@@ -150,7 +150,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		}
 
 		CloseHandle(hMetadata);
-        
+
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, "Process dump output file: %s", lpOutputFile);
 #ifdef STANDALONE
@@ -177,8 +177,8 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         if (hMetadata == INVALID_HANDLE_VALUE)
         {
             DoOutputErrorString("Could not create CAPE metadata file");
-            return;		
-        }	
+            return;
+        }
 
 		BufferSize = 3 * (MAX_PATH + MAX_INT_STRING_LEN + 2) + 2; //// max size string can be
 
@@ -187,7 +187,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         if (!CapeMetaData->ProcessPath)
             CapeMetaData->ProcessPath = "Unknown path";
         CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
-        
+
 		if (CapeMetaData->DumpType == EXTRACTION_PE || CapeMetaData->DumpType == EXTRACTION_SHELLCODE)
         {
             // Extraction-specific format
@@ -217,7 +217,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		}
 
 		CloseHandle(hMetadata);
-        
+
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, "CAPE Output file: %s", lpOutputFile);
 #ifdef STANDALONE
@@ -230,6 +230,6 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 	}
 	else
 		DoOutputDebugString("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
-    
+
 	return;
 }

@@ -28,7 +28,7 @@ typedef struct _EXCEPTION_REGISTRATION_RECORD {
 typedef EXCEPTION_REGISTRATION_RECORD *PEXCEPTION_REGISTRATION_RECORD;
 #endif
 
-typedef struct BreakpointInfo 
+typedef struct BreakpointInfo
 {
 	HANDLE	ThreadHandle;
     int		Register;
@@ -46,7 +46,7 @@ typedef struct ThreadBreakpoints
 	HANDLE						ThreadHandle;
 	BREAKPOINTINFO 				BreakpointInfo[4];
 	struct ThreadBreakpoints	*NextThreadBreakpoints;
-} THREADBREAKPOINTS, *PTHREADBREAKPOINTS;	
+} THREADBREAKPOINTS, *PTHREADBREAKPOINTS;
 
 typedef struct TrackedRegion
 {
@@ -54,7 +54,7 @@ typedef struct TrackedRegion
     PVOID                       ProtectAddress;
 	SIZE_T						RegionSize;
 	ULONG 						Protect;
-    MEMORY_BASIC_INFORMATION    MemInfo;    
+    MEMORY_BASIC_INFORMATION    MemInfo;
 	BOOL 						Committed;
     PVOID                       LastAccessAddress;
     PVOID                       LastWriteAddress;
@@ -82,7 +82,7 @@ typedef struct TrackedRegion
     BOOL                        BreakpointsSaved;
     struct ThreadBreakpoints    *TrackedRegionBreakpoints;
 	struct TrackedRegion	    *NextTrackedRegion;
-} TRACKEDREGION, *PTRACKEDREGION;	
+} TRACKEDREGION, *PTRACKEDREGION;
 
 struct TrackedRegion *TrackedRegionList;
 

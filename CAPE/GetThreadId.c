@@ -26,7 +26,7 @@ typedef PVOID PTEB;
 // Thread Information Classes
 //
 
-typedef enum _THREADINFOCLASS 
+typedef enum _THREADINFOCLASS
 {
     ThreadBasicInformation,
     ThreadTimes,
@@ -52,7 +52,7 @@ typedef enum _THREADINFOCLASS
     MaxThreadInfoClass
 } THREADINFOCLASS;
 
-typedef struct _CLIENT_ID 
+typedef struct _CLIENT_ID
 {
     HANDLE UniqueProcess;
     HANDLE UniqueThread;
@@ -67,7 +67,7 @@ typedef struct _CLIENT_ID
 //  NtQueryInformationThread using ThreadBasicInfo
 //
 
-typedef struct _THREAD_BASIC_INFORMATION 
+typedef struct _THREAD_BASIC_INFORMATION
 {
     NTSTATUS ExitStatus;
     PTEB TebBaseAddress;
@@ -115,7 +115,7 @@ DWORD MyGetThreadId
         return 0;
     }
 
-    FreeLibrary(hModule);        
-    
+    FreeLibrary(hModule);
+
 	return (DWORD)(UINT_PTR)ThreadBasicInfo.ClientId.UniqueThread;
 }
