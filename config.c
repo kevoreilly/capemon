@@ -334,6 +334,13 @@ int read_config(void)
                 else
                     DoOutputDebugString("Import reconstruction of process dumps disabled.\n");
 			}
+            else if (!strcmp(key, "terminate-processes")) {
+				g_config.terminate_processes = value[0] == '1';
+                if (g_config.terminate_processes)
+                    DoOutputDebugString("Terminate processes on terminate_event enabled.\n");
+                else
+                    DoOutputDebugString("Terminate processes on terminate_event disabled.\n");
+			}
             else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}
     }

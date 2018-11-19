@@ -113,6 +113,9 @@ struct _g_config {
 
     // should we attempt import reconstruction on each process dump? (slow)
     int import_reconstruction;
+
+    // should we terminate processes after dumping on terminate_event?
+    int terminate_processes;
 };
 
 extern struct _g_config g_config;
