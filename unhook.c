@@ -265,6 +265,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     log_flush();
     if (g_config.terminate_processes)
         ExitProcess(0);
+    return 0;
 }
 
 DWORD g_terminate_event_thread_id;

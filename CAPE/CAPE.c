@@ -20,6 +20,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #define MAX_PRETRAMP_SIZE 320
 #define MAX_TRAMP_SIZE 128
+#define MAX_UNICODE_PATH 32768
 
 #define BUFSIZE 			    1024	// For hashing
 #define DUMP_MAX                100
@@ -45,6 +46,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\alloc.h"
 #include "..\pipe.h"
 #include "..\config.h"
+#include "..\lookup.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -104,6 +106,7 @@ typedef struct _hook_info_t {
 } hook_info_t;
 
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
+extern wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
 extern int called_by_hook(void);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
@@ -113,6 +116,7 @@ extern wchar_t *our_process_path;
 extern wchar_t *our_commandline;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
+extern lookup_t g_caller_regions;
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -327,7 +331,7 @@ PVOID GetAllocationBase(PVOID Address)
 
     if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
     {
-        DoOutputErrorString("GetAllocationBase: unable to query memory address 0x%x", Address);
+        //DoOutputErrorString("GetAllocationBase: unable to query memory address 0x%x", Address);
         return 0;
     }
 
@@ -1372,8 +1376,8 @@ int IsDisguisedPEHeader(LPVOID Buffer)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("IsDisguisedPEHeader: Exception occured reading region at 0x%x\n", (DWORD_PTR)(Buffer));
-        return -1;
+        //DoOutputDebugString("IsDisguisedPEHeader: Exception occured reading region at 0x%x\n", (DWORD_PTR)(Buffer));
+        return 0;
     }
 
     //DoOutputDebugString("IsDisguisedPEHeader: No PE image located\n (0x%x)", (DWORD_PTR)Buffer);
@@ -1889,10 +1893,26 @@ int DumpPE(LPVOID Buffer)
 //**************************************************************************************
 void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
 //**************************************************************************************
-// This is soon to be expanded, just covering existing functionality for now.
 {
+    PIMAGE_DOS_HEADER pDosHeader;
+    wchar_t *MappedPath, *ModulePath, *AbsoluteMapped, *AbsoluteModule;
+
     if (!MemInfo.BaseAddress)
         return;
+
+    if (MemInfo.BaseAddress == (PVOID)g_our_dll_base)
+        return;
+
+    __try
+    {
+        BYTE Test = *(BYTE*)MemInfo.BaseAddress;
+        Test = *(BYTE*)MemInfo.BaseAddress + PE_HEADER_LIMIT;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        // No point in continuing if we can't read!
+        return;
+    }
 
     if (MemInfo.BaseAddress == ImageBase)
     {
@@ -1902,10 +1922,23 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
         else
             ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
     }
-    else if (MemInfo.BaseAddress == CallerBase && ImageBase != CallerBase)
+    // Disable dumping of all calling regions for the moment as this needs further testing.
+    // (This causes lots of useless dumps from Word processes, for example.)
+    //else if (lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
+    else if (MemInfo.BaseAddress == CallerBase)
     {
-        DoOutputDebugString("DumpInterestingRegions: Terminate caller base (0x%p) different to imagebase (0x%p) - dumping.\n", CallerBase, ImageBase);
-        ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)CallerBase, 0);
+        DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
+
+        CapeMetaData->ModulePath = NULL;
+
+        if (IsDisguisedPEHeader(MemInfo.BaseAddress))
+        {
+            CapeMetaData->Address = MemInfo.BaseAddress;
+            CapeMetaData->DumpType = EXTRACTION_PE;
+            ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
+        }
+        else
+            DumpRegion(MemInfo.BaseAddress);
     }
 }
 
@@ -2035,7 +2068,7 @@ int DoProcessDump(PVOID CallerBase)
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
                 free(TempBuffer);
-                DoOutputDebugString("DoProcessDump: Exception attempting to dump region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
+                //DoOutputDebugString("DoProcessDump: Exception attempting to dump region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
             }
         }
 
