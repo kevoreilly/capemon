@@ -17,3 +17,4 @@ tests/logging-test.*
 *.suo
 *.opendb
 *.VC.db
+.vs/*

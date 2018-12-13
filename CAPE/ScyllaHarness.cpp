@@ -31,6 +31,7 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
+#define	PE_HEADER_LIMIT 0x200
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
 //#define DEBUG_COMMENTS
 
@@ -38,6 +39,7 @@ extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" int ScanForNonZero(LPVOID Buffer, unsigned int Size);
 extern "C" PVOID GetAllocationBase(PVOID Address);
+extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
 
 extern char CapeOutputPath[MAX_PATH];
 
@@ -161,7 +163,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 //**************************************************************************************
 {
 	SIZE_T SectionBasedSizeOfImage;
-	PeParser * peFile = 0;
+	PeParser *peFile = 0;
 	DWORD_PTR entrypoint = NULL;
 
 	ScyllaInit(hProcess);
@@ -191,26 +193,118 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
         }
 
         if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
-        {
             DoOutputDebugString("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
-        }
-        else
-        {
-            DoOutputDebugString("DumpProcess: Error - Cannot dump image.\n");
-            delete peFile;
-            return 0;
-        }
     }
     else
     {
-        DoOutputDebugString("DumpProcess: Invalid PE file or invalid PE header.\n");
-        delete peFile;
-        return 0;
+        PBYTE PEImage;
+        PIMAGE_NT_HEADERS pNtHeader;
+        PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)ModuleBase;
+
+        if (IsDisguisedPEHeader((LPVOID)ModuleBase) && *(WORD*)pDosHeader != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
+        {
+            MEMORY_BASIC_INFORMATION MemInfo;
+
+            DoOutputDebugString("DumpProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
+
+            if (!VirtualQuery((LPVOID)ModuleBase, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+            {
+                DoOutputErrorString("DumpProcess: unable to query memory address 0x%p", ModuleBase);
+                goto fail;
+            }
+
+            PEImage = (BYTE*)calloc(MemInfo.RegionSize, sizeof(BYTE));
+            memcpy(PEImage, MemInfo.BaseAddress, MemInfo.RegionSize);
+
+            if (!pDosHeader->e_lfanew)
+            {
+                // In case the header until and including 'PE' has been zeroed
+                WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+                while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+                {
+                    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                    {
+                        if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
+                            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+                    }
+                    MachineProbe += sizeof(WORD);
+                }
+
+                if (pNtHeader)
+                    pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+            }
+
+            if (!pDosHeader->e_lfanew)
+            {
+                // In case the header until and including 'PE' is missing
+                pNtHeader = NULL;
+                WORD* MachineProbe = (WORD*)pDosHeader;
+                while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+                {
+                    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                    {
+                        if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
+                        {
+                            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+                            //break;
+                        }
+                    }
+                    MachineProbe += sizeof(WORD);
+
+                    if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
+                    {
+                        SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
+                        memmove(PEImage + HeaderShift, PEImage, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
+                        memset(PEImage, 0, HeaderShift);
+                        pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
+                        pNtHeader = (PIMAGE_NT_HEADERS)(PEImage + HeaderShift);
+                        pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+                        DoOutputDebugString("DumpProcess: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
+                    }
+                }
+            }
+
+            peFile = new PeParser((char*)PEImage, TRUE);
+
+            if (peFile->isValidPeFile())
+            {
+                if (NewOEP)
+                    entrypoint = NewOEP;
+                else
+                    entrypoint = peFile->getEntryPoint();
+
+                SectionBasedSizeOfImage = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
+
+                if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
+                {
+                    DoOutputDebugString("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
+                    entrypoint = NULL;
+                }
+                else
+                {
+                    DoOutputDebugString("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
+                    entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
+                }
+
+                if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+                    DoOutputDebugString("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+            }
+
+        }
+        else
+        {
+            DoOutputDebugString("DumpProcess: Invalid PE file or invalid PE header.\n");
+            goto fail;
+        }
     }
 
     delete peFile;
 
     return 1;
+fail:
+    delete peFile;
+
+    return 0;
 }
 
 //**************************************************************************************
