@@ -1917,6 +1917,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
     if (MemInfo.BaseAddress == ImageBase)
     {
         DoOutputDebugString("DumpInterestingRegions: Dumping Imagebase at 0x%p.\n", ImageBase);
+        CapeMetaData->DumpType = PROCDUMP;
         if (g_config.import_reconstruction)
             ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
         else
@@ -1930,13 +1931,11 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
         DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
 
         CapeMetaData->ModulePath = NULL;
+        CapeMetaData->DumpType = DATADUMP;
+        CapeMetaData->Address = MemInfo.BaseAddress;
 
         if (IsDisguisedPEHeader(MemInfo.BaseAddress))
-        {
-            CapeMetaData->Address = MemInfo.BaseAddress;
-            CapeMetaData->DumpType = EXTRACTION_PE;
             ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
-        }
         else
             DumpRegion(MemInfo.BaseAddress);
     }
@@ -2130,6 +2129,9 @@ void init_CAPE()
     // g_config.procdump = 0;
 
     InitializeCriticalSection(&ProcessDumpCriticalSection);
+
+    lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
+    lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
 
     // Cuckoo debug output level for development (0=none, 2=max)
     // g_config.debug = 2;
