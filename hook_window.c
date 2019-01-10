@@ -151,9 +151,11 @@ HOOKDEF(BOOL, WINAPI, PostMessageA,
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId())
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	if (hWnd) {
+        GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+    }
 	set_lasterrors(&lasterror);
 	ret = Old_PostMessageA(hWnd, Msg, wParam, lParam);
 
@@ -173,9 +175,11 @@ HOOKDEF(BOOL, WINAPI, PostMessageW,
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId())
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	if (hWnd) {
+        GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+    }
 	set_lasterrors(&lasterror);
 	ret = Old_PostMessageW(hWnd, Msg, wParam, lParam);
 
@@ -195,9 +199,11 @@ HOOKDEF(BOOL, WINAPI, SendMessageA,
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId())
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	if (hWnd) {
+        GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+    }
 	set_lasterrors(&lasterror);
 	ret = Old_SendMessageA(hWnd, Msg, wParam, lParam);
 
@@ -217,9 +223,11 @@ HOOKDEF(BOOL, WINAPI, SendMessageW,
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId())
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	if (hWnd) {
+        GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+    }
 	set_lasterrors(&lasterror);
 	ret = Old_SendMessageW(hWnd, Msg, wParam, lParam);
 
@@ -239,9 +247,11 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId())
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	if (hWnd) {
+        GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+    }
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
 
@@ -261,9 +271,11 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId())
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	if (hWnd) {
+        GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId())
+            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+    }
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
 
@@ -283,15 +295,17 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	our_GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId()) {
-		char classname[1024];
-		our_GetClassNameA(hWnd, classname, sizeof(classname));
-		if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-			isbad = TRUE;
-		}
-	}
+	if (hWnd) {
+        our_GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId()) {
+            char classname[1024];
+            our_GetClassNameA(hWnd, classname, sizeof(classname));
+            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+                pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+                isbad = TRUE;
+            }
+        }
+    }
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongA(hWnd, nIndex, dwNewLong);
@@ -313,15 +327,17 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	our_GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId()) {
-		char classname[1024];
-		our_GetClassNameA(hWnd, classname, sizeof(classname));
-		if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-			isbad = TRUE;
-		}
-	}
+	if (hWnd) {
+        our_GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId()) {
+            char classname[1024];
+            our_GetClassNameA(hWnd, classname, sizeof(classname));
+            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+                pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+                isbad = TRUE;
+            }
+        }
+    }
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
@@ -343,15 +359,17 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	our_GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId()) {
-		char classname[1024];
-		our_GetClassNameA(hWnd, classname, sizeof(classname));
-		if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-			isbad = TRUE;
-		}
-	}
+	if (hWnd) {
+        our_GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId()) {
+            char classname[1024];
+            our_GetClassNameA(hWnd, classname, sizeof(classname));
+            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+                pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+                isbad = TRUE;
+            }
+        }
+    }
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongW(hWnd, nIndex, dwNewLong);
@@ -374,15 +392,17 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	our_GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != GetCurrentProcessId()) {
-		char classname[1024];
-		our_GetClassNameA(hWnd, classname, sizeof(classname));
-		if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-			isbad = TRUE;
-		}
-	}
+	if (hWnd) {
+        our_GetWindowThreadProcessId(hWnd, &pid);
+        if (pid != GetCurrentProcessId()) {
+            char classname[1024];
+            our_GetClassNameA(hWnd, classname, sizeof(classname));
+            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+                pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+                isbad = TRUE;
+            }
+        }
+    }
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongPtrW(hWnd, nIndex, dwNewLong);

@@ -256,10 +256,16 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     WaitForSingleObject(g_terminate_event_handle, INFINITE);
 
-    if (g_config.procdump && !ProcessDumped) {
-        DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", GetCurrentProcessId());
-        DoProcessDump(NULL);
+    if (g_config.procdump) {
+        if (!ProcessDumped) {
+            DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", GetCurrentProcessId());
+            DoProcessDump(NULL);
+        }
+        else
+            DoOutputDebugString("Terminate Event: Process %d has already been dumped(!)\n", GetCurrentProcessId());
     }
+    else
+        DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", GetCurrentProcessId());
 
     file_handle_terminate();
     log_flush();
