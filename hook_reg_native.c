@@ -159,7 +159,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryValueKey,
 
     ret = Old_NtQueryValueKey(KeyHandle, ValueName,
         KeyValueInformationClass, KeyValueInformation, Length, ResultLength);
-    if(NT_SUCCESS(ret) && KeyValueInformation && 
+    if(NT_SUCCESS(ret) && KeyValueInformation &&
             *ResultLength >= sizeof(ULONG) * 3) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
@@ -308,7 +308,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtSaveKey,
     __in  HANDLE FileHandle
 ) {
     NTSTATUS ret = Old_NtSaveKey(KeyHandle, FileHandle);
-    LOQ_ntstatus("registry", "pp", "KeyHandle", KeyHandle, "FileHandle", FileHandle);
+    wchar_t *fname = calloc(32768, sizeof(wchar_t));
+    path_from_handle(FileHandle, fname, 32768);
+    LOQ_ntstatus("registry", "ppF", "KeyHandle", KeyHandle, "FileHandle", FileHandle, "FilePath", fname);
+    free(fname);
     return ret;
 }
 
