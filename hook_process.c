@@ -197,12 +197,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	if(ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
-	DWORD pid = pid_from_process_handle(*ProcessHandle);
     ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
         ProcessDesiredAccess, ThreadDesiredAccess,
         ProcessObjectAttributes, ThreadObjectAttributes,
         ProcessFlags, ThreadFlags | 1, ProcessParameters,
         CreateInfo, AttributeList);
+    DWORD pid = pid_from_process_handle(*ProcessHandle);
     LOQ_ntstatus("process", "PPhhOOool", "ProcessHandle", ProcessHandle,
         "ThreadHandle", ThreadHandle,
         "ProcessDesiredAccess", ProcessDesiredAccess,
