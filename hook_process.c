@@ -68,7 +68,7 @@ HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
 HOOKDEF(BOOL, WINAPI, Process32NextW,
 	__in HANDLE hSnapshot,
 	__out LPPROCESSENTRY32W lppe
-) {
+	) {
 	BOOL ret = Old_Process32NextW(hSnapshot, lppe);
 
 	/* skip returning protected processes */
@@ -86,7 +86,7 @@ HOOKDEF(BOOL, WINAPI, Process32NextW,
 HOOKDEF(BOOL, WINAPI, Process32FirstW,
 	__in HANDLE hSnapshot,
 	__out LPPROCESSENTRY32W lppe
-) {
+	) {
 	BOOL ret = Old_Process32FirstW(hSnapshot, lppe);
 
 	/* skip returning protected processes */
@@ -104,7 +104,7 @@ HOOKDEF(BOOL, WINAPI, Process32FirstW,
 HOOKDEF(BOOL, WINAPI, Module32NextW,
 	__in HANDLE hSnapshot,
 	__out LPMODULEENTRY32W lpme
-) {
+	) {
 	BOOL ret = Old_Module32NextW(hSnapshot, lpme);
 
 	if (ret)
@@ -118,7 +118,7 @@ HOOKDEF(BOOL, WINAPI, Module32NextW,
 HOOKDEF(BOOL, WINAPI, Module32FirstW,
 	__in HANDLE hSnapshot,
 	__out LPMODULEENTRY32W lpme
-) {
+	) {
 	BOOL ret = Old_Module32FirstW(hSnapshot, lpme);
 
 	if (ret)
@@ -130,123 +130,123 @@ HOOKDEF(BOOL, WINAPI, Module32FirstW,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
-	__out       PHANDLE ProcessHandle,
-	__in        ACCESS_MASK DesiredAccess,
-	__in_opt    POBJECT_ATTRIBUTES ObjectAttributes,
-	__in        HANDLE ParentProcess,
-	__in        BOOLEAN InheritObjectTable,
-	__in_opt    HANDLE SectionHandle,
-	__in_opt    HANDLE DebugPort,
-	__in_opt    HANDLE ExceptionPort
+    __out       PHANDLE ProcessHandle,
+    __in        ACCESS_MASK DesiredAccess,
+    __in_opt    POBJECT_ATTRIBUTES ObjectAttributes,
+    __in        HANDLE ParentProcess,
+    __in        BOOLEAN InheritObjectTable,
+    __in_opt    HANDLE SectionHandle,
+    __in_opt    HANDLE DebugPort,
+    __in_opt    HANDLE ExceptionPort
 ) {
-	NTSTATUS ret = Old_NtCreateProcess(ProcessHandle, DesiredAccess,
-		ObjectAttributes, ParentProcess, InheritObjectTable, SectionHandle,
-		DebugPort, ExceptionPort);
+    NTSTATUS ret = Old_NtCreateProcess(ProcessHandle, DesiredAccess,
+        ObjectAttributes, ParentProcess, InheritObjectTable, SectionHandle,
+        DebugPort, ExceptionPort);
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
-	LOQ_ntstatus("process", "PphOl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
-		"FileName", ObjectAttributes, "ProcessId", pid);
-	if (NT_SUCCESS(ret)) {
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-		disable_sleep_skip();
-	}
-	return ret;
+    LOQ_ntstatus("process", "PphOl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
+        "FileName", ObjectAttributes, "ProcessId", pid);
+    if(NT_SUCCESS(ret)) {
+        pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+        disable_sleep_skip();
+    }
+    return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
-	__out       PHANDLE ProcessHandle,
-	__in        ACCESS_MASK DesiredAccess,
-	__in_opt    POBJECT_ATTRIBUTES ObjectAttributes,
-	__in        HANDLE ParentProcess,
-	__in        ULONG Flags,
-	__in_opt    HANDLE SectionHandle,
-	__in_opt    HANDLE DebugPort,
-	__in_opt    HANDLE ExceptionPort,
-	__in        BOOLEAN InJob
+    __out       PHANDLE ProcessHandle,
+    __in        ACCESS_MASK DesiredAccess,
+    __in_opt    POBJECT_ATTRIBUTES ObjectAttributes,
+    __in        HANDLE ParentProcess,
+    __in        ULONG Flags,
+    __in_opt    HANDLE SectionHandle,
+    __in_opt    HANDLE DebugPort,
+    __in_opt    HANDLE ExceptionPort,
+    __in        BOOLEAN InJob
 ) {
-	NTSTATUS ret = Old_NtCreateProcessEx(ProcessHandle, DesiredAccess,
-		ObjectAttributes, ParentProcess, Flags, SectionHandle, DebugPort,
-		ExceptionPort, InJob);
+    NTSTATUS ret = Old_NtCreateProcessEx(ProcessHandle, DesiredAccess,
+        ObjectAttributes, ParentProcess, Flags, SectionHandle, DebugPort,
+        ExceptionPort, InJob);
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
-	LOQ_ntstatus("process", "PphOhh", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
-		"FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
-	if (NT_SUCCESS(ret)) {
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-		disable_sleep_skip();
-	}
-	return ret;
+	LOQ_ntstatus("process", "PphOhhl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
+        "FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
+    if(NT_SUCCESS(ret)) {
+		DWORD pid = pid_from_process_handle(*ProcessHandle);
+        pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+        disable_sleep_skip();
+    }
+    return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
-	__out       PHANDLE ProcessHandle,
-	__out       PHANDLE ThreadHandle,
-	__in        ACCESS_MASK ProcessDesiredAccess,
-	__in        ACCESS_MASK ThreadDesiredAccess,
-	__in_opt    POBJECT_ATTRIBUTES ProcessObjectAttributes,
-	__in_opt    POBJECT_ATTRIBUTES ThreadObjectAttributes,
-	__in        ULONG ProcessFlags,
-	__in        ULONG ThreadFlags,
-	__in_opt    PRTL_USER_PROCESS_PARAMETERS ProcessParameters,
-	__inout     PPS_CREATE_INFO CreateInfo,
-	__in_opt    PPS_ATTRIBUTE_LIST AttributeList
+    __out       PHANDLE ProcessHandle,
+    __out       PHANDLE ThreadHandle,
+    __in        ACCESS_MASK ProcessDesiredAccess,
+    __in        ACCESS_MASK ThreadDesiredAccess,
+    __in_opt    POBJECT_ATTRIBUTES ProcessObjectAttributes,
+    __in_opt    POBJECT_ATTRIBUTES ThreadObjectAttributes,
+    __in        ULONG ProcessFlags,
+    __in        ULONG ThreadFlags,
+    __in_opt    PRTL_USER_PROCESS_PARAMETERS ProcessParameters,
+    __inout     PPS_CREATE_INFO CreateInfo,
+    __in_opt    PPS_ATTRIBUTE_LIST AttributeList
 ) {
-	RTL_USER_PROCESS_PARAMETERS _ProcessParameters;
+    RTL_USER_PROCESS_PARAMETERS _ProcessParameters;
 	NTSTATUS ret;
 
 	memset(&_ProcessParameters, 0, sizeof(_ProcessParameters));
 
-	if (ProcessParameters == NULL)
+	if(ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
-
-	ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
-		ProcessDesiredAccess, ThreadDesiredAccess,
-		ProcessObjectAttributes, ThreadObjectAttributes,
-		ProcessFlags, ThreadFlags | 1, ProcessParameters,
-		CreateInfo, AttributeList);
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
-	LOQ_ntstatus("process", "PPhhOOool", "ProcessHandle", ProcessHandle,
-		"ThreadHandle", ThreadHandle,
-		"ProcessDesiredAccess", ProcessDesiredAccess,
-		"ThreadDesiredAccess", ThreadDesiredAccess,
-		"ProcessFileName", ProcessObjectAttributes,
-		"ThreadName", ThreadObjectAttributes,
-		"ImagePathName", &ProcessParameters->ImagePathName,
-		"CommandLine", &ProcessParameters->CommandLine,
+    ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
+        ProcessDesiredAccess, ThreadDesiredAccess,
+        ProcessObjectAttributes, ThreadObjectAttributes,
+        ProcessFlags, ThreadFlags | 1, ProcessParameters,
+        CreateInfo, AttributeList);
+    LOQ_ntstatus("process", "PPhhOOool", "ProcessHandle", ProcessHandle,
+        "ThreadHandle", ThreadHandle,
+        "ProcessDesiredAccess", ProcessDesiredAccess,
+        "ThreadDesiredAccess", ThreadDesiredAccess,
+        "ProcessFileName", ProcessObjectAttributes,
+        "ThreadName", ThreadObjectAttributes,
+        "ImagePathName", &ProcessParameters->ImagePathName,
+        "CommandLine", &ProcessParameters->CommandLine,
 		"ProcessId", pid);
-	if (NT_SUCCESS(ret)) {
+    if(NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(*ThreadHandle);
 		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 		if (!(ThreadFlags & 1))
 			ResumeThread(*ThreadHandle);
-		disable_sleep_skip();
-	}
-	return ret;
+        disable_sleep_skip();
+    }
+    return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
-	IN      PUNICODE_STRING ImagePath,
-	IN      ULONG ObjectAttributes,
-	IN OUT  PRTL_USER_PROCESS_PARAMETERS ProcessParameters,
-	IN      PSECURITY_DESCRIPTOR ProcessSecurityDescriptor OPTIONAL,
-	IN      PSECURITY_DESCRIPTOR ThreadSecurityDescriptor OPTIONAL,
-	IN      HANDLE ParentProcess,
-	IN      BOOLEAN InheritHandles,
-	IN      HANDLE DebugPort OPTIONAL,
-	IN      HANDLE ExceptionPort OPTIONAL,
-	OUT     PRTL_USER_PROCESS_INFORMATION ProcessInformation
+    IN      PUNICODE_STRING ImagePath,
+    IN      ULONG ObjectAttributes,
+    IN OUT  PRTL_USER_PROCESS_PARAMETERS ProcessParameters,
+    IN      PSECURITY_DESCRIPTOR ProcessSecurityDescriptor OPTIONAL,
+    IN      PSECURITY_DESCRIPTOR ThreadSecurityDescriptor OPTIONAL,
+    IN      HANDLE ParentProcess,
+    IN      BOOLEAN InheritHandles,
+    IN      HANDLE DebugPort OPTIONAL,
+    IN      HANDLE ExceptionPort OPTIONAL,
+    OUT     PRTL_USER_PROCESS_INFORMATION ProcessInformation
 ) {
-	NTSTATUS ret = Old_RtlCreateUserProcess(ImagePath, ObjectAttributes,
-		ProcessParameters, ProcessSecurityDescriptor,
-		ThreadSecurityDescriptor, ParentProcess, InheritHandles, DebugPort,
-		ExceptionPort, ProcessInformation);
+    NTSTATUS ret = Old_RtlCreateUserProcess(ImagePath, ObjectAttributes,
+        ProcessParameters, ProcessSecurityDescriptor,
+        ThreadSecurityDescriptor, ParentProcess, InheritHandles, DebugPort,
+        ExceptionPort, ProcessInformation);
 	DWORD pid = pid_from_process_handle(ProcessInformation->ProcessHandle);
-	LOQ_ntstatus("process", "ohp", "ImagePath", ImagePath, "ObjectAttributes", ObjectAttributes,
-		"ParentHandle", ParentProcess, "ProcessId", pid);
-	if (NT_SUCCESS(ret)) {
+    LOQ_ntstatus("process", "ohpl", "ImagePath", ImagePath, "ObjectAttributes", ObjectAttributes,
+        "ParentHandle", ParentProcess, "ProcessId", pid);
+    if(NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(ProcessInformation->ThreadHandle);
 		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
-		disable_sleep_skip();
-	}
-	return ret;
+        disable_sleep_skip();
+    }
+    return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
@@ -354,42 +354,42 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithTokenW,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
-	__out     PHANDLE ProcessHandle,
-	__in      ACCESS_MASK DesiredAccess,
-	__in      POBJECT_ATTRIBUTES ObjectAttributes,
-	__in_opt  PCLIENT_ID ClientId
+    __out     PHANDLE ProcessHandle,
+    __in      ACCESS_MASK DesiredAccess,
+    __in      POBJECT_ATTRIBUTES ObjectAttributes,
+    __in_opt  PCLIENT_ID ClientId
 ) {
-	// although the documentation on msdn is a bit vague, this seems correct
-	// for both XP and Vista (the ClientId->UniqueProcess part, that is)
+    // although the documentation on msdn is a bit vague, this seems correct
+    // for both XP and Vista (the ClientId->UniqueProcess part, that is)
 
-	int pid = 0;
+    int pid = 0;
 	NTSTATUS ret;
 
-	if (ClientId != NULL) {
+    if(ClientId != NULL) {
 		__try {
 			pid = (int)(ULONG_PTR)ClientId->UniqueProcess;
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
 			;
 		}
-	}
+    }
 
-	if (is_protected_pid(pid)) {
-		ret = STATUS_ACCESS_DENIED;
-		LOQ_ntstatus("process", "ppl", "ProcessHandle", NULL, "DesiredAccess", DesiredAccess,
-			"ProcessIdentifier", pid);
-		return ret;
-	}
+    if(is_protected_pid(pid)) {
+        ret = STATUS_ACCESS_DENIED;
+        LOQ_ntstatus("process", "ppl", "ProcessHandle", NULL, "DesiredAccess", DesiredAccess,
+            "ProcessIdentifier", pid);
+        return ret;
+    }
 
-	ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+    ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 
 #ifdef CAPE_INJECTION
-	if (NT_SUCCESS(ret))
-		OpenProcessHandler(*ProcessHandle, pid);
+    if (NT_SUCCESS(ret))
+        OpenProcessHandler(*ProcessHandle, pid);
 #endif
-	LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle,
-		"DesiredAccess", DesiredAccess,
-		"ProcessIdentifier", pid);
+    LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle,
+        "DesiredAccess", DesiredAccess,
+        "ProcessIdentifier", pid);
 
 	return ret;
 }
@@ -400,7 +400,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	NTSTATUS ret;
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 #ifdef CAPE_INJECTION
-	ResumeProcessHandler(ProcessHandle, pid);
+    ResumeProcessHandler(ProcessHandle, pid);
 #endif
 	pipe("RESUME:%d", pid);
 	ret = Old_NtResumeProcess(ProcessHandle);
@@ -411,79 +411,80 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 int process_shutting_down;
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
-	__in_opt  HANDLE ProcessHandle,
-	__in      NTSTATUS ExitStatus
+    __in_opt  HANDLE ProcessHandle,
+    __in      NTSTATUS ExitStatus
 ) {
 	// Process will terminate. Default logging will not work. Be aware: return value not valid
-	NTSTATUS ret = 0;
+    NTSTATUS ret = 0;
 	lasterror_t lasterror;
+
 	get_lasterrors(&lasterror);
 	if (ProcessHandle == NULL) {
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
 		// for the subsequent call to NtTerminateProcess against our own process handle
 #ifdef CAPE_EXTRACTION
-		ProcessTrackedRegion();
+        ProcessTrackedRegion();
 #endif
-		if (g_config.procdump && !ProcessDumped)
-		{
-			DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-			DoProcessDump(GetHookCallerBase());
-		}
+        if (g_config.procdump && !ProcessDumped)
+        {
+            DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
+            DoProcessDump(GetHookCallerBase());
+        }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
-		file_handle_terminate();
+        file_handle_terminate();
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
 #ifdef CAPE_EXTRACTION
-		ProcessTrackedRegion();
+        ProcessTrackedRegion();
 #endif
-		if (g_config.procdump && !ProcessDumped)
-		{
-			DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-			DoProcessDump(GetHookCallerBase());
-		}
+        if (g_config.procdump && !ProcessDumped)
+        {
+            DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
+            DoProcessDump(GetHookCallerBase());
+        }
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
 		pipe("KILL:%d", GetCurrentProcessId());
 		log_free();
-		file_handle_terminate();
+        file_handle_terminate();
 	}
 	else {
 		DWORD PID = pid_from_process_handle(ProcessHandle);
 		if (is_protected_pid(PID)) {
 			ret = STATUS_ACCESS_DENIED;
-			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", PID);
+			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
 			return ret;
 		}
 		else {
-			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", PID);
+			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
 		}
 		pipe("KILL:%d", PID);
 	}
 	set_lasterrors(&lasterror);
 
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);
-	return ret;
+    return ret;
 }
 
 extern void file_write(HANDLE file_handle);
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateSection,
-	__out     PHANDLE SectionHandle,
-	__in      ACCESS_MASK DesiredAccess,
-	__in_opt  POBJECT_ATTRIBUTES ObjectAttributes,
-	__in_opt  PLARGE_INTEGER MaximumSize,
-	__in      ULONG SectionPageProtection,
-	__in      ULONG AllocationAttributes,
-	__in_opt  HANDLE FileHandle
+    __out     PHANDLE SectionHandle,
+    __in      ACCESS_MASK DesiredAccess,
+    __in_opt  POBJECT_ATTRIBUTES ObjectAttributes,
+    __in_opt  PLARGE_INTEGER MaximumSize,
+    __in      ULONG SectionPageProtection,
+    __in      ULONG AllocationAttributes,
+    __in_opt  HANDLE FileHandle
 ) {
-	NTSTATUS ret = Old_NtCreateSection(SectionHandle, DesiredAccess,
-		ObjectAttributes, MaximumSize, SectionPageProtection,
-		AllocationAttributes, FileHandle);
-	LOQ_ntstatus("process", "Phop", "SectionHandle", SectionHandle,
-		"DesiredAccess", DesiredAccess, "ObjectAttributes", ObjectAttributes ? ObjectAttributes->ObjectName : NULL,
-		"FileHandle", FileHandle);
+    NTSTATUS ret = Old_NtCreateSection(SectionHandle, DesiredAccess,
+        ObjectAttributes, MaximumSize, SectionPageProtection,
+        AllocationAttributes, FileHandle);
+    LOQ_ntstatus("process", "Phop", "SectionHandle", SectionHandle,
+        "DesiredAccess", DesiredAccess, "ObjectAttributes", ObjectAttributes ? ObjectAttributes->ObjectName : NULL,
+        "FileHandle", FileHandle);
 
 	if (NT_SUCCESS(ret) && FileHandle && (DesiredAccess & SECTION_MAP_WRITE)) {
 		file_write(FileHandle);
@@ -493,27 +494,26 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateSection,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtOpenSection,
-	__out  PHANDLE SectionHandle,
-	__in   ACCESS_MASK DesiredAccess,
-	__in   POBJECT_ATTRIBUTES ObjectAttributes
+    __out  PHANDLE SectionHandle,
+    __in   ACCESS_MASK DesiredAccess,
+    __in   POBJECT_ATTRIBUTES ObjectAttributes
 ) {
-	NTSTATUS ret = Old_NtOpenSection(SectionHandle, DesiredAccess,
-		ObjectAttributes);
-	LOQ_ntstatus("process", "Ppo", "SectionHandle", SectionHandle, "DesiredAccess", DesiredAccess,
-		"ObjectAttributes", ObjectAttributes ? ObjectAttributes->ObjectName : NULL);
-	return ret;
+    NTSTATUS ret = Old_NtOpenSection(SectionHandle, DesiredAccess,
+        ObjectAttributes);
+    LOQ_ntstatus("process", "Ppo", "SectionHandle", SectionHandle, "DesiredAccess", DesiredAccess,
+        "ObjectAttributes", ObjectAttributes ? ObjectAttributes->ObjectName : NULL);
+    return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, ShellExecuteExW,
-	__inout  SHELLEXECUTEINFOW *pExecInfo
+    __inout  SHELLEXECUTEINFOW *pExecInfo
 ) {
-	BOOL ret = Old_ShellExecuteExW(pExecInfo);
+    BOOL ret = Old_ShellExecuteExW(pExecInfo);
 	if (pExecInfo->lpFile && lstrlenW(pExecInfo->lpFile) > 2 &&
 		pExecInfo->lpFile[1] == L':' && pExecInfo->lpFile[2] == L'\\') {
 		LOQ_bool("process", "Fui", "FilePath", pExecInfo->lpFile,
 			"Parameters", pExecInfo->lpParameters, "Show", pExecInfo->nShow);
-	}
-	else {
+	} else {
 		LOQ_bool("process", "uui", "FilePath", pExecInfo->lpFile,
 			"Parameters", pExecInfo->lpParameters, "Show", pExecInfo->nShow);
 	}
@@ -522,25 +522,25 @@ HOOKDEF(BOOL, WINAPI, ShellExecuteExW,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
-	_In_      HANDLE ProcessHandle,
-	_In_opt_  PVOID BaseAddress
+    _In_      HANDLE ProcessHandle,
+    _In_opt_  PVOID BaseAddress
 ) {
-	SIZE_T map_size = 0; MEMORY_BASIC_INFORMATION mbi;
+    SIZE_T map_size = 0; MEMORY_BASIC_INFORMATION mbi;
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 	NTSTATUS ret;
 
 	if (VirtualQueryEx(ProcessHandle, BaseAddress, &mbi,
-		sizeof(mbi)) == sizeof(mbi)) {
-		map_size = mbi.RegionSize;
-	}
+            sizeof(mbi)) == sizeof(mbi)) {
+        map_size = mbi.RegionSize;
+    }
 #ifdef CAPE_INJECTION
-	UnmapSectionViewHandler(BaseAddress);
+    UnmapSectionViewHandler(BaseAddress);
 #endif
 
-	ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
+    ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
 
-	LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"RegionSize", map_size);
+    LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+        "RegionSize", map_size);
 
 	return ret;
 }
@@ -556,24 +556,24 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in     UINT InheritDisposition,
 	__in     ULONG AllocationType,
 	__in     ULONG Win32Protect
-) {
-	NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
+	) {
+    NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
 		BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize,
 		InheritDisposition, AllocationType, Win32Protect);
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,
-		"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+    LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,
+    "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+    "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
 #ifdef CAPE_INJECTION
-		MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
+        MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
 #endif
 #ifdef CAPE_EXTRACTION
-		ProtectionHandler(*BaseAddress, ViewSize, Win32Protect, 0);
+        ProtectionHandler(*BaseAddress, ViewSize, Win32Protect, 0);
 #endif
-		if (pid != GetCurrentProcessId()) {
+        if (pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
@@ -586,88 +586,88 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 
 // it's not safe to call pipe() in this hook until we replace all uses of snprintf in pipe()
 HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
-	__in     HANDLE ProcessHandle,
-	__inout  PVOID *BaseAddress,
-	__in     ULONG_PTR ZeroBits,
-	__inout  PSIZE_T RegionSize,
-	__in     ULONG AllocationType,
-	__in     ULONG Protect
+    __in     HANDLE ProcessHandle,
+    __inout  PVOID *BaseAddress,
+    __in     ULONG_PTR ZeroBits,
+    __inout  PSIZE_T RegionSize,
+    __in     ULONG AllocationType,
+    __in     ULONG Protect
 ) {
-	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
-		ZeroBits, RegionSize, AllocationType, Protect);
+    NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
+        ZeroBits, RegionSize, AllocationType, Protect);
 
 #ifdef CAPE_EXTRACTION
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
-		AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
+        AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
 #endif
 
-	LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+    LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+        "RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtReadVirtualMemory,
-	__in        HANDLE ProcessHandle,
-	__in        LPCVOID BaseAddress,
-	__out       LPVOID Buffer,
-	__in        SIZE_T NumberOfBytesToRead,
-	__out_opt   PSIZE_T NumberOfBytesRead
+    __in        HANDLE ProcessHandle,
+    __in        LPCVOID BaseAddress,
+    __out       LPVOID Buffer,
+    __in        SIZE_T NumberOfBytesToRead,
+    __out_opt   PSIZE_T NumberOfBytesRead
 ) {
 	NTSTATUS ret;
-	ENSURE_SIZET(NumberOfBytesRead);
+    ENSURE_SIZET(NumberOfBytesRead);
 
-	ret = Old_NtReadVirtualMemory(ProcessHandle, BaseAddress, Buffer, NumberOfBytesToRead, NumberOfBytesRead);
+    ret = Old_NtReadVirtualMemory(ProcessHandle, BaseAddress, Buffer, NumberOfBytesToRead, NumberOfBytesRead);
 
-	LOQ_ntstatus("process", "pphB", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "Size", NumberOfBytesToRead, "Buffer", NumberOfBytesRead, Buffer);
+    LOQ_ntstatus("process", "pphB", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "Size", NumberOfBytesToRead, "Buffer", NumberOfBytesRead, Buffer);
 
 	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, ReadProcessMemory,
-	_In_    HANDLE hProcess,
-	_In_    LPCVOID lpBaseAddress,
-	_Out_   LPVOID lpBuffer,
-	_In_    SIZE_T nSize,
-	_Out_   PSIZE_T lpNumberOfBytesRead
+    _In_    HANDLE hProcess,
+    _In_    LPCVOID lpBaseAddress,
+    _Out_   LPVOID lpBuffer,
+    _In_    SIZE_T nSize,
+    _Out_   PSIZE_T lpNumberOfBytesRead
 ) {
 	BOOL ret;
-	ENSURE_SIZET(lpNumberOfBytesRead);
+    ENSURE_SIZET(lpNumberOfBytesRead);
 
-	ret = Old_ReadProcessMemory(hProcess, lpBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead);
+    ret = Old_ReadProcessMemory(hProcess, lpBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead);
 
-	LOQ_bool("process", "pphB", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress, "Size", nSize, "Buffer", lpNumberOfBytesRead, lpBuffer);
+    LOQ_bool("process", "pphB", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress, "Size", nSize, "Buffer", lpNumberOfBytesRead, lpBuffer);
 
-	return ret;
+    return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
-	__in        HANDLE ProcessHandle,
-	__in        LPVOID BaseAddress,
-	__in        LPCVOID Buffer,
-	__in        SIZE_T NumberOfBytesToWrite,
-	__out_opt   PSIZE_T NumberOfBytesWritten
+    __in        HANDLE ProcessHandle,
+    __in        LPVOID BaseAddress,
+    __in        LPCVOID Buffer,
+    __in        SIZE_T NumberOfBytesToWrite,
+    __out_opt   PSIZE_T NumberOfBytesWritten
 ) {
 	NTSTATUS ret;
 	DWORD pid;
-	ENSURE_SIZET(NumberOfBytesWritten);
+    ENSURE_SIZET(NumberOfBytesWritten);
 
-	ret = Old_NtWriteVirtualMemory(ProcessHandle, BaseAddress, Buffer,
-		NumberOfBytesToWrite, NumberOfBytesWritten);
+    ret = Old_NtWriteVirtualMemory(ProcessHandle, BaseAddress, Buffer,
+        NumberOfBytesToWrite, NumberOfBytesWritten);
 
 	pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_ntstatus("process", "ppBhs",
-		"ProcessHandle", ProcessHandle,
-		"BaseAddress", BaseAddress,
-		"Buffer", NumberOfBytesWritten, Buffer,
-		"BufferLength", is_valid_address_range((ULONG_PTR)NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
-		"StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	 LOQ_ntstatus("process", "ppBhs",
+	    "ProcessHandle", ProcessHandle,
+	    "BaseAddress", BaseAddress,
+	    "Buffer", NumberOfBytesWritten, Buffer,
+	    "BufferLength", is_valid_address_range((ULONG_PTR)NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
+	    "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
 		if (NT_SUCCESS(ret)) {
 #ifdef CAPE_INJECTION
-			WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
+            WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
 #endif
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
@@ -678,28 +678,28 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 }
 
 HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
-	_In_    HANDLE hProcess,
-	_In_    LPVOID lpBaseAddress,
-	_In_    LPCVOID lpBuffer,
-	_In_    SIZE_T nSize,
-	_Out_   PSIZE_T lpNumberOfBytesWritten
+    _In_    HANDLE hProcess,
+    _In_    LPVOID lpBaseAddress,
+    _In_    LPCVOID lpBuffer,
+    _In_    SIZE_T nSize,
+    _Out_   PSIZE_T lpNumberOfBytesWritten
 ) {
 	BOOL ret;
 	DWORD pid;
-	ENSURE_SIZET(lpNumberOfBytesWritten);
+    ENSURE_SIZET(lpNumberOfBytesWritten);
 
-	ret = Old_WriteProcessMemory(hProcess, lpBaseAddress, lpBuffer,
-		nSize, lpNumberOfBytesWritten);
+    ret = Old_WriteProcessMemory(hProcess, lpBaseAddress, lpBuffer,
+        nSize, lpNumberOfBytesWritten);
 
 	pid = pid_from_process_handle(hProcess);
 
-	LOQ_bool("process", "ppBhs", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress,
-		"Buffer", lpNumberOfBytesWritten, lpBuffer, "BufferLength", *lpNumberOfBytesWritten, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+    LOQ_bool("process", "ppBhs", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress,
+        "Buffer", lpNumberOfBytesWritten, lpBuffer, "BufferLength", *lpNumberOfBytesWritten, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
 		if (ret) {
 #ifdef CAPE_INJECTION
-			WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
+            WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
 #endif
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
@@ -745,8 +745,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
 
 	pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_bool("process", "pxbhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"Buffer", NumberOfBytesWritten->LowPart, Buffer, "BufferLength", NumberOfBytesWritten->LowPart, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+    LOQ_bool("process", "pxbhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+        "Buffer", NumberOfBytesWritten->LowPart, Buffer, "BufferLength", NumberOfBytesWritten->LowPart, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
 		if (ret) {
@@ -763,16 +763,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
    concurrent thread execution
  */
 HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
-	IN      HANDLE ProcessHandle,
-	IN OUT  PVOID *BaseAddress,
-	IN OUT  PSIZE_T NumberOfBytesToProtect,
-	IN      ULONG NewAccessProtection,
-	OUT     PULONG OldAccessProtection
+    IN      HANDLE ProcessHandle,
+    IN OUT  PVOID *BaseAddress,
+    IN OUT  PSIZE_T NumberOfBytesToProtect,
+    IN      ULONG NewAccessProtection,
+    OUT     PULONG OldAccessProtection
 ) {
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 #ifdef CAPE_EXTRACTION
-	PTRACKEDREGION TrackedRegion;
+    PTRACKEDREGION TrackedRegion;
 #endif
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
@@ -792,7 +792,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
 
 	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress,
-		NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
+        NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
 	memset(&meminfo, 0, sizeof(meminfo));
 	if (NT_SUCCESS(ret) && OldAccessProtection && *OldAccessProtection == NewAccessProtection) {
@@ -804,12 +804,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 
 #ifdef CAPE_EXTRACTION
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
-	{
-		ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, *OldAccessProtection);
+    {
+        ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, *OldAccessProtection);
 
-		if ((TrackedRegion = GetTrackedRegion(*BaseAddress)) && TrackedRegion->Guarded)
-			*OldAccessProtection &= (~PAGE_GUARD);
-	}
+        if ((TrackedRegion = GetTrackedRegion(*BaseAddress)) && TrackedRegion->Guarded)
+            *OldAccessProtection &= (~PAGE_GUARD);
+    }
 #endif
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
@@ -827,20 +827,20 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 			"NewAccessProtection", NewAccessProtection,
 			"OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	}
-	return ret;
+    return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
-	__in   HANDLE hProcess,
-	__in   LPVOID lpAddress,
-	__in   SIZE_T dwSize,
-	__in   DWORD flNewProtect,
-	__out  PDWORD lpflOldProtect
+    __in   HANDLE hProcess,
+    __in   LPVOID lpAddress,
+    __in   SIZE_T dwSize,
+    __in   DWORD flNewProtect,
+    __out  PDWORD lpflOldProtect
 ) {
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 #ifdef CAPE_EXTRACTION
-	PTRACKEDREGION TrackedRegion;
+    PTRACKEDREGION TrackedRegion;
 #endif
 
 	if (flNewProtect == PAGE_EXECUTE_READ && GetCurrentProcessId() == our_getprocessid(hProcess) &&
@@ -848,7 +848,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		restore_hooks_on_range((ULONG_PTR)lpAddress, (ULONG_PTR)lpAddress + dwSize);
 
 	ret = Old_VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect,
-		lpflOldProtect);
+        lpflOldProtect);
 
 	memset(&meminfo, 0, sizeof(meminfo));
 	if (ret && lpflOldProtect && *lpflOldProtect == flNewProtect) {
@@ -860,12 +860,12 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 
 #ifdef CAPE_EXTRACTION
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
-	{
-		ProtectionHandler(lpAddress, dwSize, flNewProtect, *lpflOldProtect);
+    {
+        ProtectionHandler(lpAddress, dwSize, flNewProtect, *lpflOldProtect);
 
-		if ((TrackedRegion = GetTrackedRegion(lpAddress)) && TrackedRegion->Guarded)
-			*lpflOldProtect &= (~PAGE_GUARD);
-	}
+        if ((TrackedRegion = GetTrackedRegion(lpAddress)) && TrackedRegion->Guarded)
+            *lpflOldProtect &= (~PAGE_GUARD);
+    }
 #endif
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && GetCurrentProcessId() == our_getprocessid(hProcess) &&
@@ -877,48 +877,48 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		LOQ_bool("process", "ppphhHs", "ProcessHandle", hProcess, "Address", lpAddress,
 			"Size", dwSize, "MemType", meminfo.Type, "Protection", flNewProtect, "OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	}
-	return ret;
+    return ret;
 }
 
 // it's not safe to call pipe() in this hook until we replace all uses of snprintf in pipe()
 HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
-	IN      HANDLE ProcessHandle,
-	IN      PVOID *BaseAddress,
-	IN OUT  PSIZE_T RegionSize,
-	IN      ULONG FreeType
+    IN      HANDLE ProcessHandle,
+    IN      PVOID *BaseAddress,
+    IN OUT  PSIZE_T RegionSize,
+    IN      ULONG FreeType
 ) {
 #ifdef CAPE_EXTRACTION
-	if (!called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
-		FreeHandler(*BaseAddress);
+    if (!called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+        FreeHandler(*BaseAddress);
 #endif
 
-	NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
-		RegionSize, FreeType);
+    NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
+        RegionSize, FreeType);
 
-	LOQ_ntstatus("process", "pPPh", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"RegionSize", RegionSize, "FreeType", FreeType);
+    LOQ_ntstatus("process", "pPPh", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+        "RegionSize", RegionSize, "FreeType", FreeType);
 
 	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, VirtualFreeEx,
-	__in  HANDLE hProcess,
-	__in  LPVOID lpAddress,
-	__in  SIZE_T dwSize,
-	__in  DWORD dwFreeType
+    __in  HANDLE hProcess,
+    __in  LPVOID lpAddress,
+    __in  SIZE_T dwSize,
+    __in  DWORD dwFreeType
 ) {
-	BOOL ret = Old_VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
-	LOQ_bool("process", "ppph", "ProcessHandle", hProcess, "Address", lpAddress,
-		"Size", dwSize, "FreeType", dwFreeType);
-	return ret;
+    BOOL ret = Old_VirtualFreeEx(hProcess, lpAddress, dwSize, dwFreeType);
+    LOQ_bool("process", "ppph", "ProcessHandle", hProcess, "Address", lpAddress,
+        "Size", dwSize, "FreeType", dwFreeType);
+    return ret;
 }
 
 HOOKDEF(int, CDECL, system,
-	const char *command
+    const char *command
 ) {
-	int ret = Old_system(command);
-	LOQ_nonnegone("process", "s", "Command", command);
-	return ret;
+    int ret = Old_system(command);
+    LOQ_nonnegone("process", "s", "Command", command);
+    return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, WaitForDebugEvent,
@@ -955,15 +955,15 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 			LOQ_ntstatus("process", "iiip", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "StartAddress", StateChange->StateInfo.CreateThread.NewThread.StartAddress);
 			break;
 		case DbgLoadDllStateChange:
-		{
-			wchar_t *fname = calloc(32768, sizeof(wchar_t));
+			{
+				wchar_t *fname = calloc(32768, sizeof(wchar_t));
 
-			path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
-			// we could continue ourselves here and skip notification to the malware of cuckoomon loading
-			LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
-			free(fname);
-		}
-		break;
+				path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
+				// we could continue ourselves here and skip notification to the malware of cuckoomon loading
+				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
+				free(fname);
+			}
+			break;
 		default:
 			LOQ_ntstatus("process", "iii", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread));
 		}
