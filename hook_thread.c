@@ -264,7 +264,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
     
     NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
-	DWORD pid = pid_from_thread_handle(ThreadHandle);
+    DWORD pid = pid_from_thread_handle(ThreadHandle);
     if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
 		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx,

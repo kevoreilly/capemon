@@ -142,7 +142,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
     NTSTATUS ret = Old_NtCreateProcess(ProcessHandle, DesiredAccess,
         ObjectAttributes, ParentProcess, InheritObjectTable, SectionHandle,
         DebugPort, ExceptionPort);
-	DWORD pid = pid_from_process_handle(*ProcessHandle);
+    DWORD pid = pid_from_process_handle(*ProcessHandle);
     LOQ_ntstatus("process", "PphOl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
         "FileName", ObjectAttributes, "ProcessId", pid);
     if(NT_SUCCESS(ret)) {
