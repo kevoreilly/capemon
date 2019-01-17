@@ -142,10 +142,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
     NTSTATUS ret = Old_NtCreateProcess(ProcessHandle, DesiredAccess,
         ObjectAttributes, ParentProcess, InheritObjectTable, SectionHandle,
         DebugPort, ExceptionPort);
-    LOQ_ntstatus("process", "PphO", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
-        "FileName", ObjectAttributes);
+    DWORD pid = pid_from_process_handle(*ProcessHandle);
+    LOQ_ntstatus("process", "PphOl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
+        "FileName", ObjectAttributes, "ProcessId", pid);
     if(NT_SUCCESS(ret)) {
-		DWORD pid = pid_from_process_handle(*ProcessHandle);
         pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
         disable_sleep_skip();
     }
@@ -166,8 +166,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
     NTSTATUS ret = Old_NtCreateProcessEx(ProcessHandle, DesiredAccess,
         ObjectAttributes, ParentProcess, Flags, SectionHandle, DebugPort,
         ExceptionPort, InJob);
-	LOQ_ntstatus("process", "PphOhh", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
-        "FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle);
+	DWORD pid = pid_from_process_handle(*ProcessHandle);
+	LOQ_ntstatus("process", "PphOhhl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
+        "FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
     if(NT_SUCCESS(ret)) {
 		DWORD pid = pid_from_process_handle(*ProcessHandle);
         pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
@@ -196,22 +197,22 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	if(ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
-
     ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
         ProcessDesiredAccess, ThreadDesiredAccess,
         ProcessObjectAttributes, ThreadObjectAttributes,
         ProcessFlags, ThreadFlags | 1, ProcessParameters,
         CreateInfo, AttributeList);
-    LOQ_ntstatus("process", "PPhhOOoo", "ProcessHandle", ProcessHandle,
+    DWORD pid = pid_from_process_handle(*ProcessHandle);
+    LOQ_ntstatus("process", "PPhhOOool", "ProcessHandle", ProcessHandle,
         "ThreadHandle", ThreadHandle,
         "ProcessDesiredAccess", ProcessDesiredAccess,
         "ThreadDesiredAccess", ThreadDesiredAccess,
         "ProcessFileName", ProcessObjectAttributes,
         "ThreadName", ThreadObjectAttributes,
         "ImagePathName", &ProcessParameters->ImagePathName,
-        "CommandLine", &ProcessParameters->CommandLine);
+        "CommandLine", &ProcessParameters->CommandLine,
+		"ProcessId", pid);
     if(NT_SUCCESS(ret)) {
-		DWORD pid = pid_from_process_handle(*ProcessHandle);
 		DWORD tid = tid_from_thread_handle(*ThreadHandle);
 		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 		if (!(ThreadFlags & 1))
@@ -237,10 +238,10 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
         ProcessParameters, ProcessSecurityDescriptor,
         ThreadSecurityDescriptor, ParentProcess, InheritHandles, DebugPort,
         ExceptionPort, ProcessInformation);
-    LOQ_ntstatus("process", "ohp", "ImagePath", ImagePath, "ObjectAttributes", ObjectAttributes,
-        "ParentHandle", ParentProcess);
+	DWORD pid = pid_from_process_handle(ProcessInformation->ProcessHandle);
+    LOQ_ntstatus("process", "ohpl", "ImagePath", ImagePath, "ObjectAttributes", ObjectAttributes,
+        "ParentHandle", ParentProcess, "ProcessId", pid);
     if(NT_SUCCESS(ret)) {
-		DWORD pid = pid_from_process_handle(ProcessInformation->ProcessHandle);
 		DWORD tid = tid_from_thread_handle(ProcessInformation->ThreadHandle);
 		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
         disable_sleep_skip();
@@ -403,7 +404,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 #endif
 	pipe("RESUME:%d", pid);
 	ret = Old_NtResumeProcess(ProcessHandle);
-	LOQ_ntstatus("process", "p", "ProcessHandle", ProcessHandle);
+	LOQ_ntstatus("process", "pl", "ProcessHandle", ProcessHandle, "ProcessId", pid);
 	return ret;
 }
 
@@ -431,7 +432,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
             DoProcessDump(GetHookCallerBase());
         }
 		process_shutting_down = 1;
-		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
+		LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
         file_handle_terminate();
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
@@ -444,7 +445,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
             DoProcessDump(GetHookCallerBase());
         }
 		process_shutting_down = 1;
-		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
+		LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
 		pipe("KILL:%d", GetCurrentProcessId());
 		log_free();
         file_handle_terminate();
@@ -453,11 +454,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		DWORD PID = pid_from_process_handle(ProcessHandle);
 		if (is_protected_pid(PID)) {
 			ret = STATUS_ACCESS_DENIED;
-			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
+			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
 			return ret;
 		}
 		else {
-			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
+			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
 		}
 		pipe("KILL:%d", PID);
 	}
