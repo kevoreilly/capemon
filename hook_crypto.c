@@ -351,3 +351,22 @@ HOOKDEF(BOOL, WINAPI, CryptEnumProvidersW,
 	LOQ_bool("crypto", "iu", "Index", dwIndex, "ProviderName", pszProvName);
 	return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, CryptHashSessionKey,
+    _In_     HCRYPTHASH hHash,
+    _In_     HCRYPTKEY hKey,
+    _In_     DWORD dwFlags
+) {
+    BOOL ret = Old_CryptHashSessionKey(hHash, hKey, dwFlags);
+	LOQ_bool("crypto", "pph", "CryptHash", hHash, "CryptKey", hKey, "Flags", dwFlags);
+    return ret;
+}
+
+HOOKDEF(DWORD, WINAPI, QueryUsersOnEncryptedFile,
+  LPCWSTR   lpFileName,
+  PVOID     *pUsers
+) {
+    DWORD ret = Old_QueryUsersOnEncryptedFile(lpFileName, pUsers);
+    LOQ_nonzero("crypto", "up", "FileName", lpFileName, "pUsers", pUsers);
+    return ret;
+}

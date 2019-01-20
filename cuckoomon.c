@@ -622,6 +622,7 @@ static hook_t g_hooks[] = {
 	HOOK(advapi32, CryptCreateHash),
 	HOOK(advapi32, CryptEnumProvidersA),
 	HOOK(advapi32, CryptEnumProvidersW),
+	HOOK(advapi32, QueryUsersOnEncryptedFile),
 
 	HOOK(wintrust, HTTPSCertificateTrust),
 	HOOK(wintrust, HTTPSFinalProv),
@@ -648,6 +649,7 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptCreateHash),
 	HOOK(cryptsp, CryptEnumProvidersA),
 	HOOK(cryptsp, CryptEnumProvidersW),
+	HOOK(cryptsp, CryptHashSessionKey),
 };
 
 void set_hooks_dll(const wchar_t *library)

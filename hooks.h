@@ -2792,6 +2792,17 @@ extern HOOKDEF(BOOL, WINAPI, CryptImportPublicKeyInfo,
 	_Out_ HCRYPTKEY             *phKey
 );
 
+extern HOOKDEF(BOOL, WINAPI, CryptHashSessionKey,
+    _In_     HCRYPTHASH hHash,
+    _In_     HCRYPTKEY hKey,
+    _In_     DWORD dwFlags
+);
+
+HOOKDEF(DWORD, WINAPI, QueryUsersOnEncryptedFile,
+  LPCWSTR   lpFileName,
+  PVOID     *pUsers
+);
+
 //
 // Special Hooks
 //
