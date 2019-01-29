@@ -33,6 +33,11 @@ void lookup_init(lookup_t *d)
     InitializeCriticalSection(&d->cs);
 }
 
+void lookup_init_no_cs(lookup_t *d)
+{
+    d->root = NULL;
+}
+
 void lookup_free(lookup_t *d)
 {
     // TODO
@@ -91,7 +96,6 @@ void *lookup_get_no_cs(lookup_t *d, ULONG_PTR id, unsigned int *size)
                 *size = p->size;
             }
             data = p->data;
-            LEAVE();
             return data;
         }
     }
@@ -134,7 +138,6 @@ void lookup_del_no_cs(lookup_t *d, ULONG_PTR id)
         entry_t *t = p->next;
         free(d->root);
         d->root = t;
-        LEAVE();
         return;
     }
     for (last = NULL; p != NULL; last = p, p = p->next) {

@@ -50,7 +50,7 @@ extern BOOL BreakpointsSet;
 
 void hook_init()
 {
-    lookup_init(&g_hook_info);
+    lookup_init_no_cs(&g_hook_info);
     lookup_init(&g_caller_regions);
 }
 
