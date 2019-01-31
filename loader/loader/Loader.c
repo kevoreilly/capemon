@@ -23,8 +23,29 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #pragma warning(disable : 4996)
 
 SYSTEM_INFO SystemInfo;
-char LogPipe[MAX_PATH];
 char PipeOutput[MAX_PATH];
+char LogPipe[MAX_PATH];
+
+void pipe(char* Buffer, SIZE_T Length);
+
+void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
+{
+    char DebugOutput[MAX_PATH];
+    va_list args;
+    va_start(args, lpOutputString);
+
+    memset(DebugOutput, 0, MAX_PATH*sizeof(char));
+    _vsnprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
+    OutputDebugString(DebugOutput);
+
+    memset(PipeOutput, 0, MAX_PATH*sizeof(char));
+    _snprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
+    pipe(PipeOutput, strlen(PipeOutput));
+
+    va_end(args);
+
+    return;
+}
 
 void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 {
@@ -51,6 +72,10 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
     _snprintf_s(ErrorOutput, MAX_PATH, MAX_PATH, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
     OutputDebugString(ErrorOutput);
 
+    memset(PipeOutput, 0, MAX_PATH*sizeof(char));
+    _snprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
+    pipe(PipeOutput, strlen(PipeOutput));
+
     va_end(args);
 
 	return;
@@ -60,30 +85,11 @@ void pipe(char* Buffer, SIZE_T Length)
 {
     DWORD BytesRead;
 
-    if (!strncmp(LogPipe, "\\", 2))
+    if (strlen(LogPipe))
     {
         if (!CallNamedPipe(LogPipe, Buffer, (DWORD)Length, Buffer, (DWORD)Length, (unsigned long *)&BytesRead, NMPWAIT_WAIT_FOREVER))
             DoOutputErrorString("Loader: Failed to call named pipe %s", LogPipe);
     }
-
-    return;
-}
-
-void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
-{
-    char DebugOutput[MAX_PATH];
-    va_list args;
-    va_start(args, lpOutputString);
-
-    memset(DebugOutput, 0, MAX_PATH*sizeof(char));
-    _vsnprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
-    OutputDebugString(DebugOutput);
-
-    memset(PipeOutput, 0, MAX_PATH*sizeof(char));
-    _snprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
-    pipe(PipeOutput, strlen(PipeOutput));
-
-    va_end(args);
 
     return;
 }
@@ -808,7 +814,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         // usage: loader.exe inject <pid> <tid> <dll to load>
         int ProcessId, ThreadId, ret;
         char *DllName;
-        if (__argc != 6)    // this includes a dummy for now to maintain compartibility with old loader
+        if (__argc != 6)    // this includes a dummy for now to maintain compatibility with old loader
         {
             DoOutputDebugString("Loader: Error - too few arguments for injection (%d)\n", __argc);
             return ERROR_ARGCOUNT;
