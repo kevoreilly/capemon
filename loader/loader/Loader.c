@@ -477,6 +477,12 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
         goto out;
     }
 
+    if (NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress && NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
+    {
+        DoOutputDebugString("InjectDllViaIAT: Executable is .NET, cancelling IAT injection.\n");
+        goto out;
+    }
+
     Context.ContextFlags = CONTEXT_ALL;
 
     if (!GetThreadContext(ThreadHandle, &Context))
