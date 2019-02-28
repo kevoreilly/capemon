@@ -372,15 +372,15 @@ static hook_t g_hooks[] = {
 	//
     // Misc Hooks
     //
+
+    // for debugging only
+	//HOOK(kernel32, GetLastError),
 #ifndef _WIN64
 	HOOK(ntdll, memcpy),
 #endif
 	HOOK(msvcrt, memcpy),
     HOOK(msvcrt, srand),
-
-	// for debugging only
-	//HOOK(kernel32, GetLastError),
-
+    HOOK(user32, ChangeWindowMessageFilter),
 	HOOK(user32, SetWindowsHookExA),
     HOOK(user32, SetWindowsHookExW),
     HOOK(user32, UnhookWindowsHookEx),

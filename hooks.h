@@ -3029,3 +3029,8 @@ extern HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
     OUT LPSTORAGE           pstg,
     IN const DVTARGETDEVICE *ptd
 );
+
+extern HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
+  UINT  message,
+  DWORD dwFlag
+);
