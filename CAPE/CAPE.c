@@ -1291,7 +1291,7 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
         if (!(pNtHeader->FileHeader.Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE))
         {
             DoOutputDebugString("TestPERequirements: Characteristics bad. (0x%x)", (DWORD_PTR)pNtHeader);
-            return FALSE;
+            //return FALSE;
         }
 
         if (pNtHeader->FileHeader.SizeOfOptionalHeader & (sizeof (ULONG_PTR) - 1))
