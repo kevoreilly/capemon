@@ -1483,8 +1483,10 @@ HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
 )
 {
 	BOOL ret;
-    if (dwFlag != MSGFLT_REMOVE && dwFlag != MSGFLT_ADD)
+    if (dwFlag != MSGFLT_REMOVE && dwFlag != MSGFLT_ADD) {
         ret = FALSE;
+        SetLastError(ERROR_INVALID_PARAMETER);
+    }
     else
         ret = Old_ChangeWindowMessageFilter(message, dwFlag);
 	LOQ_bool("misc", "ii", "message", message, "dwFlag", dwFlag);
