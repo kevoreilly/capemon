@@ -1616,7 +1616,7 @@ void PeParser::alignAllSectionHeaders()
 
     NumberOfSections = getNumberOfSections();
     
-	std::sort(listPeSection.begin(), listPeSection.end(), PeFileSectionSortByPointerToRawData); //sort by PointerToRawData ascending
+	std::sort(listPeSection.begin(), listPeSection.end(), PeFileSectionSortByVirtualAddress); //sort by VirtualAddress ascending
 
 	newFileSize = pDosHeader->e_lfanew + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + pNTHeader32->FileHeader.SizeOfOptionalHeader + (NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
 
@@ -1700,8 +1700,6 @@ void PeParser::alignAllSectionHeaders()
 			//return;
         }        
 	}
-
-	std::sort(listPeSection.begin(), listPeSection.end(), PeFileSectionSortByVirtualAddress); //sort by VirtualAddress ascending
 }
 
 bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath)
