@@ -775,7 +775,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
     PTRACKEDREGION TrackedRegion;
 #endif
 
-	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
+	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect && *NumberOfBytesToProtect >= 0x2000 &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 		unsigned int offset;
 		char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &offset);
