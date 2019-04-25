@@ -28,6 +28,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ignore.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
+#include "hooks.h"
+#include "wchar.h"
 
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
 
@@ -1490,5 +1492,21 @@ HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
     else
         ret = Old_ChangeWindowMessageFilter(message, dwFlag);
 	LOQ_bool("misc", "ii", "message", message, "dwFlag", dwFlag);
+	return ret;
+}
+
+HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
+	struct envstruct *es
+)
+{
+	LPWSTR ret = Old_rtcEnvironBstr(es);
+	LPWSTR origret = ret;
+	if (wcsicmp(es->envstr, L"userdomain") == 0) {
+		DoOutputDebugString("DEBUG:VBE call to rtcEnvironBstr - %S = %S\n", es->envstr, ret);
+		*ret = 95;
+	}
+	
+	LOQ_zero("misc", "uu", "EnvVar", es->envstr, "EnvStr", origret);
+
 	return ret;
 }

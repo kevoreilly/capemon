@@ -650,6 +650,8 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptEnumProvidersA),
 	HOOK(cryptsp, CryptEnumProvidersW),
 	HOOK(cryptsp, CryptHashSessionKey),
+
+	HOOK(vbe7, rtcEnvironBstr),
 };
 
 void set_hooks_dll(const wchar_t *library)

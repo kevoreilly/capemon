@@ -205,3 +205,9 @@ LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *Excepti
 
 void prevent_module_reloading(PVOID *BaseAddress);
 PVOID test_module_reloading(PVOID *BaseAddress);
+
+struct envstruct {
+	ULONG k;
+	ULONG nullval;
+	LPWSTR envstr;
+};
