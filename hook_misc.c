@@ -1499,7 +1499,6 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	struct envstruct *es
 )
 {
-	DoOutputDebugString("DEBUG:Hooking rtcEnvironBstr\n");
 	LPWSTR origret;
 	unsigned int len = 0;
 
@@ -1509,7 +1508,6 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	wcscpy_s(origret, len + 1, ret);
 
 	if (wcsicmp(es->envstr, L"userdomain") == 0) {
-		DoOutputDebugString("DEBUG:VBE call to rtcEnvironBstr - %S = %S\n", es->envstr, ret);
 		*ret = 95;
 	}
 	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", origret);
