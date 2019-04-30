@@ -1508,7 +1508,8 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	wcscpy_s(origret, len + 1, ret);
 
 	if (wcsicmp(es->envstr, L"userdomain") == 0) {
-		*ret = 95;
+		// replace first character in string with an "_"
+		*ret = 0x5f;
 	}
 	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", origret);
 

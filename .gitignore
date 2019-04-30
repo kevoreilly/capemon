@@ -8,8 +8,10 @@ bson/bson.sdf
 bson/bson.v11.suo
 bson/bson.v12.suo
 bson/bson.vcxproj.user
+bson/bson.vcxproj
 logtbl.pyc
 cuckoomon.vcxproj.user
+cuckoomon.vcxproj
 bson/Release
 objects
 Release
@@ -18,3 +20,4 @@ tests/logging-test.*
 *.opendb
 *.VC.db
 .vs/*
+loader/loader/loader.vcxproj
