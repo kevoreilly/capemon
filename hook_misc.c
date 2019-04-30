@@ -1499,21 +1499,12 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	struct envstruct *es
 )
 {
-	LPWSTR origret;
-	unsigned int len = 0;
-
 	LPWSTR ret = Old_rtcEnvironBstr(es);
-	len = (unsigned int)wcslen(ret);
-	origret = calloc(1, (len + 1) * sizeof(wchar_t));
-	// save the string value
-	wcscpy_s(origret, len + 1, ret);
-
+	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", ret);
 	// check if environment variable is "userdomain"
-	if (wcsicmp(es->envstr, L"userdomain") == 0) {
-		// replace first character in string with an "_"
-		*ret = 0x5f;
+	if (!wcsicmp(es->envstr, L"userdomain")) {
+		// replace first character in string with an "#"
+		*ret = 0x23;
 	}
-	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", origret);
-
 	return ret;
 }
