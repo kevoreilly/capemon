@@ -1505,8 +1505,10 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	LPWSTR ret = Old_rtcEnvironBstr(es);
 	len = (unsigned int)wcslen(ret);
 	origret = calloc(1, (len + 1) * sizeof(wchar_t));
+	// save the string value
 	wcscpy_s(origret, len + 1, ret);
 
+	// check if environment variable is "userdomain"
 	if (wcsicmp(es->envstr, L"userdomain") == 0) {
 		// replace first character in string with an "_"
 		*ret = 0x5f;
