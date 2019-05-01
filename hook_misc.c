@@ -1492,3 +1492,15 @@ HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
 	LOQ_bool("misc", "ii", "message", message, "dwFlag", dwFlag);
 	return ret;
 }
+
+HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
+	struct envstruct *es
+)
+{
+	LPWSTR ret = Old_rtcEnvironBstr(es);
+	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", ret);
+	if (!wcsicmp(es->envstr, L"userdomain"))
+        // replace first char so it differs from computername
+        *ret = '#';
+	return ret;
+}

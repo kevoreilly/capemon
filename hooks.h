@@ -3031,6 +3031,10 @@ extern HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
 );
 
 extern HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
-  UINT  message,
-  DWORD dwFlag
+	UINT  message,
+	DWORD dwFlag
+);
+
+extern HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
+	struct envstruct *es
 );
