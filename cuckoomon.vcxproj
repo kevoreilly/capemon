@@ -83,7 +83,7 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <TargetName>capemon</TargetName>
-    <IncludePath>$(VC_IncludePath);$(WindowsSdk_71A_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\WTL91\Include</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSdk_71A_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\WTL91\Include;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>true</LinkIncremental>

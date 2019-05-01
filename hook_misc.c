@@ -28,8 +28,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ignore.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
-#include "hooks.h"
-#include "wchar.h"
 
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
 
@@ -1499,18 +1497,10 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	struct envstruct *es
 )
 {
-	LPWSTR origret;
-	unsigned int len = 0;
-
 	LPWSTR ret = Old_rtcEnvironBstr(es);
-	len = (unsigned int)wcslen(ret);
-	origret = calloc(1, (len + 1) * sizeof(wchar_t));
-	wcscpy_s(origret, len + 1, ret);
-
-	if (wcsicmp(es->envstr, L"userdomain") == 0) {
-		*ret = 95;
-	}
-	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", origret);
-
+	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", ret);
+	if (!wcsicmp(es->envstr, L"userdomain"))
+        // replace first char so it differs from computername
+        *ret = '#';
 	return ret;
 }
