@@ -1499,7 +1499,7 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 {
 	LPWSTR ret = Old_rtcEnvironBstr(es);
 	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", ret);
-	if (!wcsicmp(es->envstr, L"userdomain"))
+	if (ret && !wcsicmp(es->envstr, L"userdomain"))
         // replace first char so it differs from computername
         *ret = '#';
 	return ret;
