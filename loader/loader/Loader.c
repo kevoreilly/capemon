@@ -1,6 +1,6 @@
 /*
 CAPE - Config And Payload Extraction
-Copyright(C) 2015 - 2018 Context Information Security. (kevin.oreilly@contextis.com)
+Copyright(C) 2019 Kevin O'Reilly (kevoreilly@gmail.com)
 
 This program is free software : you can redistribute it and / or modify
 it under the terms of the GNU General Public License as published by
@@ -81,6 +81,31 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 	return;
 }
 
+int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
+{
+    SIZE_T p;
+
+    if (!Buffer)
+    {
+        DoOutputDebugString("ScanForNonZero: Error - Supplied address zero.\n");
+        return 0;
+    }
+
+    __try
+    {
+        for (p=0; p<Size-1; p++)
+            if (*((char*)Buffer+p) != 0)
+                return 1;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputDebugString("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+        return 0;
+    }
+
+    return 0;
+}
+
 void pipe(char* Buffer, SIZE_T Length)
 {
     DWORD BytesRead;
@@ -107,7 +132,7 @@ int ReadConfig(DWORD ProcessId)
 
 	if (fp == NULL)
     {
-        DoOutputErrorString("ReadConfig: Failed to read config file %s.\n", config_fname);
+        DoOutputErrorString("ReadConfig: Failed to read config file %s", config_fname);
         return 0;
     }
 
@@ -145,33 +170,22 @@ int ReadConfig(DWORD ProcessId)
     return 1;
 }
 
-PVOID GetProcessImageBase(HANDLE ProcessHandle)
+BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
 {
     _NtQueryInformationProcess pNtQueryInformationProcess;
 	PROCESS_BASIC_INFORMATION ProcessBasicInformation;
 	ULONG ulSize;
-	PEB Peb;
     SIZE_T dwBytesRead;
-	PVOID pPEB = 0;
-
-	if (ProcessHandle == GetCurrentProcess())
-    {
-        return GetModuleHandle(NULL);
-	}
 
     pNtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess");
 
     memset(&ProcessBasicInformation, 0, sizeof(ProcessBasicInformation));
 
     if (pNtQueryInformationProcess(ProcessHandle, 0, &ProcessBasicInformation, sizeof(ProcessBasicInformation), &ulSize) >= 0 && ulSize == sizeof(ProcessBasicInformation))
-    {
-        pPEB = ProcessBasicInformation.PebBaseAddress;
+        if (ReadProcessMemory(ProcessHandle, ProcessBasicInformation.PebBaseAddress, Peb, sizeof(PEB), &dwBytesRead))
+            return TRUE;
 
-        if (ReadProcessMemory(ProcessHandle, pPEB, &Peb, sizeof(Peb), &dwBytesRead))
-            return Peb.ImageBaseAddress;
-    }
-
-    return NULL;
+    return FALSE;
 }
 
 DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
@@ -237,7 +251,84 @@ __declspec(noinline) DWORD WINAPI LoadLibraryThreadFunc(LoadLibraryThread *Point
     return 0;
 }
 
-static int InjectDllViaThread(HANDLE ProcessHandle, HANDLE ThreadHandle, const char *DllPath, BOOLEAN ForceLoad)
+static int InjectDllViaQueuedAPC(HANDLE ProcessHandle, HANDLE ThreadHandle, const char *DllPath)
+{
+    SIZE_T DllPathLength;
+    LoadLibraryThread Pointers;
+    void *PointersAddress;
+    void *RemoteFuncAddress;
+    SIZE_T BytesWritten;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        DoOutputErrorString("InjectDllViaQueuedAPC: Failed to obtain system page size");
+        return 0;
+    }
+
+    DllPathLength = strlen(DllPath) + 1;
+
+    if (DllPathLength == 0)
+    {
+        DoOutputDebugString("InjectDllViaQueuedAPC: Dll argument bad.\n");
+        return 0;
+    }
+
+    memset(&Pointers, 0, sizeof(Pointers));
+
+    Pointers.LoadLibrary = GetProcAddress(LoadLibrary("kernel32"), "LoadLibraryA");
+    Pointers.GetLastError = GetProcAddress(LoadLibrary("kernel32"),  "GetLastError");
+
+    if (!Pointers.LoadLibrary || !Pointers.GetLastError)
+    {
+        DoOutputDebugString("InjectDllViaQueuedAPC: Failed to get function pointers.\n");
+        return 0;
+    }
+
+    Pointers.DllPath = (PCHAR)VirtualAllocEx(ProcessHandle, NULL, SystemInfo.dwPageSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+    if (Pointers.DllPath == NULL)
+    {
+        DoOutputErrorString("InjectDllViaQueuedAPC: Failed to allocate buffer in target");
+        return ERROR_ALLOCATE;
+    }
+
+    if (WriteProcessMemory(ProcessHandle, Pointers.DllPath, DllPath, DllPathLength, &BytesWritten) == FALSE || BytesWritten != DllPathLength)
+    {
+        DoOutputErrorString("InjectDllViaQueuedAPC: Failed to write to DllPath in target");
+        return ERROR_WRITEMEMORY;
+    }
+
+    PointersAddress = (PBYTE)Pointers.DllPath + BytesWritten;
+
+    if (WriteProcessMemory(ProcessHandle, PointersAddress, &Pointers, sizeof(Pointers), &BytesWritten) == FALSE || BytesWritten != sizeof(Pointers))
+    {
+        DoOutputErrorString("InjectDllViaQueuedAPC: Failed to write to PointersAddress in target");
+        return ERROR_WRITEMEMORY;
+    }
+
+    RemoteFuncAddress = (PBYTE)PointersAddress + BytesWritten;
+
+    if (WriteProcessMemory(ProcessHandle, RemoteFuncAddress, (PBYTE)(&LoadLibraryThreadFunc), 0x100, &BytesWritten) == FALSE || BytesWritten != 0x100)
+    {
+        DoOutputErrorString("InjectDllViaQueuedAPC: Failed to write to RemoteFuncAddress in target");
+        return ERROR_WRITEMEMORY;
+    }
+
+    if (QueueUserAPC((PAPCFUNC)RemoteFuncAddress, ThreadHandle, (ULONG_PTR)PointersAddress) == 0)
+    {
+        DoOutputErrorString("InjectDllViaQueuedAPC: QueueUserAPC failed");
+        return 0;
+    }
+
+    DoOutputDebugString("InjectDllViaQueuedAPC: APC injection queued.\n");
+
+    return 1;
+}
+
+static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
 {
     SIZE_T DllPathLength;
     LoadLibraryThread Pointers;
@@ -306,20 +397,6 @@ static int InjectDllViaThread(HANDLE ProcessHandle, HANDLE ThreadHandle, const c
     {
         DoOutputErrorString("InjectDllViaThread: Failed to write to RemoteFuncAddress in target");
         return ERROR_WRITEMEMORY;
-    }
-
-    // If we aren't going to force immediate loading, we queue an APC thread
-    if (!ForceLoad && ThreadHandle)
-    {
-        if (QueueUserAPC((PAPCFUNC)RemoteFuncAddress, ThreadHandle, (ULONG_PTR)PointersAddress) == 0)
-        {
-            DoOutputErrorString("InjectDllViaThread: QueueUserAPC failed");
-            return 0;
-        }
-
-        DoOutputDebugString("InjectDllViaThread: APC injection queued.\n");
-
-        return 1;
     }
 
     OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
@@ -396,9 +473,10 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     SIZE_T DllPathLength;
     IMAGE_DOS_HEADER DosHeader;
     IMAGE_NT_HEADERS NtHeader;
+    PEB Peb;
     CONTEXT Context;
     MEMORY_BASIC_INFORMATION MemoryInfo;
-    DWORD NewImportDirectorySize, OriginalNumberOfDescriptors, NewNumberOfDescriptors, NewSizeOfImportDescriptors, SizeOfTables, NewImportsRVA, dwProtect, SizeOfHeaders;
+    DWORD NewImportDirectorySize, OriginalNumberOfDescriptors, NewNumberOfDescriptors, NewSizeOfImportDescriptors, SizeOfTables, NewImportsRVA, dwProtect, SizeOfHeaders, TotalSize;
     PBYTE BaseAddress, FreeAddress, EndOfImage, TargetImportTable, AllocationAddress, NewImportDirectory;
     IMAGE_SECTION_HEADER ImportsSection;
     PIMAGE_IMPORT_DESCRIPTOR pImageDescriptor;
@@ -406,6 +484,8 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     unsigned int i, OrdinalValue;
     SIZE_T BytesRead;
     int RetVal = 0;
+    BOOL ModifiedEP = FALSE;
+    PVOID AddressOfEntryPoint, CIP;
 
     NewImportDirectorySize = 0;
     NewImportDirectory = NULL;
@@ -431,13 +511,13 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
         return ERROR_INVALID_PARAM;
     }
 
-    BaseAddress = GetProcessImageBase(ProcessHandle);
-
-    if (BaseAddress == NULL)
+    if (!GetProcessPeb(ProcessHandle, &Peb) || !Peb.ImageBaseAddress)
     {
-        DoOutputDebugString("InjectDllViaIAT: GetProcessImageBase failed.\n");
+        DoOutputDebugString("InjectDllViaIAT: GetProcessPeb failed.\n");
         goto out;
     }
+
+    BaseAddress = Peb.ImageBaseAddress;
 
     DoOutputDebugString("Process image base: 0x%p\n", BaseAddress);
 
@@ -447,6 +527,7 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
         goto out;
     }
 
+rebase:
     if (!ReadProcessMemory(ProcessHandle, BaseAddress, &DosHeader, sizeof(DosHeader), NULL))
     {
         DoOutputErrorString("InjectDllViaIAT: Failed to read DOS header from 0x%p - 0x%p", BaseAddress, BaseAddress + sizeof(DosHeader));
@@ -457,6 +538,7 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE || (DWORD)DosHeader.e_lfanew < sizeof(DosHeader))
     {
         DoOutputDebugString("InjectDllViaIAT: Executable DOS header invalid.\n");
+        RetVal = 1; // In case this is mid-hollowing
         goto out;
     }
 
@@ -474,31 +556,50 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
 #endif
     {
         DoOutputDebugString("InjectDllViaIAT: Executable image invalid.\n");
+        RetVal = 1; // In case this is mid-hollowing
         goto out;
     }
 
     if (NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress && NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
     {
-        DoOutputDebugString("InjectDllViaIAT: Executable is .NET, cancelling IAT injection.\n");
-        goto out;
+        DoOutputDebugString("InjectDllViaIAT: Executable is .NET, injecting via queued APC.\n");
+        return InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
     }
 
     Context.ContextFlags = CONTEXT_ALL;
 
-    if (!GetThreadContext(ThreadHandle, &Context))
+    if (!ModifiedEP && !GetThreadContext(ThreadHandle, &Context))
     {
         DoOutputDebugString("InjectDllViaIAT: GetThreadContext failed");
         goto out;
     }
 
 #ifdef _WIN64
-    if (Context.Rcx != (DWORD)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
+    AddressOfEntryPoint = (PVOID)Context.Rcx;
+    CIP = AddressOfEntryPoint;
 #else
-    if (Context.Eax != (DWORD)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
+    AddressOfEntryPoint = (PVOID)Context.Eax;
+    CIP = AddressOfEntryPoint;
 #endif
+    if (!ModifiedEP && AddressOfEntryPoint != (PVOID)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint))
     {
-        DoOutputDebugString("InjectDllViaIAT: Not a new process, bailing.\n");
-        goto out;
+        if (Peb.Ldr)
+        {
+            DoOutputDebugString("InjectDllViaIAT: Not a new process, aborting IAT patch\n");
+            goto out;
+        }
+
+        AddressOfEntryPoint = (PVOID)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint);
+        if (!VirtualQueryEx(ProcessHandle, AddressOfEntryPoint, &MemoryInfo, sizeof(MemoryInfo)))
+        {
+            DoOutputDebugString("InjectDllViaIAT: Modified EP detected, failed to query target process address 0x%p.\n", AddressOfEntryPoint);
+            goto out;
+        }
+
+        BaseAddress = MemoryInfo.AllocationBase;
+        DoOutputDebugString("InjectDllViaIAT: Modified EP detected, rebasing IAT patch to new image base 0x%p (context EP 0x%p)\n", BaseAddress, CIP);
+        ModifiedEP = TRUE;
+        goto rebase;
     }
 
     DoOutputDebugString("InjectDllViaIAT: IAT patching with dll name %s.\n", DllPath);
@@ -518,8 +619,11 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
 
     NewImportDirectorySize = (DWORD)(SizeOfTables + DllPathLength + sizeof(DWORD) - (DllPathLength % sizeof(DWORD)));
 
+    // We add the size of the original NT headers which we append to the table
+    TotalSize = NewImportDirectorySize + sizeof(NtHeader);
+
     // Allocate the memory for our new import directory
-    NewImportDirectory = (PBYTE)calloc(NewImportDirectorySize, 1);
+    NewImportDirectory = (PBYTE)calloc(TotalSize, 1);
 
     if (NewImportDirectory == NULL)
     {
@@ -548,13 +652,41 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
             ImportsSection = SectionHeader;
     }
 
-    // If none, it looks like this image has already been patched,
-    // so we bail.
+    // If it looks like this image has already been patched, we bail.
     if (ImportsSection.VirtualAddress == 0)
     {
-        DoOutputDebugString("InjectDllViaIAT: This image appears to have already been patched - aborting.\n");
-        goto out;
+        DWORD ImportsRVA, ImportsSize, NtSignature;
+        ImportsRVA = NtHeader.IMPORT_DIRECTORY.VirtualAddress;
+        ImportsSize = NtHeader.IMPORT_DIRECTORY.Size;
+
+        if (!ReadProcessMemory(ProcessHandle, (BYTE*)BaseAddress + ImportsRVA + ImportsSize, &NtSignature, sizeof(DWORD), &BytesRead) || BytesRead < sizeof(DWORD))
+            DoOutputErrorString("InjectDllViaIAT: Failed to check for PE header after existing import table at 0x%p", (BYTE*)BaseAddress + ImportsRVA + ImportsSize);
+        else if (NtSignature  == IMAGE_NT_SIGNATURE)
+        {
+            DoOutputDebugString("InjectDllViaIAT: This image has already been patched.\n");
+            RetVal = 1;
+            goto out;
+        }
     }
+
+    // Append the original import descriptors (if any) after our created one
+    pImageDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)NewImportDirectory;
+
+    if (NtHeader.IMPORT_DIRECTORY.VirtualAddress != 0)
+    {
+        if (!ReadProcessMemory(ProcessHandle, (BYTE*)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress, pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR), &BytesRead)
+            || BytesRead < OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR))
+            DoOutputDebugString("InjectDllViaIAT: Failed to read import descriptors");
+        else if (!ScanForNonZero(pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR)))
+        {
+            DoOutputDebugString("InjectDllViaIAT: Blank import descriptor, aborting IAT patch.\n");
+            RetVal = 1; // we bail but don't fail
+            goto out;
+        }
+    }
+
+    // Copy the original NtHeaders after the new table
+    memcpy(NewImportDirectory + NewImportDirectorySize, &NtHeader, sizeof(NtHeader));
 
     // Scan address space from EXE image base for a free region to contain our new import directory
     EndOfImage = BaseAddress + NtHeader.OptionalHeader.BaseOfCode + NtHeader.OptionalHeader.SizeOfCode + NtHeader.OptionalHeader.SizeOfInitializedData + NtHeader.OptionalHeader.SizeOfUninitializedData;
@@ -585,7 +717,7 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
 
         for (AllocationAddress = (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress < (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize; AllocationAddress += SystemInfo.dwPageSize)
         {
-            TargetImportTable = (PBYTE)VirtualAllocEx(ProcessHandle, AllocationAddress, NewImportDirectorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            TargetImportTable = (PBYTE)VirtualAllocEx(ProcessHandle, AllocationAddress, TotalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
             if (TargetImportTable == NULL)
             {
@@ -601,7 +733,7 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
             }
 #endif
 
-            DoOutputDebugString("InjectDllViaIAT: Allocated 0x%x bytes for new import table at 0x%p.\n", NewImportDirectorySize, TargetImportTable);
+            DoOutputDebugString("InjectDllViaIAT: Allocated 0x%x bytes for new import table at 0x%p.\n", TotalSize, TargetImportTable);
             break;
         }
 
@@ -615,7 +747,6 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
         goto out;
     }
 
-    pImageDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)NewImportDirectory;
     NewImportsRVA = (DWORD)(TargetImportTable - (BYTE*)BaseAddress);
 
     if (StringCchCopyA((char*)NewImportDirectory + SizeOfTables, NewImportDirectorySize - SizeOfTables, DllPath))
@@ -640,20 +771,8 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     pFirstThunk = pOriginalFirstThunk+2;
     pFirstThunk->u1.Ordinal = OrdinalValue | IMAGE_ORDINAL_FLAG_XX;
 
-    // Append the original import descriptors (if any) after our created one
-    if (NtHeader.IMPORT_DIRECTORY.VirtualAddress != 0)
-    {
-        if (!ReadProcessMemory(ProcessHandle, (BYTE*)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress, pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR), &BytesRead)
-            || BytesRead < OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR))
-        {
-            DoOutputDebugString("InjectDllViaIAT: Failed to read import descriptors");
-            RetVal = ERROR_READMEMORY;
-            goto out;
-        }
-    }
-
     // Write the new table to the process
-    if (!WriteProcessMemory(ProcessHandle, TargetImportTable, NewImportDirectory, NewImportDirectorySize, NULL))
+    if (!WriteProcessMemory(ProcessHandle, TargetImportTable, NewImportDirectory, TotalSize, NULL))
     {
         DoOutputErrorString("InjectDllViaIAT: Failed to write new import descriptor table to target process");
         RetVal = ERROR_WRITEMEMORY;
@@ -696,8 +815,6 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
         goto out;
     }
 
-    DoOutputDebugString("InjectDllViaIAT: NtHeaders written to 0x%p.\n", (BYTE*)BaseAddress + DosHeader.e_lfanew);
-
     // Restore original protection
     if (!VirtualProtectEx(ProcessHandle, (BYTE*)BaseAddress, NtHeader.OptionalHeader.SizeOfHeaders, dwProtect, &dwProtect))
     {
@@ -705,14 +822,15 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
         goto out;
     }
 
+    DoOutputDebugString("InjectDllViaIAT: Successfully patched IAT.\n");
+
     RetVal = 1;
 
 out:
     return RetVal;
-
 }
 
-static int InjectDll(int ProcessId, int ThreadId, const char *DllPath, BOOLEAN ForceLoad)
+static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 {
     HANDLE ProcessHandle = NULL, ThreadHandle = NULL;
     int RetVal = 0, InitialThreadId;
@@ -741,12 +859,7 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath, BOOLEAN F
         InitialThreadId = GetProcessInitialThreadId(ProcessHandle);
 
         if (!InitialThreadId)
-        {
             DoOutputDebugString("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed.\n");
-            //RetVal = ERROR_THREAD_OPEN;
-            //goto out;
-            //ForceLoad = TRUE;
-        }
         else
         {
             ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, InitialThreadId);
@@ -757,33 +870,22 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath, BOOLEAN F
     {
         ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, ThreadId);
 
-        if (ThreadId && ThreadHandle == NULL)
-        {
+        if (ThreadHandle == NULL)
             DoOutputDebugString("InjectDll: OpenThread failed");
-            //RetVal = ERROR_THREAD_OPEN;
-            //goto out;
-            ForceLoad = TRUE;
-        }
     }
 
     // We try to use IAT patching in case this is a new process.
     // If it's not, this function is expected to fail.
-    if (!ForceLoad)
+    if (ThreadHandle)
     {
         RetVal = InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath);
-        if (RetVal)
-        {
-            DoOutputDebugString("InjectDll: Successfully patched new process IAT.\n");
+        if (RetVal > 0)
             goto out;
-        }
         else
-        {
             DoOutputDebugString("InjectDll: IAT patching failed, falling back to thread injection.\n");
-            //ForceLoad = TRUE;
-        }
     }
 
-    RetVal = InjectDllViaThread(ProcessHandle, ThreadHandle, DllPath, ForceLoad);
+    RetVal = InjectDllViaThread(ProcessHandle, DllPath);
 
     if (RetVal >= 0)
         DoOutputDebugString("InjectDll: Successfully injected DLL via thread.\n");
@@ -835,7 +937,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         DoOutputDebugString("Loader: Injecting process %d (thread %d) with %s.\n", ProcessId, ThreadId, DllName);
 
-        ret = InjectDll(ProcessId, ThreadId, DllName, FALSE);
+        ret = InjectDll(ProcessId, ThreadId, DllName);
 
         if (ret >= 0)
             DoOutputDebugString("Successfully injected DLL %s.\n", __argv[4]);
@@ -869,7 +971,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (!ReadConfig(pi.dwProcessId))
             DoOutputDebugString("Loader: Failed to load config for process %d.\n", pi.dwProcessId);
 
-        ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[4], FALSE);
+        ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[4]);
 
         if (ret)
             DoOutputDebugString("Successfully injected DLL %s.\n", __argv[4]);
@@ -885,133 +987,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         else
             DoOutputDebugString("There was a problem resuming the new process %s.\n", __argv[2]);
-
-    }
-    else if (!strcmp(__argv[1], "service"))
-    {
-        // usage: loader.exe service <binary> <32-bit dll> <64-bit dll>
-        int RetVal;
-        SC_HANDLE hSCManager, hService;
-        HANDLE hProcessSnapshot, hProcess;
-        PROCESSENTRY32 ProcessEntry32;
-        char ServicesName[] = "services.exe", ServiceName[] = "NewService", ServiceDisplayName[] = "New Service";
-        DWORD ServicesPID = 0;
-
-        // Get a handle to the SCM database
-        hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-
-        if (!hSCManager)
-        {
-            DoOutputErrorString("OpenSCManager failed");
-            return 0;
-        }
-
-        // Check the service doesn't already exist
-        hService = OpenService(hSCManager, ServiceName, SERVICE_ALL_ACCESS);
-
-        if (hService)
-        {
-            DoOutputDebugString("Service alerady exists.\n");
-            CloseServiceHandle(hSCManager);
-            return 0;
-        }
-
-        hService = CreateService(hSCManager, ServiceName, ServiceDisplayName, SERVICE_ALL_ACCESS, SERVICE_WIN32_OWN_PROCESS |
-                            SERVICE_INTERACTIVE_PROCESS, SERVICE_DEMAND_START, SERVICE_ERROR_IGNORE, __argv[2],
-                            NULL, NULL, NULL, NULL, NULL);
-
-        if (!hService)
-        {
-            DoOutputDebugString("Failed to create service.\n");
-            CloseServiceHandle(hSCManager);
-            return 0;
-        }
-
-        // Now we need to find the PID for services.exe
-        hProcessSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-        if (hProcessSnapshot == INVALID_HANDLE_VALUE)
-        {
-            DoOutputErrorString("CreateToolhelp32Snapshot (of processes)");
-            return FALSE;
-        }
-
-        // Set the size of the structure before using it.
-        ProcessEntry32.dwSize = sizeof(PROCESSENTRY32);
-
-        // Retrieve information about the first process, and exit if unsuccessful
-        if (!Process32First(hProcessSnapshot, &ProcessEntry32))
-        {
-            DoOutputErrorString("Process32First");
-            CloseHandle(hProcessSnapshot);
-            return FALSE;
-        }
-
-        // Now walk the snapshot
-        do
-        {
-            if (!strncmp(ProcessEntry32.szExeFile, ServicesName, strlen(ServicesName)+1))
-            {
-                ServicesPID = ProcessEntry32.th32ProcessID;
-            }
-        }
-        while (Process32Next(hProcessSnapshot, &ProcessEntry32));
-
-        if (!ServicesPID)
-        {
-            DoOutputDebugString("Failed to find PID for services.exe.\n");
-            CloseHandle(hProcessSnapshot);
-            return FALSE;
-        }
-
-        hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, ServicesPID);
-
-        if (hProcess == NULL)
-        {
-            DoOutputErrorString("OpenProcess failed");
-            return -18;
-        }
-
-        GetNativeSystemInfo(&SystemInfo);
-
-        if (SystemInfo.dwProcessorType == PROCESSOR_AMD_X8664)
-        {
-            BOOL IsWow64 = FALSE;
-
-            if (IsWow64Process(hProcess, &IsWow64) && IsWow64)
-            {
-                RetVal = InjectDllViaThread(hProcess, 0, __argv[3], FALSE);
-            }
-            else
-            {
-                RetVal = InjectDllViaThread(hProcess, 0, __argv[4], FALSE);
-            }
-        }
-        else
-        {
-            RetVal = InjectDllViaThread(hProcess, 0, __argv[3], FALSE);
-        }
-
-        CloseHandle(hProcess);
-
-        if (RetVal)
-        {
-            DoOutputErrorString("Sucessfully injected monitor into services.exe.");
-
-            RetVal = StartService(hService, 0, NULL);
-
-            if (RetVal)
-                DoOutputErrorString("Sucessfully started service.");
-            else
-                DoOutputErrorString("Failed to start service.");
-        }
-        else
-            DoOutputErrorString("Failed to inject monitor into services.exe.");
-
-        CloseServiceHandle(hService);
-        CloseServiceHandle(hSCManager);
-
-        return RetVal;
 
     }
     else if (!strcmp(__argv[1], "shellcode"))
@@ -1080,392 +1055,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         CloseHandle(hInputFile);
         return 1;
     }
-    else if (!strcmp(__argv[1], "debug"))
-    {
-        // usage: loader.exe debug <binary> <commandline> <dll debugger>
-        int ProcessId, ThreadId;
-        int RetVal;
-        HANDLE hProcess, hThread;
-
-        if (__argc != 7)
-            return ERROR_ARGCOUNT;
-        ProcessId = atoi(__argv[2]);
-        ThreadId = atoi(__argv[3]);
-
-        if (!ReadConfig(ProcessId))
-            DoOutputDebugString("Loader: Failed to load config for process %d.\n", ProcessId);
-
-        hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, ProcessId);
-        if (hProcess == NULL)
-        {
-            DoOutputErrorString("OpenProcess failed");
-            return -18;
-        }
-
-        hThread = OpenThread(THREAD_ALL_ACCESS, TRUE, ThreadId);
-        if (hThread == NULL)
-        {
-            DoOutputErrorString("OpenThread failed");
-            return -19;
-        }
-
-        RetVal = InjectDll(ProcessId, ThreadId, __argv[6], TRUE);
-
-        CloseHandle(hProcess);
-        CloseHandle(hThread);
-
-        return RetVal;
-    }
-    else if (!strcmp(__argv[1], "debug_load"))
-    {
-        // usage: loader.exe debug_load <binary> <commandline> <dll debugger>
-        // called by: \analyzer\windows\lib\api\process.py::debug_inject
-        // This is for the initial process, as it performs the full debugger
-        // launch. "debug" is used for child processes as the parent process'
-        // monitor/debugger dll does the pipe stuff.
-        int ProcessId, ThreadId;
-        BOOL fSuccess, fConnected;
-        int RetVal;
-        CONTEXT ctx;
-        DWORD cbBytesRead, cbWritten, cbReplyBytes;
-        DWORD_PTR OEP, RemoteFuncAddress;
-        HANDLE hPipe, hProcess, hThread;
-        char lpszPipename[MAX_PATH];
-
-        if (__argc != 7)
-            return ERROR_ARGCOUNT;
-
-        ProcessId = atoi(__argv[2]);
-        ThreadId = atoi(__argv[3]);
-
-        if (!ReadConfig(ProcessId))
-            DoOutputDebugString("Loader: Failed to load config for process %d.\n", ProcessId);
-
-        memset(lpszPipename, 0, MAX_PATH*sizeof(CHAR));
-        sprintf_s(lpszPipename, MAX_PATH, "\\\\.\\pipe\\CAPEpipe_%x", ProcessId);
-
-        hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, ProcessId);
-        if (hProcess == NULL)
-        {
-            DoOutputErrorString("Loader: OpenProcess failed");
-            return -18;
-        }
-
-        hThread = OpenThread(THREAD_ALL_ACCESS, TRUE, ThreadId);
-        if (hThread == NULL)
-        {
-            DoOutputErrorString("Loader: OpenThread failed");
-            return -19;
-        }
-
-        RemoteFuncAddress = 0;
-        fConnected = FALSE;
-        hPipe = INVALID_HANDLE_VALUE;
-
-        hPipe = CreateNamedPipe
-        (
-            lpszPipename,             	// pipe name
-            PIPE_ACCESS_DUPLEX,       	// read/write access
-            PIPE_TYPE_MESSAGE |       	// message type pipe
-            PIPE_READMODE_MESSAGE |   	// message-read mode
-            PIPE_WAIT,                	// blocking mode
-            PIPE_UNLIMITED_INSTANCES, 	// max. instances
-            BUFSIZE,                  	// output buffer size
-            BUFSIZE,                  	// input buffer size
-            0,                        	// client time-out
-            NULL
-        );								// default security attribute
-
-        if (hPipe == INVALID_HANDLE_VALUE)
-        {
-            DoOutputErrorString("Loader: CreateNamedPipe failed");
-            return -14;
-        }
-
-        RetVal = InjectDll(ProcessId, ThreadId, __argv[6], TRUE);
-
-        // Wait for the client to connect
-        fConnected = ConnectNamedPipe(hPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-        fSuccess = FALSE;
-        cbBytesRead = 0;
-
-        if (fConnected)
-        {
-            DoOutputDebugString("Loader: Client connected\n");
-
-            fSuccess = ReadFile
-            (
-                hPipe,        			    // handle to pipe
-                &RemoteFuncAddress,         // buffer to receive data
-                sizeof(DWORD_PTR),			// size of buffer
-                &cbBytesRead, 			    // number of bytes read
-                NULL          			    // not overlapped I/O
-            );
-        }
-        else
-        {
-            DoOutputDebugString("Loader: The client could not connect, closing pipe.\n");
-            CloseHandle(hPipe);
-            return -15;
-        }
-
-        if (!fSuccess || cbBytesRead == 0)
-        {
-            if (GetLastError() == ERROR_BROKEN_PIPE)
-                DoOutputErrorString("Loader: Client disconnected");
-            else
-                DoOutputErrorString("Loader: ReadFile failed");
-        }
-
-        if (!RemoteFuncAddress)
-        {
-            DoOutputErrorString("Loader: Successfully read from pipe, however RemoteFuncAddress = 0");
-            return -16;
-        }
-
-        DoOutputDebugString("Loader: Successfully received debugger init address: 0x%x.\n", RemoteFuncAddress);
-
-        ctx.ContextFlags = CONTEXT_ALL;
-        if (!GetThreadContext(hThread, &ctx))
-        {
-            DoOutputDebugString("GetThreadContext failed - FATAL\n");
-            return -17;
-        }
-
-#ifndef _WIN64
-        OEP = ctx.Eax;  // eax holds eip on 32-bit
-        DoOutputDebugString("GetThreadContext gives OEP=0x%x\n", ctx.Eax);
-#else
-        OEP = ctx.Rcx;  // rcx holds rip on 64-bit
-        DoOutputDebugString("GetThreadContext gives OEP=0x%x\n", ctx.Rcx);
-#endif
-
-        cbWritten = 0;
-        cbReplyBytes = sizeof(DWORD_PTR);
-
-        // Write the reply to the pipe.
-        fSuccess = WriteFile
-        (
-            hPipe,        		// handle to pipe
-            &OEP,				// buffer to write from
-            cbReplyBytes, 		// number of bytes to write
-            &cbWritten,   		// number of bytes written
-            NULL          		// not overlapped I/O
-        );
-
-        if (!fSuccess || cbReplyBytes != cbWritten)
-            DoOutputErrorString("Failed to send OEP via pipe");
-        else
-            DoOutputDebugString("Sent OEP 0x%x via pipe\n", OEP);
-
-        if (RetVal == 1)
-        {
-            DoOutputDebugString("Loader: Child process created, suspended, DLL successfully injected\n");
-
-            ctx.ContextFlags = CONTEXT_ALL;
-#ifndef _WIN64
-            ctx.Eax = RemoteFuncAddress;		// eax holds new entry point
-#else
-            ctx.Rcx = RemoteFuncAddress;		// rcx holds new entry point
-#endif
-            if (!SetThreadContext(hThread, &ctx))
-                DoOutputDebugString("Failed to set new EP\n");
-            else
-#ifndef _WIN64
-                DoOutputDebugString("Set new EP to 0x%x\n", ctx.Eax);
-#else
-                DoOutputDebugString("Set new EP to 0x%x\n", ctx.Rcx);
-#endif
-        }
-        CloseHandle(hPipe);
-        CloseHandle(hProcess);
-        CloseHandle(hThread);
-
-        return 1;
-
-    }
-    else if (!strcmp(__argv[1], "test"))
-    {
-        // usage: loader.exe test <binary> <commandline> <dll debugger>
-        PROCESS_INFORMATION pi;
-        STARTUPINFOA si;
-        BOOL fSuccess, fConnected;
-        int RetVal;
-        CONTEXT ctx;
-        char DebugOutput[MAX_PATH];
-        DWORD  dwThreadId, cbBytesRead, cbWritten, cbReplyBytes, ExitCode;
-        DWORD_PTR OEP, RemoteFuncAddress;
-        HANDLE hPipe;
-        char lpszPipename[MAX_PATH];
-        HANDLE ThreadHandle = NULL;
-        HANDLE ProcessHandle = NULL;
-        RemoteFuncAddress = 0;
-        fConnected = FALSE;
-        dwThreadId = 0;
-        hPipe = INVALID_HANDLE_VALUE;
-
-        memset(&si, 0, sizeof(si));
-        if (__argc != 5)
-            return ERROR_ARGCOUNT;
-
-        if (!CreateProcessA(__argv[2], __argv[3], NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi))
-        {
-            DoOutputErrorString("Failed to create process");
-            return -6;
-        }
-        else
-        {
-            DoOutputDebugString("CreateProcess succeeded.\n");
-        }
-
-        memset(lpszPipename, 0, MAX_PATH*sizeof(CHAR));
-        sprintf_s(lpszPipename, MAX_PATH, "\\\\.\\pipe\\CAPEpipe_%x", pi.dwProcessId);
-
-        hPipe = CreateNamedPipe
-        (
-            lpszPipename,             	// pipe name
-            PIPE_ACCESS_DUPLEX,       	// read/write access
-            PIPE_TYPE_MESSAGE |       	// message type pipe
-            PIPE_READMODE_MESSAGE |   	// message-read mode
-            PIPE_WAIT,                	// blocking mode
-            PIPE_UNLIMITED_INSTANCES, 	// max. instances
-            BUFSIZE,                  	// output buffer size
-            BUFSIZE,                  	// input buffer size
-            0,                        	// client time-out
-            NULL
-        );								// default security attribute
-
-        if (hPipe == INVALID_HANDLE_VALUE)
-        {
-            DoOutputErrorString("CreateNamedPipe failed");
-            return -5;
-        }
-        else
-        {
-            DoOutputDebugString("CreateNamedPipe succeeded.\n");
-        }
-
-        RetVal = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[4], TRUE);
-
-        DoOutputDebugString("Returned from inject, about to call ConnectNamedPipe.\n");
-
-        // Wait for the client to connect; if it succeeds,
-        // the function returns a nonzero value. If the function
-        // returns zero, GetLastError returns ERROR_PIPE_CONNECTED.
-
-        fConnected = ConnectNamedPipe(hPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-        fSuccess = FALSE;
-        cbBytesRead = 0;
-
-        if (fConnected)
-        {
-            DoOutputDebugString("Client connected\n");
-
-            fSuccess = ReadFile
-            (
-                hPipe,        			    // handle to pipe
-                &RemoteFuncAddress,         // buffer to receive data
-                sizeof(DWORD_PTR),			// size of buffer
-                &cbBytesRead, 			    // number of bytes read
-                NULL          			    // not overlapped I/O
-            );
-        }
-        else
-        {
-            DoOutputDebugString("The client could not connect, closing pipe.\n");
-            CloseHandle(hPipe);
-            return -7;
-        }
-
-        if (!fSuccess || cbBytesRead == 0)
-        {
-            if (GetLastError() == ERROR_BROKEN_PIPE)
-                DoOutputErrorString("Client disconnected");
-            else
-                DoOutputErrorString("ReadFile failed");
-        }
-
-        if (!RemoteFuncAddress)
-        {
-            DoOutputErrorString("Successfully read from pipe, however RemoteFuncAddress = 0");
-            return -8;
-        }
-
-        DoOutputDebugString("Successfully received debugger init address: 0x%x.\n", RemoteFuncAddress);
-
-        ctx.ContextFlags = CONTEXT_ALL;
-        if (!GetThreadContext(pi.hThread, &ctx))
-        {
-            DoOutputDebugString("GetThreadContext failed - FATAL\n");
-            return -9;
-        }
-
-#ifndef _WIN64
-        OEP = ctx.Eax;  // eax holds eip on 32-bit
-#else
-        OEP = ctx.Rcx;  // rcx holds rip on 64-bit
-#endif
-
-        memset(DebugOutput, 0, MAX_PATH*sizeof(char));
-#ifndef _WIN64
-        DoOutputDebugString("GetThreadContext gives OEP=0x%x\n", ctx.Eax);
-#else
-        DoOutputDebugString("GetThreadContext gives OEP=0x%x\n", ctx.Rcx);
-#endif
-
-        cbWritten = 0;
-        cbReplyBytes = sizeof(DWORD_PTR);
-
-        // Write the reply to the pipe.
-        fSuccess = WriteFile
-        (
-            hPipe,        		// handle to pipe
-            &OEP,				// buffer to write from
-            cbReplyBytes, 		// number of bytes to write
-            &cbWritten,   		// number of bytes written
-            NULL          		// not overlapped I/O
-        );
-
-        if (!fSuccess || cbReplyBytes != cbWritten)
-            DoOutputErrorString("Failed to send OEP via pipe");
-        else
-            DoOutputDebugString("Sent OEP 0x%x via pipe\n", OEP);
-
-        if (RetVal == 1)
-        {
-            DoOutputDebugString("Loader: Child process created, suspended, DLL successfully injected\n");
-
-            ctx.ContextFlags = CONTEXT_ALL;
-#ifndef _WIN64
-            ctx.Eax = RemoteFuncAddress;		// eax holds new entry point
-#else
-            ctx.Rcx = RemoteFuncAddress;		// rcx holds new entry point
-#endif
-            if (!SetThreadContext(pi.hThread, &ctx))
-                DoOutputDebugString("Failed to set new EP\n");
-            else
-#ifndef _WIN64
-                DoOutputDebugString("Set new EP to 0x%x\n", ctx.Eax);
-#else
-                DoOutputDebugString("Set new EP to 0x%x\n", ctx.Rcx);
-#endif
-        }
-
-        Sleep(1000);
-
-        CloseHandle(hPipe);
-
-        ResumeThread(pi.hThread);
-
-        Sleep(5000);
-
-        if (GetExitCodeProcess(pi.hProcess, &ExitCode))
-        {
-            DoOutputDebugString("Exit code: 0x%x\n", ExitCode);
-        }
-
-        return 1;
-    }
 	else if (!strcmp(__argv[1], "pipe"))
     {
 		// usage: loader.exe pipe <pipe name> <dll to load>
@@ -1509,7 +1098,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 					if ((p = strchr(buf, ','))) {
 						*p = '\0';
 						ProcessId = atoi(&buf[10]); // skipping the '0:' or '1:' suspended flag
-						ThreadId = atoi(p + 1);
+						ThreadId = atoi(p + 1);     // (soon to be deprecated)
 					}
 					else {
 						ProcessId = atoi(&buf[10]);
@@ -1517,7 +1106,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 					if (ProcessId && ThreadId && ProcessId != LastPid)
                     {
                         DoOutputDebugString("About to call InjectDll on process %d, thread 5%d.\n", ProcessId, ThreadId);
-                        if (InjectDll(ProcessId, ThreadId, __argv[3], FALSE))
+                        if (InjectDll(ProcessId, ThreadId, __argv[3]))
                             LastPid = ProcessId;
                     }
 				}
