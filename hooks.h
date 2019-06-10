@@ -2798,9 +2798,15 @@ extern HOOKDEF(BOOL, WINAPI, CryptHashSessionKey,
     _In_     DWORD dwFlags
 );
 
-HOOKDEF(DWORD, WINAPI, QueryUsersOnEncryptedFile,
+extern HOOKDEF(DWORD, WINAPI, QueryUsersOnEncryptedFile,
   LPCWSTR   lpFileName,
   PVOID     *pUsers
+);
+
+extern HOOKDEF(BOOL, WINAPI, CryptGenRandom,
+    HCRYPTPROV hProv,
+    DWORD      dwLen,
+    BYTE       *pbBuffer
 );
 
 //

@@ -370,3 +370,13 @@ HOOKDEF(DWORD, WINAPI, QueryUsersOnEncryptedFile,
     LOQ_nonzero("crypto", "up", "FileName", lpFileName, "pUsers", pUsers);
     return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, CryptGenRandom,
+    HCRYPTPROV hProv,
+    DWORD      dwLen,
+    BYTE       *pbBuffer
+) {
+    BOOL ret = Old_CryptGenRandom(hProv, dwLen, pbBuffer);
+    LOQ_bool("crypto", "b", "Buffer", dwLen, pbBuffer);
+    return ret;
+}
