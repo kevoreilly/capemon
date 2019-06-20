@@ -624,6 +624,7 @@ static hook_t g_hooks[] = {
 	HOOK(advapi32, CryptEnumProvidersW),
 	HOOK(advapi32, QueryUsersOnEncryptedFile),
 	HOOK(advapi32, CryptGenRandom),
+	HOOK(advapi32, CryptImportKey),
 
 	HOOK(wintrust, HTTPSCertificateTrust),
 	HOOK(wintrust, HTTPSFinalProv),
@@ -652,6 +653,7 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptEnumProvidersW),
 	HOOK(cryptsp, CryptHashSessionKey),
 	HOOK(cryptsp, CryptGenRandom),
+	HOOK(cryptsp, CryptImportKey),
 
 	HOOK(vbe7, rtcEnvironBstr),
 };

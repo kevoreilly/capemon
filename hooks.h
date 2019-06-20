@@ -3044,3 +3044,12 @@ extern HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
 extern HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	struct envstruct *es
 );
+
+extern HOOKDEF(BOOL, WINAPI, CryptImportKey,
+    HCRYPTPROV hProv,
+    const BYTE *pbData,
+    DWORD      dwDataLen,
+    HCRYPTKEY  hPubKey,
+    DWORD      dwFlags,
+    HCRYPTKEY  *phKey
+);
