@@ -598,13 +598,14 @@ typedef VOID(CALLBACK *_WaitOrTimerCallback)(
   _In_ BOOLEAN TimerOrWaitFired
 );
 
-VOID CALLBACK CallbackHook(
+VOID CALLBACK WaitOrTimerCallbackHook(
   _In_ PVOID   lpParameter,
   _In_ BOOLEAN TimerOrWaitFired
 )
 {
     _WaitOrTimerCallback pWaitOrTimerCallback;
-    
+    int ret = 0;
+
     if (!HookedCallback) {
         DoOutputDebugString("Timer callback hook: error, HookedCallback NULL.\n");
         return;
@@ -615,10 +616,9 @@ VOID CALLBACK CallbackHook(
         DoOutputDebugString("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
         InitNewThreadBreakpoints(Tid);
     }
-    else
-        DoOutputDebugString("Timer callback hook: passing to callback at 0x%p.\n", HookedCallback);
     
     *(FARPROC*)&pWaitOrTimerCallback = (FARPROC)HookedCallback;
+    LOQ_void("system", "p", "Callback", HookedCallback);
     HookedCallback = NULL;
     pWaitOrTimerCallback(lpParameter, TimerOrWaitFired);    
 }
@@ -636,7 +636,7 @@ HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
     
     if (Callback && !HookedCallback) {
         HookedCallback = Callback;
-        Callback = &CallbackHook;
+        Callback = &WaitOrTimerCallbackHook;
     }
     
     ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
