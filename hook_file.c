@@ -1330,12 +1330,12 @@ HOOKDEF(BOOL, WINAPI, GetVolumeNameForVolumeMountPointW,
 	_In_ DWORD cchBufferLength
 ) {
 	BOOL ret = Old_GetVolumeNameForVolumeMountPointW(lpszVolumeMountPoint, lpszVolumeName, cchBufferLength);
-	LOQ_bool("filesystem", "uu", "VolumeMountPoint", lpszVolumeMountPoint, "VolumeName", lpszVolumeName);
 	if (!g_config.no_stealth && ret) {
 		replace_wstring_in_buf(lpszVolumeName, cchBufferLength, L"QEMU", L"DELL");
 		replace_wstring_in_buf(lpszVolumeName, cchBufferLength, L"VMware", L"DELL__");
 		replace_wstring_in_buf(lpszVolumeName, cchBufferLength, L"VMWar", L"WDRed");
 	}
+	LOQ_bool("filesystem", "uu", "VolumeMountPoint", lpszVolumeMountPoint, "VolumeName", lpszVolumeName);
 
 	return ret;
 }
