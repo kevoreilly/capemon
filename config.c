@@ -22,8 +22,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "log.h"
 #include "hooking.h"
+#include "Shlwapi.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern char *our_dll_path;
+extern wchar_t *our_process_path_w;
 extern PVOID bp0, bp1, bp2, bp3;
 #ifdef CAPE_TRACE
 extern int TraceDepthLimit, EntryPointRegister;
@@ -32,18 +35,31 @@ extern unsigned int StepLimit;
 
 int read_config(void)
 {
-    // TODO unicode support
-    char buf[32768], config_fname[MAX_PATH];
+    char buf[32768], config_fname[MAX_PATH], analyzer_path[MAX_PATH];
 	FILE *fp;
 	unsigned int i;
 	unsigned int vallen;
 
-    sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
+    // look for the config in analyzer directory
+    strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
+    PathRemoveFileSpec(analyzer_path); // remove filename
+    PathRemoveFileSpec(analyzer_path); // remove dll folder
+    sprintf(config_fname, "%s\\%u.ini", analyzer_path, GetCurrentProcessId());
 
     fp = fopen(config_fname, "r");
+
+    // backward compatibility
 	if (fp == NULL) {
-		// for debugging purposes
-		fp = fopen("C:\\config.ini", "r");
+        memset(config_fname, 0, sizeof(config_fname));
+        sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
+		fp = fopen(config_fname, "r");
+    }
+
+    // for debugging purposes
+    if (fp == NULL) {
+        memset(config_fname, 0, sizeof(config_fname));
+        sprintf(config_fname, "%s\\config.ini", analyzer_path);
+		fp = fopen(config_fname, "r");
 		if (fp == NULL)
 			return 0;
 	}
@@ -103,7 +119,7 @@ int read_config(void)
 						g_config.file_of_interest = ascii_to_unicode_dup(tmp);
 						free(tmp);
 						// if the file of interest is our own executable, then don't do any special handling
-						if (wcsicmp(our_process_path, g_config.file_of_interest))
+						if (wcsicmp(our_process_path_w, g_config.file_of_interest))
 							g_config.suspend_logging = TRUE;
 					}
 					else {

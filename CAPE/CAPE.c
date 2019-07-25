@@ -2199,6 +2199,8 @@ void init_CAPE()
     DoOutputDebugString("CAPE initialised: 32-bit base package loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, GetModuleHandle(NULL), get_stack_bottom(), get_stack_top());
 #endif
 
+#ifndef STANDALONE
     DoOutputDebugString("Commandline: %s.\n", CommandLine);
+#endif
     return;
 }

@@ -179,7 +179,7 @@ HOOKDEF(SC_HANDLE, WINAPI, OpenServiceW,
     return ret;
 }
 
-extern wchar_t *our_process_path;
+extern wchar_t *our_process_path_w;
 
 HOOKDEF(BOOL, WINAPI, StartServiceA,
     __in      SC_HANDLE hService,
@@ -190,7 +190,7 @@ HOOKDEF(BOOL, WINAPI, StartServiceA,
 	BOOLEAN dispret = servicename_from_handle(hService, servicename);
 	BOOL ret;
 
-	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path, g_config.file_of_interest)))
+	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path_w, g_config.file_of_interest)))
 		pipe("SERVICE:%Z", servicename);
 	ret = Old_StartServiceA(hService, dwNumServiceArgs,
         lpServiceArgVectors);
@@ -209,7 +209,7 @@ HOOKDEF(BOOL, WINAPI, StartServiceW,
 	BOOLEAN dispret = servicename_from_handle(hService, servicename);
 	BOOL ret;
 
-	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path, g_config.file_of_interest)))
+	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path_w, g_config.file_of_interest)))
 		pipe("SERVICE:%Z", servicename);
     ret = Old_StartServiceW(hService, dwNumServiceArgs,
         lpServiceArgVectors);

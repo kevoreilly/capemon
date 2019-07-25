@@ -980,7 +980,7 @@ void log_new_process()
 
     GetSystemTimeAsFileTime(&st);
 
-    loq(LOG_ID_PROCESS, "__notification__", "__process__", 1, 0, "iiiiu",
+    loq(LOG_ID_PROCESS, "__notification__", "__process__", 1, 0, "iiiis",
         "TimeLow", st.dwLowDateTime,
         "TimeHigh", st.dwHighDateTime,
         "ProcessIdentifier", GetCurrentProcessId(),
