@@ -31,7 +31,7 @@ BOOL DumpRegion(PVOID Address);
 int DumpMemory(LPVOID Buffer, SIZE_T Size);
 int DumpCurrentProcessNewEP(LPVOID NewEP);
 int DumpCurrentProcess();
-int DumpProcess(HANDLE hProcess, LPVOID ImageBase);
+int DumpProcess(HANDLE hProcess, LPVOID ImageBase, LPVOID NewEP);
 int DumpPE(LPVOID Buffer);
 int ScanForNonZero(LPVOID Buffer, SIZE_T Size);
 int ScanPageForNonZero(LPVOID Address);
@@ -39,48 +39,9 @@ int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
 int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
 int IsDisguisedPEHeader(LPVOID Buffer);
 int DumpImageInCurrentProcess(LPVOID ImageBase);
-void DumpSectionViewsForPid(DWORD Pid);
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
-
-typedef struct InjectionSectionView
-{
-    HANDLE                          SectionHandle;
-    PVOID                           LocalView;
-    SIZE_T                          ViewSize;
-	int                             TargetProcessId;
-    struct InjectionSectionView     *NextSectionView;
-} INJECTIONSECTIONVIEW, *PINJECTIONSECTIONVIEW;
-
-PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE_T ViewSize);
-PINJECTIONSECTIONVIEW GetSectionView(HANDLE SectionHandle);
-BOOL DropSectionView(PINJECTIONSECTIONVIEW SectionView);
-void DumpSectionViewsForPid(DWORD Pid);
-void DumpSectionView(PINJECTIONSECTIONVIEW SectionView);
-
-typedef struct InjectionInfo
-{
-    int                         ProcessId;
-	HANDLE	                    ProcessHandle;
-    DWORD_PTR                   ImageBase;
-    DWORD_PTR                   EntryPoint;
-    BOOL                        WriteDetected;
-    BOOL                        ImageDumped;
-    LPVOID                      BufferBase;
-    LPVOID                      StackPointer;
-    unsigned int                BufferSizeOfImage;
-    HANDLE                      SectionHandle;
-//    struct InjectionSectionView *SectionViewList;
-    struct InjectionInfo        *NextInjectionInfo;
-} INJECTIONINFO, *PINJECTIONINFO;
-
-struct InjectionInfo *InjectionInfoList;
-
-PINJECTIONINFO GetInjectionInfo(DWORD ProcessId);
-PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId);
-
-struct InjectionSectionView *SectionViewList;
 
 //
 // MessageId: STATUS_SUCCESS
