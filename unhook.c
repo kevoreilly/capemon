@@ -254,20 +254,35 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 {
 	hook_disable();
 
+    DWORD ProcessId = GetCurrentProcessId();
+
     WaitForSingleObject(g_terminate_event_handle, INFINITE);
+
+    CloseHandle(g_terminate_event_handle);
 
     if (g_config.procdump) {
         if (!ProcessDumped) {
-            DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", GetCurrentProcessId());
+            DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", ProcessId);
             DoProcessDump(NULL);
         }
         else
-            DoOutputDebugString("Terminate Event: Process %d has already been dumped(!)\n", GetCurrentProcessId());
+            DoOutputDebugString("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
     }
+#ifdef CAPE_EXTRACTION
+    DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
+    ProcessTrackedRegions();
+    ClearAllBreakpoints();
+#else
     else
-        DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", GetCurrentProcessId());
-
+        DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
+#endif
     file_handle_terminate();
+    g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
+    if (g_terminate_event_handle) {
+        SetEvent(g_terminate_event_handle);
+        CloseHandle(g_terminate_event_handle);
+    }
+    DoOutputDebugString("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
     log_flush();
     if (g_config.terminate_processes)
         ExitProcess(0);
