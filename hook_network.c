@@ -692,6 +692,7 @@ HOOKDEF(BOOL, WINAPI, InternetCloseHandle,
     return ret;
 }
 
+#ifndef CAPE_HANCITOR
 HOOKDEF(BOOL, WINAPI, InternetCrackUrlA,
 	_In_ LPCSTR lpszUrl,
 	_In_ DWORD dwUrlLength,
@@ -702,6 +703,7 @@ HOOKDEF(BOOL, WINAPI, InternetCrackUrlA,
 	LOQ_bool("network", "s", "Url", lpszUrl);
 	return ret;
 }
+#endif
 
 HOOKDEF(BOOL, WINAPI, InternetCrackUrlW,
 	_In_ LPCWSTR lpszUrl,

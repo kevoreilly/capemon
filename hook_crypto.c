@@ -109,6 +109,7 @@ HOOKDEF(BOOL, WINAPI, CryptUnprotectMemory,
     return ret;
 }
 
+#ifndef CAPE_HANCITOR
 HOOKDEF(BOOL, WINAPI, CryptDecrypt,
     _In_     HCRYPTKEY hKey,
     _In_     HCRYPTHASH hHash,
@@ -123,6 +124,7 @@ HOOKDEF(BOOL, WINAPI, CryptDecrypt,
         "Buffer", pdwDataLen, pbData, "Length", *pdwDataLen, "Final", Final);
     return ret;
 }
+#endif
 
 HOOKDEF(BOOL, WINAPI, CryptEncrypt,
     _In_     HCRYPTKEY hKey,
