@@ -1626,7 +1626,12 @@ int DoProcessDump(PVOID CallerBase)
     EnterCriticalSection(&ProcessDumpCriticalSection);
 
     if (base_of_dll_of_interest)
+    {
         ImageBase = (PVOID)base_of_dll_of_interest;
+        // Prevent dump of rundll32
+        if (CallerBase == GetModuleHandle(NULL))
+            CallerBase = NULL;
+    }
     else
         ImageBase = GetModuleHandle(NULL);
 
