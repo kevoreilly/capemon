@@ -1423,6 +1423,19 @@ HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
 	LOQ_bool("misc", "b", "OLE2", len, buf);
 	return ret;
 }
+
+HOOKDEF(HANDLE, WINAPI, HeapCreate,
+  _In_ DWORD  flOptions,
+  _In_ SIZE_T dwInitialSize,
+  _In_ SIZE_T dwMaximumSize
+)
+{
+    HANDLE ret;
+    ret = Old_HeapCreate(flOptions, dwInitialSize, dwMaximumSize);
+    LOQ_nonnull("misc", "ihh", "Options", flOptions, "InitialSize", dwInitialSize, "MaximumSize", dwMaximumSize);
+    return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, FlsAlloc,
 	_In_ PFLS_CALLBACK_FUNCTION lpCallback
 ) {
@@ -1503,4 +1516,13 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
         // replace first char so it differs from computername
         *ret = '#';
 	return ret;
+}
+
+HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
+  DWORD idThread
+)
+{
+    HKL ret = Old_GetKeyboardLayout(idThread);
+    LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD)ret & 0xFFFF);
+    return ret;
 }

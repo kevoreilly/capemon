@@ -17,7 +17,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <stdio.h>
-
 #include "ntapi.h"
 #include "misc.h"
 #include "hooking.h"
@@ -97,8 +96,7 @@ static hook_t g_hooks[] = {
     //HOOK_SPECIAL(kernel32, lstrcpynA),
     //HOOK_SPECIAL(kernel32, lstrcmpiA),
 
-	// has special handling
-
+	// special handling
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
 	HOOK_NOTAIL(jscript, JsEval, 5),
 	HOOK_SPECIAL(jscript9, JsParseScript),
@@ -118,9 +116,7 @@ static hook_t g_hooks[] = {
 	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
 
-	//
     // File Hooks
-    //
 	HOOK(ntdll, NtQueryAttributesFile),
 	HOOK(ntdll, NtQueryFullAttributesFile),
 	HOOK(ntdll, NtCreateFile),
@@ -245,10 +241,7 @@ static hook_t g_hooks[] = {
 	HOOK(kernel32, RegCloseKey),
 	HOOK(kernel32, RegNotifyChangeKeyValue),
 
-    //
     // Native Registry Hooks
-    //
-
 	HOOK(ntdll, NtCreateKey),
     HOOK(ntdll, NtOpenKey),
     HOOK(ntdll, NtOpenKeyEx),
@@ -268,10 +261,7 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, NtSaveKey),
     HOOK(ntdll, NtSaveKeyEx),
 
-    //
     // Window Hooks
-    //
-
 	HOOK_NOTAIL(user32, CreateWindowExA, 12),
 	HOOK_NOTAIL(user32, CreateWindowExW, 12),
 
@@ -293,11 +283,8 @@ static hook_t g_hooks[] = {
 	HOOK(user32, SetWindowLongW),
 	HOOK(user32, SetWindowLongPtrA),
 	HOOK(user32, SetWindowLongPtrW),
-	
-	//
-    // Sync Hooks
-    //
 
+    // Sync Hooks
     HOOK(ntdll, NtCreateMutant),
     HOOK(ntdll, NtOpenMutant),
 	HOOK(ntdll, NtCreateEvent),
@@ -308,11 +295,8 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
 	HOOK(ntdll, NtQueryInformationAtom),
-	
-	//
-    // Process Hooks
-    //
 
+    // Process Hooks
 	HOOK(kernel32, CreateToolhelp32Snapshot),
 	HOOK(kernel32, Process32FirstW),
 	HOOK(kernel32, Process32NextW),
@@ -350,11 +334,9 @@ static hook_t g_hooks[] = {
     HOOK(kernel32, VirtualProtectEx),
     HOOK(ntdll, NtFreeVirtualMemory),
     //HOOK(kernel32, VirtualFreeEx),
-	
 	HOOK(msvcrt, system),
-    //
+
     // Thread Hooks
-    //
 	HOOK(ntdll, NtCreateThread),
 	HOOK(ntdll, NtCreateThreadEx),
 	HOOK(ntdll, NtTerminateThread),
@@ -372,15 +354,14 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, NtQueryInformationThread),
     HOOK(ntdll, NtYieldExecution),
 
-	//
     // Misc Hooks
-    //
 
     // for debugging only
 	//HOOK(kernel32, GetLastError),
 #ifndef _WIN64
 	HOOK(ntdll, memcpy),
 #endif
+	HOOK(kernel32, HeapCreate),
 	HOOK(msvcrt, memcpy),
     HOOK(msvcrt, srand),
     HOOK(user32, ChangeWindowMessageFilter),
@@ -441,6 +422,8 @@ static hook_t g_hooks[] = {
 	HOOK(user32, SystemParametersInfoW),
 	HOOK(pstorec, PStoreCreateInstance),
 	HOOK(advapi32, SaferIdentifyLevel),
+	HOOK(advapi32, SaferIdentifyLevel),
+	HOOK(user32, GetKeyboardLayout),
 
 	// PE resource related functions
 	HOOK(kernel32, FindResourceExA),
@@ -464,10 +447,7 @@ static hook_t g_hooks[] = {
 	HOOK(ntdll, NtCommitTransaction),
 	HOOK(ntdll, RtlSetCurrentTransaction),
 
-	//
     // Network Hooks
-    //
-
 	HOOK(netapi32, NetUserGetInfo),
 	HOOK(netapi32, NetGetJoinInformation),
 	HOOK(netapi32, NetUserGetLocalGroups),
@@ -527,10 +507,7 @@ static hook_t g_hooks[] = {
 	HOOK(iphlpapi, GetAdaptersInfo),
 	HOOK(urlmon, CoInternetSetFeatureEnabled),
 
-    //
     // Service Hooks
-    //
-
     HOOK(advapi32, OpenSCManagerA),
     HOOK(advapi32, OpenSCManagerW),
     HOOK(advapi32, CreateServiceA),
@@ -542,9 +519,7 @@ static hook_t g_hooks[] = {
     HOOK(advapi32, ControlService),
     HOOK(advapi32, DeleteService),
 
-    //
     // Sleep Hooks
-    //
 	HOOK(ntdll, NtQueryPerformanceCounter),
     HOOK(ntdll, NtDelayExecution),
 	HOOK(ntdll, NtWaitForSingleObject),
@@ -561,10 +536,7 @@ static hook_t g_hooks[] = {
 	HOOK(user32, MsgWaitForMultipleObjectsEx),
 	HOOK(kernel32, CreateTimerQueueTimer),
 
-	//
     // Socket Hooks
-    //
-
 	HOOK(ws2_32, WSAStartup),
 	HOOK(ws2_32, gethostname),
     HOOK(ws2_32, gethostbyname),
@@ -631,7 +603,7 @@ static hook_t g_hooks[] = {
 
 	HOOK(wintrust, HTTPSCertificateTrust),
 	HOOK(wintrust, HTTPSFinalProv),
-	
+
 	HOOK(crypt32, CryptDecodeObjectEx),
 	HOOK(crypt32, CryptImportPublicKeyInfo),
 
@@ -892,7 +864,7 @@ LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *Excepti
 	operate_on_backtrace((ULONG_PTR)stack, ebp_or_rip, msg, &parse_stack_trace);
 
 #ifdef _FULL_STACK_TRACE
-	if (is_valid_address_range((ULONG_PTR)stack, 100 * sizeof(ULONG_PTR))) 
+	if (is_valid_address_range((ULONG_PTR)stack, 100 * sizeof(ULONG_PTR)))
 	{
 		DWORD i;
 		// overflows ahoy
@@ -1061,7 +1033,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		g_our_dll_base = (ULONG_PTR)hModule;
 		g_our_dll_size = get_image_size(g_our_dll_base);
-		
+
 		g_osverinfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 		GetVersionEx(&g_osverinfo);
 
@@ -1177,7 +1149,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 	g_dll_main_complete = TRUE;
 	set_lasterrors(&lasterror);
 	return TRUE;
-    
+
 abort:
     // delete config file
     strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));

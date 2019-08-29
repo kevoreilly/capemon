@@ -3053,3 +3053,13 @@ extern HOOKDEF(BOOL, WINAPI, CryptImportKey,
     DWORD      dwFlags,
     HCRYPTKEY  *phKey
 );
+
+extern HOOKDEF(HANDLE, WINAPI, HeapCreate,
+  _In_ DWORD  flOptions,
+  _In_ SIZE_T dwInitialSize,
+  _In_ SIZE_T dwMaximumSize
+);
+
+extern HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
+  _In_ DWORD idThread
+);

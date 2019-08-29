@@ -15,6 +15,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
+
 #define _CRT_RAND_S
 #define MD5LEN  			16
 
@@ -112,7 +114,7 @@ extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int
 extern unsigned int address_is_in_stack(PVOID Address);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
-extern wchar_t *our_process_path;
+extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
@@ -1735,15 +1737,19 @@ int DoProcessDump(PVOID CallerBase)
                 WriteFile(FileHandle, &MemInfo.Protect, sizeof(MemInfo.Protect), &BytesWritten, NULL);
                 WriteFile(FileHandle, TempBuffer, (DWORD)MemInfo.RegionSize, &BytesWritten, NULL);
                 free(TempBuffer);
+#ifdef DEBUG_COMMENTS
                 if (BytesWritten != MemInfo.RegionSize)
                     DoOutputDebugString("DoProcessDump: Anomaly detected, wrote only 0x%x of 0x%x bytes to memory dump from region 0x%p.\n", BytesWritten, MemInfo.RegionSize, MemInfo.BaseAddress);
                 else
                     DoOutputDebugString("DoProcessDump: Added 0x%x byte region at 0x%p to memory dump (protect 0x%x).\n", MemInfo.RegionSize, MemInfo.BaseAddress, MemInfo.Protect);
+#endif
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
                 free(TempBuffer);
+#ifdef DEBUG_COMMENTS
                 DoOutputDebugString("DoProcessDump: Exception attempting to dump region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
+#endif
             }
         }
 
@@ -1836,7 +1842,7 @@ void init_CAPE()
     CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
     CapeMetaData->Pid = GetCurrentProcessId();
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
-    WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path, (int)wcslen(our_process_path)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
+    WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
 
     CommandLine = (char*)malloc(MAX_PATH);
     WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_commandline, (int)wcslen(our_commandline)+1, CommandLine, MAX_PATH, NULL, NULL);
