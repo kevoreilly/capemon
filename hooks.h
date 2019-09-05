@@ -880,6 +880,11 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtOpenMutant,
     __in        POBJECT_ATTRIBUTES ObjectAttributes
 );
 
+extern HOOKDEF(NTSTATUS, WINAPI, NtReleaseMutant,
+    __in        HANDLE MutantHandle,
+    __out_opt   PLONG PreviousCount
+);
+
 extern HOOKDEF(NTSTATUS, WINAPI, NtCreateEvent,
 	__out		PHANDLE EventHandle,
 	__in		ACCESS_MASK DesiredAccess,

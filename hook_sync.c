@@ -48,6 +48,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenMutant,
     return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, NtReleaseMutant,
+    __in        HANDLE MutantHandle,
+    __out_opt   PLONG PreviousCount
+) {
+    NTSTATUS ret = Old_NtReleaseMutant(MutantHandle, PreviousCount);
+    LOQ_ntstatus("synchronization", "h", "Handle", MutantHandle);
+    return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtCreateEvent,
 	__out		PHANDLE EventHandle,
 	__in		ACCESS_MASK DesiredAccess,
