@@ -80,6 +80,8 @@ struct ThreadBreakpoints *MainThreadBreakpointList;
 SINGLE_STEP_HANDLER SingleStepHandler;
 GUARD_PAGE_HANDLER GuardPageHandler;
 HANDLE hCapePipe;
+unsigned int StepLimit;
+int EntryPointRegister, TraceDepthLimit;
 
 extern SYSTEM_INFO SystemInfo;
 

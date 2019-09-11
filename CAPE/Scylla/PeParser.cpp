@@ -516,10 +516,13 @@ void PeParser::getDosAndNtHeader(BYTE * memory, LONG size)
 		pNTHeader32 = (PIMAGE_NT_HEADERS32)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
 		pNTHeader64 = (PIMAGE_NT_HEADERS64)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
 
-		if (pDosHeader->e_lfanew > sizeof(IMAGE_DOS_HEADER))
+		if (pDosHeader->e_lfanew >= sizeof(IMAGE_DOS_HEADER))
 		{
 			dosStubSize = pDosHeader->e_lfanew - sizeof(IMAGE_DOS_HEADER);
 			pDosStub = (BYTE *)((DWORD_PTR)pDosHeader + sizeof(IMAGE_DOS_HEADER));
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::getDosAndNtHeader: dosStubSize size 0x%x.\n", dosStubSize);
+#endif
 		}
 		else if (pDosHeader->e_lfanew < sizeof(IMAGE_DOS_HEADER))
 		{
@@ -599,7 +602,7 @@ void PeParser::getDosAndNtHeader(BYTE * memory, LONG size)
 
 DWORD PeParser::calcCorrectPeHeaderSize(bool readSectionHeaders)
 {
-	DWORD correctSize = pDosHeader->e_lfanew + 50; //extra buffer
+	DWORD correctSize = pDosHeader->e_lfanew + 0x80; //extra buffer
 
 	if (readSectionHeaders)
 	{
@@ -1638,6 +1641,8 @@ void PeParser::alignAllSectionHeaders()
 	std::sort(listPeSection.begin(), listPeSection.end(), PeFileSectionSortByVirtualAddress); //sort by VirtualAddress ascending
 
 	newFileSize = pDosHeader->e_lfanew + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + pNTHeader32->FileHeader.SizeOfOptionalHeader + (NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
+
+	newFileSize += 0x80; // to more closely resemble typical PE files with dos stub
 
 	for (WORD i = 0; i < NumberOfSections; i++)
 	{

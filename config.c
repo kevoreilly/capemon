@@ -28,10 +28,8 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern wchar_t *our_process_path_w;
 extern PVOID bp0, bp1, bp2, bp3;
-#ifdef CAPE_TRACE
 extern int TraceDepthLimit, EntryPointRegister;
 extern unsigned int StepLimit;
-#endif
 
 int read_config(void)
 {
@@ -275,7 +273,6 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
-#ifdef CAPE_TRACE
             else if (!strcmp(key, "bp0")) {
                 if (!strncmp(value, "ep", 2)) {
                     DoOutputDebugString("bp0 set to entry point.\n", bp0);
@@ -324,7 +321,6 @@ int read_config(void)
 				StepLimit = (unsigned int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Trace instruction count set to 0x%x", StepLimit);
 			}
-#endif
             else if (!strcmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
                 if (g_config.procdump)
