@@ -25,6 +25,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "unhook.h"
 #include "misc.h"
 #include "pipe.h"
+#include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 
 #ifdef _WIN64
 #define TLS_LAST_WIN32_ERROR 0x68
@@ -37,12 +39,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL DumpRegion(PVOID Address);
-extern int DumpImageInCurrentProcess(LPVOID ImageBase);
-extern PVOID GetAllocationBase(PVOID Address);
-extern PVOID GetHookCallerBase();
-extern BOOL ModuleDumped;
 #ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
@@ -229,11 +225,9 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 		operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
 
-#ifdef CAPE_DUMP_ON_API
 		dump_on_api(h);
-#endif
 #ifdef CAPE_TRACE
-		base_on_api(h);
+        base_on_api(h);
 #endif
 
 		return 1;

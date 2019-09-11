@@ -22,6 +22,9 @@ extern CHAR s_szDllPath[MAX_PATH];
 //Global debugger switch
 #define DEBUGGER_ENABLED 0
 
+void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+
 PVOID GetHookCallerBase();
 PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
@@ -39,6 +42,8 @@ int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
 int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
 int IsDisguisedPEHeader(LPVOID Buffer);
 int DumpImageInCurrentProcess(LPVOID ImageBase);
+
+BOOL ProcessDumped, FilesDumped, ModuleDumped;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
@@ -114,6 +119,9 @@ enum {
 
     CERBER_CONFIG           = 0x30,
     CERBER_PAYLOAD          = 0x31,
+
+    QAKBOT_CONFIG           = 0x38,
+    QAKBOT_PAYLOAD          = 0x39,
 
     DATADUMP                = 0x66
 };
