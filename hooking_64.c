@@ -995,6 +995,26 @@ int hook_api(hook_t *h, int type)
 		type = HOOK_NATIVE_JMP_INDIRECT;
 	}
 	*/
+	if (!wcscmp(h->library, L"ntdll")) {
+        // We ensure all hooks that send the "PROCESS:" message to the analyzer
+        // to trigger injection are executed even if from within a hooked function
+        if (!strcmp(h->funcname, "NtQueueApcThread")
+            || !strcmp(h->funcname, "NtQueueApcThreadEx")
+            || !strcmp(h->funcname, "NtCreateThread")
+            || !strcmp(h->funcname, "NtCreateThreadEx")
+            || !strcmp(h->funcname, "NtSetContextThread")
+            || !strcmp(h->funcname, "NtSuspendThread")
+            || !strcmp(h->funcname, "RtlCreateUserThread")
+            || !strcmp(h->funcname, "NtMapViewOfSection")
+            || !strcmp(h->funcname, "NtWriteVirtualMemory")
+            || !strcmp(h->funcname, "NtWow64WriteVirtualMemory64")
+            || !strcmp(h->funcname, "NtCreateProcess")
+            || !strcmp(h->funcname, "NtCreateProcessEx")
+            || !strcmp(h->funcname, "NtCreateUserProcess")
+            || !strcmp(h->funcname, "RtlCreateUserProcess")
+        )
+            h->allow_hook_recursion = 1;
+	}
 
 	// check if this is a valid hook type
 	if (type < 0 && type >= ARRAYSIZE(hook_types)) {

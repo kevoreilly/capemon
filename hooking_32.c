@@ -732,12 +732,32 @@ int hook_api(hook_t *h, int type)
 		}
 	}
 
-	if (!wcscmp(h->library, L"ntdll") && addr[0] == 0xb8) {
-		// hooking a native API, leave in the mov eax, <syscall nr> instruction
-		// as some malware depends on this for direct syscalls
-		// missing a few syscalls is better than crashing and getting no information
-		// at all
-		type = HOOK_NATIVE_JMP_INDIRECT;
+	if (!wcscmp(h->library, L"ntdll")) {
+        if (addr[0] == 0xb8) {
+            // hooking a native API, leave in the mov eax, <syscall nr> instruction
+            // as some malware depends on this for direct syscalls
+            // missing a few syscalls is better than crashing and getting no information
+            // at all
+            type = HOOK_NATIVE_JMP_INDIRECT;
+        }
+        // We ensure all hooks that send the "PROCESS:" message to the analyzer
+        // to trigger injection are executed even if from within a hooked function
+        if (!strcmp(h->funcname, "NtQueueApcThread")
+            || !strcmp(h->funcname, "NtQueueApcThreadEx")
+            || !strcmp(h->funcname, "NtCreateThread")
+            || !strcmp(h->funcname, "NtCreateThreadEx")
+            || !strcmp(h->funcname, "NtSetContextThread")
+            || !strcmp(h->funcname, "NtSuspendThread")
+            || !strcmp(h->funcname, "RtlCreateUserThread")
+            || !strcmp(h->funcname, "NtMapViewOfSection")
+            || !strcmp(h->funcname, "NtWriteVirtualMemory")
+            || !strcmp(h->funcname, "NtWow64WriteVirtualMemory64")
+            || !strcmp(h->funcname, "NtCreateProcess")
+            || !strcmp(h->funcname, "NtCreateProcessEx")
+            || !strcmp(h->funcname, "NtCreateUserProcess")
+            || !strcmp(h->funcname, "RtlCreateUserProcess")
+        )
+            h->allow_hook_recursion = 1;
 	}
 
 	/* works around some poorly-written malware doing emulation of assumed bytes
