@@ -112,6 +112,7 @@ typedef struct _hook_t {
 	int is_hooked;
 
 	hook_data_t *hookdata;
+    const wchar_t *exportdirectory;
 } hook_t;
 
 typedef struct _hook_info_t {

@@ -44,6 +44,9 @@ extern void init_CAPE();
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
+#ifdef CAPE_TRACE
+extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+#endif
 
 void disable_tail_call_optimization(void)
 {
@@ -989,6 +992,15 @@ void init_private_heap(void)
 #endif
 }
 
+BOOL inside_hook(LPVOID Address)
+{
+	for (unsigned int i = 0; i < ARRAYSIZE(g_hooks); i++) {
+        if ((ULONG_PTR)Address >= (ULONG_PTR)g_hooks[i].hookdata && (ULONG_PTR)Address < (ULONG_PTR)(g_hooks[i].hookdata + sizeof(hook_data_t)))
+            return TRUE;
+    }
+
+    return FALSE;
+}
 BOOLEAN g_dll_main_complete;
 
 extern void ignored_threads_init(void);
