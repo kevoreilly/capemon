@@ -2836,6 +2836,17 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptDecrypt,
     DWORD             dwFlags
 );
 
+HOOKDEF(SECURITY_STATUS, WINAPI, NCryptEncrypt,
+    NCRYPT_KEY_HANDLE hKey,
+    PBYTE             pbInput,
+    DWORD             cbInput,
+    VOID              *pPaddingInfo,
+    PBYTE             pbOutput,
+    DWORD             cbOutput,
+    DWORD             *pcbResult,
+    DWORD             dwFlags
+);
+
 //
 // Special Hooks
 //
