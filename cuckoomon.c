@@ -608,6 +608,7 @@ static hook_t g_hooks[] = {
 	HOOK(crypt32, CryptDecodeObjectEx),
 	HOOK(crypt32, CryptImportPublicKeyInfo),
 	HOOK(ncrypt, NCryptImportKey),
+	HOOK(ncrypt, NCryptDecrypt),
 
 	// needed due to the DLL being delay-loaded in some cases
 	HOOK(cryptsp, CryptAcquireContextA),

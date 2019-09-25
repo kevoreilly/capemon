@@ -410,3 +410,18 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptImportKey,
     LOQ_bool("crypto", "bhp", "KeyBlob", cbData, pbData, "Flags", dwFlags,  "CryptKey", *phKey);
     return ret;
 }
+
+HOOKDEF(SECURITY_STATUS, WINAPI, NCryptDecrypt,
+    NCRYPT_KEY_HANDLE hKey,
+    PBYTE             pbInput,
+    DWORD             cbInput,
+    VOID              *pPaddingInfo,
+    PBYTE             pbOutput,
+    DWORD             cbOutput,
+    DWORD             *pcbResult,
+    DWORD             dwFlags
+) {
+    BOOL ret = Old_NCryptDecrypt(hKey, pbInput, cbInput, pPaddingInfo, pbOutput, cbOutput, pcbResult, dwFlags);
+    LOQ_bool("crypto", "bhp", "Output", cbOutput, pbOutput, "Flags", dwFlags, "CryptKey", hKey);
+    return ret;
+}
