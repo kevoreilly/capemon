@@ -395,3 +395,18 @@ HOOKDEF(BOOL, WINAPI, CryptImportKey,
     LOQ_bool("crypto", "bhp", "KeyBlob", dwDataLen, pbData, "Flags", dwFlags,  "CryptKey", *phKey);
     return ret;
 }
+
+HOOKDEF(SECURITY_STATUS, WINAPI, NCryptImportKey,
+    NCRYPT_PROV_HANDLE hProvider,
+    NCRYPT_KEY_HANDLE  hImportKey,
+    LPCWSTR            pszBlobType,
+    NCryptBufferDesc   *pParameterList,
+    NCRYPT_KEY_HANDLE  *phKey,
+    PBYTE              pbData,
+    DWORD              cbData,
+    DWORD              dwFlags
+) {
+    BOOL ret = Old_NCryptImportKey(hProvider, hImportKey, pszBlobType, pParameterList, phKey, pbData, cbData, dwFlags);
+    LOQ_bool("crypto", "bhp", "KeyBlob", cbData, pbData, "Flags", dwFlags,  "CryptKey", *phKey);
+    return ret;
+}

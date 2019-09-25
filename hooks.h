@@ -2814,6 +2814,17 @@ extern HOOKDEF(BOOL, WINAPI, CryptGenRandom,
     BYTE       *pbBuffer
 );
 
+HOOKDEF(SECURITY_STATUS, WINAPI, NCryptImportKey,
+    NCRYPT_PROV_HANDLE hProvider,
+    NCRYPT_KEY_HANDLE  hImportKey,
+    LPCWSTR            pszBlobType,
+    NCryptBufferDesc   *pParameterList,
+    NCRYPT_KEY_HANDLE  *phKey,
+    PBYTE              pbData,
+    DWORD              cbData,
+    DWORD              dwFlags
+);
+
 //
 // Special Hooks
 //
