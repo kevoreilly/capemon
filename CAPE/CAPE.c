@@ -1599,7 +1599,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
     // Disable dumping of all calling regions for the moment as this needs further testing.
     // (This causes lots of useless dumps from Word processes, for example.)
     //else if (lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
-    else if (MemInfo.BaseAddress == CallerBase)
+    else if (!g_config.verbose_dumping && MemInfo.BaseAddress == CallerBase)
     {
         DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
 

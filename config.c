@@ -353,6 +353,11 @@ int read_config(void)
                 else
                     DoOutputDebugString("Terminate processes on terminate_event disabled.\n");
 			}
+            else if (!strcmp(key, "verbose-dumping")) {
+				g_config.verbose_dumping = value[0] == '1';
+                if (g_config.verbose_dumping)
+                    DoOutputDebugString("Verbose dumping enabled.\n");
+			}
             else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}
     }

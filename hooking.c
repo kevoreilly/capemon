@@ -67,6 +67,19 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
         if (AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
             DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
+            if (g_config.verbose_dumping)
+            {
+                DoOutputDebugString("VerboseDump: Dumping calling region at 0x%p.\n", AllocationBase);
+
+                CapeMetaData->ModulePath = NULL;
+                CapeMetaData->DumpType = DATADUMP;
+                CapeMetaData->Address = AllocationBase;
+
+                if (IsDisguisedPEHeader(AllocationBase))
+                    ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)AllocationBase, 0);
+                else
+                    DumpRegion(AllocationBase);
+            }
         }
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
