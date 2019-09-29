@@ -38,7 +38,8 @@ static _NtQueryObject pNtQueryObject;
 static _NtQueryKey pNtQueryKey;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
-static _NtUnmapViewOfSection pNtUnmapViewOfSection;
+_NtMapViewOfSection pNtMapViewOfSection;
+_NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
 _NtProtectVirtualMemory pNtProtectVirtualMemory;
 _NtFreeVirtualMemory pNtFreeVirtualMemory;
@@ -60,6 +61,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pNtFreeVirtualMemory = GetProcAddress(ntdllbase, "NtFreeVirtualMemory");
 	*(FARPROC *)&pLdrRegisterDllNotification = GetProcAddress(ntdllbase, "LdrRegisterDllNotification");
 	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
+	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
 }
 

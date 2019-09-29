@@ -76,7 +76,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                 CapeMetaData->Address = AllocationBase;
 
                 if (IsDisguisedPEHeader(AllocationBase))
-                    ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)AllocationBase, 0);
+                    DumpImageInCurrentProcess(AllocationBase);
                 else
                     DumpRegion(AllocationBase);
             }

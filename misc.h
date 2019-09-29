@@ -50,7 +50,17 @@ typedef NTSTATUS(WINAPI *_NtDelayExecution)(
 typedef NTSTATUS(WINAPI *_NtUnmapViewOfSection)(
 	HANDLE ProcessHandle,
 	PVOID BaseAddress);
-
+typedef NTSTATUS(WINAPI *_NtMapViewOfSection)(
+	_In_     HANDLE SectionHandle,
+	_In_     HANDLE ProcessHandle,
+	__inout  PVOID *BaseAddress,
+	_In_     ULONG_PTR ZeroBits,
+	_In_     SIZE_T CommitSize,
+	__inout  PLARGE_INTEGER SectionOffset,
+	__inout  PSIZE_T ViewSize,
+	__in     UINT InheritDisposition,
+	__in     ULONG AllocationType,
+	__in     ULONG Win32Protect);
 typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA {
 	ULONG Flags;
 	const PUNICODE_STRING FullDllName;

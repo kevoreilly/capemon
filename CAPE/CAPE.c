@@ -1350,6 +1350,19 @@ BOOL DumpRegion(PVOID Address)
 }
 
 //**************************************************************************************
+int DumpImageInCurrentProcessFixImports(LPVOID ImageBase, LPVOID NewEP)
+//**************************************************************************************
+{
+    if (DumpCount < DUMP_MAX && ScyllaDumpImageInCurrentProcessFixImports((DWORD_PTR)ImageBase, (DWORD_PTR)NewEP))
+    {
+        DumpCount++;
+        return 1;
+    }
+
+    return 0;
+}
+
+//**************************************************************************************
 int DumpCurrentProcessFixImports(LPVOID NewEP)
 //**************************************************************************************
 {
@@ -1594,7 +1607,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
         if (g_config.import_reconstruction)
             ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
         else
-            ProcessDumped = ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
+            ProcessDumped = DumpImageInCurrentProcess(ImageBase);
     }
     // Disable dumping of all calling regions for the moment as this needs further testing.
     // (This causes lots of useless dumps from Word processes, for example.)
@@ -1608,7 +1621,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
         CapeMetaData->Address = MemInfo.BaseAddress;
 
         if (IsDisguisedPEHeader(MemInfo.BaseAddress))
-            ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
+            DumpImageInCurrentProcess(MemInfo.BaseAddress);
         else
             DumpRegion(MemInfo.BaseAddress);
     }
