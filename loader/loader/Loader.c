@@ -549,11 +549,7 @@ rebase:
         goto out;
     }
 
-#ifdef _WIN64
-    if (NtHeader.Signature != IMAGE_NT_SIGNATURE || NtHeader.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC || NtHeader.FileHeader.Machine == 0)
-#else
-    if (NtHeader.Signature != IMAGE_NT_SIGNATURE || NtHeader.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC || NtHeader.FileHeader.Machine == 0)
-#endif
+    if (NtHeader.Signature != IMAGE_NT_SIGNATURE || (NtHeader.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC && NtHeader.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) || NtHeader.FileHeader.Machine == 0)
     {
         DoOutputDebugString("InjectDllViaIAT: Executable image invalid.\n");
         RetVal = 1; // In case this is mid-hollowing
