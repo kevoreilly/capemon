@@ -1101,10 +1101,6 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
 BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-    PBYTE PEImage;
-    PIMAGE_DOS_HEADER pDosHeader;
-    PIMAGE_NT_HEADERS pNtHeader = NULL;
-
     BOOL RetVal = FALSE;
     LPVOID PEPointer = Buffer;
 
@@ -1112,94 +1108,7 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
 
     while (ScanForDisguisedPE(PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), &PEPointer))
     {
-        pDosHeader = (PIMAGE_DOS_HEADER)PEPointer;
-
-        if (*(WORD*)PEPointer != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
-        {
-            DoOutputDebugString("DumpPEsInRange: Disguised PE image (bad MZ and/or PE headers) at 0x%x.\n", PEPointer);
-
-            // We want to fix the PE header in the dump (for e.g. disassembly etc)
-            PEImage = (BYTE*)calloc(Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), sizeof(PUCHAR));
-            memcpy(PEImage, PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer));
-            pDosHeader = (PIMAGE_DOS_HEADER)(PEImage);
-
-            if (!pDosHeader->e_lfanew)
-            {
-                // In case the header until and including 'PE' has been zeroed
-                WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-                while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-                {
-                    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-                    {
-                        if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
-                            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-                    }
-                    MachineProbe += sizeof(WORD);
-                }
-
-                if (pNtHeader)
-                    pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-            }
-
-            if (!pDosHeader->e_lfanew)
-            {
-                // In case the header until and including 'PE' is missing
-                pNtHeader = NULL;
-                WORD* MachineProbe = (WORD*)pDosHeader;
-                while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-                {
-                    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-                    {
-                        if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
-                        {
-                            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-                            //break;
-                        }
-                    }
-                    MachineProbe += sizeof(WORD);
-
-                    if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
-                    {
-                        SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
-                        memmove(PEImage + HeaderShift, PEImage, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
-                        memset(PEImage, 0, HeaderShift);
-                        pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
-                        pNtHeader = (PIMAGE_NT_HEADERS)(PEImage + HeaderShift);
-                        pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-                        DoOutputDebugString("DumpPEsInRange: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
-                    }
-                }
-            }
-
-            *(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
-            *(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
-
-            SetCapeMetaData(INJECTION_PE, 0, NULL, (PVOID)pDosHeader);
-
-            if (DumpImageInCurrentProcess((LPVOID)pDosHeader))
-            {
-                DoOutputDebugString("DumpPEsInRange: Dumped PE image from 0x%x.\n", pDosHeader);
-                RetVal = TRUE;
-            }
-            else
-                DoOutputDebugString("DumpPEsInRange: Failed to dump PE image from 0x%x.\n", pDosHeader);
-
-            if (PEImage)
-                free(PEImage);
-        }
-        else
-        {
-            SetCapeMetaData(INJECTION_PE, 0, NULL, (PVOID)PEPointer);
-
-            if (DumpImageInCurrentProcess((LPVOID)PEPointer))
-            {
-                DoOutputDebugString("DumpPEsInRange: Dumped PE image from 0x%x.\n", PEPointer);
-                RetVal = TRUE;
-            }
-            else
-                DoOutputDebugString("DumpPEsInRange: Failed to dump PE image from 0x%x.\n", PEPointer);
-        }
-
+        RetVal = DumpImageInCurrentProcess(PEPointer);
         (BYTE*)PEPointer += PE_HEADER_LIMIT;
     }
 
@@ -1408,6 +1317,9 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
 {
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pNtHeader;
+    PVOID FirstPage = NULL;
+    DWORD dwProtect = 0;
+    int RetVal = 0;
 
     pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
 
@@ -1417,60 +1329,171 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
         return 0;
     }
 
-    if (*(WORD*)ImageBase != IMAGE_DOS_SIGNATURE)
+    if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
     {
-        DoOutputDebugString("DumpImageInCurrentProcess: No DOS signature in header.\n");
-        return 0;
-    }
+        // We want to fix the PE header in the dump (for e.g. disassembly etc)
+        if (!SystemInfo.dwPageSize)
+            GetSystemInfo(&SystemInfo);
 
-    if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_HEADER_LIMIT)
-    {
-        DoOutputDebugString("DumpImageInCurrentProcess: bad e_lfanew.\n");
-        return 0;
-    }
+        if (!SystemInfo.dwPageSize)
+        {
+            DoOutputErrorString("DumpImageInCurrentProcess: Failed to obtain system page size.\n");
+            return 0;
+        }
 
-    pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+        FirstPage = calloc(SystemInfo.dwPageSize, sizeof(char));
 
-    if (pNtHeader->Signature != IMAGE_NT_SIGNATURE)
-    {
-        // No 'PE' header
-        DoOutputDebugString("DumpImageInCurrentProcess: Invalid PE signature in header.\n");
-        return 0;
-    }
+        if (!FirstPage)
+        {
+            DoOutputErrorString("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
+            return 0;
+        }
 
-    if ((pNtHeader->FileHeader.Machine == 0) || (pNtHeader->FileHeader.SizeOfOptionalHeader == 0 || pNtHeader->OptionalHeader.SizeOfHeaders == 0))
-    {
-        // Basic requirements
-        DoOutputDebugString("DumpImageInCurrentProcess: PE image invalid.\n");
-        return 0;
+        __try
+        {
+            memcpy(FirstPage, ImageBase, SystemInfo.dwPageSize);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", ImageBase);
+            free(FirstPage);
+            return 0;
+        }
+
+        // Set target image page permissions to allow writing of new headers
+        if (!VirtualProtect((BYTE*)ImageBase, SystemInfo.dwPageSize, PAGE_EXECUTE_READWRITE, &dwProtect))
+        {
+            DoOutputErrorString("DumpImageInCurrentProcess: Failed to modify memory page protection of NtHeader");
+            free(FirstPage);
+            return 0;
+        }
+
+        pDosHeader = (PIMAGE_DOS_HEADER)(ImageBase);
+
+        DoOutputDebugString("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", ImageBase);
+
+        if (!pDosHeader->e_lfanew)
+        {
+            // In case the header until and including 'PE' has been zeroed
+            WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+            while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+            {
+                if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                {
+                    if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
+                        pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+                }
+                MachineProbe += sizeof(WORD);
+            }
+
+            if (pNtHeader)
+                pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+        }
+
+        if (!pDosHeader->e_lfanew)
+        {
+            // In case the header until and including 'PE' is missing
+            pNtHeader = NULL;
+            WORD* MachineProbe = (WORD*)pDosHeader;
+            while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+            {
+                if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                {
+                    if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
+                    {
+                        pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+                        //break;
+                    }
+                }
+                MachineProbe += sizeof(WORD);
+
+                if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
+                {
+                    __try
+                    {
+                        SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
+                        memmove((PBYTE)ImageBase + HeaderShift, ImageBase, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
+                        memset(ImageBase, 0, HeaderShift);
+                        pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
+                        pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)ImageBase + HeaderShift);
+                        pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+                        DoOutputDebugString("DumpImageInCurrentProcess: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
+                    }
+                    __except(EXCEPTION_EXECUTE_HANDLER)
+                    {
+                        DoOutputDebugString("DumpImageInCurrentProcess: Exception occured moving NtHeader from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
+                        goto end;
+                    }
+                }
+            }
+        }
+
+        if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_MAX_SIZE)
+        {
+            DoOutputDebugString("DumpImageInCurrentProcess: Bad e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+            goto end;
+        }
+
+        __try
+        {
+            *(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
+            *(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured writing PE signatures in region at 0x%p, dumping entire memory region.\n", pDosHeader);
+            goto end;
+        }
     }
 
     if (IsPeImageVirtual(ImageBase) == FALSE)
     {
         DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image.\n");
 
-        if (ScyllaDumpPE((DWORD_PTR)ImageBase))
-        {
-            DumpCount++;
-            return 1;
-        }
+        if (!ScyllaDumpPE((DWORD_PTR)ImageBase))
+            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", ImageBase);
         else
+            RetVal = 1;
+    }
+    else
+    {
+        DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
+
+        if (!ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0))
+            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump virtual PE image from 0x%p, dumping memory region.\n", ImageBase);
+        else
+            RetVal = 1;
+    }
+
+end:
+    if (FirstPage)
+    {
+        // Copy the original headers back
+        __try
         {
-            // failed to dump pe image
-            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump 'raw' PE image.\n");
+            memcpy(ImageBase, FirstPage, SystemInfo.dwPageSize);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured restoring PE header at 0x%p\n", ImageBase);
             return 0;
         }
+
+        // Restore original protection
+        if (!VirtualProtect((BYTE*)ImageBase, SystemInfo.dwPageSize, dwProtect, &dwProtect))
+            DoOutputErrorString("DumpImageInCurrentProcess: Failed to restore previous memory page protection");
+
+        free(FirstPage);
     }
 
-    DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
-
-    if (!ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0))
+    if (RetVal)
+        DumpCount++;
+    else
     {
-        DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump PE as virtual image.\n");
-        return 0;
+        SIZE_T Size = GetAllocationSize(ImageBase);
+        return DumpMemory(ImageBase, Size);
     }
 
-    DumpCount++;
     return 1;
 }
 

@@ -301,7 +301,7 @@ bool PeParser::readPeHeaderFromFile(bool readSectionHeaders)
 bool PeParser::readPeSectionsFromProcess()
 {
 	bool retValue = true;
-	DWORD_PTR readOffset = 0;
+	DWORD_PTR ImageBase, readOffset = 0;
  	DWORD fileAlignment = 0, sectionAlignment = 0;
     unsigned int NumberOfSections = getNumberOfSections();
 
@@ -409,7 +409,25 @@ bool PeParser::readPeSectionsFromProcess()
 	}
 
 #ifdef DEBUG_COMMENTS
-            DoOutputDebugString("PeParser::readPeSectionsFromProcess: readSectionFromProcess success.\n");
+    DoOutputDebugString("PeParser::readPeSectionsFromProcess: readSectionFromProcess success.\n");
+#endif
+
+    ImageBase = getStandardImagebase();
+
+    if (moduleBaseAddress && moduleBaseAddress != ImageBase)
+    {
+        if (reBasePEImage(moduleBaseAddress))
+        {
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("readPeSectionsFromProcess: Image relocated back to header image base 0x%p.\n", ImageBase);
+#endif
+        }
+        else
+            DoOutputDebugString("readPeSectionsFromProcess: Failed to relocate image back to header image base 0x%p.\n", ImageBase);
+    }
+#ifdef DEBUG_COMMENTS
+    else
+        DoOutputDebugString("readPeSectionsFromProcess: No relocation needed (image base 0x%p, header 0x%p.\n", ImageBase, moduleBaseAddress);
 #endif
 
 	return retValue;
@@ -1498,6 +1516,81 @@ DWORD_PTR PeParser::convertOffsetToRVAVector(DWORD_PTR dwOffset)
 	}
 
 	return 0;
+}
+
+BOOL PeParser::reBasePEImage(DWORD_PTR NewBase)
+{
+	PIMAGE_BASE_RELOCATION Relocations;
+	PIMAGE_NT_HEADERS NtHeaders;
+	DWORD_PTR Delta;
+    ULONG RelocationSize = 0, Size = 0;
+
+	if (isPE32())
+        NtHeaders = (PIMAGE_NT_HEADERS)pNTHeader32;
+    else
+        NtHeaders = (PIMAGE_NT_HEADERS)pNTHeader64;
+
+	if (NewBase & 0xFFFF)
+	{
+		DoOutputDebugString("reBasePEImage: Error, invalid image base 0x%p.\n", NewBase);
+        return FALSE;
+	}
+
+	if (NtHeaders->OptionalHeader.ImageBase == NewBase)
+	{
+		DoOutputDebugString("reBasePEImage: Error, image base already 0x%p.\n", NewBase);
+        return FALSE;
+	}
+
+	if (!NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress)
+	{
+#ifdef DEBUG_COMMENTS
+		DoOutputDebugString("reBasePEImage: Image has no relocation section.\n");
+#endif
+        return FALSE;
+	}
+
+	Relocations = (PIMAGE_BASE_RELOCATION)((PBYTE)NewBase + NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
+    RelocationSize = NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
+	Delta = NewBase - NtHeaders->OptionalHeader.ImageBase;
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("reBasePEImage: Relocations set to 0x%p, size 0x%x, Delta 0x%p\n", Relocations, RelocationSize, Delta);
+#endif
+
+	__try
+	{
+        while (RelocationSize > Size && Relocations->SizeOfBlock)
+        {
+            ULONG NumOfRelocs = (Relocations->SizeOfBlock - 8) / 2;
+            PUSHORT Reloc = (PUSHORT)((PUCHAR)Relocations + 8);
+
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("reBasePEImage: VirtualAddress: 0x%.8x; Number of Relocs: %d; Size: %d\n", Relocations->VirtualAddress, NumOfRelocs, Relocations->SizeOfBlock);
+#endif
+            for (ULONG i = 0; i < NumOfRelocs; i++)
+            {
+                if (Reloc[i] > 0)
+                {
+                    PUCHAR *RVA = (PUCHAR*)((PBYTE)(DWORD_PTR)Relocations->VirtualAddress + (Reloc[i] & 0x0FFF));
+#ifndef _WIN64
+                    *((PULONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONG)((ULONGLONG)Delta);
+#else
+                    *((PULONGLONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONGLONG)Delta;
+#endif
+                }
+            }
+
+            Relocations = (PIMAGE_BASE_RELOCATION)((PUCHAR)Relocations + Relocations->SizeOfBlock);
+            Size += Relocations->SizeOfBlock;
+        }
+    }
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DoOutputDebugString("reBasePEImage: Exception rebasing image from 0x%p to 0x%p.\n", NewBase, NtHeaders->OptionalHeader.ImageBase);
+        return FALSE;
+	}
+
+	return TRUE;
 }
 
 void PeParser::fixPeHeader()

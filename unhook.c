@@ -197,7 +197,7 @@ static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 							log_hook_modification(g_unhook_hooks[idx], g_our[idx], tmpbuf, g_length[idx]);
 							tmpbuf = NULL;
 							free(tmpbuf2);
-						} 
+						}
 						else
 							log_hook_removal(g_unhook_hooks[idx]);
 					}
@@ -273,16 +273,18 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     ProcessTrackedRegions();
     ClearAllBreakpoints();
 #else
-    else
-        DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
+    DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
 #endif
     file_handle_terminate();
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {
         SetEvent(g_terminate_event_handle);
         CloseHandle(g_terminate_event_handle);
+        DoOutputDebugString("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
     }
-    DoOutputDebugString("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
+    else
+        DoOutputDebugString("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
+
     log_flush();
     if (g_config.terminate_processes)
         ExitProcess(0);
@@ -325,7 +327,7 @@ static DWORD WINAPI _procname_watch_thread(LPVOID param)
 		LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
 		__try {
 			mod = (LDR_MODULE *)peb->LoaderData->InLoadOrderModuleList.Flink;
-			if (InitialProcessName.Length != mod->BaseDllName.Length || InitialProcessPath.Length != mod->FullDllName.Length || 
+			if (InitialProcessName.Length != mod->BaseDllName.Length || InitialProcessPath.Length != mod->FullDllName.Length ||
 				memcmp(InitialProcessName.Buffer, mod->BaseDllName.Buffer, InitialProcessName.Length) ||
 				memcmp(InitialProcessPath.Buffer, mod->FullDllName.Buffer, InitialProcessPath.Length)) {
 				// allow concurrent modifications to settle, as malware doesn't particularly care about proper locking
