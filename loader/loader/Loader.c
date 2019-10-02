@@ -549,6 +549,12 @@ rebase:
         goto out;
     }
 
+	if (NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress && NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
+	{
+		DoOutputDebugString("InjectDllViaIAT: Executable is .NET, injecting via queued APC.\n");
+		return InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
+	}
+
 #ifdef _WIN64
     if (NtHeader.Signature != IMAGE_NT_SIGNATURE || NtHeader.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC || NtHeader.FileHeader.Machine == 0)
 #else
@@ -558,12 +564,6 @@ rebase:
         DoOutputDebugString("InjectDllViaIAT: Executable image invalid.\n");
         RetVal = 1; // In case this is mid-hollowing
         goto out;
-    }
-
-    if (NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress && NtHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
-    {
-        DoOutputDebugString("InjectDllViaIAT: Executable is .NET, injecting via queued APC.\n");
-        return InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
     }
 
     Context.ContextFlags = CONTEXT_ALL;
