@@ -1655,8 +1655,6 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
 int DoProcessDump(PVOID CallerBase)
 //**************************************************************************************
 {
-	HANDLE hSnapShot;
-    THREADENTRY32 ThreadInfo;
     PUCHAR Address;
     MEMORY_BASIC_INFORMATION MemInfo;
     HANDLE FileHandle;
@@ -1685,25 +1683,6 @@ int DoProcessDump(PVOID CallerBase)
         DoOutputErrorString("DoProcessDump: Failed to obtain system page size.\n");
         goto out;
     }
-
-    // suspend other threads before dump
-    hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-	Thread32First(hSnapShot, &ThreadInfo);
-
-	do
-    {
-		if (ThreadInfo.th32OwnerProcessID != CapeMetaData->Pid || ThreadInfo.th32ThreadID == ThreadId || SuspendedThreadCount >= SUSPENDED_THREAD_MAX)
-			continue;
-
-        SuspendedThreads[SuspendedThreadCount] = OpenThread(THREAD_SUSPEND_RESUME, FALSE, ThreadInfo.th32ThreadID);
-
-        if (SuspendedThreads[SuspendedThreadCount])
-        {
-			SuspendThread(SuspendedThreads[SuspendedThreadCount]);
-			SuspendedThreadCount++;
-		}
-	}
-    while(Thread32Next(hSnapShot, &ThreadInfo));
 
     if (g_config.procmemdump)
     {
@@ -1805,16 +1784,6 @@ out:
             free(OutputFilename);
         if (FullDumpPath)
             free(FullDumpPath);
-    }
-
-    if (SuspendedThreads)
-    {
-        for (unsigned int i = 0; i < SuspendedThreadCount; i++)
-        {
-            ResumeThread(SuspendedThreads[i]);
-            CloseHandle(SuspendedThreads[i]);
-        }
-        free(SuspendedThreads);
     }
 
 	LeaveCriticalSection(&ProcessDumpCriticalSection);

@@ -273,7 +273,8 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     ProcessTrackedRegions();
     ClearAllBreakpoints();
 #else
-    DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
+    else
+        DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
 #endif
     file_handle_terminate();
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
