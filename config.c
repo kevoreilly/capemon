@@ -362,6 +362,11 @@ int read_config(void)
                 if (g_config.verbose_dumping)
                     DoOutputDebugString("Verbose dumping enabled.\n");
 			}
+            else if (!strcmp(key, "dump-config-region")) {
+				g_config.dump_config_region = value[0] == '1';
+                if (g_config.dump_config_region)
+                    DoOutputDebugString("Dump config region enabled.\n");
+			}
             else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}
     }

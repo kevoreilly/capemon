@@ -119,6 +119,9 @@ struct _g_config {
 
     // dump all calling regions immediately
     int verbose_dumping;
+
+    // dump regions containing c2
+    int dump_config_region;
 };
 
 extern struct _g_config g_config;

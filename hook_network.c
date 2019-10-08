@@ -26,6 +26,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 
+extern BOOL DumpRegion(PVOID Address);
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+
 static int did_initial_request;
 
 HOOKDEF(DWORD, WINAPI, InternetConfirmZoneCrossingA,
@@ -122,6 +125,10 @@ HOOKDEF(BOOL, WINAPI, WinHttpGetProxyForUrl,
 	_In_ LPVOID pAutoProxyOptions, // WINHTTP_AUTOPROXY_OPTIONS *
 	_Out_ LPVOID pProxyInfo // WINHTTP_PROXY_INFO *
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpcwszUrl))
+        DoOutputDebugString("WinHttpGetProxyForUrl hook: Successfully dumped region at 0x%p around %ws.\n", lpcwszUrl, lpcwszUrl);
+    else
+        DoOutputDebugString("WinHttpGetProxyForUrl hook: Failed to dump region at 0x%p around %ws.\n", lpcwszUrl, lpcwszUrl);
 	BOOL ret = Old_WinHttpGetProxyForUrl(hSession, lpcwszUrl, pAutoProxyOptions, pProxyInfo);
 	LOQ_bool("network", "pu", "SessionHandle", hSession, "Url", lpcwszUrl);
 	return ret;
@@ -144,6 +151,10 @@ HOOKDEF(HINTERNET, WINAPI, WinHttpConnect,
 	_In_ INTERNET_PORT nServerPort,
 	_Reserved_ DWORD dwReserved
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)pswzServerName))
+        DoOutputDebugString("WinHttpConnect hook: Successfully dumped region at 0x%p around %ws.\n", pswzServerName, pswzServerName);
+    else
+        DoOutputDebugString("WinHttpConnect hook: Failed to dump region at 0x%p around %ws.\n", pswzServerName, pswzServerName);
 	HINTERNET ret = Old_WinHttpConnect(hSession, pswzServerName, nServerPort, dwReserved);
 	LOQ_nonnull("network", "pui", "SessionHandle", hSession, "ServerName", pswzServerName, "ServerPort", nServerPort);
 	return ret;
@@ -336,6 +347,10 @@ HOOKDEF(HINTERNET, WINAPI, InternetConnectA,
     _In_  DWORD dwFlags,
     _In_  DWORD_PTR dwContext
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpszServerName))
+        DoOutputDebugString("InternetConnectA hook: Successfully dumped region at 0x%p around %s.\n", lpszServerName, *lpszServerName);
+    else
+        DoOutputDebugString("InternetConnectA hook: Failed to dump region at 0x%p around %s.\n", lpszServerName, *lpszServerName);
 	HINTERNET ret = Old_InternetConnectA(hInternet, lpszServerName,
         nServerPort, lpszUsername, lpszPassword, dwService, dwFlags,
         dwContext);
@@ -355,6 +370,10 @@ HOOKDEF(HINTERNET, WINAPI, InternetConnectW,
     _In_  DWORD dwFlags,
     _In_  DWORD_PTR dwContext
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpszServerName))
+        DoOutputDebugString("InternetConnectW hook: Successfully dumped region at 0x%p around %ws.\n", lpszServerName, *lpszServerName);
+    else
+        DoOutputDebugString("InternetConnectW hook: Failed to dump region at 0x%p around %ws.\n", lpszServerName, *lpszServerName);
     HINTERNET ret = Old_InternetConnectW(hInternet, lpszServerName,
         nServerPort, lpszUsername, lpszPassword, dwService, dwFlags,
         dwContext);
@@ -372,6 +391,10 @@ HOOKDEF(HINTERNET, WINAPI, InternetOpenUrlA,
     __in  DWORD dwFlags,
     __in  DWORD_PTR dwContext
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpszUrl))
+        DoOutputDebugString("InternetOpenUrlA hook: Successfully dumped region at 0x%p around %s.\n", lpszUrl, *lpszUrl);
+    else
+        DoOutputDebugString("InternetOpenUrlA hook: Failed to dump region at 0x%p around %s.\n", lpszUrl, *lpszUrl);
     HINTERNET ret = Old_InternetOpenUrlA(hInternet, lpszUrl, lpszHeaders,
         dwHeadersLength, dwFlags, dwContext);
     LOQ_nonnull("network", "psSh", "ConnectionHandle", hInternet, "URL", lpszUrl,
@@ -387,6 +410,10 @@ HOOKDEF(HINTERNET, WINAPI, InternetOpenUrlW,
     __in  DWORD dwFlags,
     __in  DWORD_PTR dwContext
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpszUrl))
+        DoOutputDebugString("InternetOpenUrlW hook: Successfully dumped region at 0x%p around %ws.\n", lpszUrl, *lpszUrl);
+    else
+        DoOutputDebugString("InternetOpenUrlW hook: Failed to dump region at 0x%p around %ws.\n", lpszUrl, *lpszUrl);
     HINTERNET ret = Old_InternetOpenUrlW(hInternet, lpszUrl, lpszHeaders,
         dwHeadersLength, dwFlags, dwContext);
     LOQ_nonnull("network", "puUh", "ConnectionHandle", hInternet, "URL", lpszUrl,
@@ -699,6 +726,10 @@ HOOKDEF(BOOL, WINAPI, InternetCrackUrlA,
 	_In_ DWORD dwFlags,
 	_Inout_ LPURL_COMPONENTSA lpUrlComponents
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpszUrl))
+        DoOutputDebugString("InternetCrackUrlA hook: Successfully dumped region at 0x%p around %s.\n", lpszUrl, *lpszUrl);
+    else
+        DoOutputDebugString("InternetCrackUrlA hook: Failed to dump region at 0x%p around %s.\n", lpszUrl, *lpszUrl);
 	BOOL ret = Old_InternetCrackUrlA(lpszUrl, dwUrlLength, dwFlags, lpUrlComponents);
 	LOQ_bool("network", "s", "Url", lpszUrl);
 	return ret;
@@ -711,6 +742,10 @@ HOOKDEF(BOOL, WINAPI, InternetCrackUrlW,
 	_In_ DWORD dwFlags,
 	_Inout_ LPURL_COMPONENTSW lpUrlComponents
 ) {
+    if (g_config.dump_config_region && DumpRegion((PVOID)lpszUrl))
+        DoOutputDebugString("InternetCrackUrlW hook: Successfully dumped region at 0x%p around %ws.\n", lpszUrl, *lpszUrl);
+    else
+        DoOutputDebugString("InternetCrackUrlW hook: Failed to dump region at 0x%p around %ws.\n", lpszUrl, *lpszUrl);
 	BOOL ret = Old_InternetCrackUrlW(lpszUrl, dwUrlLength, dwFlags, lpUrlComponents);
 	LOQ_bool("network", "u", "Url", lpszUrl);
 	return ret;
