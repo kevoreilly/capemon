@@ -536,7 +536,7 @@ char* GetResultsPath(char* FolderName)
 
 	if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
 	{
-		DoOutputDebugString("GetResultsPath: Error creating output directory.\n");
+		DoOutputErrorString("GetResultsPath: Error creating output directory");
         free(FullPath);
 		return 0;
 	}
