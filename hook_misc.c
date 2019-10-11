@@ -1526,3 +1526,15 @@ HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
     LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD)ret & 0xFFFF);
     return ret;
 }
+
+HOOKDEF(VOID, WINAPI, RtlMoveMemory,
+    _Out_       VOID UNALIGNED *Destination,
+    _In_  const VOID UNALIGNED *Source,
+    _In_        SIZE_T         Length
+)
+{
+    int ret = 0;
+    RtlMoveMemory(Destination, Source, Length);
+    LOQ_void("misc", "bppi", "Destination", Length, Destination, "Source", Source, "destination", Destination, "Length", Length);
+    return ;
+}

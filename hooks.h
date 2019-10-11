@@ -3068,6 +3068,12 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
     VOID
 );
 
+extern HOOKDEF(VOID, WINAPI, RtlMoveMemory,
+    _Out_       VOID UNALIGNED *Destination,
+    _In_  const VOID UNALIGNED *Source,
+    _In_        SIZE_T         Length
+);
+
 extern HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
     IN LPOLESTREAM          lpolestream,
     OUT LPSTORAGE           pstg,

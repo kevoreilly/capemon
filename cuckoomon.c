@@ -356,10 +356,10 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, NtQueryInformationThread),
     HOOK(ntdll, NtYieldExecution),
 
-    // Misc Hooks
+    // Memory copy hooks
+    HOOK(ntdll, RtlMoveMemory),
 
-    // for debugging only
-	//HOOK(kernel32, GetLastError),
+    // Misc Hooks
 #ifndef _WIN64
 	HOOK(ntdll, memcpy),
 #endif
