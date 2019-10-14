@@ -357,7 +357,7 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, NtYieldExecution),
 
     // Memory copy hooks
-    HOOK(ntdll, RtlMoveMemory),
+    //HOOK(ntdll, RtlMoveMemory),
 
     // Misc Hooks
 #ifndef _WIN64
