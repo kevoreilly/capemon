@@ -1260,10 +1260,10 @@ BOOL DumpRegion(PVOID Address)
 }
 
 //**************************************************************************************
-int DumpImageInCurrentProcessFixImports(LPVOID ImageBase, LPVOID NewEP)
+int DumpImageInCurrentProcessFixImports(LPVOID BaseAddress, LPVOID NewEP)
 //**************************************************************************************
 {
-    if (DumpCount < DUMP_MAX && ScyllaDumpImageInCurrentProcessFixImports((DWORD_PTR)ImageBase, (DWORD_PTR)NewEP))
+    if (DumpCount < DUMP_MAX && ScyllaDumpImageInCurrentProcessFixImports((DWORD_PTR)BaseAddress, (DWORD_PTR)NewEP))
     {
         DumpCount++;
         return 1;
@@ -1312,7 +1312,7 @@ int DumpCurrentProcess()
 }
 
 //**************************************************************************************
-int DumpImageInCurrentProcess(LPVOID ImageBase)
+int DumpImageInCurrentProcess(LPVOID BaseAddress)
 //**************************************************************************************
 {
     PIMAGE_DOS_HEADER pDosHeader;
@@ -1321,7 +1321,7 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
     DWORD dwProtect = 0;
     int RetVal = 0;
 
-    pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
+    pDosHeader = (PIMAGE_DOS_HEADER)BaseAddress;
 
 	if (DumpCount >= DUMP_MAX)
 	{
@@ -1351,26 +1351,26 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
 
         __try
         {
-            memcpy(FirstPage, ImageBase, SystemInfo.dwPageSize);
+            memcpy(FirstPage, BaseAddress, SystemInfo.dwPageSize);
         }
         __except(EXCEPTION_EXECUTE_HANDLER)
         {
-            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", ImageBase);
+            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", BaseAddress);
             free(FirstPage);
             return 0;
         }
 
         // Set target image page permissions to allow writing of new headers
-        if (!VirtualProtect((BYTE*)ImageBase, SystemInfo.dwPageSize, PAGE_EXECUTE_READWRITE, &dwProtect))
+        if (!VirtualProtect((BYTE*)BaseAddress, SystemInfo.dwPageSize, PAGE_EXECUTE_READWRITE, &dwProtect))
         {
             DoOutputErrorString("DumpImageInCurrentProcess: Failed to modify memory page protection of NtHeader");
             free(FirstPage);
             return 0;
         }
 
-        pDosHeader = (PIMAGE_DOS_HEADER)(ImageBase);
+        pDosHeader = (PIMAGE_DOS_HEADER)(BaseAddress);
 
-        DoOutputDebugString("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", ImageBase);
+        DoOutputDebugString("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", BaseAddress);
 
         if (!pDosHeader->e_lfanew)
         {
@@ -1412,10 +1412,10 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
                     __try
                     {
                         SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
-                        memmove((PBYTE)ImageBase + HeaderShift, ImageBase, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
-                        memset(ImageBase, 0, HeaderShift);
-                        pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
-                        pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)ImageBase + HeaderShift);
+                        memmove((PBYTE)BaseAddress + HeaderShift, BaseAddress, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
+                        memset(BaseAddress, 0, HeaderShift);
+                        pDosHeader = (PIMAGE_DOS_HEADER)BaseAddress;
+                        pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)BaseAddress + HeaderShift);
                         pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
                         DoOutputDebugString("DumpImageInCurrentProcess: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
                     }
@@ -1446,12 +1446,12 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
         }
     }
 
-    if (IsPeImageVirtual(ImageBase) == FALSE)
+    if (IsPeImageVirtual(BaseAddress) == FALSE)
     {
         DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image.\n");
 
-        if (!ScyllaDumpPE((DWORD_PTR)ImageBase))
-            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", ImageBase);
+        if (!ScyllaDumpPE((DWORD_PTR)BaseAddress))
+            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", BaseAddress);
         else
             RetVal = 1;
     }
@@ -1459,8 +1459,8 @@ int DumpImageInCurrentProcess(LPVOID ImageBase)
     {
         DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
 
-        if (!ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0))
-            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump virtual PE image from 0x%p, dumping memory region.\n", ImageBase);
+        if (!ScyllaDumpProcess(GetCurrentProcess(), (DWORD_PTR)BaseAddress, 0))
+            DoOutputDebugString("DumpImageInCurrentProcess: Failed to dump virtual PE image from 0x%p, dumping memory region.\n", BaseAddress);
         else
             RetVal = 1;
     }
@@ -1471,16 +1471,16 @@ end:
         // Copy the original headers back
         __try
         {
-            memcpy(ImageBase, FirstPage, SystemInfo.dwPageSize);
+            memcpy(BaseAddress, FirstPage, SystemInfo.dwPageSize);
         }
         __except(EXCEPTION_EXECUTE_HANDLER)
         {
-            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured restoring PE header at 0x%p\n", ImageBase);
+            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured restoring PE header at 0x%p\n", BaseAddress);
             return 0;
         }
 
         // Restore original protection
-        if (!VirtualProtect((BYTE*)ImageBase, SystemInfo.dwPageSize, dwProtect, &dwProtect))
+        if (!VirtualProtect((BYTE*)BaseAddress, SystemInfo.dwPageSize, dwProtect, &dwProtect))
             DoOutputErrorString("DumpImageInCurrentProcess: Failed to restore previous memory page protection");
 
         free(FirstPage);
@@ -1490,22 +1490,22 @@ end:
         DumpCount++;
     else
     {
-        SIZE_T Size = GetAllocationSize(ImageBase);
-        return DumpMemory(ImageBase, Size);
+        SIZE_T Size = GetAllocationSize(BaseAddress);
+        return DumpMemory(BaseAddress, Size);
     }
 
     return 1;
 }
 
 //**************************************************************************************
-unsigned int DumpImageToFileHandle(LPVOID ImageBase, HANDLE FileHandle)
+unsigned int DumpImageToFileHandle(LPVOID BaseAddress, HANDLE FileHandle)
 //**************************************************************************************
 {
     unsigned int BytesWritten;
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pNtHeader;
 
-    pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
+    pDosHeader = (PIMAGE_DOS_HEADER)BaseAddress;
 
 	if (DumpCount >= DUMP_MAX)
 	{
@@ -1513,7 +1513,7 @@ unsigned int DumpImageToFileHandle(LPVOID ImageBase, HANDLE FileHandle)
         return 0;
     }
 
-    if (*(WORD*)ImageBase != IMAGE_DOS_SIGNATURE)
+    if (*(WORD*)BaseAddress != IMAGE_DOS_SIGNATURE)
     {
         DoOutputDebugString("DumpImageToFileHandle: No DOS signature in header.\n");
         return 0;
@@ -1541,11 +1541,11 @@ unsigned int DumpImageToFileHandle(LPVOID ImageBase, HANDLE FileHandle)
         return 0;
     }
 
-    if (IsPeImageVirtual(ImageBase) == FALSE)
+    if (IsPeImageVirtual(BaseAddress) == FALSE)
     {
         DoOutputDebugString("DumpImageToFileHandle: Attempting to dump 'raw' PE image.\n");
 
-        if (ScyllaDumpPEToFileHandle((DWORD_PTR)ImageBase, FileHandle))
+        if (ScyllaDumpPEToFileHandle((DWORD_PTR)BaseAddress, FileHandle))
         {
             DumpCount++;
             return 1;
@@ -1560,7 +1560,7 @@ unsigned int DumpImageToFileHandle(LPVOID ImageBase, HANDLE FileHandle)
 
     DoOutputDebugString("DumpImageToFileHandle: Attempting to dump virtual PE image.\n");
 
-    BytesWritten = ScyllaDumpProcessToFileHandle(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0, FileHandle);
+    BytesWritten = ScyllaDumpProcessToFileHandle(GetCurrentProcess(), (DWORD_PTR)BaseAddress, 0, FileHandle);
 
     if (!BytesWritten)
     {
@@ -1573,10 +1573,10 @@ unsigned int DumpImageToFileHandle(LPVOID ImageBase, HANDLE FileHandle)
 }
 
 //**************************************************************************************
-int DumpProcess(HANDLE hProcess, LPVOID ImageBase, LPVOID NewEP)
+int DumpProcess(HANDLE hProcess, LPVOID BaseAddress, LPVOID NewEP)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpProcess(hProcess, (DWORD_PTR)ImageBase, (DWORD_PTR)NewEP))
+	if (DumpCount < DUMP_MAX && ScyllaDumpProcess(hProcess, (DWORD_PTR)BaseAddress, (DWORD_PTR)NewEP))
 	{
 		DumpCount++;
 		return 1;
@@ -1606,6 +1606,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
 {
     //PIMAGE_DOS_HEADER pDosHeader;
     //wchar_t *MappedPath, *ModulePath, *AbsoluteMapped, *AbsoluteModule;
+    PVOID NewImageBase;
 
     if (!MemInfo.BaseAddress)
         return;
@@ -1624,14 +1625,28 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
         return;
     }
 
-    if (MemInfo.BaseAddress == ImageBase)
+    if (base_of_dll_of_interest)
     {
-        DoOutputDebugString("DumpInterestingRegions: Dumping Imagebase at 0x%p.\n", ImageBase);
+        ImageBase = (PVOID)base_of_dll_of_interest;
+        // Prevent dump of rundll32
+        if (CallerBase == GetModuleHandle(NULL))
+            CallerBase = NULL;
+    }
+    else
+    {
+        NewImageBase = GetModuleHandle(NULL);
+        if (ImageBase && ImageBase == NewImageBase)
+            NewImageBase = NULL;
+    }
+
+    if (MemInfo.BaseAddress == ImageBase || MemInfo.BaseAddress == NewImageBase)
+    {
+        DoOutputDebugString("DumpInterestingRegions: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
         CapeMetaData->DumpType = PROCDUMP;
         if (g_config.import_reconstruction)
-            ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)ImageBase, 0);
+            ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
         else
-            ProcessDumped = DumpImageInCurrentProcess(ImageBase);
+            ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
     }
     // Disable dumping of all calling regions for the moment as this needs further testing.
     // (This causes lots of useless dumps from Word processes, for example.)
@@ -1661,16 +1676,6 @@ int DoProcessDump(PVOID CallerBase)
     char *FullDumpPath, *OutputFilename;
 
     EnterCriticalSection(&ProcessDumpCriticalSection);
-
-    if (base_of_dll_of_interest)
-    {
-        ImageBase = (PVOID)base_of_dll_of_interest;
-        // Prevent dump of rundll32
-        if (CallerBase == GetModuleHandle(NULL))
-            CallerBase = NULL;
-    }
-    else
-        ImageBase = GetModuleHandle(NULL);
 
 	PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
 	DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
@@ -1881,10 +1886,14 @@ void init_CAPE()
         else
             DoOutputDebugString("Failed to initialise debugger.\n");
 
+    if (base_of_dll_of_interest)
+        ImageBase = (PVOID)base_of_dll_of_interest;
+    else
+        ImageBase = GetModuleHandle(NULL);
 #ifdef _WIN64
-    DoOutputDebugString("CAPE initialised: 64-bit base package loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", GetCurrentProcessId(), g_our_dll_base, GetModuleHandle(NULL), get_stack_bottom(), get_stack_top());
+    DoOutputDebugString("CAPE initialised: 64-bit base package loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #else
-    DoOutputDebugString("CAPE initialised: 32-bit base package loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, GetModuleHandle(NULL), get_stack_bottom(), get_stack_top());
+    DoOutputDebugString("CAPE initialised: 32-bit base package loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
 #ifndef STANDALONE
