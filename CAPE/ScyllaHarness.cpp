@@ -1185,3 +1185,78 @@ extern "C" PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName)
     delete peFile;
     return NULL;
 }
+
+//**************************************************************************************
+extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
+//**************************************************************************************
+{
+    ApiReader apiReader;
+    unsigned int ModuleIndex = 0;
+
+	ScyllaInitCurrentProcess();
+
+    for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
+		if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
+			ModuleIndex = i+1;
+	}
+
+    if (!ModuleIndex)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportDirectory: Address 0x%p not within loaded modules.\n", Address);
+#endif
+        return NULL;
+    }
+
+    PVOID ModuleBase = GetAllocationBase(Address);
+
+    if (!ModuleBase)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportDirectory: GetAllocationBase failed for 0x%p.\n", Address);
+#endif
+        return NULL;
+    }
+
+    PeParser *peFile = new PeParser((DWORD_PTR)ModuleBase, true);
+
+    if (!peFile->isValidPeFile())
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportDirectory: Invalid PE image at 0x%p.\n", Address);
+#endif
+        delete peFile;
+        return NULL;
+    }
+
+    if (!peFile->hasExportDirectory())
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportDirectory: Module has no exports.\n");
+#endif
+        delete peFile;
+        return NULL;
+    }
+
+    apiReader.clearAll();
+
+    // This creates moduleInfo->apiList
+    apiReader.parseModuleWithOwnProcess(&ProcessAccessHelp::ownModuleList[ModuleIndex-1]);
+    char *DirectoryName = (&ProcessAccessHelp::ownModuleList[ModuleIndex-1])->DirectoryName;
+
+    if (DirectoryName)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ScyllaGetExportDirectory: Export directory name %s.\n", DirectoryName);
+#endif
+        delete peFile;
+        return (PCHAR)DirectoryName;
+    }
+#ifdef DEBUG_COMMENTS
+    else
+        DoOutputDebugString("ScyllaGetExportDirectory: Failed to locate export directory name.\n");
+#endif
+
+    delete peFile;
+    return NULL;
+}

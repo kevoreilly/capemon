@@ -25,6 +25,7 @@ public:
 	CHAR fullPath[MAX_PATH];
 	DWORD_PTR modBaseAddr;
 	DWORD modBaseSize;
+	CHAR DirectoryName[MAX_PATH];
 
 	bool isAlreadyParsed;
 	bool parsing;
