@@ -1842,7 +1842,7 @@ void RestoreHeaders()
 
 void init_CAPE()
 {
-    char* CommandLine;
+    char *CommandLine, *Character;
 
     // Restore headers in case of IAT patching
     RestoreHeaders();
@@ -1854,6 +1854,16 @@ void init_CAPE()
     CapeMetaData->Pid = GetCurrentProcessId();
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
     WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
+    Character = CapeMetaData->ProcessPath;
+
+    // It seems with CP_ACP or CP_UTF8 & WC_NO_BEST_FIT_CHARS, WideCharToMultiByte still
+    // leaves characters that encode("utf-8"... can't encode...
+    while (*Character)
+    {   // Restrict to ASCII range
+        if (*Character < 0x0a || *Character > 0x7E)
+            *Character = 0x3F;  // '?'
+        Character++;
+    }
 
     CommandLine = (char*)malloc(MAX_PATH);
     WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_commandline, (int)wcslen(our_commandline)+1, CommandLine, MAX_PATH, NULL, NULL);
