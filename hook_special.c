@@ -168,8 +168,9 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 #ifdef CAPE_INJECTION
             CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
 #endif
-			pipe("PROCESS:%d:%d,%d", (dwCreationFlags & CREATE_SUSPENDED) ? 1 : 0, lpProcessInformation->dwProcessId,
-			    lpProcessInformation->dwThreadId);
+			if (!g_config.single_process)
+                pipe("PROCESS:%d:%d,%d", (dwCreationFlags & CREATE_SUSPENDED) ? 1 : 0, lpProcessInformation->dwProcessId,
+                    lpProcessInformation->dwThreadId);
         }
 
         // if the CREATE_SUSPENDED flag was not set, then we have to resume the main thread ourself

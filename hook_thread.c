@@ -89,7 +89,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-    if (pid != GetCurrentProcessId())
+    if (!g_config.single_process && pid != GetCurrentProcessId())
         pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
     ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
@@ -114,7 +114,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-    if (pid != GetCurrentProcessId())
+    if (!g_config.single_process && pid != GetCurrentProcessId())
         pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
     ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
@@ -152,7 +152,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
             InitNewThreadBreakpoints(tid);
         }
 
-        if (pid != GetCurrentProcessId())
+        if (!g_config.single_process && pid != GetCurrentProcessId())
             pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
         if (CreateSuspended == FALSE) {
@@ -206,7 +206,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
                 InitNewThreadBreakpoints(tid);
             }
 
-            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+            if (!g_config.single_process)
+                pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
             if (!(CreateFlags & 1)) {
 			lasterror_t lasterror;
@@ -302,7 +303,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 #ifdef CAPE_INJECTION
     SetThreadContextHandler(pid, Context);
 #endif
-    if (pid != GetCurrentProcessId())
+    if (!g_config.single_process && pid != GetCurrentProcessId())
         pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
     return ret;
@@ -327,7 +328,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 			"ProcessId", pid);
 	}
 	else {
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+		if (!g_config.single_process)
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 		LOQ_ntstatus("threading", "pLii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
@@ -448,7 +450,8 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 
 	if (ret != NULL) {
         if (pid != GetCurrentProcessId())
-            pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
+            if (!g_config.single_process)
+                pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
         else if (DEBUGGER_ENABLED && !called_by_hook()) {
             DoOutputDebugString("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
             InitNewThreadBreakpoints(*lpThreadId);
@@ -501,7 +504,8 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	if (NT_SUCCESS(ret) && ClientId && ThreadHandle) {
         DWORD tid = tid_from_thread_handle(ThreadHandle);
         if (pid != GetCurrentProcessId())
-            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+            if (!g_config.single_process)
+                pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
         else if (DEBUGGER_ENABLED && !called_by_hook()) {
             DoOutputDebugString("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);

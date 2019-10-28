@@ -44,7 +44,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
-		if (pid && pid != GetCurrentProcessId())
+		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
 			pipe("PROCESS:%d:%d,%d", is_suspended(pid, dwThreadId), pid, dwThreadId);
 	}
 
@@ -65,7 +65,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
 	
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
-		if (pid && pid != GetCurrentProcessId())
+		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
 			pipe("PROCESS:%d:%d,%d", is_suspended(pid, dwThreadId), pid, dwThreadId);
 	}
 

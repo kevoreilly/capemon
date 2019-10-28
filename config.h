@@ -122,6 +122,9 @@ struct _g_config {
 
     // dump regions containing c2
     int dump_config_region;
+
+    // prevent monitoring child processes
+    int single_process;
 };
 
 extern struct _g_config g_config;

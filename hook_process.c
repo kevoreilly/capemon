@@ -145,7 +145,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
     DWORD pid = pid_from_process_handle(*ProcessHandle);
     LOQ_ntstatus("process", "PphOl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
         "FileName", ObjectAttributes, "ProcessId", pid);
-    if(NT_SUCCESS(ret)) {
+    if (!g_config.single_process && NT_SUCCESS(ret)) {
         pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
         disable_sleep_skip();
     }
@@ -169,7 +169,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
 	LOQ_ntstatus("process", "PphOhhl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
         "FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
-    if(NT_SUCCESS(ret)) {
+    if (!g_config.single_process && NT_SUCCESS(ret)) {
 		DWORD pid = pid_from_process_handle(*ProcessHandle);
         pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
         disable_sleep_skip();
@@ -212,9 +212,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
         "ImagePathName", &ProcessParameters->ImagePathName,
         "CommandLine", &ProcessParameters->CommandLine,
 		"ProcessId", pid);
-    if(NT_SUCCESS(ret)) {
+    if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(*ThreadHandle);
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+		if (!g_config.single_process)
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 		if (!(ThreadFlags & 1))
 			ResumeThread(*ThreadHandle);
         disable_sleep_skip();
@@ -241,9 +242,10 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
 	DWORD pid = pid_from_process_handle(ProcessInformation->ProcessHandle);
     LOQ_ntstatus("process", "ohpl", "ImagePath", ImagePath, "ObjectAttributes", ObjectAttributes,
         "ParentHandle", ParentProcess, "ProcessId", pid);
-    if(NT_SUCCESS(ret)) {
+    if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(ProcessInformation->ThreadHandle);
-		pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+        if (!g_config.single_process)
+            pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
         disable_sleep_skip();
     }
     return ret;
@@ -289,7 +291,8 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 		free(origcommandline);
 
 	if (ret) {
-		pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
+		if (!g_config.single_process)
+            pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
 		if (!(dwCreationFlags & CREATE_SUSPENDED) && is_valid_address_range((ULONG_PTR)lpProcessInfo, (DWORD)sizeof(PROCESS_INFORMATION)))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
@@ -345,7 +348,8 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithTokenW,
 		free(origcommandline);
 
 	if (ret && lpProcessInfo) {
-		pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
+		if (!g_config.single_process)
+            pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
 		if (!(dwCreationFlags & CREATE_SUSPENDED))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
@@ -573,7 +577,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 #ifdef CAPE_EXTRACTION
         ProtectionHandler(*BaseAddress, ViewSize, Win32Protect, 0);
 #endif
-        if (pid != GetCurrentProcessId()) {
+        if (!g_config.single_process && pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
@@ -669,7 +673,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 #ifdef CAPE_INJECTION
             WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
 #endif
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+			if (!g_config.single_process)
+                pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
 	}
@@ -701,7 +706,8 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 #ifdef CAPE_INJECTION
             WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
 #endif
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+			if (!g_config.single_process)
+                pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}
 	}
@@ -749,7 +755,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
         "Buffer", NumberOfBytesWritten->LowPart, Buffer, "BufferLength", NumberOfBytesWritten->LowPart, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (pid != GetCurrentProcessId()) {
-		if (ret) {
+		if (!g_config.single_process && ret) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
 		}

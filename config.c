@@ -367,6 +367,11 @@ int read_config(void)
                 if (g_config.dump_config_region)
                     DoOutputDebugString("Dump config region enabled.\n");
 			}
+            else if (!strcmp(key, "single-process")) {
+				g_config.single_process = value[0] == '1';
+                if (g_config.single_process)
+                    DoOutputDebugString("Monitoring child processes disabled.\n");
+			}
             else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}
     }
