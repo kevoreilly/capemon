@@ -117,10 +117,12 @@ HOOKDEF(int, WSAAPI, connect,
     char ip[16]; int port = 0;
     get_ip_port(name, ip, &port);
     LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
-    if (g_config.dump_config_region && DumpRegion((PVOID)name))
-        DoOutputDebugString("connect hook: Successfully dumped region at 0x%p around %s.\n", name, ip);
-    else
-        DoOutputDebugString("connect hook: Failed to dump region at 0x%p around %s.\n", name, ip);
+    if (g_config.dump_config_region) {
+        if (DumpRegion((PVOID)name))
+            DoOutputDebugString("connect hook: Successfully dumped region at 0x%p around %s.\n", name, ip);
+        else
+            DoOutputDebugString("connect hook: Failed to dump region at 0x%p around %s.\n", name, ip);
+    }
     return ret;
 }
 
