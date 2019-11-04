@@ -1534,7 +1534,27 @@ HOOKDEF(VOID, WINAPI, RtlMoveMemory,
 )
 {
     int ret = 0;
-    RtlMoveMemory(Destination, Source, Length);
+    Old_RtlMoveMemory(Destination, Source, Length);
     LOQ_void("misc", "bppi", "Destination", Length, Destination, "Source", Source, "destination", Destination, "Length", Length);
-    return ;
+    return;
+}
+
+HOOKDEF(void, WINAPI, OutputDebugStringA,
+  LPCSTR lpOutputString
+)
+{
+    int ret = 0;
+    Old_OutputDebugStringA(lpOutputString);
+    LOQ_void("misc", "s", "OutputString", lpOutputString);
+    return;
+}
+
+HOOKDEF(void, WINAPI, OutputDebugStringW,
+  LPCWSTR lpOutputString
+)
+{
+    int ret = 0;
+    Old_OutputDebugStringW(lpOutputString);
+    LOQ_void("misc", "u", "OutputString", lpOutputString);
+    return;
 }

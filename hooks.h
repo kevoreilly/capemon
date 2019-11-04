@@ -3107,3 +3107,11 @@ extern HOOKDEF(HANDLE, WINAPI, HeapCreate,
 extern HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
   _In_ DWORD idThread
 );
+
+extern HOOKDEF (void, WINAPI, OutputDebugStringA,
+  LPCSTR lpOutputString
+);
+
+extern HOOKDEF (void, WINAPI, OutputDebugStringW,
+  LPCWSTR lpOutputString
+);

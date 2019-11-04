@@ -39,6 +39,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
 
+#ifdef CAPE_EXTRACTION
+#include "CAPE\Extraction.h"
+#endif
+
 #ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
@@ -80,6 +84,13 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                 else
                     DumpRegion(AllocationBase);
             }
+#ifdef CAPE_EXTRACTION
+            PTRACKEDREGION TrackedRegion = GetTrackedRegion(addr);
+            if (TrackedRegion) {
+                TrackedRegion->CanDump = 1;
+                ProcessTrackedRegion(TrackedRegion);
+            }
+#endif
         }
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
@@ -206,7 +217,7 @@ DWORD tmphookinfo_threadid;
 int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 {
 	hook_info_t *hookinfo;
-	
+
 	if (h->fully_emulate)
 		return 1;
 
@@ -254,7 +265,7 @@ hook_info_t *hook_info()
 	hook_info_t *ptr;
 
 	lasterror_t lasterror;
-	
+
 	if (tmphookinfo_threadid && tmphookinfo_threadid == GetCurrentThreadId())
 		return &tmphookinfo;
 
@@ -274,9 +285,9 @@ hook_info_t *hook_info()
 void get_lasterrors(lasterror_t *errors)
 {
 	char *teb;
-    
+
     errors->Eflags = (DWORD)__readeflags();
-    
+
     teb = (char *)NtCurrentTeb();
 
 	errors->Win32Error = *(DWORD *)(teb + TLS_LAST_WIN32_ERROR);
@@ -290,7 +301,7 @@ void set_lasterrors(lasterror_t *errors)
 
 	*(DWORD *)(teb + TLS_LAST_WIN32_ERROR) = errors->Win32Error;
 	*(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR) = errors->NtstatusError;
-    
+
     __writeeflags(errors->Eflags);
 }
 

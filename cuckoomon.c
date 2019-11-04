@@ -364,6 +364,8 @@ static hook_t g_hooks[] = {
 #ifndef _WIN64
 	HOOK(ntdll, memcpy),
 #endif
+	HOOK(kernel32, OutputDebugStringA),
+	HOOK(kernel32, OutputDebugStringW),
 	HOOK(kernel32, HeapCreate),
 	HOOK(msvcrt, memcpy),
     HOOK(msvcrt, srand),
