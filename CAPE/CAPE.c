@@ -229,10 +229,10 @@ PVOID GetHookCallerBase()
         DWORD ThreadId = GetCurrentThreadId();
 
         AllocationBase = GetAllocationBase(ReturnAddress);
-        DoOutputDebugString("GetHookCallerBase: thread %d (handle 0x%x), return address 0x%p, allocation base 0x%p.\n", ThreadId, GetThreadHandle(ThreadId), ReturnAddress, AllocationBase);
 
         if (AllocationBase)
         {
+            DoOutputDebugString("GetHookCallerBase: thread %d (handle 0x%x), return address 0x%p, allocation base 0x%p.\n", ThreadId, GetThreadHandle(ThreadId), ReturnAddress, AllocationBase);
             CallingModule = AllocationBase;
             return CallingModule;
             // Base-dependent breakpoints can be activated now
@@ -536,7 +536,7 @@ char* GetResultsPath(char* FolderName)
 
 	if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
 	{
-		DoOutputErrorString("GetResultsPath: Error creating output directory");
+		DoOutputErrorString("GetResultsPath: Error creating output directory %s", FullPath);
         free(FullPath);
 		return 0;
 	}
@@ -1627,6 +1627,8 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
 
     if (base_of_dll_of_interest)
     {
+        NewImageBase = GetModuleHandle(NULL);
+        if (ImageBase && ImageBase == NewImageBase)
         ImageBase = (PVOID)base_of_dll_of_interest;
         // Prevent dump of rundll32
         if (CallerBase == GetModuleHandle(NULL))
@@ -1906,8 +1908,10 @@ void init_CAPE()
     DoOutputDebugString("CAPE initialised: 32-bit base package loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
-#ifndef STANDALONE
     DoOutputDebugString("Commandline: %s.\n", CommandLine);
+
+#ifdef CAPE_EXTRACTION
+    ExtractionInit();
 #endif
     return;
 }
