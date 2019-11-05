@@ -18,13 +18,13 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 //#define DEBUG_COMMENTS
 
 #define _CRT_RAND_S
-#define MD5LEN  			16
+#define MD5LEN              16
 
 #define MAX_PRETRAMP_SIZE 320
 #define MAX_TRAMP_SIZE 128
 #define MAX_UNICODE_PATH 32768
 
-#define BUFSIZE 			    1024	// For hashing
+#define BUFSIZE                 1024    // For hashing
 #define DUMP_MAX                100
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
 #define SUSPENDED_THREAD_MAX    4096
@@ -53,58 +53,58 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #pragma comment(lib, "Shlwapi.lib")
 
 typedef union _UNWIND_CODE {
-	struct {
-		BYTE CodeOffset;
-		BYTE UnwindOp : 4;
-		BYTE OpInfo : 4;
-	};
-	USHORT FrameOffset;
+    struct {
+        BYTE CodeOffset;
+        BYTE UnwindOp : 4;
+        BYTE OpInfo : 4;
+    };
+    USHORT FrameOffset;
 } UNWIND_CODE;
 
 typedef struct _UNWIND_INFO {
-	BYTE Version : 3;
-	BYTE Flags : 5;
-	BYTE SizeOfProlog;
-	BYTE CountOfCodes;
-	BYTE FrameRegister : 4;
-	BYTE FrameOffset : 4;
-	UNWIND_CODE UnwindCode[20];
+    BYTE Version : 3;
+    BYTE Flags : 5;
+    BYTE SizeOfProlog;
+    BYTE CountOfCodes;
+    BYTE FrameRegister : 4;
+    BYTE FrameOffset : 4;
+    UNWIND_CODE UnwindCode[20];
 } UNWIND_INFO;
 
 typedef struct _hook_data_t {
-	unsigned char tramp[MAX_TRAMP_SIZE];
-	unsigned char pre_tramp[MAX_PRETRAMP_SIZE];
-	//unsigned char our_handler[128];
-	unsigned char hook_data[32];
+    unsigned char tramp[MAX_TRAMP_SIZE];
+    unsigned char pre_tramp[MAX_PRETRAMP_SIZE];
+    //unsigned char our_handler[128];
+    unsigned char hook_data[32];
 
-	UNWIND_INFO unwind_info;
+    UNWIND_INFO unwind_info;
 } hook_data_t;
 
 typedef struct _hook_t {
     const wchar_t *library;
     const char *funcname;
     void *addr;
-	void *hook_addr;
+    void *hook_addr;
     void *new_func;
     void **old_func;
-	void *alt_func;
+    void *alt_func;
     int allow_hook_recursion;
-	int fully_emulate;
-	unsigned char numargs;
-	int notail;
-	int is_hooked;
-	hook_data_t *hookdata;
+    int fully_emulate;
+    unsigned char numargs;
+    int notail;
+    int is_hooked;
+    hook_data_t *hookdata;
 } hook_t;
 
 typedef struct _hook_info_t {
-	int disable_count;
-	hook_t *last_hook;
-	hook_t *current_hook;
-	ULONG_PTR return_address;
-	ULONG_PTR stack_pointer;
-	ULONG_PTR frame_pointer;
-	ULONG_PTR main_caller_retaddr;
-	ULONG_PTR parent_caller_retaddr;
+    int disable_count;
+    hook_t *last_hook;
+    hook_t *current_hook;
+    ULONG_PTR return_address;
+    ULONG_PTR stack_pointer;
+    ULONG_PTR frame_pointer;
+    ULONG_PTR main_caller_retaddr;
+    ULONG_PTR parent_caller_retaddr;
 } hook_info_t;
 
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
@@ -148,18 +148,18 @@ static unsigned int DumpCount;
 static __inline ULONG_PTR get_stack_top(void)
 {
 #ifndef _WIN64
-	return __readfsdword(0x04);
+    return __readfsdword(0x04);
 #else
-	return __readgsqword(0x08);
+    return __readgsqword(0x08);
 #endif
 }
 
 static __inline ULONG_PTR get_stack_bottom(void)
 {
 #ifndef _WIN64
-	return __readfsdword(0x08);
+    return __readfsdword(0x08);
 #else
-	return __readgsqword(0x10);
+    return __readgsqword(0x10);
 #endif
 }
 
@@ -173,7 +173,7 @@ BOOL InsideHook(LPVOID* ReturnAddress, LPVOID Address)
     {
         if (ReturnAddress)
             *ReturnAddress = Address;
-		return TRUE;
+        return TRUE;
     }
 
     return FALSE;
@@ -215,7 +215,7 @@ PVOID GetHookCallerBase()
 //**************************************************************************************
 {
     PVOID ReturnAddress, AllocationBase;
-	hook_info_t *hookinfo = hook_info();
+    hook_info_t *hookinfo = hook_info();
 
     if (hookinfo->main_caller_retaddr)
         ReturnAddress = (PVOID)hookinfo->main_caller_retaddr;
@@ -248,34 +248,34 @@ PVOID GetHookCallerBase()
 void PrintHexBytes(__in char* TextBuffer, __in BYTE* HexBuffer, __in unsigned int Count)
 //**************************************************************************************
 {
-	unsigned int i;
+    unsigned int i;
 
-	if (HexBuffer == NULL)
-		return;
+    if (HexBuffer == NULL)
+        return;
 
-	for (i=0; i<Count; i++)
-	{
-		sprintf_s((TextBuffer+2*i), Count, "%2.2x", (unsigned int)*(HexBuffer+i));
-	}
+    for (i=0; i<Count; i++)
+    {
+        sprintf_s((TextBuffer+2*i), Count, "%2.2x", (unsigned int)*(HexBuffer+i));
+    }
 
-	return;
+    return;
 }
 
 //*********************************************************************************************************************************
 BOOL TranslatePathFromDeviceToLetter(__in char *DeviceFilePath, __out char* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize)
 //*********************************************************************************************************************************
 {
-	char DriveStrings[BUFSIZE];
-	DriveStrings[0] = '\0';
+    char DriveStrings[BUFSIZE];
+    DriveStrings[0] = '\0';
 
-	if (DriveLetterFilePath == NULL || *lpdwBufferSize < MAX_PATH)
-	{
-		*lpdwBufferSize = MAX_PATH;
-		return FALSE;
-	}
+    if (DriveLetterFilePath == NULL || *lpdwBufferSize < MAX_PATH)
+    {
+        *lpdwBufferSize = MAX_PATH;
+        return FALSE;
+    }
 
-	if (GetLogicalDriveStrings(BUFSIZE-1, DriveStrings))
-	{
+    if (GetLogicalDriveStrings(BUFSIZE-1, DriveStrings))
+    {
         char DeviceName[MAX_PATH];
         char szDrive[3] = " :";
         BOOL FoundDevice = FALSE;
@@ -433,126 +433,126 @@ BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVO
         CapeMetaData->Address = Address;
     }
 
-	return TRUE;
+    return TRUE;
 }
 
 //**************************************************************************************
 BOOL MapFile(HANDLE hFile, unsigned char **Buffer, DWORD* FileSize)
 //**************************************************************************************
 {
-	LARGE_INTEGER LargeFileSize;
-	DWORD dwBytesRead;
+    LARGE_INTEGER LargeFileSize;
+    DWORD dwBytesRead;
 
-	if (!GetFileSizeEx(hFile, &LargeFileSize))
-	{
-		DoOutputErrorString("MapFile: Cannot get file size");
-		return FALSE;
-	}
+    if (!GetFileSizeEx(hFile, &LargeFileSize))
+    {
+        DoOutputErrorString("MapFile: Cannot get file size");
+        return FALSE;
+    }
 
     if (LargeFileSize.HighPart || LargeFileSize.LowPart > SIZE_OF_LARGEST_IMAGE)
-	{
-		DoOutputDebugString("MapFile: File too big");
-		return FALSE;
-	}
+    {
+        DoOutputDebugString("MapFile: File too big");
+        return FALSE;
+    }
 
     if (LargeFileSize.LowPart == 0)
-	{
-		DoOutputDebugString("MapFile: File is zero in size.");
-		return FALSE;
-	}
+    {
+        DoOutputDebugString("MapFile: File is zero in size.");
+        return FALSE;
+    }
 
-	*FileSize = LargeFileSize.LowPart;
+    *FileSize = LargeFileSize.LowPart;
 
     DoOutputDebugString("File size: 0x%x", *FileSize);
 
-	*Buffer = malloc(*FileSize);
+    *Buffer = malloc(*FileSize);
 
     if (SetFilePointer(hFile, 0, 0, FILE_BEGIN))
     {
- 		DoOutputErrorString("MapFile: Failed to set file pointer");
-		return FALSE;
+         DoOutputErrorString("MapFile: Failed to set file pointer");
+        return FALSE;
     }
 
-	if (*Buffer == NULL)
-	{
-		DoOutputErrorString("MapFile: Memory allocation error in MapFile");
-		return FALSE;
-	}
+    if (*Buffer == NULL)
+    {
+        DoOutputErrorString("MapFile: Memory allocation error in MapFile");
+        return FALSE;
+    }
 
-	if (FALSE == ReadFile(hFile, (LPVOID)*Buffer, *FileSize, &dwBytesRead, NULL))
-	{
-		DoOutputErrorString("ReadFile error");
+    if (FALSE == ReadFile(hFile, (LPVOID)*Buffer, *FileSize, &dwBytesRead, NULL))
+    {
+        DoOutputErrorString("ReadFile error");
         free(Buffer);
-		return FALSE;
-	}
+        return FALSE;
+    }
 
     if (dwBytesRead > 0 && dwBytesRead < *FileSize)
     {
         DoOutputErrorString("MapFile: Unexpected size read in");
         free(Buffer);
-		return FALSE;
+        return FALSE;
 
     }
     else if (dwBytesRead == 0)
     {
         DoOutputErrorString("MapFile: No data read from file");
         free(Buffer);
-		return FALSE;
+        return FALSE;
     }
 
-	return TRUE;
+    return TRUE;
 }
 
 //**************************************************************************************
 char* GetResultsPath(char* FolderName)
 //**************************************************************************************
 {
-	char *FullPath;
+    char *FullPath;
     DWORD RetVal;
 
     FullPath = (char*)malloc(MAX_PATH);
 
     if (FullPath == NULL)
     {
-		DoOutputErrorString("GetResultsPath: Error allocating memory for full path string");
-		return 0;
+        DoOutputErrorString("GetResultsPath: Error allocating memory for full path string");
+        return 0;
     }
 
-	// We want to dump output to the 'results' directory
+    // We want to dump output to the 'results' directory
     memset(FullPath, 0, MAX_PATH);
 
     strncpy_s(FullPath, MAX_PATH, g_config.results, strlen(g_config.results)+1);
 
-	if (strlen(FullPath) + 1 + strlen(FolderName) >= MAX_PATH)
-	{
-		DoOutputDebugString("GetResultsPath: Error, destination path too long.\n");
+    if (strlen(FullPath) + 1 + strlen(FolderName) >= MAX_PATH)
+    {
+        DoOutputDebugString("GetResultsPath: Error, destination path too long.\n");
         free(FullPath);
-		return 0;
-	}
+        return 0;
+    }
 
     PathAppend(FullPath, FolderName);
 
-	RetVal = CreateDirectory(FullPath, NULL);
+    RetVal = CreateDirectory(FullPath, NULL);
 
-	if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
-	{
-		DoOutputErrorString("GetResultsPath: Error creating output directory %s", FullPath);
+    if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
+    {
+        DoOutputErrorString("GetResultsPath: Error creating output directory %s", FullPath);
         free(FullPath);
-		return 0;
-	}
+        return 0;
+    }
 
-	return FullPath;
+    return FullPath;
 }
 
 //**************************************************************************************
 char* GetName()
 //**************************************************************************************
 {
-	char *FullPathName,*OutputFilename;
+    char *FullPathName,*OutputFilename;
     SYSTEMTIME Time;
     unsigned int random;
 
-	FullPathName = GetResultsPath("CAPE");
+    FullPathName = GetResultsPath("CAPE");
 
     OutputFilename = (char*)malloc(MAX_PATH);
 
@@ -572,19 +572,19 @@ char* GetName()
 
     sprintf_s(OutputFilename, MAX_PATH*sizeof(char), "%d_%d%d%d%d%d%d%d%d", GetCurrentProcessId(), abs(random * Time.wMilliseconds), Time.wSecond, Time.wMinute, Time.wHour, Time.wDay, Time.wDayOfWeek, Time.wMonth, Time.wYear);
 
-	PathAppend(FullPathName, OutputFilename);
+    PathAppend(FullPathName, OutputFilename);
 
     free(OutputFilename);
 
-	return FullPathName;
+    return FullPathName;
 }
 
 //**************************************************************************************
 BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffer)
 //**************************************************************************************
 {
-	DWORD i;
-	DWORD dwStatus = 0;
+    DWORD i;
+    DWORD dwStatus = 0;
     HCRYPTPROV hProv = 0;
     HCRYPTHASH hHash = 0;
     DWORD cbHash = 0;
@@ -604,13 +604,13 @@ BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffe
         return 0;
     }
 
-	if (!CryptHashData(hHash, Buffer, Size, 0))
-	{
-		DoOutputErrorString("CryptHashData failed");
-		CryptReleaseContext(hProv, 0);
-		CryptDestroyHash(hHash);
-		return 0;
-	}
+    if (!CryptHashData(hHash, Buffer, Size, 0))
+    {
+        DoOutputErrorString("CryptHashData failed");
+        CryptReleaseContext(hProv, 0);
+        CryptDestroyHash(hHash);
+        return 0;
+    }
 
     cbHash = MD5LEN;
     if (!CryptGetHashParam(hHash, HP_HASHVAL, MD5Hash, &cbHash, 0))
@@ -621,12 +621,12 @@ BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffe
     CryptDestroyHash(hHash);
     CryptReleaseContext(hProv, 0);
 
-	for (i = 0; i < cbHash; i++)
-	{
-		PrintHexBytes(OutputFilenameBuffer, MD5Hash, MD5LEN);
-	}
+    for (i = 0; i < cbHash; i++)
+    {
+        PrintHexBytes(OutputFilenameBuffer, MD5Hash, MD5LEN);
+    }
 
-	return 1;
+    return 1;
 }
 
 //**************************************************************************************
@@ -634,29 +634,29 @@ char* GetHashFromHandle(HANDLE hFile)
 //**************************************************************************************
 {
     DWORD FileSize;
-	long e_lfanew;
-	PIMAGE_NT_HEADERS pNtHeader;
-	unsigned char* Buffer = NULL;
-	char * OutputFilenameBuffer;
+    long e_lfanew;
+    PIMAGE_NT_HEADERS pNtHeader;
+    unsigned char* Buffer = NULL;
+    char * OutputFilenameBuffer;
 
-	if (!MapFile(hFile, &Buffer, &FileSize))
-	{
-		DoOutputErrorString("MapFile error - check the path is valid and the file has size.");
-		return 0;
-	}
+    if (!MapFile(hFile, &Buffer, &FileSize))
+    {
+        DoOutputErrorString("MapFile error - check the path is valid and the file has size.");
+        return 0;
+    }
 
-	OutputFilenameBuffer = (char*) malloc(MAX_PATH);
+    OutputFilenameBuffer = (char*) malloc(MAX_PATH);
 
     if (OutputFilenameBuffer == NULL)
     {
-		DoOutputErrorString("Error allocating memory for hash string");
-		return 0;
+        DoOutputErrorString("Error allocating memory for hash string");
+        return 0;
     }
 
     if (!GetHash(Buffer, FileSize, (char*)OutputFilenameBuffer))
     {
-		DoOutputErrorString("GetHashFromHandle: GetHash function failed");
-		return 0;
+        DoOutputErrorString("GetHashFromHandle: GetHash function failed");
+        return 0;
     }
 
     DoOutputDebugString("GetHash returned: %s", OutputFilenameBuffer);
@@ -689,7 +689,7 @@ char* GetHashFromHandle(HANDLE hFile)
 
     CloseHandle(hFile);
 
-	// We don't need the file buffer any more
+    // We don't need the file buffer any more
     free(Buffer);
 
     // We leak the OutputFilenameBuffer
@@ -700,48 +700,48 @@ char* GetHashFromHandle(HANDLE hFile)
 int DumpXorPE(LPBYTE Buffer, unsigned int Size)
 //**************************************************************************************
 {
-	LONG e_lfanew;
+    LONG e_lfanew;
     DWORD NT_Signature;
     unsigned int i, j, k;
-	BYTE* DecryptedBuffer = NULL;
+    BYTE* DecryptedBuffer = NULL;
 
     for (i=0; i<=0xFF; i++)
-	{
-		// check for the DOS signature a.k.a MZ header
-		if ((*Buffer^(BYTE)i) == 'M' && (*(Buffer+1)^(BYTE)i) == 'Z')
-		{
-			DoOutputDebugString("MZ header found with bytewise XOR key 0x%.2x\n", i);
+    {
+        // check for the DOS signature a.k.a MZ header
+        if ((*Buffer^(BYTE)i) == 'M' && (*(Buffer+1)^(BYTE)i) == 'Z')
+        {
+            DoOutputDebugString("MZ header found with bytewise XOR key 0x%.2x\n", i);
 
-			e_lfanew = (LONG)*(DWORD*)(Buffer+0x3c);
+            e_lfanew = (LONG)*(DWORD*)(Buffer+0x3c);
 
             DoOutputDebugString("Encrypted e_lfanew: 0x%x", e_lfanew);
 
-			for (j=0; j<sizeof(LONG); j++)
-				*((BYTE*)&e_lfanew+j) = *((BYTE*)&e_lfanew+j)^i;
+            for (j=0; j<sizeof(LONG); j++)
+                *((BYTE*)&e_lfanew+j) = *((BYTE*)&e_lfanew+j)^i;
 
             DoOutputDebugString("Decrypted e_lfanew: 0x%x", e_lfanew);
 
-			if ((unsigned int)e_lfanew > PE_HEADER_LIMIT)
-			{
-				DoOutputDebugString("The pointer to the PE header seems a tad large: 0x%x", e_lfanew);
-				//return FALSE;
-			}
+            if ((unsigned int)e_lfanew > PE_HEADER_LIMIT)
+            {
+                DoOutputDebugString("The pointer to the PE header seems a tad large: 0x%x", e_lfanew);
+                //return FALSE;
+            }
 
-			// let's get the NT signature a.k.a PE header
-			memcpy(&NT_Signature, Buffer+e_lfanew, 4);
-
-            DoOutputDebugString("Encrypted NT_Signature: 0x%x", NT_Signature);
-
-			// let's try decrypting it with the key
-			for (k=0; k<4; k++)
-				*((BYTE*)&NT_Signature+k) = *((BYTE*)&NT_Signature+k)^i;
+            // let's get the NT signature a.k.a PE header
+            memcpy(&NT_Signature, Buffer+e_lfanew, 4);
 
             DoOutputDebugString("Encrypted NT_Signature: 0x%x", NT_Signature);
 
-			// does it check out?
-			if (NT_Signature == IMAGE_NT_SIGNATURE)
-			{
-				DoOutputDebugString("Xor-encrypted PE detected, about to dump.\n");
+            // let's try decrypting it with the key
+            for (k=0; k<4; k++)
+                *((BYTE*)&NT_Signature+k) = *((BYTE*)&NT_Signature+k)^i;
+
+            DoOutputDebugString("Encrypted NT_Signature: 0x%x", NT_Signature);
+
+            // does it check out?
+            if (NT_Signature == IMAGE_NT_SIGNATURE)
+            {
+                DoOutputDebugString("Xor-encrypted PE detected, about to dump.\n");
 
                 DecryptedBuffer = (BYTE*)malloc(Size);
 
@@ -760,18 +760,18 @@ int DumpXorPE(LPBYTE Buffer, unsigned int Size)
                 DumpImageInCurrentProcess(DecryptedBuffer);
 
                 free(DecryptedBuffer);
-				return i;
-			}
-			else
-			{
-				DoOutputDebugString("PE signature invalid, looks like a false positive.\n");
-				return FALSE;
-			}
-		}
-	}
+                return i;
+            }
+            else
+            {
+                DoOutputDebugString("PE signature invalid, looks like a false positive.\n");
+                return FALSE;
+            }
+        }
+    }
 
     // We free can free DecryptedBuffer as it's no longer needed
-	if(DecryptedBuffer)
+    if(DecryptedBuffer)
         free(DecryptedBuffer);
 
     return FALSE;
@@ -782,7 +782,7 @@ int ScanPageForNonZero(LPVOID Address)
 //**************************************************************************************
 {
     unsigned int p;
-	DWORD_PTR AddressOfPage;
+    DWORD_PTR AddressOfPage;
 
     if (!Address)
     {
@@ -1119,34 +1119,34 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
 int DumpMemory(LPVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-	char *FullPathName;
-	DWORD dwBytesWritten;
-	HANDLE hOutputFile;
+    char *FullPathName;
+    DWORD dwBytesWritten;
+    HANDLE hOutputFile;
     LPVOID BufferCopy;
 
-	FullPathName = GetName();
+    FullPathName = GetName();
 
-	hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 
-	if (hOutputFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS)
-	{
-		DoOutputDebugString("DumpMemory: CAPE output filename exists already: %s", FullPathName);
+    if (hOutputFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS)
+    {
+        DoOutputDebugString("DumpMemory: CAPE output filename exists already: %s", FullPathName);
         free(FullPathName);
-		return 0;
-	}
+        return 0;
+    }
 
-	if (hOutputFile == INVALID_HANDLE_VALUE)
-	{
-		DoOutputErrorString("DumpMemory: Could not create CAPE output file");
+    if (hOutputFile == INVALID_HANDLE_VALUE)
+    {
+        DoOutputErrorString("DumpMemory: Could not create CAPE output file");
         free(FullPathName);
-		return 0;
-	}
+        return 0;
+    }
 
-	dwBytesWritten = 0;
+    dwBytesWritten = 0;
 
     DoOutputDebugString("DumpMemory: CAPE output file successfully created: %s", FullPathName);
 
-	BufferCopy = (LPVOID)((BYTE*)malloc(Size));
+    BufferCopy = (LPVOID)((BYTE*)malloc(Size));
 
     if (BufferCopy == NULL)
     {
@@ -1165,14 +1165,14 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
     }
 
     if (FALSE == WriteFile(hOutputFile, BufferCopy, (DWORD)Size, &dwBytesWritten, NULL))
-	{
-		DoOutputErrorString("DumpMemory: WriteFile error on CAPE output file");
+    {
+        DoOutputErrorString("DumpMemory: WriteFile error on CAPE output file");
         free(FullPathName);
         free(BufferCopy);
-		return 0;
-	}
+        return 0;
+    }
 
-	CloseHandle(hOutputFile);
+    CloseHandle(hOutputFile);
 
     CapeMetaData->Address = Buffer;
     CapeMetaData->Size = Size;
@@ -1276,39 +1276,39 @@ int DumpImageInCurrentProcessFixImports(LPVOID BaseAddress, LPVOID NewEP)
 int DumpCurrentProcessFixImports(LPVOID NewEP)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcessFixImports((DWORD_PTR)NewEP))
-	{
-		DumpCount++;
-		return 1;
-	}
+    if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcessFixImports((DWORD_PTR)NewEP))
+    {
+        DumpCount++;
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 //**************************************************************************************
 int DumpCurrentProcessNewEP(LPVOID NewEP)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess((DWORD_PTR)NewEP))
-	{
-		DumpCount++;
-		return 1;
-	}
+    if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess((DWORD_PTR)NewEP))
+    {
+        DumpCount++;
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 //**************************************************************************************
 int DumpCurrentProcess()
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess(0))
-	{
-		DumpCount++;
-		return 1;
-	}
+    if (DumpCount < DUMP_MAX && ScyllaDumpCurrentProcess(0))
+    {
+        DumpCount++;
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 //**************************************************************************************
@@ -1323,8 +1323,8 @@ int DumpImageInCurrentProcess(LPVOID BaseAddress)
 
     pDosHeader = (PIMAGE_DOS_HEADER)BaseAddress;
 
-	if (DumpCount >= DUMP_MAX)
-	{
+    if (DumpCount >= DUMP_MAX)
+    {
         DoOutputDebugString("DumpImageInCurrentProcess: CAPE dump limit reached.\n");
         return 0;
     }
@@ -1507,8 +1507,8 @@ unsigned int DumpImageToFileHandle(LPVOID BaseAddress, HANDLE FileHandle)
 
     pDosHeader = (PIMAGE_DOS_HEADER)BaseAddress;
 
-	if (DumpCount >= DUMP_MAX)
-	{
+    if (DumpCount >= DUMP_MAX)
+    {
         DoOutputDebugString("DumpImageToFileHandle: CAPE dump limit reached.\n");
         return 0;
     }
@@ -1576,13 +1576,13 @@ unsigned int DumpImageToFileHandle(LPVOID BaseAddress, HANDLE FileHandle)
 int DumpProcess(HANDLE hProcess, LPVOID BaseAddress, LPVOID NewEP)
 //**************************************************************************************
 {
-	if (DumpCount < DUMP_MAX && ScyllaDumpProcess(hProcess, (DWORD_PTR)BaseAddress, (DWORD_PTR)NewEP))
-	{
-		DumpCount++;
-		return 1;
-	}
+    if (DumpCount < DUMP_MAX && ScyllaDumpProcess(hProcess, (DWORD_PTR)BaseAddress, (DWORD_PTR)NewEP))
+    {
+        DumpCount++;
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 //**************************************************************************************
@@ -1592,12 +1592,12 @@ int DumpPE(LPVOID Buffer)
     SetCapeMetaData(INJECTION_PE, 0, NULL, (PVOID)Buffer);
 
     if (DumpCount < DUMP_MAX && ScyllaDumpPE((DWORD_PTR)Buffer))
-	{
+    {
         DumpCount++;
         return 1;
-	}
+    }
 
-	return 0;
+    return 0;
 }
 
 //**************************************************************************************
@@ -1679,8 +1679,8 @@ int DoProcessDump(PVOID CallerBase)
 
     EnterCriticalSection(&ProcessDumpCriticalSection);
 
-	PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
-	DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
+    PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
+    DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
 
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);
@@ -1793,7 +1793,7 @@ out:
             free(FullDumpPath);
     }
 
-	LeaveCriticalSection(&ProcessDumpCriticalSection);
+    LeaveCriticalSection(&ProcessDumpCriticalSection);
     return ProcessDumped;
 }
 
