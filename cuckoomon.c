@@ -1140,7 +1140,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 #endif
 
 		// obtain all protected pids
-        pipe2(pids, &length, "GETPIDS");
+        pipe2(pids, &length, "GETPIDS:");
         for (i = 0; i < length / sizeof(pids[0]); i++) {
             add_protected_pid(pids[i]);
         }
