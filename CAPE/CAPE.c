@@ -120,6 +120,7 @@ extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern lookup_t g_caller_regions;
 
+extern void DoOutputFile(_In_ LPCTSTR lpOutputFile);
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern void CapeOutputFile(LPCTSTR lpOutputFile);
@@ -1786,6 +1787,7 @@ out:
         {
             DoOutputDebugString("DoProcessDump: Full process memory dump saved to file: %s.\n", FullDumpPath);
             CloseHandle(FileHandle);
+            DoOutputFile(FullDumpPath);
         }
         if (OutputFilename)
             free(OutputFilename);

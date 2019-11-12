@@ -92,6 +92,17 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 }
 
 //**************************************************************************************
+void DoOutputFile(_In_ LPCTSTR lpOutputFile)
+//**************************************************************************************
+{
+    memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
+    _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_DUMP:%s", lpOutputFile);
+    pipe(PipeOutput, strlen(PipeOutput));
+
+	return;
+}
+
+//**************************************************************************************
 void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 //**************************************************************************************
 {
