@@ -901,6 +901,128 @@ out:
     return RetVal;
 }
 
+
+static void fixpe(ULONG_PTR base, char *buf, DWORD bufsize)
+{
+    PIMAGE_DOS_HEADER doshdr;
+    PIMAGE_NT_HEADERS nthdr;
+    PIMAGE_NT_HEADERS32 nthdr32;
+    PIMAGE_NT_HEADERS64 nthdr64;
+    PIMAGE_SECTION_HEADER sechdr;
+    unsigned short numsecs;
+    unsigned short i;
+
+    doshdr = (PIMAGE_DOS_HEADER)buf;
+
+    if (doshdr->e_magic != IMAGE_DOS_SIGNATURE)
+        return;
+
+    if ((DWORD)doshdr->e_lfanew > bufsize - (sizeof(IMAGE_NT_HEADERS64) + sizeof(IMAGE_DOS_HEADER)))
+        return;
+
+    nthdr = (PIMAGE_NT_HEADERS)(buf + doshdr->e_lfanew);
+    if (nthdr->Signature != IMAGE_NT_SIGNATURE)
+        return;
+
+    if (nthdr->FileHeader.Machine == IMAGE_FILE_MACHINE_I386) {
+        nthdr32 = (PIMAGE_NT_HEADERS32)nthdr;
+        nthdr32->OptionalHeader.ImageBase = (DWORD)base;
+        numsecs = nthdr32->FileHeader.NumberOfSections;
+        if (bufsize < sizeof(IMAGE_NT_HEADERS32) - sizeof(IMAGE_OPTIONAL_HEADER32) + sizeof(IMAGE_DOS_HEADER) + nthdr32->FileHeader.SizeOfOptionalHeader + (numsecs * sizeof(IMAGE_SECTION_HEADER)))
+            return;
+        sechdr = (PIMAGE_SECTION_HEADER)((PCHAR)&nthdr32->OptionalHeader + nthdr32->FileHeader.SizeOfOptionalHeader);
+        for (i = 0; i < numsecs; i++) {
+            sechdr[i].PointerToRawData = sechdr[i].VirtualAddress;
+            sechdr[i].SizeOfRawData = sechdr[i].Misc.VirtualSize;
+        }
+        // zero out the relocation table since relocations have already been applied
+        if (nthdr32->OptionalHeader.NumberOfRvaAndSizes > IMAGE_DIRECTORY_ENTRY_BASERELOC) {
+            nthdr32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress = 0;
+            nthdr32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = 0;
+            nthdr32->FileHeader.Characteristics |= IMAGE_FILE_RELOCS_STRIPPED;
+        }
+    }
+    else if (nthdr->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64) {
+        nthdr64 = (PIMAGE_NT_HEADERS64)nthdr;
+        nthdr64->OptionalHeader.ImageBase = base;
+        numsecs = nthdr64->FileHeader.NumberOfSections;
+        if (bufsize < sizeof(IMAGE_NT_HEADERS64) - sizeof(IMAGE_OPTIONAL_HEADER64) + sizeof(IMAGE_DOS_HEADER) + nthdr64->FileHeader.SizeOfOptionalHeader + (numsecs * sizeof(IMAGE_SECTION_HEADER)))
+            return;
+        sechdr = (PIMAGE_SECTION_HEADER)((PCHAR)&nthdr64->OptionalHeader + nthdr64->FileHeader.SizeOfOptionalHeader);
+        for (i = 0; i < numsecs; i++) {
+            sechdr[i].PointerToRawData = sechdr[i].VirtualAddress;
+            sechdr[i].SizeOfRawData = sechdr[i].Misc.VirtualSize;
+        }
+        // zero out the relocation table since relocations have already been applied
+        if (nthdr64->OptionalHeader.NumberOfRvaAndSizes > IMAGE_DIRECTORY_ENTRY_BASERELOC) {
+            nthdr64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress = 0;
+            nthdr64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = 0;
+            nthdr64->FileHeader.Characteristics |= IMAGE_FILE_RELOCS_STRIPPED;
+        }
+    }
+
+    return;
+}
+
+static int dump(int pid, char *dumpfile)
+{
+    SYSTEM_INFO sysinfo;
+    PUCHAR addr;
+    MEMORY_BASIC_INFORMATION meminfo;
+    HANDLE f;
+    HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (proc == NULL)
+        return ERROR_PROCESS_OPEN;
+
+    f = CreateFileA(dumpfile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    if (f == INVALID_HANDLE_VALUE) {
+        CloseHandle(proc);
+        return ERROR_FILE_OPEN;
+    }
+
+    GetSystemInfo(&sysinfo);
+
+    // for now just do this the lame way, later we'll dump processes properly
+    // in a way that's compatible with copymemII/shrinker/etc by communicating
+    // with a dumper thread in our hooked process
+    for (addr = (PUCHAR)sysinfo.lpMinimumApplicationAddress; addr < (PUCHAR)sysinfo.lpMaximumApplicationAddress;) {
+        if (VirtualQueryEx(proc, addr, &meminfo, sizeof(meminfo))) {
+            if ((meminfo.State & MEM_COMMIT) && (meminfo.Type & (MEM_IMAGE | MEM_MAPPED | MEM_PRIVATE))) {
+                char *buf;
+                LARGE_INTEGER bufaddr;
+                DWORD bufsize;
+                DWORD byteswritten;
+                SIZE_T bytesread;
+                bufaddr.QuadPart = (ULONGLONG)addr;
+                bufsize = (DWORD)meminfo.RegionSize;
+                buf = calloc(1, bufsize);
+                if (buf == NULL) {
+                    CloseHandle(f);
+                    CloseHandle(proc);
+                    return ERROR_ALLOCATE;
+                }
+                if (ReadProcessMemory(proc, addr, buf, bufsize, &bytesread) || GetLastError() == ERROR_PARTIAL_COPY) {
+                    WriteFile(f, &bufaddr, sizeof(bufaddr), &byteswritten, NULL);
+                    WriteFile(f, &bufsize, sizeof(bufsize), &byteswritten, NULL);
+                    WriteFile(f, &meminfo.State, sizeof(meminfo.State), &byteswritten, NULL);
+                    WriteFile(f, &meminfo.Type, sizeof(meminfo.Type), &byteswritten, NULL);
+                    WriteFile(f, &meminfo.Protect, sizeof(meminfo.Protect), &byteswritten, NULL);
+                    fixpe((ULONG_PTR)addr, buf, bufsize);
+                    WriteFile(f, buf, bufsize, &byteswritten, NULL);
+                }
+                free(buf);
+            }
+            addr += meminfo.RegionSize;
+        }
+        else {
+            addr += 0x1000;
+        }
+    }
+    CloseHandle(f);
+    CloseHandle(proc);
+    return 1;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     DoOutputDebugString("CAPE loader.\n");
@@ -1115,5 +1237,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			}
 		}
 	}
-	return ERROR_MODE;
+    else if (!strcmp(__argv[1], "dump")) {
+        if (__argc != 4)
+            return ERROR_ARGCOUNT;
+        int pid = atoi(__argv[2]);
+        char *dumpfile = __argv[3];
+        return dump(pid, dumpfile);
+    }
+    return ERROR_MODE;
 }
