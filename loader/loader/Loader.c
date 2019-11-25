@@ -855,7 +855,11 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
         InitialThreadId = GetProcessInitialThreadId(ProcessHandle);
 
         if (!InitialThreadId)
+        {
             DoOutputDebugString("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed.\n");
+            RetVal = ERROR_READMEMORY;
+            goto out;
+        }
         else
         {
             ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, InitialThreadId);
