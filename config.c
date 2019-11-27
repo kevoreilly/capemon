@@ -357,6 +357,21 @@ int read_config(void)
                 else
                     DoOutputDebugString("Terminate processes on terminate_event disabled.\n");
 			}
+            else if (!strcmp(key, "compression")) {
+				g_config.compression = value[0] == '1';
+                if (g_config.compression)
+                    DoOutputDebugString("Capture of compressed payloads enabled.\n");
+			}
+            else if (!strcmp(key, "extraction")) {
+				g_config.extraction = value[0] == '1';
+                if (g_config.extraction)
+                    DoOutputDebugString("Capture of extracted payloads enabled.\n");
+			}
+            else if (!strcmp(key, "injection")) {
+				g_config.injection = value[0] == '1';
+                if (g_config.injection)
+                    DoOutputDebugString("Capture of injected payloads enabled.\n");
+			}
             else if (!strcmp(key, "verbose-dumping")) {
 				g_config.verbose_dumping = value[0] == '1';
                 if (g_config.verbose_dumping)

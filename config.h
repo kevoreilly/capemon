@@ -107,6 +107,11 @@ struct _g_config {
 	char *base_on_apiname[EXCLUSION_MAX];
  	char *dump_on_apinames[EXCLUSION_MAX];
 
+    // behavioural payload extraction options
+    int compression;
+    int extraction;
+    int injection;
+
     // should we dump each process on exit/analysis timeout?
     int procdump;
     int procmemdump;
