@@ -34,13 +34,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 
-#ifdef CAPE_INJECTION
 extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void UnmapSectionViewHandler(PVOID BaseAddress);
 extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
 extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
-#endif
 #ifdef CAPE_EXTRACTION
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
@@ -387,10 +385,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 
     ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 
-#ifdef CAPE_INJECTION
-    if (NT_SUCCESS(ret))
+    if (NT_SUCCESS(ret) && g_config.injection)
         OpenProcessHandler(*ProcessHandle, pid);
-#endif
+
     LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle,
         "DesiredAccess", DesiredAccess,
         "ProcessIdentifier", pid);
@@ -403,9 +400,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 ) {
 	NTSTATUS ret;
 	DWORD pid = pid_from_process_handle(ProcessHandle);
-#ifdef CAPE_INJECTION
-    ResumeProcessHandler(ProcessHandle, pid);
-#endif
+    if (g_config.injection)
+        ResumeProcessHandler(ProcessHandle, pid);
 	pipe("RESUME:%d", pid);
 	ret = Old_NtResumeProcess(ProcessHandle);
 	LOQ_ntstatus("process", "pl", "ProcessHandle", ProcessHandle, "ProcessId", pid);
@@ -537,9 +533,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
             sizeof(mbi)) == sizeof(mbi)) {
         map_size = mbi.RegionSize;
     }
-#ifdef CAPE_INJECTION
-    UnmapSectionViewHandler(BaseAddress);
-#endif
+    if (g_config.injection)
+        UnmapSectionViewHandler(BaseAddress);
 
     ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
 
@@ -571,9 +566,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
     "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
-#ifdef CAPE_INJECTION
-        MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
-#endif
+        if (g_config.injection)
+            MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
 #ifdef CAPE_EXTRACTION
         ProtectionHandler(*BaseAddress, ViewSize, Win32Protect, 0);
 #endif
@@ -670,9 +664,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 
 	if (pid != GetCurrentProcessId()) {
 		if (NT_SUCCESS(ret)) {
-#ifdef CAPE_INJECTION
-            WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
-#endif
+            if (g_config.injection)
+                WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
 			if (!g_config.single_process)
                 pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
@@ -703,9 +696,8 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 
 	if (pid != GetCurrentProcessId()) {
 		if (ret) {
-#ifdef CAPE_INJECTION
-            WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
-#endif
+            if (g_config.injection)
+                WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
 			if (!g_config.single_process)
                 pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();

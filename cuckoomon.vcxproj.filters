@@ -273,6 +273,9 @@
     <ClCompile Include="CAPE\wow64_fix.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="CAPE\Injection.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">

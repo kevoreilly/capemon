@@ -29,9 +29,7 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
 extern ULONG_PTR base_of_dll_of_interest;
 extern PVOID GetHookCallerBase();
-#ifdef CAPE_INJECTION
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
-#endif
 
 PVOID LastDllUnload;
 
@@ -165,9 +163,8 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 			dont_monitor = TRUE;
 
 		if (!dont_monitor) {
-#ifdef CAPE_INJECTION
-            CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
-#endif
+            if (g_config.injection)
+                CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
 			if (!g_config.single_process)
                 pipe("PROCESS:%d:%d,%d", (dwCreationFlags & CREATE_SUSPENDED) ? 1 : 0, lpProcessInformation->dwProcessId,
                     lpProcessInformation->dwThreadId);

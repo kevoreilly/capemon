@@ -29,11 +29,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\Debugger.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-#ifdef CAPE_INJECTION
 extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
-#endif
 
 static lookup_t g_ignored_threads;
 
@@ -276,9 +274,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 #endif
 	else
 		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
-#ifdef CAPE_INJECTION
-    GetThreadContextHandler(pid, Context);
-#endif
+    if (g_config.injection)
+        GetThreadContextHandler(pid, Context);
     return ret;
 }
 
@@ -300,9 +297,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 #endif
 	else
 		LOQ_ntstatus("threading", "p", "ThreadHandle", ThreadHandle);
-#ifdef CAPE_INJECTION
-    SetThreadContextHandler(pid, Context);
-#endif
+    if (g_config.injection)
+        SetThreadContextHandler(pid, Context);
     if (!g_config.single_process && pid != GetCurrentProcessId())
         pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
 
@@ -345,9 +341,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 	ENSURE_ULONG(SuspendCount);
-#ifdef CAPE_INJECTION
-    ResumeThreadHandler(pid);
-#endif
+    if (g_config.injection)
+        ResumeThreadHandler(pid);
     if (pid != GetCurrentProcessId())
         pipe("RESUME:%d,%d", pid, tid);
 

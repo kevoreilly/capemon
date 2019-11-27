@@ -42,6 +42,7 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
 int DumpMemory(LPVOID Buffer, SIZE_T Size);
 int DumpCurrentProcessNewEP(LPVOID NewEP);
+int DumpImageInCurrentProcessFixImports(LPVOID BaseAddress, LPVOID NewEP);
 int DumpCurrentProcessFixImports(LPVOID NewEP);
 int DumpCurrentProcess();
 int DumpProcess(HANDLE hProcess, LPVOID ImageBase, LPVOID NewEP);

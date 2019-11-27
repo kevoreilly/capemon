@@ -204,6 +204,7 @@
     <ClCompile Include="CAPE\CAPE.c" />
     <ClCompile Include="CAPE\Debugger.c" />
     <ClCompile Include="CAPE\GetThreadId.c" />
+    <ClCompile Include="CAPE\Injection.c" />
     <ClCompile Include="CAPE\Output.c" />
     <ClCompile Include="CAPE\ScyllaHarness.cpp" />
     <ClCompile Include="CAPE\Scylla\ApiReader.cpp" />
