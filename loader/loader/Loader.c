@@ -22,6 +22,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #pragma warning(push )
 #pragma warning(disable : 4996)
 
+//#define DEBUG_COMMENTS
+
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH];
 char LogPipe[MAX_PATH];
@@ -468,12 +470,11 @@ static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
     }
 }
 
-static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char *DllPath)
+static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char *DllPath, PEB Peb)
 {
     SIZE_T DllPathLength;
     IMAGE_DOS_HEADER DosHeader;
     IMAGE_NT_HEADERS NtHeader;
-    PEB Peb;
     CONTEXT Context;
     MEMORY_BASIC_INFORMATION MemoryInfo;
     DWORD NewImportDirectorySize, OriginalNumberOfDescriptors, NewNumberOfDescriptors, NewSizeOfImportDescriptors, SizeOfTables, NewImportsRVA, dwProtect, SizeOfHeaders, TotalSize;
@@ -509,12 +510,6 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     {
         DoOutputDebugString("InjectDllViaIAT: Dll argument bad.\n");
         return ERROR_INVALID_PARAM;
-    }
-
-    if (!GetProcessPeb(ProcessHandle, &Peb) || !Peb.ImageBaseAddress)
-    {
-        DoOutputDebugString("InjectDllViaIAT: GetProcessPeb failed.\n");
-        goto out;
     }
 
     BaseAddress = Peb.ImageBaseAddress;
@@ -709,7 +704,9 @@ rebase:
         if (MemoryInfo.State != MEM_FREE)
             continue;
 
+#ifdef DEBUG_COMMENTS
         DoOutputDebugString("InjectDllViaIAT: Found a free region from 0x%p - 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
+#endif
 
         for (AllocationAddress = (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress < (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize; AllocationAddress += SystemInfo.dwPageSize)
         {
@@ -729,7 +726,9 @@ rebase:
             }
 #endif
 
+#ifdef DEBUG_COMMENTS
             DoOutputDebugString("InjectDllViaIAT: Allocated 0x%x bytes for new import table at 0x%p.\n", TotalSize, TargetImportTable);
+#endif
             break;
         }
 
@@ -830,9 +829,11 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 {
     HANDLE ProcessHandle = NULL, ThreadHandle = NULL;
     int RetVal = 0, InitialThreadId;
+    PEB Peb;
 
     ProcessHandle = NULL;
     ThreadHandle = NULL;
+    memset(&Peb, 0, sizeof(PEB));
 
     if (!ProcessId)
     {
@@ -849,6 +850,9 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
         goto out;
     }
 
+    if (!GetProcessPeb(ProcessHandle, &Peb))
+        DoOutputDebugString("InjectDll: GetProcessPeb failure.\n");
+
     // If no thread id supplied, we fetch the initial thread id from the TEB's CLIENT_ID
     if (!ThreadId)
     {
@@ -856,9 +860,14 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 
         if (!InitialThreadId)
         {
-            DoOutputDebugString("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed.\n");
-            RetVal = ERROR_READMEMORY;
-            goto out;
+            if (Peb.SessionId)
+            {
+                DoOutputDebugString("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed (SessionId=%d).\n", Peb.SessionId);
+                RetVal = ERROR_READMEMORY;
+                goto out;
+            }
+
+            DoOutputDebugString("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed, falling back to thread injection.\n");
         }
         else
         {
@@ -876,9 +885,9 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 
     // We try to use IAT patching in case this is a new process.
     // If it's not, this function is expected to fail.
-    if (ThreadHandle)
+    if (ThreadHandle && Peb.ImageBaseAddress)
     {
-        RetVal = InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath);
+        RetVal = InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath, Peb);
         if (RetVal > 0)
             goto out;
         else
