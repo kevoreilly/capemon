@@ -145,7 +145,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 		//if (called_by_hook() && pid == GetCurrentProcessId())
 		//	add_ignored_thread(tid);
 
-        if (DEBUGGER_ENABLED && !called_by_hook()) {
+        if (DebuggerEnabled && !called_by_hook()) {
             DoOutputDebugString("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }
@@ -199,7 +199,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		//	add_ignored_thread(tid);
 
 		if (pid != GetCurrentProcessId())
-            if (DEBUGGER_ENABLED && !called_by_hook()) {
+            if (DebuggerEnabled && !called_by_hook()) {
                 DoOutputDebugString("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
                 InitNewThreadBreakpoints(tid);
             }
@@ -401,7 +401,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
         lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
 
 	if (ret != NULL) {
-        if (DEBUGGER_ENABLED && !called_by_hook()) {
+        if (DebuggerEnabled && !called_by_hook()) {
             DoOutputDebugString("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
             InitNewThreadBreakpoints(*lpThreadId);
         }
@@ -447,7 +447,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
         if (pid != GetCurrentProcessId())
             if (!g_config.single_process)
                 pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
-        else if (DEBUGGER_ENABLED && !called_by_hook()) {
+        else if (DebuggerEnabled && !called_by_hook()) {
             DoOutputDebugString("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
             InitNewThreadBreakpoints(*lpThreadId);
         }
@@ -501,7 +501,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
         if (pid != GetCurrentProcessId())
             if (!g_config.single_process)
                 pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
-        else if (DEBUGGER_ENABLED && !called_by_hook()) {
+        else if (DebuggerEnabled && !called_by_hook()) {
             DoOutputDebugString("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }

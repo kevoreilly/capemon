@@ -32,6 +32,8 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
 extern int DoProcessDump(PVOID CallerBase);
 extern BOOL ProcessDumped;
+extern void ClearAllBreakpoints();
+extern void ProcessTrackedRegions();
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
 
@@ -248,7 +250,7 @@ int unhook_init_detection()
 }
 
 static HANDLE g_terminate_event_thread_handle;
-static HANDLE g_terminate_event_handle;
+HANDLE g_terminate_event_handle;
 
 static DWORD WINAPI _terminate_event_thread(LPVOID param)
 {
@@ -268,14 +270,14 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
         else
             DoOutputDebugString("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
     }
-#ifdef CAPE_EXTRACTION
-    DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
-    ProcessTrackedRegions();
-    ClearAllBreakpoints();
-#else
+
+    if (g_config.extraction) {
+        DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
+        ProcessTrackedRegions();
+        ClearAllBreakpoints();
+    }
     else
         DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
-#endif
     file_handle_terminate();
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {

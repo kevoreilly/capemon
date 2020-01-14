@@ -62,7 +62,7 @@ static __inline char *cm_strdup(const char *ptr)
 {
 	char *buf = cm_alloc(strlen(ptr) + 1);
 	if (buf)
-		strcpy(buf, ptr);
+		strncpy(buf, ptr, strlen(ptr) + 1);
 	return buf;
 }
 

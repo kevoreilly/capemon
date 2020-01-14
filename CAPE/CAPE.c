@@ -137,13 +137,14 @@ extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
+extern void ExtractionInit();
 #ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 #endif
 
 BOOL ProcessDumped, FilesDumped, ModuleDumped;
-static PVOID ImageBase;
+PVOID ImageBase;
 static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
@@ -697,7 +698,66 @@ char* GetHashFromHandle(HANDLE hFile)
     return OutputFilenameBuffer;
 }
 
+double GetEntropy(PUCHAR Buffer)
 //**************************************************************************************
+{
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader = NULL;
+    unsigned long TotalCounts[256];
+	double p, lp, Entropy = 0;
+	double log_2 = log((double)2);
+    SIZE_T Length;
+    unsigned int i;
+
+    if (!Buffer)
+    {
+        DoOutputDebugString("GetEntropy: Error - no address supplied.\n");
+        return 0;
+    }
+
+    if (IsDisguisedPEHeader((PVOID)Buffer) <= 0)
+        return 0;
+
+    pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
+
+    __try
+    {
+        if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+
+        if (pNtHeader && TestPERequirements(pNtHeader))
+            Length = pNtHeader->OptionalHeader.SizeOfImage;
+
+        if (!Length)
+            return 0;
+
+        memset(TotalCounts, 0, sizeof(TotalCounts));
+
+        for (i = 0; i < Length; i++)
+        {
+            TotalCounts[Buffer[i]]++;
+        }
+
+        for (i = 0; i < 256; i++)
+        {
+            if (TotalCounts[i] == 0) continue;
+
+            p = 1.0 * TotalCounts[i] / Length;
+
+            lp = log(p)/log_2;
+
+            Entropy -= p * lp;
+        }
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputDebugString("GetEntropy: Exception occured attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
+        return 0;
+    }
+
+    return Entropy;
+}
+
 int DumpXorPE(LPBYTE Buffer, unsigned int Size)
 //**************************************************************************************
 {
@@ -866,10 +926,11 @@ PVOID GetPageAddress(PVOID Address)
     return (PVOID)(((DWORD_PTR)Address/SystemInfo.dwPageSize)*SystemInfo.dwPageSize);
 
 }
+
 //**************************************************************************************
 int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
 //**************************************************************************************
-{   // deprecated in favour of ScanForDisguisedPE
+{
     SIZE_T p;
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pNtHeader;
@@ -916,11 +977,9 @@ int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
                 }
 
                 if (Offset)
-                {
                     *Offset = (LPVOID)((char*)Buffer+p);
-                }
 
-                DoOutputDebugString("ScanForPE: PE image located at: 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
+                //DoOutputDebugString("ScanForPE: PE image located at: 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
 
                 return 1;
             }
@@ -940,54 +999,51 @@ int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 //**************************************************************************************
 {
+    SIZE_T MinSize;
+
     __try
     {
+        PIMAGE_SECTION_HEADER NtSection;
+
         if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))
-        {
-            //DoOutputDebugString("TestPERequirements: OptionalHeader.Magic bad. (0x%x)", (DWORD_PTR)pNtHeader);    // extremely noisy
             return FALSE;
-        }
-        //else
-        //    DoOutputDebugString("TestPERequirements: OptionalHeader.Magic ok!: 0x%x (0x%x)", pNtHeader->OptionalHeader.Magic, (DWORD_PTR)pNtHeader);
 
         // Basic requirements
-        if
-        (
-            pNtHeader->FileHeader.Machine == 0 ||
-            pNtHeader->FileHeader.SizeOfOptionalHeader == 0 ||
-            pNtHeader->OptionalHeader.SizeOfHeaders == 0 //||
-            //pNtHeader->OptionalHeader.FileAlignment == 0
-        )
-        {
-            //DoOutputDebugString("TestPERequirements: Basic requirements failure (0x%x).\n", (DWORD_PTR)pNtHeader);  // very noisy
+        if (!pNtHeader->FileHeader.NumberOfSections || pNtHeader->FileHeader.NumberOfSections > PE_MAX_SECTIONS)
             return FALSE;
-        }
 
-        if (!(pNtHeader->FileHeader.Characteristics & IMAGE_FILE_EXECUTABLE_IMAGE))
-        {
-            DoOutputDebugString("TestPERequirements: Characteristics bad. (0x%x)", (DWORD_PTR)pNtHeader);
-            //return FALSE;
-        }
-
-        if (pNtHeader->FileHeader.SizeOfOptionalHeader & (sizeof (ULONG_PTR) - 1))
-        {
-            DoOutputDebugString("TestPERequirements: SizeOfOptionalHeader bad. (0x%x)", (DWORD_PTR)pNtHeader);
+        if (!pNtHeader->OptionalHeader.SizeOfImage || pNtHeader->OptionalHeader.SizeOfImage > PE_MAX_SIZE)
             return FALSE;
-        }
 
-        if (((pNtHeader->OptionalHeader.FileAlignment-1) & pNtHeader->OptionalHeader.FileAlignment) != 0)
+        NtSection = IMAGE_FIRST_SECTION(pNtHeader);
+
+        for (unsigned int i=0; i<pNtHeader->FileHeader.NumberOfSections; i++)
         {
-            DoOutputDebugString("TestPERequirements: FileAlignment invalid. (0x%x)", (DWORD_PTR)pNtHeader);
-            return FALSE;
+            if (!NtSection->Misc.VirtualSize && !NtSection->SizeOfRawData)
+            {
+                DoOutputDebugString("TestPERequirements: Possible PE image rejected due to section %d of %d, VirtualSize and SizeOfRawData are zero.\n", i+1, pNtHeader->FileHeader.NumberOfSections);
+                return FALSE;
+            }
+
+            if (NtSection->Misc.VirtualSize && NtSection->SizeOfRawData && NtSection->Misc.VirtualSize > NtSection->SizeOfRawData)
+                MinSize = NtSection->SizeOfRawData;
+            else if (NtSection->Misc.VirtualSize && NtSection->SizeOfRawData && NtSection->Misc.VirtualSize <= NtSection->SizeOfRawData)
+                MinSize = NtSection->Misc.VirtualSize;
+            else if (NtSection->SizeOfRawData)
+                MinSize = NtSection->SizeOfRawData;
+            else if (NtSection->Misc.VirtualSize)
+                MinSize = NtSection->Misc.VirtualSize;
+
+            if (NtSection->VirtualAddress + MinSize > (ULONG)pNtHeader->OptionalHeader.SizeOfImage)
+            {
+                DoOutputDebugString("TestPERequirements: Possible PE image rejected due to section %d of %d, RVA 0x%x and size 0x%x.\n", i+1, pNtHeader->FileHeader.NumberOfSections, NtSection->VirtualAddress, MinSize);
+                return FALSE;
+            }
+
+            ++NtSection;
         }
 
-        if (pNtHeader->OptionalHeader.SectionAlignment < pNtHeader->OptionalHeader.FileAlignment)
-        {
-            DoOutputDebugString("TestPERequirements: FileAlignment greater than SectionAlignment.\n (0x%x)", (DWORD_PTR)pNtHeader);
-            return FALSE;
-        }
-
-        // To pass the above tests it should now be safe to assume it's a PE image
+        // To pass the above tests it should now be safe to dump as a PE image
         return TRUE;
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
@@ -998,12 +1054,60 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 }
 
 //**************************************************************************************
+SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader)
+//**************************************************************************************
+{
+    SIZE_T MinSize;
+
+    __try
+    {
+        PIMAGE_SECTION_HEADER NtSection;
+
+        if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))
+            return 0;
+
+        // Basic requirements
+        if (!pNtHeader->FileHeader.NumberOfSections || pNtHeader->FileHeader.NumberOfSections > PE_MAX_SECTIONS)
+            return 0;
+
+        if (!pNtHeader->OptionalHeader.SizeOfImage || pNtHeader->OptionalHeader.SizeOfImage > PE_MAX_SIZE)
+            return 0;
+
+        NtSection = IMAGE_FIRST_SECTION(pNtHeader);
+
+        for (unsigned int i=1; i<pNtHeader->FileHeader.NumberOfSections; i++)
+            ++NtSection;
+
+        if (!NtSection->PointerToRawData && !NtSection->VirtualAddress)
+            return 0;
+
+        if (NtSection->PointerToRawData)
+            MinSize = NtSection->PointerToRawData + NtSection->SizeOfRawData;
+        else if (NtSection->VirtualAddress)
+            MinSize = NtSection->VirtualAddress + NtSection->SizeOfRawData;
+
+        if (!MinSize || MinSize > (ULONG)pNtHeader->OptionalHeader.SizeOfImage)
+        {
+            DoOutputDebugString("GetMinPESize: Possible PE image rejected due to min size 0x%x (SizeOfImage 0x%x).\n", MinSize, pNtHeader->OptionalHeader.SizeOfImage);
+            return 0;
+        }
+
+        return MinSize;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputDebugString("GetMinPESize: Exception occured reading region at 0x%x\n", (DWORD_PTR)(pNtHeader));
+        return 0;
+    }
+}
+
+//**************************************************************************************
 int IsDisguisedPEHeader(LPVOID Buffer)
 //**************************************************************************************
 {
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pNtHeader = NULL;
-    WORD* MachineProbe;
+    //WORD* MachineProbe;
 
     __try
     {
@@ -1012,50 +1116,48 @@ int IsDisguisedPEHeader(LPVOID Buffer)
         if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
             pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
 
-        if (!pDosHeader->e_lfanew)
-        {
-            // In case the header until and including 'PE' has been zeroed
-            MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-            while ((PUCHAR)MachineProbe < (PUCHAR)&pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-            {
-                if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-                {
-                    pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-                    break;
-                }
-                MachineProbe += sizeof(WORD);
-            }
-        }
+        //if (!pDosHeader->e_lfanew)
+        //{
+        //    // In case the header until and including 'PE' has been zeroed
+        //    MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+        //    while ((PUCHAR)MachineProbe < (PUCHAR)&pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+        //    {
+        //        if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+        //        {
+        //            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+        //            break;
+        //        }
+        //        MachineProbe += sizeof(WORD);
+        //    }
+        //}
 
-        if (pNtHeader && TestPERequirements(pNtHeader))
-            return 1;
+        //if (pNtHeader && TestPERequirements(pNtHeader))
+        //    return 1;
 
         // In case the header until and including 'PE' is missing
-        MachineProbe = (WORD*)Buffer;
-        pNtHeader = NULL;
-        while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-        {
-            if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-            {
-                if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
-                {
-                    pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-                    break;
-                }
-            }
-            MachineProbe += sizeof(WORD);
-        }
+        //MachineProbe = (WORD*)Buffer;
+        //pNtHeader = NULL;
+        //while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+        //{
+        //    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+        //    {
+        //        if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4 && (PUCHAR)MachineProbe < (PUCHAR)pDosHeader + DOS_HEADER_LIMIT)
+        //        {
+        //            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+        //            break;
+        //        }
+        //    }
+        //    MachineProbe += sizeof(WORD);
+        //}
 
         if (pNtHeader && TestPERequirements(pNtHeader))
             return 1;
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        //DoOutputDebugString("IsDisguisedPEHeader: Exception occured reading region at 0x%x\n", (DWORD_PTR)(Buffer));
-        return 0;
+        return -1;
     }
 
-    //DoOutputDebugString("IsDisguisedPEHeader: No PE image located\n (0x%x)", (DWORD_PTR)Buffer);
     return 0;
 }
 
@@ -1065,6 +1167,7 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
 {
     SIZE_T p;
     int RetVal;
+    BOOL PEDetected;
 
     if (Size == 0)
     {
@@ -1072,30 +1175,76 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
         return 0;
     }
 
+    PEDetected = FALSE;
+
     for (p=0; p < Size - PE_HEADER_LIMIT; p++) // we want to stop short of the max look-ahead in IsDisguisedPEHeader
     {
-        RetVal = IsDisguisedPEHeader((BYTE*)Buffer+p);
+        RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
 
         if (!RetVal)
             continue;
         else if (RetVal == -1)
         {
-            DoOutputDebugString("ScanForDisguisedPE: Exception occured scanning buffer at 0x%x\n", (DWORD_PTR)((BYTE*)Buffer+p));
+            DoOutputDebugString("ScanForDisguisedPE: Exception occured scanning buffer at 0x%x\n", (BYTE*)Buffer+p);
             return 0;
         }
 
         if (Offset)
-        {
-            *Offset = (LPVOID)((BYTE*)Buffer+p);
-        }
+            *Offset = (PVOID)((BYTE*)Buffer+p);
 
-        DoOutputDebugString("ScanForDisguisedPE: PE image located at: 0x%x\n", (DWORD_PTR)((BYTE*)Buffer+p));
+        DoOutputDebugString("ScanForDisguisedPE: PE image located at: 0x%x\n", (BYTE*)Buffer+p);
 
         return 1;
     }
 
     DoOutputDebugString("ScanForDisguisedPE: No PE image located in range 0x%x-0x%x.\n", Buffer, (DWORD_PTR)Buffer + Size);
+
     return 0;
+}
+
+//**************************************************************************************
+DWORD GetEntryPoint(LPVOID Address)
+//**************************************************************************************
+{
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+    if (!Address)
+    {
+        DoOutputDebugString("GetEntryPoint: Error - no address supplied.\n");
+        return 0;
+    }
+
+    if (IsDisguisedPEHeader(Address) <= 0)
+        return 0;
+
+    pDosHeader = (PIMAGE_DOS_HEADER)Address;
+
+    __try
+    {
+        if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputDebugString("GetEntryPoint: Exception occured attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+        return 0;
+    }
+
+    if (pNtHeader && TestPERequirements(pNtHeader))
+        return pNtHeader->OptionalHeader.AddressOfEntryPoint;
+
+    return 0;
+}
+
+//**************************************************************************************
+BOOL DumpStackRegion(void)
+//**************************************************************************************
+{
+    SIZE_T StackSize = (SIZE_T)(get_stack_top() - get_stack_bottom());
+    CapeMetaData->DumpType = STACK_REGION;
+    CapeMetaData->Address = (PVOID)get_stack_bottom();
+    return DumpMemory((PVOID)get_stack_bottom(), StackSize);
 }
 
 //**************************************************************************************
@@ -1104,16 +1253,23 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
 {
     BOOL RetVal = FALSE;
     LPVOID PEPointer = Buffer;
+    SIZE_T Count = 0;
 
     DoOutputDebugString("DumpPEsInRange: Scanning range 0x%x - 0x%x.\n", Buffer, (BYTE*)Buffer + Size);
 
     while (ScanForDisguisedPE(PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), &PEPointer))
     {
         RetVal = DumpImageInCurrentProcess(PEPointer);
-        (BYTE*)PEPointer += PE_HEADER_LIMIT;
+        if (!RetVal)
+            break;
+        Count++;
+        (BYTE*)PEPointer += 0x1000;
     }
 
-    return RetVal;
+    if (Count)
+        return TRUE;
+
+    return FALSE;
 }
 
 //**************************************************************************************
@@ -1144,8 +1300,6 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
     }
 
     dwBytesWritten = 0;
-
-    DoOutputDebugString("DumpMemory: CAPE output file successfully created: %s", FullPathName);
 
     BufferCopy = (LPVOID)((BYTE*)malloc(Size));
 
@@ -1180,6 +1334,7 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
 
     CapeOutputFile(FullPathName);
 
+    DoOutputDebugString("DumpMemory: CAPE output file successfully created: %s (size 0x%x)", FullPathName, Size);
     // We can free the filename buffers
     free(FullPathName);
     free(BufferCopy);
@@ -1489,13 +1644,8 @@ end:
 
     if (RetVal)
         DumpCount++;
-    else
-    {
-        SIZE_T Size = GetAllocationSize(BaseAddress);
-        return DumpMemory(BaseAddress, Size);
-    }
 
-    return 1;
+    return RetVal;
 }
 
 //**************************************************************************************
@@ -1878,12 +2028,6 @@ void init_CAPE()
 
     DumpCount = 0;
 
-    // This flag controls whether a dump is automatically
-    // made at the end of a process' lifetime.
-    // It is normally only set in the base packages,
-    // or upon submission. (This overrides submission.)
-    // g_config.procdump = 0;
-
     InitializeCriticalSection(&ProcessDumpCriticalSection);
 
     lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
@@ -1893,27 +2037,20 @@ void init_CAPE()
     // g_config.debug = 2;
 #endif
 
-    // Start the debugger thread if required by package
-    if (DEBUGGER_ENABLED)
-        if (launch_debugger())
-            DoOutputDebugString("Debugger initialised.\n");
-        else
-            DoOutputDebugString("Failed to initialise debugger.\n");
-
     if (base_of_dll_of_interest)
         ImageBase = (PVOID)base_of_dll_of_interest;
     else
         ImageBase = GetModuleHandle(NULL);
 #ifdef _WIN64
-    DoOutputDebugString("CAPE initialised: 64-bit base package loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
+    DoOutputDebugString("CAPE initialised: 64-bit monitor loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #else
-    DoOutputDebugString("CAPE initialised: 32-bit base package loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
+    DoOutputDebugString("CAPE initialised: 32-bit monitor loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
     DoOutputDebugString("Commandline: %s.\n", CommandLine);
 
-#ifdef CAPE_EXTRACTION
-    ExtractionInit();
-#endif
+    if (g_config.extraction)
+        ExtractionInit();
+
     return;
 }

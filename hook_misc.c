@@ -105,30 +105,7 @@ HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
 ) {
 	PVOID ret = 0;
 
-    if (DEBUGGER_ENABLED && VECTORED_HANDLER && First)
-    {
-        if (!CAPEExceptionFilterHandle)
-        {
-            DoOutputDebugString("RtlAddVectoredExceptionHandler hook: Error - CAPE vectored handler not registered.\n");
-            ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
-            LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
-            return ret;
-        }
-
-        // We register the handler at the bottom, this minimizes
-        // our interference and means the handle is valid
-        ret = Old_RtlAddVectoredExceptionHandler(0, Handler);
-
-        if (ret == NULL)
-            return ret;
-
-        // We record the handler address so that
-        // CAPEExceptionFilter can call it directly
-        DoOutputDebugString("RtlAddVectoredExceptionHandler hook: CAPE vectored handler protected as First.\n");
-        SampleVectoredHandler = (SAMPLE_HANDLER)Handler;
-    }
-    else
-        ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
+    ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
 
     LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
 

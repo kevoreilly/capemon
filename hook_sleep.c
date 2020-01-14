@@ -611,7 +611,7 @@ VOID CALLBACK WaitOrTimerCallbackHook(
         return;
     }
     
-    if (DEBUGGER_ENABLED) {
+    if (DebuggerEnabled) {
         DWORD Tid = GetCurrentThreadId();
         DoOutputDebugString("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
         InitNewThreadBreakpoints(Tid);

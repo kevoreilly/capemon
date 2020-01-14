@@ -70,7 +70,7 @@ int read_config(void)
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
-    g_config.procdump = 0;
+    g_config.procdump = 1;
     g_config.procmemdump = 0;
 
 #ifdef CAPE_TRACE
@@ -371,6 +371,15 @@ int read_config(void)
 				g_config.injection = value[0] == '1';
                 if (g_config.injection)
                     DoOutputDebugString("Capture of injected payloads enabled.\n");
+			}
+            else if (!strcmp(key, "combo")) {
+                if (value[0] == '1') {
+                    DoOutputDebugString("Combined payload extractions enabled.\n");
+                    g_config.compression = 1;
+                    g_config.extraction = 1;
+                    g_config.injection = 1;
+                    //g_config.verbose_dumping = 1;
+                }
 			}
             else if (!strcmp(key, "verbose-dumping")) {
 				g_config.verbose_dumping = value[0] == '1';

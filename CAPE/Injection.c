@@ -439,6 +439,12 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
         return;
     }
 
+    CapeMetaData->DumpType = INJECTION_PE;
+
+    CapeMetaData->TargetPid = SectionView->TargetProcessId;
+
+    CapeMetaData->Address = SectionView->LocalView;
+
     Dumped = DumpPEsInRange(SectionView->LocalView, SectionView->ViewSize);
 
     if (Dumped)
@@ -448,8 +454,6 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
         DoOutputDebugString("DumpSectionView: no PE file found in shared section view with local address 0x%p, attempting raw dump.\n", SectionView->LocalView);
 
         CapeMetaData->DumpType = INJECTION_SHELLCODE;
-
-        CapeMetaData->TargetPid = SectionView->TargetProcessId;
 
         if (DumpMemory(SectionView->LocalView, SectionView->ViewSize))
         {
@@ -474,6 +478,8 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
 
         if (NT_SUCCESS(ret))
         {
+            CapeMetaData->DumpType = INJECTION_PE;
+
             Dumped = DumpPEsInRange(BaseAddress, ViewSize);
 
             if (Dumped)
@@ -963,7 +969,7 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
         {
             SetCapeMetaData(INJECTION_PE, Pid, ProcessHandle, NULL);
 
-            CurrentInjectionInfo->ImageDumped = DumpImageInCurrentProcessFixImports((PVOID)Buffer, NULL);
+            CurrentInjectionInfo->ImageDumped = DumpImageInCurrentProcess((PVOID)Buffer);
 
             if (CurrentInjectionInfo->ImageDumped)
             {

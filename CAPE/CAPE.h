@@ -22,8 +22,6 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MAX_SIZE     ((ULONG)0x77000000)
 #define PE_MIN_SIZE     ((ULONG)0x1000)
 #define PE_MAX_SECTIONS 0xFFFF
-//Global debugger switch
-#define DEBUGGER_ENABLED 0
 
 void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -136,7 +134,9 @@ enum {
     QAKBOT_CONFIG           = 0x38,
     QAKBOT_PAYLOAD          = 0x39,
 
-    DATADUMP                = 0x66
+    DATADUMP                = 0x66,
+
+    STACK_REGION            = 0x6c
 };
 
 HANDLE EvilGrabRegHandle;

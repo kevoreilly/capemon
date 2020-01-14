@@ -276,6 +276,9 @@
     <ClCompile Include="CAPE\Injection.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="CAPE\Extraction.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">
@@ -412,6 +415,12 @@
     </ClInclude>
     <ClInclude Include="CAPE\w64wow64\windef.h">
       <Filter>Header Files\CAPE\w64wow64</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Extraction.h">
+      <Filter>Header Files\CAPE</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\Injection.h">
+      <Filter>Header Files\CAPE</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

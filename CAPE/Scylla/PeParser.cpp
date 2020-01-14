@@ -5,7 +5,7 @@
 
 #pragma comment(lib, "Imagehlp.lib")
 
-//#define DEBUG_COMMENTS
+#define DEBUG_COMMENTS
 #define SIZE_LIMIT  0x1000000
 
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
@@ -375,6 +375,8 @@ bool PeParser::readPeSectionsFromProcess()
                     DoOutputDebugString("PeParser::readPeSectionsFromProcess: VirtualSize for last section (%d) ok: 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize);
 #endif
                 }
+                else
+                    listPeSection[i].normalSize = listPeSection[i].sectionHeader.Misc.VirtualSize;
             }
 
             if (i)
@@ -1252,10 +1254,9 @@ bool PeParser::saveCompletePeToDisk(const CHAR *newFile)
 		return false;
 	}
 
-	if (listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData < pNTHeader32->OptionalHeader.FileAlignment
-        || listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData < pNTHeader32->OptionalHeader.FileAlignment)
+	if (listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData < pNTHeader32->OptionalHeader.FileAlignment)
 	{
-        DoOutputDebugString("PE Parser: Error - image seems incomplete: (%d sections, PointerToRawData: 0x%x, SizeOfRawData: 0x%x) - dump failed.\n", getNumberOfSections(), listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData);
+        DoOutputDebugString("PE Parser: Error - image seems incomplete: (%d sections, PointerToRawData: 0x%x) - dump failed.\n", getNumberOfSections(), listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData);
 		return false;
 	}
 

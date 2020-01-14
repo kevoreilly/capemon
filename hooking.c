@@ -27,6 +27,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
+#include "CAPE\Extraction.h"
 
 #ifdef _WIN64
 #define TLS_LAST_WIN32_ERROR 0x68
@@ -38,10 +39,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
-
-#ifdef CAPE_EXTRACTION
-#include "CAPE\Extraction.h"
-#endif
 
 #ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
@@ -69,10 +66,21 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
 	if (!is_in_dll_range(addr)) {
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
         if (AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
-            DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-            if (g_config.verbose_dumping)
-            {
+            DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
+            if (g_config.extraction) {
+                PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
+                if (TrackedRegion) {
+                    TrackedRegion->CanDump = 1;
+                    ProcessTrackedRegion(TrackedRegion);
+                }
+                else if (g_config.verbose_dumping) {
+                    TrackedRegion = AddTrackedRegion((PVOID)addr, 0,0);
+                    TrackedRegion->CanDump = 1;
+                    ProcessTrackedRegion(TrackedRegion);
+                }
+            }
+            else if (g_config.verbose_dumping) {
                 DoOutputDebugString("VerboseDump: Dumping calling region at 0x%p.\n", AllocationBase);
 
                 CapeMetaData->ModulePath = NULL;
@@ -84,13 +92,6 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                 else
                     DumpRegion(AllocationBase);
             }
-#ifdef CAPE_EXTRACTION
-            PTRACKEDREGION TrackedRegion = GetTrackedRegion(addr);
-            if (TrackedRegion) {
-                TrackedRegion->CanDump = 1;
-                ProcessTrackedRegion(TrackedRegion);
-            }
-#endif
         }
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;

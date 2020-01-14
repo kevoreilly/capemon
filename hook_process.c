@@ -27,26 +27,26 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "unhook.h"
 #include "config.h"
-#ifdef CAPE_EXTRACTION
+#include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
-#endif
+#include "CAPE\Extraction.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 
 extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
-extern void UnmapSectionViewHandler(PVOID BaseAddress);
 extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
+extern void UnmapSectionViewHandler(PVOID BaseAddress);
 extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
-#ifdef CAPE_EXTRACTION
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
 extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
-#endif
 
+extern HANDLE g_terminate_event_handle;
+extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 extern void file_handle_terminate();
 extern int DoProcessDump(PVOID CallerBase);
 extern PVOID GetHookCallerBase();
@@ -417,35 +417,33 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	// Process will terminate. Default logging will not work. Be aware: return value not valid
     NTSTATUS ret = 0;
 	lasterror_t lasterror;
-
 	get_lasterrors(&lasterror);
-	if (ProcessHandle == NULL) {
+
+    if (g_config.extraction)
+    {
+        DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
+        g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
+        ProcessTrackedRegions();
+        ClearAllBreakpoints();
+    }
+
+    if (g_config.procdump && !ProcessDumped)
+    {
+        DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
+        DoProcessDump(GetHookCallerBase());
+    }
+
+    if (ProcessHandle == NULL) {
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
 		// for the subsequent call to NtTerminateProcess against our own process handle
-#ifdef CAPE_EXTRACTION
-        ProcessTrackedRegion();
-#endif
-        if (g_config.procdump && !ProcessDumped)
-        {
-            DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-            DoProcessDump(GetHookCallerBase());
-        }
 		process_shutting_down = 1;
-		LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
+		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
         file_handle_terminate();
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
-#ifdef CAPE_EXTRACTION
-        ProcessTrackedRegion();
-#endif
-        if (g_config.procdump && !ProcessDumped)
-        {
-            DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-            DoProcessDump(GetHookCallerBase());
-        }
 		process_shutting_down = 1;
-		LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
+		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 		pipe("KILL:%d", GetCurrentProcessId());
 		log_free();
         file_handle_terminate();
@@ -454,11 +452,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		DWORD PID = pid_from_process_handle(ProcessHandle);
 		if (is_protected_pid(PID)) {
 			ret = STATUS_ACCESS_DENIED;
-			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
+			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 			return ret;
 		}
 		else {
-			LOQ_ntstatus("process", "phl", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus, "ProcessId", GetCurrentProcessId());
+			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 		}
 		pipe("KILL:%d", PID);
 	}
@@ -568,9 +566,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	if (NT_SUCCESS(ret)) {
         if (g_config.injection)
             MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
-#ifdef CAPE_EXTRACTION
-        ProtectionHandler(*BaseAddress, ViewSize, Win32Protect, 0);
-#endif
+        //if (g_config.extraction)
+        //    ProtectionHandler(*BaseAddress, *ViewSize, Win32Protect, 0);
         if (!g_config.single_process && pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
@@ -594,10 +591,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
     NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
         ZeroBits, RegionSize, AllocationType, Protect);
 
-#ifdef CAPE_EXTRACTION
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
         AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
-#endif
 
     LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
         "RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
@@ -769,9 +764,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 ) {
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
-#ifdef CAPE_EXTRACTION
     PTRACKEDREGION TrackedRegion;
-#endif
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect && *NumberOfBytesToProtect >= 0x2000 &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
@@ -800,15 +793,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		set_lasterrors(&lasterrors);
 	}
 
-#ifdef CAPE_EXTRACTION
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
     {
         ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, *OldAccessProtection);
 
         if ((TrackedRegion = GetTrackedRegion(*BaseAddress)) && TrackedRegion->Guarded)
             *OldAccessProtection &= (~PAGE_GUARD);
     }
-#endif
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
 		(ULONG_PTR)meminfo.AllocationBase >= get_stack_bottom() && (((ULONG_PTR)meminfo.AllocationBase + meminfo.RegionSize) <= get_stack_top())) {
@@ -837,9 +828,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 ) {
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
-#ifdef CAPE_EXTRACTION
     PTRACKEDREGION TrackedRegion;
-#endif
 
 	if (flNewProtect == PAGE_EXECUTE_READ && GetCurrentProcessId() == our_getprocessid(hProcess) &&
 		is_in_dll_range((ULONG_PTR)lpAddress))
@@ -856,15 +845,13 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		set_lasterrors(&lasterrors);
 	}
 
-#ifdef CAPE_EXTRACTION
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
+	if (NT_SUCCESS(ret) && g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
     {
         ProtectionHandler(lpAddress, dwSize, flNewProtect, *lpflOldProtect);
 
         if ((TrackedRegion = GetTrackedRegion(lpAddress)) && TrackedRegion->Guarded)
             *lpflOldProtect &= (~PAGE_GUARD);
     }
-#endif
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && GetCurrentProcessId() == our_getprocessid(hProcess) &&
 		(ULONG_PTR)meminfo.AllocationBase >= get_stack_bottom() && (((ULONG_PTR)meminfo.AllocationBase + meminfo.RegionSize) <= get_stack_top())) {
@@ -885,10 +872,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
     IN OUT  PSIZE_T RegionSize,
     IN      ULONG FreeType
 ) {
-#ifdef CAPE_EXTRACTION
-    if (!called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+    if (g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
         FreeHandler(*BaseAddress);
-#endif
 
     NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
         RegionSize, FreeType);
@@ -1005,7 +990,15 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	// flush logs prior to handling of an exception without having to register a vectored exception handler
 	log_flush();
 
-    RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
+    if (DebuggerEnabled)
+    {
+        if (CAPEExceptionDispatcher(ExceptionRecord, Context))
+            return 1;
+        else
+            RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
+    }
+    else
+        RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
 
     if (!RetVal && ExceptionRecord) {
         if (ExceptionRecord->NumberParameters == 1) {
