@@ -41,13 +41,16 @@ void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
 
     memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
     _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
-#ifdef STANDALONE
-    OutputDebugString(DebugOutput);
-#else
-    memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
-    pipe(PipeOutput, strlen(PipeOutput));
-#endif
+
+    if (g_config.stand_alone)
+        OutputDebugString(DebugOutput);
+    else
+    {
+        memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
+        pipe(PipeOutput, strlen(PipeOutput));
+    }
+
     va_end(args);
 
 	return;
@@ -78,13 +81,15 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 
     memset(ErrorOutput, 0, MAX_PATH*sizeof(TCHAR));
     _sntprintf_s(ErrorOutput, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
-#ifdef STANDALONE
-    OutputDebugString(ErrorOutput);
-#else
-    memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
-    pipe(PipeOutput, strlen(PipeOutput));
-#endif
+
+    if (g_config.stand_alone)
+        OutputDebugString(ErrorOutput);
+    else
+    {
+        memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
+        pipe(PipeOutput, strlen(PipeOutput));
+    }
 
     va_end(args);
 
@@ -95,10 +100,10 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 void DoOutputFile(_In_ LPCTSTR lpOutputFile)
 //**************************************************************************************
 {
-    memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_DUMP:%s", lpOutputFile);
-    pipe(PipeOutput, strlen(PipeOutput));
-
+    TCHAR OutputBuffer[MAX_PATH];
+    memset(OutputBuffer, 0, MAX_PATH*sizeof(TCHAR));
+    _sntprintf_s(OutputBuffer, MAX_PATH, MAX_PATH, "FILE_DUMP:%s", lpOutputFile);
+    pipe(OutputBuffer, strlen(OutputBuffer));
 	return;
 }
 
@@ -106,6 +111,7 @@ void DoOutputFile(_In_ LPCTSTR lpOutputFile)
 void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 //**************************************************************************************
 {
+#ifdef CAPE_V1
     char MetadataPath[MAX_PATH];
     HANDLE hMetadata;
     SIZE_T BufferSize;
@@ -164,13 +170,13 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, "Process dump output file: %s", lpOutputFile);
-#ifdef STANDALONE
-        OutputDebugString(DebugOutput);
-#else
+
+        if (g_config.stand_alone)
+            OutputDebugString(DebugOutput);
+
         memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_DUMP:%s", lpOutputFile);
         pipe(PipeOutput, strlen(PipeOutput));
-#endif
 
 	}
 	else if (CapeMetaData && CapeMetaData->DumpType != PROCDUMP)
@@ -231,16 +237,102 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, "CAPE Output file: %s", lpOutputFile);
-#ifdef STANDALONE
-        OutputDebugString(DebugOutput);
-#else
+
+        if (g_config.stand_alone)
+            OutputDebugString(DebugOutput);
+
         memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_CAPE:%s", lpOutputFile);
         pipe(PipeOutput, strlen(PipeOutput));
-#endif
 	}
 	else
 		DoOutputDebugString("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
 
 	return;
+#else
+    SIZE_T BufferSize;
+	char *MetadataString;
+
+    if (CapeMetaData && CapeMetaData->DumpType == PROCDUMP)
+	{
+		BufferSize = 4 * (MAX_PATH + MAX_INT_STRING_LEN + 2) + 2; //// max size string can be
+
+		MetadataString = malloc(BufferSize);
+
+        // if our file of interest is a dll, we need to update cape module path now
+        if (base_of_dll_of_interest)
+        {
+            if (g_config.file_of_interest == NULL)
+            {
+                DoOutputDebugString("CAPE Error: g_config.file_of_interest is NULL.\n", g_config.file_of_interest);
+                return;
+            }
+
+            CapeMetaData->ModulePath = (char*)malloc(MAX_PATH);
+            WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)g_config.file_of_interest, (int)wcslen(g_config.file_of_interest)+1, CapeMetaData->ModulePath, MAX_PATH, NULL, NULL);
+        }
+        else
+            CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
+
+		// This metadata format is specific to process dumps
+		_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+
+        memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, "Process dump output file: %s", lpOutputFile);
+        if (g_config.stand_alone)
+            OutputDebugString(DebugOutput);
+        else
+        {
+            memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
+            _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_CAPE:%s|%d|%s", lpOutputFile, CapeMetaData->Pid, MetadataString);
+            pipe(PipeOutput, strlen(PipeOutput));
+        }
+	}
+	else if (CapeMetaData && CapeMetaData->DumpType != PROCDUMP)
+	{
+		BufferSize = 4 * (MAX_PATH + MAX_INT_STRING_LEN + 2) + 2; //// max size string can be
+
+		MetadataString = malloc(BufferSize);
+
+        if (!CapeMetaData->ProcessPath)
+            CapeMetaData->ProcessPath = "Unknown path";
+        CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
+
+		if (CapeMetaData->DumpType == EXTRACTION_PE || CapeMetaData->DumpType == EXTRACTION_SHELLCODE)
+        {
+            // Extraction-specific format
+            _snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%p;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
+        }
+		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE || CapeMetaData->DumpType == EVILGRAB_PAYLOAD || CapeMetaData->DumpType == EVILGRAB_DATA)
+        {
+            if (CapeMetaData->TargetProcess && CapeMetaData->ProcessPath)
+            // Injection-specific format
+                _snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?%d;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
+        }
+		else if (CapeMetaData->DumpType == SEDRECO_DATA)
+        {
+            // Sedreco-specific format where TargetPid is used for config item index #
+            _snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%x;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, (DWORD)CapeMetaData->TargetPid);
+        }
+		else
+            if (CapeMetaData->ProcessPath)
+				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+
+        memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(DebugOutput, MAX_PATH, MAX_PATH, "CAPE Output file: %s", lpOutputFile);
+
+        if (g_config.stand_alone)
+            OutputDebugString(DebugOutput);
+        else
+        {
+            memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
+            _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_CAPE:%s|%d|%s", lpOutputFile, CapeMetaData->Pid, MetadataString);
+            pipe(PipeOutput, strlen(PipeOutput));
+        }
+	}
+	else
+		DoOutputDebugString("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
+
+	return;
+#endif
 }

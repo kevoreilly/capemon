@@ -130,6 +130,9 @@ struct _g_config {
 
     // prevent monitoring child processes
     int single_process;
+
+    // for monitor testing
+    int stand_alone;
 };
 
 extern struct _g_config g_config;
