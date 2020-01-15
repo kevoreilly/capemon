@@ -33,7 +33,7 @@ typedef unsigned __int64 QWORD;
 
 #define	PE_HEADER_LIMIT 0x200
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
-#define DEBUG_COMMENTS
+//#define DEBUG_COMMENTS
 
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
