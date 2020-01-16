@@ -142,22 +142,47 @@ int called_by_hook(void)
 	return __called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer);
 }
 
-void dump_on_api(hook_t *h)
+void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 {
 	unsigned int i;
-	hook_info_t *hookinfo = hook_info();
+	ULONG_PTR main_caller_retaddr, parent_caller_retaddr;
+    PVOID AllocationBase = NULL;
+
+	main_caller_retaddr = hookinfo->main_caller_retaddr;
+	parent_caller_retaddr = hookinfo->parent_caller_retaddr;
+
+#ifdef CAPE_TRACE
+    for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
+		if (!g_config.base_on_apiname[i])
+			break;
+		if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
+            DoOutputDebugString("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+            AllocationBase = GetHookCallerBase(hookinfo);
+            if (AllocationBase) {
+                BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
+                if (BreakpointsSet)
+                    DoOutputDebugString("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
+                else
+                    DoOutputDebugString("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
+            }
+            else
+                DoOutputDebugString("Base-on-API: GetHookCallerBase fail.\n");
+            break;
+        }
+    }
+#endif
 
 	for (i = 0; i < ARRAYSIZE(g_config.dump_on_apinames); i++) {
-        PVOID AllocationBase;
 		if (!g_config.dump_on_apinames[i])
 			break;
 		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
-            DoOutputDebugString("Dump-on-API: GetHookCallerBase 0x%p main_caller_retaddr 0x%p parent_caller_retaddr 0x%p.\n", GetHookCallerBase(), hookinfo->main_caller_retaddr, hookinfo->parent_caller_retaddr);
-            if (hookinfo->main_caller_retaddr) {
-                AllocationBase = GetAllocationBase((PVOID)hookinfo->main_caller_retaddr);
+            DoOutputDebugString("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+            if (main_caller_retaddr) {
                 if (!AllocationBase)
-                    AllocationBase = GetAllocationBase((PVOID)hookinfo->parent_caller_retaddr);
+                    AllocationBase = GetHookCallerBase(hookinfo);
                 if (AllocationBase) {
+                    if (g_config.dump_on_api_type)
+                        CapeMetaData->DumpType = g_config.dump_on_api_type;
                     if (DumpImageInCurrentProcess(AllocationBase)) {
                         ModuleDumped = TRUE;
                         DoOutputDebugString("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
@@ -173,40 +198,23 @@ void dump_on_api(hook_t *h)
                 else
                     DoOutputDebugString("Dump-on-API: Failed to obtain current module base address.\n");
             }
-            return;
+            break;
         }
-	}
-
-	return;
-}
+    }
 
 #ifdef CAPE_TRACE
-void base_on_api(hook_t *h)
-{
-	unsigned int i;
-	hook_info_t *hookinfo = hook_info();
-
-	for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
-		if (!g_config.base_on_apiname[i])
-			break;
-		if (!BreakpointsSet && !called_by_hook() && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
-            DoOutputDebugString("Base-on-API: %s call detected in thread %d.\n", g_config.base_on_apiname[i], GetCurrentThreadId());
-            PVOID AllocationBase = GetHookCallerBase();
-            if (AllocationBase) {
-                BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
-                if (BreakpointsSet)
-                    DoOutputDebugString("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
-                else
-                    DoOutputDebugString("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
-            }
-            else
-                DoOutputDebugString("Base-on-API: GetHookCallerBase fail.\n");
-        }
-	}
-
-	return;
-}
+    if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
+        DoOutputDebugString("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
+        TraceRunning = TRUE;
+        if (main_caller_retaddr)
+            BreakpointOnReturn((PVOID)main_caller_retaddr);
+        else if (parent_caller_retaddr)
+            BreakpointOnReturn((PVOID)parent_caller_retaddr);
+        else
+            BreakpointOnReturn((PVOID)hookinfo->return_address);
+    }
 #endif
+}
 
 extern BOOLEAN is_ignored_thread(DWORD tid);
 static hook_info_t tmphookinfo;
@@ -250,10 +258,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 		operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
 
-		dump_on_api(h);
-#ifdef CAPE_TRACE
-        base_on_api(h);
-#endif
+		api_dispatch(h, hookinfo);
 
 		return 1;
 	}

@@ -106,6 +106,7 @@ struct _g_config {
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
 	char *base_on_apiname[EXCLUSION_MAX];
  	char *dump_on_apinames[EXCLUSION_MAX];
+    int dump_on_api_type;
 
     // behavioural payload extraction options
     int compression;
@@ -133,6 +134,9 @@ struct _g_config {
 
     // for monitor testing
     int stand_alone;
+
+    // for Hancitor config & payload extraction
+    int hancitor;
 };
 
 extern struct _g_config g_config;

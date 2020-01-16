@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.h"
 #include "hooking.h"
 #include "Shlwapi.h"
+#include "CAPE\CAPE.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
@@ -275,6 +276,9 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
+			else if (!strcmp(key, "dump-on-api-type")) {
+                g_config.dump_on_api_type = (unsigned int)strtoul(value, NULL, 0);
+            }
 #ifdef CAPE_TRACE
             else if (!strcmp(key, "bp0")) {
                 if (!strncmp(value, "ep", 2)) {
@@ -395,6 +399,15 @@ int read_config(void)
 				g_config.single_process = value[0] == '1';
                 if (g_config.single_process)
                     DoOutputDebugString("Monitoring child processes disabled.\n");
+			}
+            else if (!strcmp(key, "hancitor")) {
+				g_config.hancitor = value[0] == '1';
+                if (g_config.hancitor) {
+                    g_config.dump_on_apinames[0] = "InternetCrackUrlA";
+                    g_config.dump_on_api_type = HANCITOR_PAYLOAD;
+                    g_config.procdump = 0;
+                    DoOutputDebugString("Hancitor config & payload extraction enabled.\n");
+                }
 			}
             else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}

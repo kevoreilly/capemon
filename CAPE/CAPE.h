@@ -131,6 +131,9 @@ enum {
     CERBER_CONFIG           = 0x30,
     CERBER_PAYLOAD          = 0x31,
 
+    HANCITOR_CONFIG         = 0x34,
+    HANCITOR_PAYLOAD        = 0x35,
+
     QAKBOT_CONFIG           = 0x38,
     QAKBOT_PAYLOAD          = 0x39,
 
