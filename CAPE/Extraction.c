@@ -969,20 +969,20 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
         DoOutputDebugString("ProcessTrackedRegion: Found and dumped PE image(s) in range 0x%p - 0x%p.\n", TrackedRegion->AllocationBase, (BYTE*)TrackedRegion->AllocationBase + TrackedRegion->RegionSize);
         ClearTrackedRegion(TrackedRegion);
     }
-    //else
-    //{
-    //    SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
-    //
-    //    TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
-    //
-    //    if (TrackedRegion->PagesDumped)
-    //    {
-    //        DoOutputDebugString("ProcessTrackedRegion: dumped executable memory range at 0x%p.\n", TrackedRegion->AllocationBase);
-    //        ClearTrackedRegion(TrackedRegion);
-    //    }
-    //    else
-    //        DoOutputDebugString("ProcessTrackedRegion: failed to dump executable memory range at 0x%p.\n", TrackedRegion->AllocationBase);
-    //}
+    else
+    {
+        SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
+
+        TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
+
+        if (TrackedRegion->PagesDumped)
+        {
+            DoOutputDebugString("ProcessTrackedRegion: dumped executable memory range at 0x%p.\n", TrackedRegion->AllocationBase);
+            ClearTrackedRegion(TrackedRegion);
+        }
+        else
+            DoOutputDebugString("ProcessTrackedRegion: failed to dump executable memory range at 0x%p.\n", TrackedRegion->AllocationBase);
+    }
 }
 
 //**************************************************************************************
@@ -1073,7 +1073,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 
         if (Protect & EXECUTABLE_FLAGS)
         {
-            if (GuardPagesDisabled && RegionSize > EXTRACTION_MIN_SIZE)
+            if (GuardPagesDisabled)
             {
                 TrackedRegion->BreakpointsSet = ActivateBreakpoints(TrackedRegion, NULL);
 
@@ -1082,7 +1082,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
                 else
                     DoOutputDebugString("AllocationHandler: Error - unable to activate breakpoints around address 0x%p.\n", BaseAddress);
             }
-            else if (!GuardPagesDisabled)
+            else
             {
                 TrackedRegion->Guarded = ActivateGuardPages(TrackedRegion);
                 //TrackedRegion->Guarded = ActivateGuardPagesOnProtectedRange(TrackedRegion);
@@ -1241,7 +1241,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
         TrackedRegion->Protect = Protect;
     }
 
-    if (GuardPagesDisabled && RegionSize > EXTRACTION_MIN_SIZE)
+    if (GuardPagesDisabled)
     {
         TrackedRegion->BreakpointsSet = ActivateBreakpoints(TrackedRegion, NULL);
 
@@ -1250,7 +1250,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
         else
             DoOutputDebugString("ProtectionHandler: Error - unable to activate breakpoints around address 0x%p.\n", Address);
     }
-    else if (!GuardPagesDisabled)
+    else
     {
         TrackedRegion->Guarded = ActivateGuardPages(TrackedRegion);
         //TrackedRegion->Guarded = ActivateGuardPagesOnProtectedRange(TrackedRegion);
@@ -1977,13 +1977,14 @@ BOOL EntryPointExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
 	DoOutputDebugString("EntryPointExecCallback: Breakpoint %i at Address 0x%p.\n", pBreakpointInfo->Register, pBreakpointInfo->Address);
 
+    ContextClearTrackedRegion(ExceptionInfo->ContextRecord, TrackedRegion);
+
     SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
 
     if (DumpPEsInTrackedRegion(TrackedRegion))
     {
         TrackedRegion->PagesDumped = TRUE;
         DoOutputDebugString("EntryPointExecCallback: successfully dumped module.\n");
-        ContextClearTrackedRegion(ExceptionInfo->ContextRecord, TrackedRegion);
         return TRUE;
     }
     else
@@ -2619,17 +2620,16 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
     if (GuardPagesDisabled)
     {
-        SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
+        ContextClearTrackedRegion(ExceptionInfo->ContextRecord, TrackedRegion);
 
         DoOutputDebugString("ShellcodeExecCallback: About to scan region for a PE image (base 0x%p, size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
 
+
+        SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
         TrackedRegion->PagesDumped = DumpPEsInRange(TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
 
         if (TrackedRegion->PagesDumped)
-        {
             DoOutputDebugString("ShellcodeExecCallback: PE image(s) detected and dumped.\n");
-            ContextClearTrackedRegion(ExceptionInfo->ContextRecord, TrackedRegion);
-        }
         else
         {
             SIZE_T DumpSize = (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase;
@@ -2641,10 +2641,7 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
             TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->MemInfo.AllocationBase, DumpSize);
 
             if (TrackedRegion->PagesDumped)
-            {
                 DoOutputDebugString("ShellcodeExecCallback: successfully dumped memory range at 0x%p (size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, DumpSize);
-                ContextClearTrackedRegion(ExceptionInfo->ContextRecord, TrackedRegion);
-            }
             else
                 DoOutputDebugString("ShellcodeExecCallback: failed to dump memory range at 0x%p (size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, DumpSize);
         }
@@ -2887,7 +2884,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
         ClearAllBreakpoints();
 
         // We process the previous region if it contains code/data
-        if (CurrentBreakpointRegion->AllocationBase != GetModuleHandle(NULL) && ScanForNonZero(CurrentBreakpointRegion->AllocationBase, CurrentBreakpointRegion->RegionSize))
+        if (!CurrentBreakpointRegion->PagesDumped && CurrentBreakpointRegion->AllocationBase != ImageBase && ScanForNonZero(CurrentBreakpointRegion->AllocationBase, CurrentBreakpointRegion->RegionSize))
         {
             CurrentBreakpointRegion->CanDump = 1;
             ProcessTrackedRegion(CurrentBreakpointRegion);
