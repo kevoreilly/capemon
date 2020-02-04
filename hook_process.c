@@ -419,20 +419,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	lasterror_t lasterror;
 	get_lasterrors(&lasterror);
 
-    if (g_config.extraction)
-    {
-        DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
-        g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
-        ProcessTrackedRegions();
-        ClearAllBreakpoints();
-    }
-
-    if (g_config.procdump && !ProcessDumped)
-    {
-        DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-        DoProcessDump(GetHookCallerBase());
-    }
-
     if (ProcessHandle == NULL) {
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
@@ -460,8 +446,22 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		}
 		pipe("KILL:%d", PID);
 	}
-	set_lasterrors(&lasterror);
 
+    if (process_shutting_down && g_config.extraction)
+    {
+        DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
+        g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
+        ProcessTrackedRegions();
+        ClearAllBreakpoints();
+    }
+
+    if (process_shutting_down && g_config.procdump && !ProcessDumped)
+    {
+        DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
+        DoProcessDump(GetHookCallerBase());
+    }
+
+	set_lasterrors(&lasterror);
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);
     return ret;
 }
