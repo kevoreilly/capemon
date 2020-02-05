@@ -2042,9 +2042,9 @@ void init_CAPE()
     else
         ImageBase = GetModuleHandle(NULL);
 #ifdef _WIN64
-    DoOutputDebugString("CAPE initialised: 64-bit monitor loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
+    DoOutputDebugString("CAPE initialised: 64-bit monitor loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #else
-    DoOutputDebugString("CAPE initialised: 32-bit monitor loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", GetCurrentProcessId(), g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
+    DoOutputDebugString("CAPE initialised: 32-bit monitor loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
     DoOutputDebugString("Commandline: %s.\n", CommandLine);

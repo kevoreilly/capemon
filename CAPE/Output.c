@@ -284,7 +284,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         else
         {
             memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-            _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_CAPE:%s|%d|%s", lpOutputFile, CapeMetaData->Pid, MetadataString);
+            _sntprintf_s(PipeOutput, MAX_PATH, MAX_PATH, "FILE_DUMP:%s|%d|%s", lpOutputFile, CapeMetaData->Pid, MetadataString);
             pipe(PipeOutput, strlen(PipeOutput));
         }
 	}

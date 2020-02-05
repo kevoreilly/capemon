@@ -135,6 +135,9 @@ struct _g_config {
     // for monitor testing
     int stand_alone;
 
+    // for dumping of crypto API buffers
+    int dump_crypto;
+
     // for Hancitor config & payload extraction
     int hancitor;
 };
