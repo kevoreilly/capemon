@@ -60,6 +60,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 				}
 				ret = errors.Win32Error = ERROR_FILE_NOT_FOUND;
 				errors.NtstatusError = STATUS_OBJECT_NAME_NOT_FOUND;
+                errors.Eflags = 0;
 				set_lasterrors(&errors);
 				break;
 			}
@@ -113,6 +114,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExW,
 				}
 				ret = errors.Win32Error = ERROR_FILE_NOT_FOUND;
 				errors.NtstatusError = STATUS_OBJECT_NAME_NOT_FOUND;
+                errors.Eflags = 0;
 				set_lasterrors(&errors);
 				break;
 			}

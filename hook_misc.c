@@ -1008,6 +1008,7 @@ HOOKDEF(DWORD, WINAPI, WNetGetProviderNameW,
 		ret = ERROR_NO_NETWORK;
 		lasterrors.Win32Error = ERROR_NO_NETWORK;
 		lasterrors.NtstatusError = STATUS_ENTRYPOINT_NOT_FOUND;
+        lasterrors.Eflags = 0;
 	}
 	else if (ret == NO_ERROR && lpProviderName) {
 		wcscpy(lpProviderName, tmp);

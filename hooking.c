@@ -308,7 +308,8 @@ void set_lasterrors(lasterror_t *errors)
 	*(DWORD *)(teb + TLS_LAST_WIN32_ERROR) = errors->Win32Error;
 	*(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR) = errors->NtstatusError;
 
-    __writeeflags(errors->Eflags);
+    if ((errors->Eflags))
+        __writeeflags(errors->Eflags);
 }
 
 void hook_enable()
