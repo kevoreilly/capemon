@@ -966,7 +966,9 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExA,
         lpFindFileData, fSearchOp, lpSearchFilter, dwAdditionalFlags);
 
 	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && lpFileName &&
-		(!_strnicmp(lpFileName, g_config.analyzer, strlen(g_config.analyzer)) || !_strnicmp(lpFileName, g_config.results, strlen(g_config.results)))
+		(!_strnicmp(lpFileName, g_config.analyzer, strlen(g_config.analyzer))
+            || !_strnicmp(lpFileName, g_config.results, strlen(g_config.results))
+            || !_strnicmp(lpFileName, g_config.pythonpath, strlen(g_config.pythonpath)))
 		) {
 		lasterror_t lasterror;
 
@@ -979,7 +981,8 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExA,
 	}
 	else if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE &&
 		(!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.analyzer + 3) ||
-			!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.results + 3)))
+			!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.results + 3) ||
+			!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.pythonpath + 3)))
 	{
 		BOOL result = FindNextFileA(ret, lpFindFileData);
 		if (result == FALSE) {
@@ -987,7 +990,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExA,
 
 			lasterror.Win32Error = 0x00000002;
 			lasterror.NtstatusError = 0xc000000f;
-            lasterror.Eflags = 0;
+			lasterror.Eflags = 0;
 			FindClose(ret);
 			set_lasterrors(&lasterror);
 			ret = INVALID_HANDLE_VALUE;
@@ -1025,20 +1028,23 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExW,
         lpFindFileData, fSearchOp, lpSearchFilter, dwAdditionalFlags);
 
 	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && lpFileName &&
-		(!wcsnicmp(lpFileName, g_config.w_analyzer, wcslen(g_config.w_analyzer)) || !wcsnicmp(lpFileName, g_config.w_results, wcslen(g_config.w_results)))
+		(!wcsnicmp(lpFileName, g_config.w_analyzer, wcslen(g_config.w_analyzer))
+            || !wcsnicmp(lpFileName, g_config.w_results, wcslen(g_config.w_results))
+            || !wcsnicmp(lpFileName, g_config.w_pythonpath, wcslen(g_config.w_pythonpath)))
 	) {
 		lasterror_t lasterror;
 
 		lasterror.Win32Error = 0x00000002;
 		lasterror.NtstatusError = 0xc000000f;
-        lasterror.Eflags = 0;
+		lasterror.Eflags = 0;
 		FindClose(ret);
 		set_lasterrors(&lasterror);
 		ret = INVALID_HANDLE_VALUE;
 	}
 	else if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE &&
 		(!wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_analyzer + 3) ||
-		 !wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_results + 3)))
+		 !wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_results + 3) ||
+		 !wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_pythonpath + 3)))
 	{
 		BOOL result = FindNextFileW(ret, lpFindFileData);
 		if (result == FALSE) {
@@ -1076,8 +1082,10 @@ HOOKDEF(BOOL, WINAPI, FindNextFileW,
 ) {
 	BOOL ret = Old_FindNextFileW(hFindFile, lpFindFileData);
 
-	while (!g_config.no_stealth && ret && (!wcsicmp(lpFindFileData->cFileName, g_config.w_analyzer + 3) ||
-		!wcsicmp(lpFindFileData->cFileName, g_config.w_results + 3))) {
+	while (!g_config.no_stealth && ret && (
+        !wcsicmp(lpFindFileData->cFileName, g_config.w_analyzer + 3) ||
+		!wcsicmp(lpFindFileData->cFileName, g_config.w_results + 3) ||
+		!wcsicmp(lpFindFileData->cFileName, g_config.w_pythonpath + 3))) {
 		ret = Old_FindNextFileW(hFindFile, lpFindFileData);
 	}
 

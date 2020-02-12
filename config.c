@@ -109,6 +109,12 @@ int read_config(void)
 				for (i = 0; i < ARRAYSIZE(g_config.results); i++)
 					g_config.w_results[i] = (wchar_t)(unsigned short)g_config.results[i];
 			}
+			else if (!strcmp(key, "pythonpath")) {
+                strncpy(g_config.pythonpath, value,
+                    ARRAYSIZE(g_config.pythonpath) - 1);
+				for (i = 0; i < ARRAYSIZE(g_config.pythonpath); i++)
+					g_config.w_pythonpath[i] = (wchar_t)(unsigned short)g_config.pythonpath[i];
+			}
 			else if (!strcmp(key, "file-of-interest")) {
 				unsigned int len = (unsigned int)strlen(value);
 				if (len > 1) {
