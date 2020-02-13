@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // length of a hardcoded unicode string
 #define UNILEN(x) (sizeof(x) / sizeof(wchar_t) - 1)
 
+unsigned int dropped_count;
 extern BOOL FilesDumped;
 
 typedef struct _file_record_t {
@@ -57,6 +58,8 @@ void file_init()
 
     lookup_init(&g_files);
 	lookup_init(&g_file_logs);
+
+    dropped_count = 0;
 }
 
 static void add_file_to_log_tracking(HANDLE fhandle)
@@ -89,28 +92,36 @@ void remove_file_from_log_tracking(HANDLE fhandle)
 
 static void new_file_path_ascii(const char *fname)
 {
-	char *absolutename = malloc(32768);
+	if (dropped_count >= g_config.dropped_limit)
+        return;
+    char *absolutename = malloc(32768);
 	if (absolutename != NULL) {
 		unsigned int len;
 		ensure_absolute_ascii_path(absolutename, fname);
 		len = (unsigned int)strlen(absolutename);
 		pipe("FILE_NEW:%s", len, absolutename);
+        dropped_count++;
 	}
 }
 
 static void new_file_path_unicode(const wchar_t *fname)
 {
+	if (dropped_count >= g_config.dropped_limit)
+        return;
 	wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
 	if (absolutename != NULL) {
 		unsigned int len;
 		ensure_absolute_unicode_path(absolutename, fname);
 		len = lstrlenW(absolutename);
 		pipe("FILE_NEW:%S", len, absolutename);
+        dropped_count++;
 	}
 }
 
 static void new_file(const UNICODE_STRING *obj)
 {
+	if (dropped_count >= g_config.dropped_limit)
+        return;
     const wchar_t *str = obj->Buffer;
     unsigned int len = obj->Length / sizeof(wchar_t);
 
@@ -118,6 +129,7 @@ static void new_file(const UNICODE_STRING *obj)
     // such as C:abc.txt)
     if(isalpha(str[0]) != 0 && str[1] == ':') {
         pipe("FILE_NEW:%S", len, str);
+        dropped_count++;
     }
 }
 
@@ -507,7 +519,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeleteFile,
 	path_from_object_attributes(ObjectAttributes, path, MAX_PATH_PLUS_TOLERANCE);
 	ensure_absolute_unicode_path(absolutepath, path);
 
-	pipe("FILE_DEL:%Z", absolutepath);
+    if (dropped_count < g_config.dropped_limit) {
+        pipe("FILE_DEL:%Z", absolutepath);
+        dropped_count++;
+    }
 
     ret = Old_NtDeleteFile(ObjectAttributes);
 	LOQ_ntstatus("filesystem", "u", "FileName", absolutepath);
@@ -681,10 +696,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 	path_from_handle(FileHandle, fname, 32768);
 	ensure_absolute_unicode_path(absolutepath, fname);
 
-	if(FileInformation != NULL && Length == sizeof(BOOLEAN) &&
+	if (FileInformation != NULL && Length == sizeof(BOOLEAN) &&
             FileInformationClass == FileDispositionInformation &&
+            dropped_count < g_config.dropped_limit &&
             *(BOOLEAN *) FileInformation != FALSE) {
 		pipe("FILE_DEL:%Z", absolutepath);
+        dropped_count++;
     }
 
 	if (FileInformation != NULL && FileInformationClass == FileRenameInformation) {
@@ -697,8 +714,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
         FileInformation, Length, FileInformationClass);
 
 	if (FileInformation != NULL && FileInformationClass == FileRenameInformation) {
-        if(NT_SUCCESS(ret))
-                pipe("FILE_MOVE:%Z::%Z", absolutepath, renamepath);
+        if (NT_SUCCESS(ret) && dropped_count < g_config.dropped_limit) {
+            pipe("FILE_MOVE:%Z::%Z", absolutepath, renamepath);
+            dropped_count++;
+        }
         LOQ_ntstatus("filesystem", "puiu", "FileHandle", FileHandle, "HandleName", absolutepath, "FileInformationClass", FileInformationClass,
         "FileName", renamepath);
     }
@@ -842,11 +861,14 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 	LOQ_bool("filesystem", "uFh", "ExistingFileName", path,
         "NewFileName", lpNewFileName, "Flags", dwFlags);
     if (ret != FALSE) {
-		if (lpNewFileName)
+		if (lpNewFileName && dropped_count < g_config.dropped_limit) {
 			pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
-		else {
+            dropped_count++;
+        }
+		else if (dropped_count < g_config.dropped_limit) {
 			// we can do this here because it's not scheduled for deletion until reboot
 			pipe("FILE_DEL:%Z", path);
+            dropped_count++;
 		}
     }
 
@@ -901,10 +923,16 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 			"NewFileName", lpNewFileName, "Flags", dwFlags);
 		if (ret != FALSE) {
 			if (lpNewFileName)
-				pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
+				if (dropped_count < g_config.dropped_limit) {
+                    pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
+                    dropped_count++;
+                }
 			else {
 				// we can do this here because it's not scheduled for deletion until reboot
-				pipe("FILE_DEL:%Z", path);
+				if (dropped_count < g_config.dropped_limit) {
+                    pipe("FILE_DEL:%Z", path);
+                    dropped_count++;
+                }
 			}
 		}
 
@@ -1191,7 +1219,10 @@ HOOKDEF(BOOL, WINAPI, DeleteFileA,
 
 	ensure_absolute_ascii_path(path, lpFileName);
 
-	pipe("FILE_DEL:%z", path);
+    if (dropped_count < g_config.dropped_limit) {
+        pipe("FILE_DEL:%z", path);
+        dropped_count++;
+    }
 
     ret = Old_DeleteFileA(lpFileName);
 	LOQ_bool("filesystem", "s", "FileName", path);
@@ -1208,7 +1239,10 @@ HOOKDEF(BOOL, WINAPI, DeleteFileW,
 	if (path) {
 		ensure_absolute_unicode_path(path, lpFileName);
 
-		pipe("FILE_DEL:%Z", path);
+        if (dropped_count < g_config.dropped_limit) {
+            pipe("FILE_DEL:%Z", path);
+            dropped_count++;
+        }
 	}
 
     ret = Old_DeleteFileW(lpFileName);

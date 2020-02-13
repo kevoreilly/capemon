@@ -106,6 +106,9 @@ struct _g_config {
     //unsigned int host_ip;
     //unsigned short host_port;
 
+	// Dropped files limit
+	unsigned int dropped_limit;
+
 	BOOLEAN suspend_logging;
 
 	char *excluded_apinames[EXCLUSION_MAX];

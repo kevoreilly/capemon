@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 
+extern unsigned int dropped_count;
 extern BOOL DumpRegion(PVOID Address);
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 
@@ -89,7 +90,7 @@ HOOKDEF(SECURITY_STATUS, WINAPI, SslDecryptPacket,
 	if (pcbResult > 0)
 	{
 		/* Only use the large buffer logger for the first sequence to avoid logging large amounts of data that
-		   is not the initial response (for example file downloads) 
+		   is not the initial response (for example file downloads)
 		*/
 		if (SequenceNumber < 2)
 		    LOQ_zero("network", "ClI", "Buffer", pcbResult, pbOutput, "SequenceNumber", (long)SequenceNumber, "BufferSize", pcbResult);
@@ -272,8 +273,10 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
 ) {
     HRESULT ret = Old_URLDownloadToFileW(pCaller, szURL, szFileName, dwReserved, lpfnCB);
     LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-    if(ret == S_OK)
-      pipe("FILE_NEW:%Z", szFileName);
+    if (ret == S_OK && dropped_count < g_config.dropped_limit) {
+        pipe("FILE_NEW:%Z", szFileName);
+        dropped_count++;
+    }
 
     return ret;
 }
@@ -286,10 +289,12 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
   _Reserved_ DWORD dwReserved,
   _In_opt_ VOID *pBSC
 ) {
-  HRESULT ret = Old_URLDownloadToCacheFileW(lpUnkcalled, szURL, szFilename, cchFilename, dwReserved, pBSC);
-  LOQ_hresult("network", "uFs", "URL", szURL, "Filename", ret == S_OK ? szFilename : L"", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-  if (ret == S_OK)
-    pipe("FILE_NEW:%Z", szFilename);
+    HRESULT ret = Old_URLDownloadToCacheFileW(lpUnkcalled, szURL, szFilename, cchFilename, dwReserved, pBSC);
+    LOQ_hresult("network", "uFs", "URL", szURL, "Filename", ret == S_OK ? szFilename : L"", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+    if (ret == S_OK && dropped_count < g_config.dropped_limit) {
+        pipe("FILE_NEW:%Z", szFilename);
+        dropped_count++;
+    }
 
   return ret;
 }
@@ -315,7 +320,7 @@ HOOKDEF(HINTERNET, WINAPI, InternetOpenA,
 
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
-	
+
 	LOQ_nonnull("network", "shssh", "Agent", lpszAgent, "AccessType", dwAccessType,
         "ProxyName", lpszProxyName, "ProxyBypass", lpszProxyBypass,
         "Flags", dwFlags);
@@ -501,8 +506,8 @@ HOOKDEF(HINTERNET, WINAPI, HttpOpenRequestW,
 	if ((lpszReferer == NULL || !wcscmp(lpszReferer, L"")) && g_config.url_of_interest && g_config.w_referrer && wcslen(g_config.w_referrer) && !did_initial_request)
 		referer = g_config.w_referrer;
 	else
-		referer = lpszReferer; 
-	
+		referer = lpszReferer;
+
 	ret = Old_HttpOpenRequestW(hConnect, lpszVerb, lpszObjectName,
 		lpszVersion, lpszReferer, lplpszAcceptTypes, dwFlags, dwContext);
     LOQ_nonnull("network", "puhuu", "InternetHandle", hConnect, "Path", lpszObjectName,
@@ -548,7 +553,7 @@ HOOKDEF(BOOL, WINAPI, HttpSendRequestW,
 
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
-	
+
 	LOQ_bool("network", "pUb", "RequestHandle", hRequest,
         "Headers", dwHeadersLength, lpszHeaders,
         "PostData", dwOptionalLength, lpOptional);

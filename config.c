@@ -25,6 +25,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "Shlwapi.h"
 #include "CAPE\CAPE.h"
 
+#define DROPPED_LIMIT 100
+
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern wchar_t *our_process_path_w;
@@ -73,6 +75,7 @@ int read_config(void)
 #endif
     g_config.procdump = 1;
     g_config.procmemdump = 0;
+    g_config.dropped_limit = 0;
 
 #ifdef CAPE_TRACE
     EntryPointRegister = 0;
@@ -219,6 +222,10 @@ int read_config(void)
 			}
 			else if (!strcmp(key, "large-buffer-max")) {
 				large_buffer_log_max = (unsigned int)strtoul(value, NULL, 10);
+			}
+			else if (!strcmp(key, "dropped-limit")) {
+				g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
+                DoOutputDebugString("Dropped file limit set to %d.\n", g_config.dropped_limit);
 			}
 			else if (!strcmp(key, "exclude-apis")) {
 				unsigned int x = 0;
@@ -427,6 +434,12 @@ int read_config(void)
 	/* don't suspend logging if this isn't the first process or if we want all the logs */
 	if (!g_config.first_process || g_config.full_logs)
 		g_config.suspend_logging = FALSE;
+
+	/* if no option supplied for dropped limit set a sensible value */
+	if (!g_config.dropped_limit) {
+		g_config.dropped_limit = DROPPED_LIMIT;
+        DoOutputDebugString("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
+    }
 
 	fclose(fp);
     DeleteFileA(config_fname);
