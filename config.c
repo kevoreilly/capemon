@@ -80,6 +80,12 @@ int read_config(void)
 #ifdef CAPE_TRACE
     EntryPointRegister = 0;
 #endif
+    memset(g_config.results, 0, MAX_PATH);
+    memset(g_config.analyzer, 0, MAX_PATH);
+    memset(g_config.pythonpath, 0, MAX_PATH);
+    memset(g_config.w_results, 0, sizeof(WCHAR)*MAX_PATH);
+    memset(g_config.w_analyzer, 0, sizeof(WCHAR)*MAX_PATH);
+    memset(g_config.w_pythonpath, 0, sizeof(WCHAR)*MAX_PATH);
 
 	memset(buf, 0, sizeof(buf));
 	while (fgets(buf, sizeof(buf), fp) != NULL)
