@@ -42,7 +42,9 @@ lookup_t g_caller_regions;
 
 #ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL BreakpointOnReturn(PVOID Address);
 extern BOOL BreakpointsSet;
+extern BOOL TraceRunning;
 #endif
 
 void hook_init()

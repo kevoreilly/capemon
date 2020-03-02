@@ -2049,6 +2049,19 @@ void init_CAPE()
 
     DoOutputDebugString("Commandline: %s.\n", CommandLine);
 
+#ifdef CAPE_TRACE
+    // Start the debugger
+    DebuggerEnabled = TRUE;
+    if (!launch_debugger())
+    {
+        DoOutputDebugString("Failed to initialise debugger.\n");
+        return;
+    }
+    DoOutputDebugString("Debugger initialised.\n");
+    if (!g_config.base_on_apiname[0])
+        SetInitialBreakpoints(GetModuleHandle(NULL));
+#endif
+
     if (g_config.extraction)
         ExtractionInit();
 

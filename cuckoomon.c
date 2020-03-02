@@ -357,6 +357,7 @@ static hook_t g_hooks[] = {
     HOOK(ntdll, NtSetInformationThread),
     HOOK(ntdll, NtQueryInformationThread),
     HOOK(ntdll, NtYieldExecution),
+    HOOK(ntdll, NtContinue),
 
     // Memory copy hooks
     //HOOK(ntdll, RtlMoveMemory),

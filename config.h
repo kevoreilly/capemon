@@ -32,7 +32,7 @@ struct _g_config {
 
 	// results directory, has to be hidden
 	wchar_t w_results[MAX_PATH];
-	
+
 	// analyzer directory, has to be hidden
     char analyzer[MAX_PATH];
 
@@ -50,7 +50,7 @@ struct _g_config {
 
 	// file of interest
 	wchar_t *file_of_interest;
-	
+
 	// URL of interest
 	wchar_t *url_of_interest;
 
@@ -149,6 +149,21 @@ struct _g_config {
 
     // for Hancitor config & payload extraction
     int hancitor;
+
+#ifdef CAPE_TRACE
+	char *break_on_apiname;
+	char *break_on_modname;
+    char break_on_return[MAX_PATH];
+    BOOLEAN break_on_return_set;
+    BOOLEAN break_on_apiname_set;
+
+    int dumptype0;
+    int trace_all;
+    int step_out;
+    int file_offsets;
+    int divert_debugger_log;
+    char *trace_into_api[EXCLUSION_MAX];
+#endif
 };
 
 extern struct _g_config g_config;

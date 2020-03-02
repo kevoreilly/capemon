@@ -3115,3 +3115,8 @@ extern HOOKDEF (void, WINAPI, OutputDebugStringA,
 extern HOOKDEF (void, WINAPI, OutputDebugStringW,
   LPCWSTR lpOutputString
 );
+
+extern HOOKDEF(NTSTATUS, WINAPI, NtContinue,
+  IN PCONTEXT ThreadContext,
+  IN BOOLEAN  RaiseAlert
+);

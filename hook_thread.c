@@ -32,6 +32,10 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
+#ifdef CAPE_TRACE
+extern void NtContinueHandler(PCONTEXT ThreadContext);
+unsigned int TestFlag = 0;
+#endif
 
 static lookup_t g_ignored_threads;
 
@@ -53,7 +57,7 @@ BOOLEAN is_ignored_thread(DWORD tid)
 
 	if (ret)
 		return TRUE;
-        
+
 	return FALSE;
 }
 
@@ -96,7 +100,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 
 	if (NT_SUCCESS(ret))
 		disable_sleep_skip();
-        
+
 	return ret;
 }
 
@@ -121,7 +125,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 
 	if (NT_SUCCESS(ret))
 		disable_sleep_skip();
-        
+
 	return ret;
 }
 
@@ -159,7 +163,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 			ResumeThread(*ThreadHandle);
 			set_lasterrors(&lasterror);
 		}
-        
+
         LOQ_ntstatus("threading", "PpOiii", "ThreadHandle", ThreadHandle, "ProcessHandle", ProcessHandle,
             "ObjectAttributes", ObjectAttributes, "CreateSuspended", CreateSuspended, "ThreadId", tid,
 			"ProcessId", pid);
@@ -187,7 +191,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
     OUT     PVOID lpBytesBuffer
 ) {
 	DWORD pid = pid_from_process_handle(ProcessHandle);
-	
+
 	NTSTATUS ret = Old_NtCreateThreadEx(hThread, DesiredAccess,
         ObjectAttributes, ProcessHandle, lpStartAddress, lpParameter,
         CreateFlags | 1, StackZeroBits, SizeOfStackCommit, SizeOfStackReserve,
@@ -213,10 +217,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 			ResumeThread(*hThread);
 			set_lasterrors(&lasterror);
 		}
-        
+
         LOQ_ntstatus("threading", "Ppphii", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
             "StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
-			"ProcessId", pid);        
+			"ProcessId", pid);
 
         disable_sleep_skip();
 	}
@@ -261,7 +265,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	ENSURE_HANDLE(ThreadHandle);
 	ENSURE_STRUCT(Context, CONTEXT);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
-    
+
     NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
     DWORD pid = pid_from_thread_handle(ThreadHandle);
     if (Context && Context->ContextFlags & CONTEXT_CONTROL)
@@ -531,15 +535,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationThread,
 	NTSTATUS ret;
     ENSURE_HANDLE(ThreadHandle);
     DWORD tid = tid_from_thread_handle(ThreadHandle);
-    
+
     ret = Old_NtSetInformationThread(ThreadHandle, ThreadInformationClass, ThreadInformation, ThreadInformationLength);
 
     if (ThreadInformationClass == ThreadHideFromDebugger)
-        LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, 
+        LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle,
             "ThreadInformationClass", ThreadInformationClass,
             "ThreadId", tid);
-    
-    return ret;    
+
+    return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationThread,
@@ -552,14 +556,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationThread,
 	NTSTATUS ret;
     ENSURE_HANDLE(ThreadHandle);
     DWORD tid = tid_from_thread_handle(ThreadHandle);
-    
+
     ret = Old_NtQueryInformationThread(ThreadHandle, ThreadInformationClass, ThreadInformation, ThreadInformationLength, ReturnLength);
-    
-    LOQ_ntstatus("threading", "pibi", "ThreadHandle", ThreadHandle, 
+
+    LOQ_ntstatus("threading", "pibi", "ThreadHandle", ThreadHandle,
         "ThreadInformationClass", ThreadInformationClass,
         "ThreadInformation", ThreadInformationLength, ThreadInformation,
         "ThreadId", tid);
-    
+
     return ret;
 }
 
@@ -569,5 +573,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
 	NTSTATUS ret = 0;
     LOQ_void("threading", "");
     ret = Old_NtYieldExecution();
+    return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtContinue,
+    IN PCONTEXT ThreadContext,
+    IN BOOLEAN  RaiseAlert
+)
+{
+	NTSTATUS ret = 0;
+#ifdef CAPE_TRACE
+    NtContinueHandler(ThreadContext);
+#endif
+    ret = Old_NtContinue(ThreadContext, RaiseAlert);
     return ret;
 }

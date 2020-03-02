@@ -34,6 +34,9 @@ extern int DoProcessDump(PVOID CallerBase);
 extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
 extern void ProcessTrackedRegions();
+#ifdef CAPE_TRACE
+extern BOOL StopTrace;
+#endif
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
 
@@ -262,6 +265,10 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     CloseHandle(g_terminate_event_handle);
 
+#ifdef CAPE_TRACE
+    StopTrace = TRUE;
+#endif
+
     if (g_config.procdump) {
         if (!ProcessDumped) {
             DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", ProcessId);
@@ -278,7 +285,6 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     }
     else
         DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
-    file_handle_terminate();
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {
         SetEvent(g_terminate_event_handle);
@@ -288,6 +294,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     else
         DoOutputDebugString("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
 
+    file_handle_terminate();
     log_flush();
     if (g_config.terminate_processes)
         ExitProcess(0);

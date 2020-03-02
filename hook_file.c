@@ -35,6 +35,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 unsigned int dropped_count;
 extern BOOL FilesDumped;
+#ifdef CAPE_TRACE
+extern HANDLE DebuggerLog;
+#endif
 
 typedef struct _file_record_t {
     unsigned int attributes;
@@ -292,6 +295,10 @@ void file_handle_terminate()
             }
         }
     }
+#ifdef CAPE_TRACE
+	CloseHandle(DebuggerLog);
+    DebuggerLog = NULL;
+#endif
 
 	set_lasterrors(&lasterror);
 }
