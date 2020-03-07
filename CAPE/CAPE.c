@@ -560,7 +560,7 @@ char* GetName()
 
     if (OutputFilename == NULL)
     {
-        DoOutputErrorString("DumpMemory: failed to allocate memory for file name string");
+        DoOutputErrorString("GetName: failed to allocate memory for file name string");
         return 0;
     }
 
@@ -568,7 +568,7 @@ char* GetName()
 
     if (rand_s(&random))
     {
-        DoOutputErrorString("DumpMemory: failed to obtain a random number");
+        DoOutputErrorString("GetName: failed to obtain a random number");
         return 0;
     }
 
@@ -870,7 +870,7 @@ int ScanPageForNonZero(LPVOID Address)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)AddressOfPage+p);
+        DoOutputDebugString("ScanPageForNonZero: Exception occured reading memory address 0x%x\n", (char*)AddressOfPage+p);
         return 0;
     }
 
@@ -893,7 +893,34 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
     {
         for (p=0; p<Size-1; p++)
             if (*((char*)Buffer+p) != 0)
-                return 1;
+                return p;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputDebugString("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+        return 0;
+    }
+
+    return 0;
+}
+
+//**************************************************************************************
+int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size)
+//**************************************************************************************
+{
+    SIZE_T p;
+
+    if (!Buffer)
+    {
+        DoOutputDebugString("ScanForNonZero: Error - Supplied address zero.\n");
+        return 0;
+    }
+
+    __try
+    {
+        for (p=Size-1; p>=0; p--)
+            if (*((char*)Buffer+p) != 0)
+                return p;
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -1301,11 +1328,13 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
 
     dwBytesWritten = 0;
 
+    Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
+
     BufferCopy = (LPVOID)((BYTE*)malloc(Size));
 
     if (BufferCopy == NULL)
     {
-        DoOutputDebugString("DumpMemory: Failed to allocate memory for buffer copy.\n");
+        DoOutputDebugString("DumpMemory: Failed to allocate 0x%x bytes for buffer copy.\n", Size);
         return FALSE;
     }
 
