@@ -269,6 +269,13 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     StopTrace = TRUE;
 #endif
 
+    if (g_config.extraction) {
+        g_config.extraction = FALSE;
+        DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
+        ProcessTrackedRegions();
+        ClearAllBreakpoints();
+    }
+
     if (g_config.procdump) {
         if (!ProcessDumped) {
             DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", ProcessId);
@@ -277,14 +284,9 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
         else
             DoOutputDebugString("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
     }
-
-    if (g_config.extraction) {
-        DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
-        ProcessTrackedRegions();
-        ClearAllBreakpoints();
-    }
     else
         DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
+
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {
         SetEvent(g_terminate_event_handle);
