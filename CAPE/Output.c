@@ -47,13 +47,14 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 {
     memset(DebugOutput, 0, MAX_PATH*sizeof(CHAR));
     _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
-#ifdef STANDALONE
-    OutputDebugString(DebugOutput);
-#else
-    memset(PipeOutput, 0, MAX_PATH*sizeof(CHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
-    pipe(PipeOutput, strlen(PipeOutput));
-#endif
+    if (g_config.standalone)
+        OutputDebugString(DebugOutput);
+    else
+    {
+        memset(PipeOutput, 0, MAX_PATH*sizeof(CHAR));
+        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
+        pipe(PipeOutput, strlen(PipeOutput));
+    }
     return;
 }
 
@@ -93,13 +94,14 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 
     memset(ErrorOutput, 0, MAX_PATH*sizeof(CHAR));
     _sntprintf_s(ErrorOutput, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
-#ifdef STANDALONE
-    OutputDebugString(ErrorOutput);
-#else
-    memset(PipeOutput, 0, MAX_PATH*sizeof(CHAR));
-    _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
-    pipe(PipeOutput, strlen(PipeOutput));
-#endif
+    if (g_config.standalone)
+        OutputDebugString(ErrorOutput);
+    else
+    {
+        memset(PipeOutput, 0, MAX_PATH*sizeof(CHAR));
+        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
+        pipe(PipeOutput, strlen(PipeOutput));
+    }
 
     va_end(args);
 
@@ -181,7 +183,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
 
-        if (g_config.stand_alone)
+        if (g_config.standalone)
             OutputDebugString(DebugOutput);
 
         memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
@@ -248,7 +250,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
 
-        if (g_config.stand_alone)
+        if (g_config.standalone)
             OutputDebugString(DebugOutput);
 
         memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
@@ -289,7 +291,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
-        if (g_config.stand_alone)
+        if (g_config.standalone)
             OutputDebugString(DebugOutput);
         else
         {
@@ -332,7 +334,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
         _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
 
-        if (g_config.stand_alone)
+        if (g_config.standalone)
             OutputDebugString(DebugOutput);
         else
         {

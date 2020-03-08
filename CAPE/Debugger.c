@@ -130,7 +130,8 @@ unsigned int TrapIndex;
 unsigned int DepthCount;
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 #ifdef CAPE_TRACE
-extern BOOL TraceRunning;
+extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
+extern BOOL TraceRunning, BreakpointsSet;
 #endif
 
 //**************************************************************************************
@@ -3020,7 +3021,7 @@ int launch_debugger()
 
 void NtContinueHandler(PCONTEXT ThreadContext)
 {
-    if (!ThreadContext->Dr0 && !ThreadContext->Dr1 && !ThreadContext->Dr2 && !ThreadContext->Dr3)
+    if (BreakpointsSet && !ThreadContext->Dr0 && !ThreadContext->Dr1 && !ThreadContext->Dr2 && !ThreadContext->Dr3)
     {
         DWORD ThreadId = GetCurrentThreadId();
         if (ThreadId == MainThreadId)

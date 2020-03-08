@@ -142,7 +142,7 @@ struct _g_config {
     int single_process;
 
     // for monitor testing
-    int stand_alone;
+    int standalone;
 
     // for dumping of crypto API buffers
     int dump_crypto;

@@ -54,7 +54,7 @@ int read_config(void)
 	unsigned int i;
 	unsigned int vallen;
 
-    // look for the config in analyzer directory
+    // look for the config in monitor directory
     strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
     PathRemoveFileSpec(analyzer_path); // remove filename
     sprintf(config_fname, "%s\\%u.ini", analyzer_path, GetCurrentProcessId());
@@ -245,6 +245,9 @@ int read_config(void)
 				g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Dropped file limit set to %d.\n", g_config.dropped_limit);
 			}
+            else if (!strcmp(key, "standalone")) {
+                g_config.standalone = value[0] == '1';
+            }
 			else if (!strcmp(key, "exclude-apis")) {
 				unsigned int x = 0;
 				char *p2;
@@ -589,6 +592,7 @@ int read_config(void)
     }
 
 	fclose(fp);
-    DeleteFileA(config_fname);
+    if (!g_config.standalone)
+        DeleteFileA(config_fname);
 	return 1;
 }

@@ -2032,7 +2032,7 @@ void init_CAPE()
 
     // Initialise CAPE global variables
     //
-#ifndef STANDALONE
+    //if (!g_config.standalone)
     CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
     CapeMetaData->Pid = GetCurrentProcessId();
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
@@ -2064,7 +2064,6 @@ void init_CAPE()
 
     // Cuckoo debug output level for development (0=none, 2=max)
     // g_config.debug = 2;
-#endif
 
     if (base_of_dll_of_interest)
         ImageBase = (PVOID)base_of_dll_of_interest;
