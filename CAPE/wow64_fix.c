@@ -184,15 +184,27 @@ const void EnableWow64Hook()
 extern BOOL WoW64fix(void)
 //**************************************************************************************
 {
+    OSVERSIONINFO OSVersion;
+    OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+    if (!GetVersionEx(&OSVersion))
+    {
+        DoOutputErrorString("WoW64fix: Failed to get OS version");
+        return FALSE;
+    }
+
+    if (OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1)
+    {
+        DoOutputDebugString("WoW64fix: Windows version %d.%d not supported.\n", OSVersion.dwMajorVersion, OSVersion.dwMinorVersion);
+        return FALSE;
+    }
+
     IsWow64Process(GetCurrentProcess(), &WoW64HookInstalled);
     if (WoW64HookInstalled == FALSE)
     {
         DoOutputDebugString("WoW64 not detected.\n");
         return FALSE;
     }
-
-    //DWORD ntdll64 = getNTDLL64();
-    //DWORD wow64dll = GetModuleHandle64(L"wow64.dll");
 
     DWORD64 ntdll64 = GetModuleBase64(L"ntdll.dll");
     DWORD64 wow64dll = GetModuleBase64(L"wow64.dll");
