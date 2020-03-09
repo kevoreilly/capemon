@@ -147,6 +147,9 @@ struct _g_config {
     // for dumping of crypto API buffers
     int dump_crypto;
 
+	// for dumping reg values greater than 512 bytes
+	int dump_reg;
+
     // for Hancitor config & payload extraction
     int hancitor;
 
