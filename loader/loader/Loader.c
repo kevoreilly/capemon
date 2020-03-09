@@ -18,15 +18,16 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Loader.h"
 #include <tlhelp32.h>
 #include <strsafe.h>
+#include "Shlwapi.h"
 
+#pragma comment(lib, "shlwapi.lib")
 #pragma warning(push )
 #pragma warning(disable : 4996)
 
 //#define DEBUG_COMMENTS
 
 SYSTEM_INFO SystemInfo;
-char PipeOutput[MAX_PATH];
-char LogPipe[MAX_PATH];
+char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
 
 void pipe(char* Buffer, SIZE_T Length);
 
@@ -69,9 +70,9 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 		NULL);
 
     memset(DebugOutput, 0, MAX_PATH*sizeof(char));
-    _vsnprintf_s(DebugOutput, MAX_PATH, MAX_PATH, lpOutputString, args);
+    _vsnprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
     memset(ErrorOutput, 0, MAX_PATH*sizeof(char));
-    _snprintf_s(ErrorOutput, MAX_PATH, MAX_PATH, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
+    _snprintf_s(ErrorOutput, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
     OutputDebugString(ErrorOutput);
 
     memset(PipeOutput, 0, MAX_PATH*sizeof(char));
@@ -121,16 +122,28 @@ void pipe(char* Buffer, SIZE_T Length)
     return;
 }
 
-int ReadConfig(DWORD ProcessId)
+int ReadConfig(DWORD ProcessId, char *DllName)
 {
-    char Buffer[MAX_PATH], config_fname[MAX_PATH], FormatString[] = "C:\\%u.ini";
+    char Buffer[MAX_PATH], config_fname[MAX_PATH], analyzer_path[MAX_PATH];
 	FILE *fp;
 	unsigned int i;
 	SIZE_T Length;
 
-    _snprintf_s(config_fname, MAX_PATH, strlen(FormatString)+5, FormatString, ProcessId);
+    // look for the config in monitor directory
+    strncpy(analyzer_path, DllName, strlen(DllName));
+    PathRemoveFileSpec(analyzer_path); // remove filename
+    snprintf(config_fname, MAX_PATH, "%s\\%u.ini", analyzer_path, ProcessId);
 
     fp = fopen(config_fname, "r");
+
+    // for debugging purposes
+    if (fp == NULL) {
+        memset(config_fname, 0, sizeof(config_fname));
+        snprintf(config_fname, MAX_PATH, "%s\\config.ini", analyzer_path);
+		fp = fopen(config_fname, "r");
+		if (fp == NULL)
+			return 0;
+	}
 
 	if (fp == NULL)
     {
@@ -160,12 +173,11 @@ int ReadConfig(DWORD ProcessId)
             if(!strcmp(key, "pipe"))
             {
 				for (i = 0; i < Length; i++)
-				strncpy(LogPipe, Value, Length);
+                    strncpy(LogPipe, Value, Length);
+                DoOutputDebugString("ReadConfig: Successfully loaded pipe name %s.\n", LogPipe);
             }
         }
     }
-
-    DoOutputDebugString("ReadConfig: Successfully loaded pipe name %s.\n", LogPipe);
 
     fclose(fp);
 
@@ -526,7 +538,7 @@ rebase:
     if (!ReadProcessMemory(ProcessHandle, BaseAddress, &DosHeader, sizeof(DosHeader), NULL))
     {
         DoOutputErrorString("InjectDllViaIAT: Failed to read DOS header from 0x%p - 0x%p", BaseAddress, BaseAddress + sizeof(DosHeader));
-        RetVal = ERROR_READMEMORY;
+        RetVal = 1; // In case this is mid-hollowing
         goto out;
     }
 
@@ -910,6 +922,75 @@ out:
     return RetVal;
 }
 
+static int Execute(const char *ExePath, const char *Args)
+{
+    STARTUPINFOEX sie = {sizeof(sie)};
+    PROCESS_INFORMATION pi;
+    HANDLE hParentProcess = NULL;
+    SIZE_T cbAttributeListSize = 0;
+    PPROC_THREAD_ATTRIBUTE_LIST pAttributeList = NULL;
+    DWORD dwPid = 0;
+    char szCommand[2048];
+    szCommand[0] = L'\0';
+
+    memset(&sie, 0, sizeof(sie));
+    memset(&pi, 0, sizeof(pi));
+
+    StringCchCat(szCommand, sizeof(szCommand), ExePath);
+    StringCchCat(szCommand, sizeof(szCommand), " ");
+    StringCchCat(szCommand, sizeof(szCommand), Args);
+
+    DoOutputDebugString("Loader: Executing %s (%s).\n", ExePath, szCommand);
+
+    InitializeProcThreadAttributeList(NULL, 1, 0, &cbAttributeListSize);
+
+    pAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)HeapAlloc(GetProcessHeap(), 0, cbAttributeListSize);
+
+    if (pAttributeList == NULL)
+    {
+        DoOutputErrorString("Loader: HeapAlloc error");
+        return 0;
+    }
+
+    if (!InitializeProcThreadAttributeList(pAttributeList, 1, 0, &cbAttributeListSize))
+    {
+        DoOutputErrorString("Loader: InitializeProcThreadAttributeList error");
+        return 0;
+    }
+
+    // Get the PID of explorer by its windows handle
+    GetWindowThreadProcessId(GetShellWindow(), &dwPid);
+
+    // Credit to Didier Stevens - SelectMyParent
+    hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwPid);
+
+    if (hParentProcess == NULL)
+    {
+        DoOutputErrorString("Loader: OpenProcess error");
+        return 0;
+    }
+
+    if (!UpdateProcThreadAttribute(pAttributeList, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &hParentProcess, sizeof(HANDLE), NULL, NULL))
+    {
+        DoOutputErrorString("Loader: UpdateProcThreadAttribute error");
+        return 0;
+    }
+
+    sie.lpAttributeList = pAttributeList;
+
+    if (!CreateProcess(ExePath, szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, NULL, NULL, &sie.StartupInfo, &pi))
+    {
+        DoOutputErrorString("Loader: CreateProcess error");
+        return 0;
+    }
+
+    DeleteProcThreadAttributeList(pAttributeList);
+
+    CloseHandle(hParentProcess);
+
+    return pi.dwProcessId;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     DoOutputDebugString("CAPE loader.\n");
@@ -931,7 +1012,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         // usage: loader.exe inject <pid> <tid> <dll to load>
         int ProcessId, ThreadId, ret;
         char *DllName;
-        if (__argc != 6)    // this includes a dummy for now to maintain compatibility with old loader
+        if (__argc < 5)
         {
             DoOutputDebugString("Loader: Error - too few arguments for injection (%d)\n", __argc);
             return ERROR_ARGCOUNT;
@@ -941,7 +1022,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ThreadId = atoi(__argv[3]);
         DllName = __argv[4];
 
-        if (!ReadConfig(ProcessId))
+        if (!ReadConfig(ProcessId, DllName))
             DoOutputDebugString("Loader: Failed to load config for process %d.\n", ProcessId);
 
         DoOutputDebugString("Loader: Injecting process %d (thread %d) with %s.\n", ProcessId, ThreadId, DllName);
@@ -955,48 +1036,65 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         return ret;
     }
+    else if (!strcmp(__argv[1], "execute"))
+    {
+        // usage: loader.exe execute <binary> <commandline>
+        // returns: process id
+        return Execute(__argv[2], __argv[3]);
+    }
     else if (!strcmp(__argv[1], "load"))
     {
-        // usage: loader.exe load <binary> <commandline> <dll to load>
-        STARTUPINFO si;
-        PROCESS_INFORMATION pi;
-        HANDLE ThreadHandle;
-        int ret;
+        // usage: loader.exe load <monitor dll> <binary> <commandline>
+        HANDLE ProcessHandle = NULL;
+        DWORD ProcessId = 0;
         char szCommand[2048];
         szCommand[0] = L'\0';
+        int ret;
 
-        memset(&si, 0, sizeof(si));
-        memset(&pi, 0, sizeof(pi));
-        si.cb = sizeof(si);
-
-        StringCchCat(szCommand, sizeof(szCommand), __argv[2]);
-        StringCchCat(szCommand, sizeof(szCommand), " ");
         StringCchCat(szCommand, sizeof(szCommand), __argv[3]);
+        StringCchCat(szCommand, sizeof(szCommand), " ");
+        StringCchCat(szCommand, sizeof(szCommand), __argv[4]);
 
-        DoOutputDebugString("Loader: Loading %s (%s) with DLL %s.\n", __argv[2], szCommand, __argv[3]);
+        DoOutputDebugString("Loader: Loading %s (%s) with DLL %s.\n", __argv[3], szCommand, __argv[2]);
 
-        CreateProcess(__argv[2], szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+        ProcessId = Execute(__argv[3], __argv[4]);
 
-        if (!ReadConfig(pi.dwProcessId))
-            DoOutputDebugString("Loader: Failed to load config for process %d.\n", pi.dwProcessId);
+        if (!ProcessId)
+        {
+            DoOutputDebugString("Loader: Failed to execute %s.\n", __argv[3]);
+            return 0;
+        }
 
-        ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[4]);
+        if (!ReadConfig(ProcessId, __argv[2]))
+            DoOutputDebugString("Loader: Failed to load config for process %d.\n", ProcessId);
+#ifdef DEBUG_COMMENTS
+        else
+            DoOutputDebugString("Loader: Loaded config for process %d.\n", ProcessId);
+#endif
+        ret = InjectDll(ProcessId, 0, __argv[2]);
 
         if (ret)
-            DoOutputDebugString("Successfully injected DLL %s.\n", __argv[4]);
+            DoOutputDebugString("Successfully injected DLL %s.\n", __argv[2]);
         else
-            DoOutputDebugString("Failed to inject DLL %s.\n", __argv[4]);
+            DoOutputDebugString("Failed to inject DLL %s.\n", __argv[2]);
 
-        ThreadHandle = OpenThread(THREAD_SUSPEND_RESUME, FALSE, pi.dwThreadId);
+        ProcessHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ProcessId);
 
-        if (ThreadHandle)
+        if (ProcessHandle)
         {
-            ResumeThread(ThreadHandle);
-            CloseHandle(ThreadHandle);
+            _NtResumeProcess pNtResumeProcess;
+            pNtResumeProcess = (_NtResumeProcess)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtResumeProcess");
+            pNtResumeProcess(ProcessHandle);
+            CloseHandle(ProcessHandle);
+            DoOutputDebugString("Process %s resumed successfully\n", __argv[3]);
         }
         else
-            DoOutputDebugString("There was a problem resuming the new process %s.\n", __argv[2]);
+        {
+            DoOutputDebugString("There was a problem resuming the new process %s.\n", __argv[3]);
+            return 0;
+        }
 
+        return ProcessId;
     }
     else if (!strcmp(__argv[1], "shellcode"))
     {
@@ -1008,8 +1106,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         PSHELLCODE Payload;
 
-        if (!ReadConfig(GetCurrentProcessId()))
-            DoOutputDebugString("Loader: Failed to load config for process %d.\n", GetCurrentProcessId());
+        //if (!ReadConfig(GetCurrentProcessId()))
+        //    DoOutputDebugString("Loader: Failed to load config for process %d.\n", GetCurrentProcessId());
 
         hInputFile = CreateFile(__argv[2], GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 

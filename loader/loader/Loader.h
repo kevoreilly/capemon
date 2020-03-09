@@ -127,6 +127,11 @@ typedef NTSTATUS(WINAPI * _NtContinue)
     void
 );
 
+typedef NTSTATUS(WINAPI * _NtResumeProcess)
+(
+	__in  HANDLE ProcessHandle
+);
+
 typedef LONG(WINAPI *_NtQueryInformationProcess)(HANDLE ProcessHandle,
     ULONG ProcessInformationClass, PVOID ProcessInformation,
     ULONG ProcessInformationLength, PULONG ReturnLength);
