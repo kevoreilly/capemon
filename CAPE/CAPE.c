@@ -138,10 +138,8 @@ extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
 extern void ExtractionInit();
-#ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
-#endif
 
 BOOL ProcessDumped, FilesDumped, ModuleDumped;
 PVOID ImageBase;
@@ -2077,18 +2075,19 @@ void init_CAPE()
 
     DoOutputDebugString("Commandline: %s.\n", CommandLine);
 
-#ifdef CAPE_TRACE
-    // Start the debugger
-    DebuggerEnabled = TRUE;
-    if (!launch_debugger())
+    if (g_config.debugger)
     {
-        DoOutputDebugString("Failed to initialise debugger.\n");
-        return;
+        // Start the debugger
+        DebuggerEnabled = TRUE;
+        if (!launch_debugger())
+        {
+            DoOutputDebugString("Failed to initialise debugger.\n");
+            return;
+        }
+        DoOutputDebugString("Debugger initialised.\n");
+        if (!g_config.base_on_apiname[0])
+            SetInitialBreakpoints(GetModuleHandle(NULL));
     }
-    DoOutputDebugString("Debugger initialised.\n");
-    if (!g_config.base_on_apiname[0])
-        SetInitialBreakpoints(GetModuleHandle(NULL));
-#endif
 
     if (g_config.extraction)
         ExtractionInit();

@@ -35,11 +35,9 @@ CHAR DebuggerLine[MAX_PATH];
 extern char* GetResultsPath(char* FolderName);
 extern struct CapeMetadata *CapeMetaData;
 extern ULONG_PTR base_of_dll_of_interest;
-#ifdef CAPE_TRACE
 HANDLE DebuggerLog;
 extern SIZE_T LastWriteLength;
 extern BOOL StopTrace;
-#endif
 
 //**************************************************************************************
 void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
@@ -351,7 +349,6 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 #endif
 }
 
-#ifdef CAPE_TRACE
 //**************************************************************************************
 void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 //**************************************************************************************
@@ -429,4 +426,3 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
 	return;
 }
-#endif

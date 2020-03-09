@@ -44,9 +44,7 @@ extern void init_CAPE();
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
-#ifdef CAPE_TRACE
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
-#endif
 extern PCHAR ScyllaGetExportDirectory(PVOID Address);
 extern void ExtractionDllInit(PVOID DllBase);
 
@@ -708,9 +706,8 @@ VOID CALLBACK New_DllLoadNotification(
             DoOutputDebugString("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
             if (g_config.extraction)
                 ExtractionDllInit((PVOID)base_of_dll_of_interest);
-#ifdef CAPE_TRACE
-            SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
-#endif
+            if (g_config.debugger)
+                SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
         }
         else if (((!wcsnicmp(our_commandline, L"c:\\windows\\system32\\rundll32.exe", 32) ||
                     !wcsnicmp(our_commandline, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
@@ -722,9 +719,8 @@ VOID CALLBACK New_DllLoadNotification(
                 wcsncpy(g_config.file_of_interest, library.Buffer, wcslen(library.Buffer));
             }
             DoOutputDebugString("rundll32 target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
-#ifdef CAPE_TRACE
-            SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
-#endif
+            if (g_config.debugger)
+                SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
         }
         else {
 
@@ -750,15 +746,15 @@ VOID CALLBACK New_DllLoadNotification(
                     set_hooks_by_export_directory(exportdirectory_w, dllname);
             }
 
-#ifdef CAPE_TRACE
-            //if (g_config.break_on_apiname && g_config.break_on_modname) {
-            //    dllname = (char*)malloc(MAX_PATH);
-            //    WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)dllname_w, (int)wcslen(dllname_w)+1, dllname, MAX_PATH, NULL, NULL);
-            //    if (!stricmp(dllname, g_config.break_on_modname)) {
-            //        SetInitialBreakpoints(NotificationData->Loaded.DllBase);
+            //if (g_config.debugger) {
+            //    if (g_config.break_on_apiname && g_config.break_on_modname) {
+            //        dllname = (char*)malloc(MAX_PATH);
+            //        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)dllname_w, (int)wcslen(dllname_w)+1, dllname, MAX_PATH, NULL, NULL);
+            //        if (!stricmp(dllname, g_config.break_on_modname)) {
+            //            SetInitialBreakpoints(NotificationData->Loaded.DllBase);
+            //        }
             //    }
             //}
-#endif
             DoOutputDebugString("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
         }
 	}
@@ -1072,14 +1068,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		DWORD pids[MAX_PROTECTED_PIDS];
 		unsigned int length = sizeof(pids);
 
-    if (g_config.standalone) {
-        // initialise CAPE
-        resolve_runtime_apis();
-        init_CAPE();
-        DoOutputDebugString("Standalone mode initialised.\n");
-        return TRUE;
-    }
-
 		/* we can sometimes be injected twice into a process, say if we queued up an APC that we timed out waiting to
 		   complete, and then did a successful createremotethread, so just do a cheap check for our hooks and fake that
 		   we loaded successfully
@@ -1101,6 +1089,13 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		init_private_heap();
 
 		set_os_bitness();
+
+        if (g_config.standalone) {
+            // initialise CAPE
+            init_CAPE();
+            DoOutputDebugString("Standalone mode initialised.\n");
+            return TRUE;
+        }
 
 		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
@@ -1150,7 +1145,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
             add_protected_pid(pids[i]);
         }
 
-		hkcu_init();
+        hkcu_init();
 
         // initialize the log file
         log_init(CUCKOODBG);

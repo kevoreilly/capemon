@@ -936,9 +936,14 @@ static int Execute(const char *ExePath, const char *Args)
     memset(&sie, 0, sizeof(sie));
     memset(&pi, 0, sizeof(pi));
 
-    StringCchCat(szCommand, sizeof(szCommand), ExePath);
-    StringCchCat(szCommand, sizeof(szCommand), " ");
-    StringCchCat(szCommand, sizeof(szCommand), Args);
+    if (Args && strlen(Args))
+    {
+        StringCchCat(szCommand, sizeof(szCommand), ExePath);
+        StringCchCat(szCommand, sizeof(szCommand), " ");
+        StringCchCat(szCommand, sizeof(szCommand), Args);
+    }
+    else
+        strncpy(szCommand, ExePath, strlen(ExePath)+1);
 
     DoOutputDebugString("Loader: Executing %s (%s).\n", ExePath, szCommand);
 
@@ -1040,6 +1045,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
         // usage: loader.exe execute <binary> <commandline>
         // returns: process id
+        DoOutputDebugString("Execute %s %s.\n", __argv[2], __argv[3]);
         return Execute(__argv[2], __argv[3]);
     }
     else if (!strcmp(__argv[1], "load"))
@@ -1051,9 +1057,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         szCommand[0] = L'\0';
         int ret;
 
-        StringCchCat(szCommand, sizeof(szCommand), __argv[3]);
-        StringCchCat(szCommand, sizeof(szCommand), " ");
-        StringCchCat(szCommand, sizeof(szCommand), __argv[4]);
+        if (__argv[4] && strlen(__argv[4]))
+        {
+            StringCchCat(szCommand, sizeof(szCommand), __argv[3]);
+            StringCchCat(szCommand, sizeof(szCommand), " ");
+            StringCchCat(szCommand, sizeof(szCommand), __argv[4]);
+        }
+        else
+            strncpy(szCommand, __argv[3], strlen(__argv[3])+1);
 
         DoOutputDebugString("Loader: Loading %s (%s) with DLL %s.\n", __argv[3], szCommand, __argv[2]);
 

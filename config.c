@@ -27,11 +27,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define DROPPED_LIMIT 100
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern char *our_dll_path;
-extern wchar_t *our_process_path_w;
-extern PVOID bp0, bp1, bp2, bp3;
-#ifdef CAPE_TRACE
 #define BP_EXEC        0x00
 #define BP_WRITE       0x01
 #define BP_RESERVED    0x02
@@ -39,13 +34,16 @@ extern PVOID bp0, bp1, bp2, bp3;
 #define DoClearZeroFlag 1
 #define DoSetZeroFlag   2
 #define PrintEAX        3
+
+extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern char *our_dll_path;
+extern wchar_t *our_process_path_w;
 extern PVOID bp0, bp1, bp2, bp3;
 extern int TraceDepthLimit, EntryPointRegister;
 extern unsigned int StepLimit, Type0, Type1, Type2, Type3;
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char DumpSizeString[MAX_PATH];
 extern SIZE_T DumpSize;
-#endif
 
 int read_config(void)
 {
@@ -87,11 +85,6 @@ int read_config(void)
     g_config.procmemdump = 0;
     g_config.dropped_limit = 0;
 
-#ifdef CAPE_TRACE
-    g_config.procdump = 0;
-    EntryPointRegister = 0;
-    TraceDepthLimit = 0xFFFFFFFF;
-#endif
     memset(g_config.results, 0, MAX_PATH);
     memset(g_config.analyzer, 0, MAX_PATH);
     memset(g_config.pythonpath, 0, MAX_PATH);
@@ -313,7 +306,9 @@ int read_config(void)
 			else if (!strcmp(key, "dump-on-api-type")) {
                 g_config.dump_on_api_type = (unsigned int)strtoul(value, NULL, 0);
             }
-#ifdef CAPE_TRACE
+            else if (!strcmp(key, "debugger")) {
+                g_config.debugger = value[0] == '1';
+            }
             else if (!strcmp(key, "file-offsets")) {
 				g_config.file_offsets = value[0] == '1';
                 if (g_config.file_offsets)
@@ -341,6 +336,7 @@ int read_config(void)
                         bp0 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
                         if (bp0) {
                             g_config.break_on_apiname_set = TRUE;
+                            g_config.debugger = 1;
                             DoOutputDebugString("Config: bp0 set to 0x%p (%s::%s).\n", bp0, g_config.break_on_modname, g_config.break_on_apiname);
                         }
                         else
@@ -350,6 +346,7 @@ int read_config(void)
                 else if (!strncmp(value, "ep", 2)) {
                     DoOutputDebugString("Config: bp0 set to entry point.\n", bp0);
                     EntryPointRegister = 1;
+                    g_config.debugger = 1;
                 }
                 else {
                     int delta;
@@ -368,6 +365,7 @@ int read_config(void)
                         }
                     }
                     bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                    g_config.debugger = 1;
                     if (delta) {
                         DoOutputDebugString("Config: bp0 was 0x%x.\n", bp0);
                         bp0 = (PVOID)(DWORD_PTR)((int)bp0 + delta);
@@ -379,9 +377,11 @@ int read_config(void)
                 if (!strncmp(value, "ep", 2)) {
                     DoOutputDebugString("Config: bp1 set to entry point.\n", bp1);
                     EntryPointRegister = 2;
+                    g_config.debugger = 1;
                 }
                 else {
                     bp1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                    g_config.debugger = 1;
                     DoOutputDebugString("Config: bp1 set to 0x%x.\n", bp1);
                 }
 			}
@@ -389,9 +389,11 @@ int read_config(void)
                 if (!strncmp(value, "ep", 2)) {
                     DoOutputDebugString("Config: bp2 set to entry point.\n", bp2);
                     EntryPointRegister = 3;
+                    g_config.debugger = 1;
                 }
                 else {
                     bp2 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                    g_config.debugger = 1;
                     DoOutputDebugString("Config: bp2 set to 0x%x.\n", bp2);
                 }
 			}
@@ -399,21 +401,26 @@ int read_config(void)
                 if (!strncmp(value, "ep", 2)) {
                     DoOutputDebugString("Config: bp3 set to entry point.\n", bp3);
                     EntryPointRegister = 4;
+                    g_config.debugger = 1;
                 }
                 else {
                     bp3 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                    g_config.debugger = 1;
                     DoOutputDebugString("Config: bp3 set to 0x%x.\n", bp3);
                 }
 			}
             else if (!stricmp(key, "depth")) {
+                g_config.debugger = 1;
 				TraceDepthLimit = (int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Config: Trace depth set to 0x%x", TraceDepthLimit);
 			}
             else if (!stricmp(key, "count")) {
+                g_config.debugger = 1;
 				StepLimit = (unsigned int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Config: Trace instruction count set to 0x%x", StepLimit);
 			}
             else if (!stricmp(key, "step-out")) {
+                g_config.debugger = 1;
                 bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
 				if (bp0) {
                     g_config.step_out = '1';
@@ -444,11 +451,13 @@ int read_config(void)
                 DoOutputDebugString("Config: Instruction1 set to %s.", value);
 			}
             else if (!stricmp(key, "break-on-return")) {
+                g_config.debugger = 1;
 				strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return));
                 g_config.break_on_return_set = TRUE;
                 DoOutputDebugString("Config: Break-on-return set to %s.", g_config.break_on_return);
 			}
             else if (!stricmp(key, "trace-all")) {
+                g_config.debugger = 1;
 				g_config.trace_all = value[0] == '1';
                 if (g_config.trace_all)
                     DoOutputDebugString("Config: Trace all enabled.\n");
@@ -468,6 +477,7 @@ int read_config(void)
 						break;
 					p = p2 + 1;
 				}
+                g_config.debugger = 1;
 			}
 			else if (!strcmp(key, "dumptype0")) {
                 g_config.dumptype0 = (unsigned int)strtoul(value, NULL, 0);
@@ -491,7 +501,6 @@ int read_config(void)
                 if (g_config.divert_debugger_log)
                     DoOutputDebugString("Debugger log diverted (to analysis log).\n");
 			}
-#endif
             else if (!strcmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
                 if (g_config.procdump)
@@ -594,6 +603,13 @@ int read_config(void)
 	if (!g_config.dropped_limit) {
 		g_config.dropped_limit = DROPPED_LIMIT;
         DoOutputDebugString("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
+    }
+
+    if (g_config.debugger)
+    {
+        g_config.procdump = 0;
+        EntryPointRegister = 0;
+        TraceDepthLimit = 0xFFFFFFFF;
     }
 
 	fclose(fp);
