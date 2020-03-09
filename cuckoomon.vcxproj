@@ -219,6 +219,7 @@
     <ClCompile Include="CAPE\Scylla\ProcessAccessHelp.cpp" />
     <ClCompile Include="CAPE\Scylla\StringConversion.cpp" />
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp" />
+    <ClCompile Include="CAPE\Trace.c" />
     <ClCompile Include="CAPE\w64wow64\w64wow64.c" />
     <ClCompile Include="CAPE\wow64_fix.c" />
     <ClCompile Include="config.c" />

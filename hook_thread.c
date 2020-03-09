@@ -32,10 +32,8 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
-#ifdef CAPE_TRACE
 extern void NtContinueHandler(PCONTEXT ThreadContext);
 unsigned int TestFlag = 0;
-#endif
 
 static lookup_t g_ignored_threads;
 
@@ -582,9 +580,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
 )
 {
 	NTSTATUS ret = 0;
-#ifdef CAPE_TRACE
-    NtContinueHandler(ThreadContext);
-#endif
+    if (g_config.debugger)
+        NtContinueHandler(ThreadContext);
     ret = Old_NtContinue(ThreadContext, RaiseAlert);
     return ret;
 }

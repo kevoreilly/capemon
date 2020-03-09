@@ -279,6 +279,9 @@
     <ClCompile Include="CAPE\Extraction.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="CAPE\Trace.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">

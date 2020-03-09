@@ -150,7 +150,9 @@ struct _g_config {
     // for Hancitor config & payload extraction
     int hancitor;
 
-#ifdef CAPE_TRACE
+    // Enable debugger
+    int debugger;
+
 	char *break_on_apiname;
 	char *break_on_modname;
     char break_on_return[MAX_PATH];
@@ -163,7 +165,6 @@ struct _g_config {
     int file_offsets;
     int divert_debugger_log;
     char *trace_into_api[EXCLUSION_MAX];
-#endif
 };
 
 extern struct _g_config g_config;
