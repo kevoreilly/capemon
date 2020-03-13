@@ -84,6 +84,15 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
 	return;
 }
 
+static __inline PVOID get_peb(void)
+{
+#ifndef _WIN64
+	return (PVOID)__readfsdword(0x30);
+#else
+	return (PVOID)__readgsqword(0x60);
+#endif
+}
+
 int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
 {
     SIZE_T p;
@@ -205,10 +214,22 @@ BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
 DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 {
     DWORD ThreadId;
+    _NtQueryInformationProcess pNtQueryInformationProcess;
+	PROCESS_BASIC_INFORMATION ProcessBasicInformation;
+	ULONG ulSize;
 
+    pNtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess");
+
+    memset(&ProcessBasicInformation, 0, sizeof(ProcessBasicInformation));
+
+    if (pNtQueryInformationProcess(ProcessHandle, 0, &ProcessBasicInformation, sizeof(ProcessBasicInformation), &ulSize) < 0 || ulSize != sizeof(ProcessBasicInformation))
+    {
+        DoOutputDebugString("GetProcessInitialThreadId: NtQueryInformationProcess failed.\n");
+        return FALSE;
+    }
     __try
     {
-        PTEB Teb = (PTEB)NtCurrentTeb();
+        PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + (DWORD_PTR)NtCurrentTeb() - (DWORD_PTR)get_peb());
 
         if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
         {
