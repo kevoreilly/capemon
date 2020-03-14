@@ -227,25 +227,19 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
         DoOutputDebugString("GetProcessInitialThreadId: NtQueryInformationProcess failed.\n");
         return FALSE;
     }
-    __try
+
+    PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + (DWORD_PTR)NtCurrentTeb() - (DWORD_PTR)get_peb());
+
+    if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
     {
-        PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + (DWORD_PTR)NtCurrentTeb() - (DWORD_PTR)get_peb());
-
-        if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
-        {
-            DoOutputErrorString("GetProcessInitialThreadId: Failed to read from process");
-            return 0;
-        }
-
-        if (ThreadId)
-            return ThreadId;
-
+        DoOutputErrorString("GetProcessInitialThreadId: Failed to read from process");
         return 0;
     }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return 0;
-    }
+
+    if (ThreadId)
+        return ThreadId;
+
+    return 0;
 }
 
 static int GrantDebugPrivileges(void)
