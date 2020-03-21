@@ -611,7 +611,7 @@ VOID CALLBACK WaitOrTimerCallbackHook(
         return;
     }
     
-    if (DebuggerEnabled) {
+    if (g_config.debugger) {
         DWORD Tid = GetCurrentThreadId();
         DoOutputDebugString("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
         InitNewThreadBreakpoints(Tid);

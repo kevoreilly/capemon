@@ -139,7 +139,9 @@ enum {
 
     DATADUMP                = 0x66,
 
-    STACK_REGION            = 0x6c
+    STACK_REGION            = 0x6c,
+
+    UPX                     = 0x1000
 };
 
 HANDLE EvilGrabRegHandle;

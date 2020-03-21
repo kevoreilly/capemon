@@ -577,6 +577,11 @@ int read_config(void)
                 if (g_config.dump_crypto)
                     DoOutputDebugString("Dumping of crypto API buffers enabled.\n");
 			}
+            else if (!strcmp(key, "upx")) {
+				g_config.upx = value[0] == '1';
+                if (g_config.upx)
+                    DoOutputDebugString("UPX unpacker enabled.\n");
+			}
             else if (!strcmp(key, "hancitor")) {
 				g_config.hancitor = value[0] == '1';
                 if (g_config.hancitor) {
