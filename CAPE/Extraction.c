@@ -23,6 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE.h"
 #include "Extraction.h"
 #include "..\alloc.h"
+#include "..\config.h"
 
 #define PE_HEADER_LIMIT 0x200
 
@@ -3047,7 +3048,7 @@ void ExtractionInit()
     // Start the debugger
     if (launch_debugger())
     {
-        DebuggerEnabled = TRUE;
+        g_config.debugger = 1;
         DoOutputDebugString("ExtractionInit: Debugger initialised.\n");
     }
     else

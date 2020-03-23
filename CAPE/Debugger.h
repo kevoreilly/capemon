@@ -57,7 +57,7 @@ typedef void (WINAPI *PWIN32ENTRY)();
 extern "C" {
 #endif
 
-BOOL DebuggerEnabled, DebuggerInitialised;
+BOOL DebuggerInitialised;
 
 // Global variables for submission options
 void *CAPE_var1, *CAPE_var2, *CAPE_var3, *CAPE_var4;

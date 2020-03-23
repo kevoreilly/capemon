@@ -139,6 +139,7 @@ extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
 extern void ExtractionInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 
 BOOL ProcessDumped, FilesDumped, ModuleDumped;
@@ -2078,7 +2079,7 @@ void init_CAPE()
     if (g_config.debugger)
     {
         // Start the debugger
-        DebuggerEnabled = TRUE;
+        g_config.debugger = 1;
         if (!launch_debugger())
         {
             DoOutputDebugString("Failed to initialise debugger.\n");
@@ -2091,6 +2092,18 @@ void init_CAPE()
 
     if (g_config.extraction)
         ExtractionInit();
+
+    if (g_config.upx)
+    {
+        g_config.debugger = 1;
+        CapeMetaData->DumpType = UPX;
+        g_config.procdump = 0;
+        if (launch_debugger())
+            DoOutputDebugString("UPX unpacker: Debugger initialised.\n");
+        else
+            DoOutputDebugString("UPX unpacker: Failed to initialise debugger.\n");
+        UPXInitialBreakpoints(GetModuleHandle(NULL));
+    }
 
     return;
 }

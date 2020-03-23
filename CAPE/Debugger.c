@@ -3007,7 +3007,7 @@ int launch_debugger()
     else
     {
         DebuggerInitialised = InitialiseDebugger();
-
+        g_config.debugger = 1;
         return DebuggerInitialised;
     }
 }

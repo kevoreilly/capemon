@@ -306,9 +306,6 @@ int read_config(void)
 			else if (!strcmp(key, "dump-on-api-type")) {
                 g_config.dump_on_api_type = (unsigned int)strtoul(value, NULL, 0);
             }
-            else if (!strcmp(key, "debugger")) {
-                g_config.debugger = value[0] == '1';
-            }
             else if (!strcmp(key, "file-offsets")) {
 				g_config.file_offsets = value[0] == '1';
                 if (g_config.file_offsets)
@@ -330,6 +327,7 @@ int read_config(void)
                         DoOutputDebugString("Config: Failed to get base for module (%s).\n", g_config.break_on_modname);
                     if (bp0) {
                         g_config.break_on_apiname_set = TRUE;
+                        g_config.debugger = 1;
                         DoOutputDebugString("Config: bp0 set to 0x%p (%s::%s).\n", bp0, g_config.break_on_modname, g_config.break_on_apiname);
                     }
                     else {
@@ -343,7 +341,7 @@ int read_config(void)
                             DoOutputDebugString("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
                     }
                 }
-                else if (!strncmp(value, "ep", 2)) {
+                else if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp0 set to entry point.\n", bp0);
                     EntryPointRegister = 1;
                     g_config.debugger = 1;
@@ -374,7 +372,7 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "bp1")) {
-                if (!strncmp(value, "ep", 2)) {
+                if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp1 set to entry point.\n", bp1);
                     EntryPointRegister = 2;
                     g_config.debugger = 1;
@@ -386,7 +384,7 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "bp2")) {
-                if (!strncmp(value, "ep", 2)) {
+                if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp2 set to entry point.\n", bp2);
                     EntryPointRegister = 3;
                     g_config.debugger = 1;
@@ -398,7 +396,7 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "bp3")) {
-                if (!strncmp(value, "ep", 2)) {
+                if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp3 set to entry point.\n", bp3);
                     EntryPointRegister = 4;
                     g_config.debugger = 1;
@@ -410,12 +408,10 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "depth")) {
-                g_config.debugger = 1;
 				TraceDepthLimit = (int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Config: Trace depth set to 0x%x", TraceDepthLimit);
 			}
             else if (!stricmp(key, "count")) {
-                g_config.debugger = 1;
 				StepLimit = (unsigned int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Config: Trace instruction count set to 0x%x", StepLimit);
 			}
@@ -582,7 +578,12 @@ int read_config(void)
 				if (g_config.dump_reg)
 					DoOutputDebugString("Dumping of registry set values enabled.\n");
 			}
-            else if (!strcmp(key, "hancitor")) {
+			else if (!strcmp(key, "upx")) {
+			g_config.upx = value[0] == '1';
+			if (g_config.upx)
+				DoOutputDebugString("UPX unpacker enabled.\n");
+			}
+			else if (!strcmp(key, "hancitor")) {
 				g_config.hancitor = value[0] == '1';
                 if (g_config.hancitor) {
                     g_config.dump_on_apinames[0] = "InternetCrackUrlA";
@@ -608,7 +609,6 @@ int read_config(void)
     if (g_config.debugger)
     {
         g_config.procdump = 0;
-        EntryPointRegister = 0;
         TraceDepthLimit = 0xFFFFFFFF;
     }
 

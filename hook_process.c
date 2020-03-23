@@ -990,7 +990,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	// flush logs prior to handling of an exception without having to register a vectored exception handler
 	log_flush();
 
-    if (DebuggerEnabled)
+    if (g_config.debugger)
     {
         if (CAPEExceptionDispatcher(ExceptionRecord, Context))
             return 1;

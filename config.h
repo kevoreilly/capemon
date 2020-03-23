@@ -153,6 +153,9 @@ struct _g_config {
     // for Hancitor config & payload extraction
     int hancitor;
 
+    // dynamic upx unpacker
+    int upx;
+
     // Enable debugger
     int debugger;
 
