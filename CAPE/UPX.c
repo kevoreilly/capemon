@@ -40,7 +40,7 @@ unsigned int StepCount, StepLimit;
 DWORD_PTR LastEIP, CurrentEIP, EIPDelta, UPX_OEP;
 SIZE_T LastWriteLength;
 MODULEINFO modinfo;
-CONTEXT LastContext;
+static CONTEXT LastContext;
 SIZE_T LastWriteLength;
 CHAR DebuggerBuffer[MAX_PATH];
 BOOL TraceRunning;

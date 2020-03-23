@@ -52,7 +52,7 @@ unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 unsigned int Type0, Type1, Type2, Type3;
 int StepOverRegister, TraceDepthCount, EntryPointRegister;
-CONTEXT LastContext;
+static CONTEXT LastContext;
 SIZE_T DumpSize, LastWriteLength;
 char DumpSizeString[MAX_PATH], DebuggerBuffer[MAX_PATH];
 
@@ -1159,60 +1159,22 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
     TraceAll = g_config.trace_all;
 
-	if (!bp0 && !bp1 && !bp2 && !bp3 && !bpw0 && !bpw1 && !bpw2 && !bpw3 && !EntryPointRegister)
-		EntryPointRegister = 1;
 
-	if (g_config.break_on_return_set)
-		EntryPointRegister = 0;
+    if (!StepLimit)
+        StepLimit = SINGLE_STEP_LIMIT;
 
-	if (g_config.break_on_apiname_set)
-		EntryPointRegister = 0;
+    if (TraceDepthLimit == 0xFFFFFFFF)
+        TraceDepthLimit = 1;
 
-    if (EntryPointRegister && !StepLimit && TraceDepthLimit == 0xFFFFFFFF && !TraceAll)
-    {
-        DebuggerOutput("Options:\n");
-
-        if (EntryPointRegister)
-            DebuggerOutput("    - bp0=<RVA or VA>, break-on-return=<API> to set initial breakpoints, defaulting to bp0 on entry point.\n");
-
-        if (!StepLimit)
-        {
-            StepLimit = SINGLE_STEP_LIMIT;
-            DebuggerOutput("    - count=<count> for number of instructions or steps to trace - defaulting to 0x%x.\n", StepLimit);
-        }
-
-        if (TraceDepthLimit == 0xFFFFFFFF)
-        {
-            TraceDepthLimit = 1;
-            DebuggerOutput("    - depth=<depth> to step into or over calls - defaulting to a depth of %d.\n", TraceDepthLimit);
-        }
-
-        if (!ImageBase)
-        {
-            ImageBase = GetModuleHandle(NULL);
-            DebuggerOutput("ImageBase not set by base-on-api parameter, defaulting to process image base 0x%p.\n", ImageBase);
-        }
-        else
-            DebuggerOutput("ImageBase set to 0x%p.\n", ImageBase);
-
-        if (TraceAll)
-            DebuggerOutput("Trace mode: All.\n");
-    }
-    else
-    {
-        if (!StepLimit)
-            StepLimit = SINGLE_STEP_LIMIT;
-
-        if (TraceDepthLimit == 0xFFFFFFFF)
-            TraceDepthLimit = 1;
-
-        if (!ImageBase)
-            ImageBase = GetModuleHandle(NULL);
-    }
+    if (!ImageBase)
+        ImageBase = GetModuleHandle(NULL);
 
 #ifdef STANDALONE
     TraceDepthLimit = 5;
 #endif
+
+    if (TraceAll)
+        DebuggerOutput("Trace mode: All.\n");
 
     if (g_config.break_on_apiname_set)
     {
