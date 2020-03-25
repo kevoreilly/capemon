@@ -606,12 +606,6 @@ int read_config(void)
         DoOutputDebugString("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
     }
 
-    if (g_config.debugger)
-    {
-        g_config.procdump = 0;
-        TraceDepthLimit = 0xFFFFFFFF;
-    }
-
 	fclose(fp);
     if (!g_config.standalone)
         DeleteFileA(config_fname);
