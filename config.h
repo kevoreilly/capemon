@@ -147,6 +147,9 @@ struct _g_config {
     // for dumping of crypto API buffers
     int dump_crypto;
 
+    // for PlugX config & payload extraction
+    int plugx;
+
     // for Hancitor config & payload extraction
     int hancitor;
 

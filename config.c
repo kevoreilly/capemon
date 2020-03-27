@@ -578,6 +578,11 @@ int read_config(void)
                 if (g_config.upx)
                     DoOutputDebugString("UPX unpacker enabled.\n");
 			}
+            else if (!strcmp(key, "plugx")) {
+				g_config.plugx = value[0] == '1';
+                if (g_config.plugx)
+                    DoOutputDebugString("PlugX package enabled.\n");
+			}
             else if (!strcmp(key, "hancitor")) {
 				g_config.hancitor = value[0] == '1';
                 if (g_config.hancitor) {
