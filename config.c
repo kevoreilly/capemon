@@ -568,6 +568,11 @@ int read_config(void)
                 if (g_config.single_process)
                     DoOutputDebugString("Monitoring child processes disabled.\n");
 			}
+            else if (!strcmp(key, "api-rate-cap")) {
+				g_config.api_rate_cap = value[0] == '1';
+                if (g_config.api_rate_cap)
+                    DoOutputDebugString("API spam prevention enabled.\n");
+			}
             else if (!strcmp(key, "dump-crypto")) {
 				g_config.dump_crypto = value[0] == '1';
                 if (g_config.dump_crypto)
