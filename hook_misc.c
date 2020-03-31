@@ -32,6 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern BOOL PlugXConfigDumped;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
     __in  int idHook,
@@ -570,7 +571,6 @@ HOOKDEF(SHORT, WINAPI, GetAsyncKeyState,
 	return ret;
 }
 
-#ifndef CAPE_COMPRESSION
 HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 	__in USHORT CompressionFormat,
 	__out PUCHAR UncompressedBuffer,
@@ -582,8 +582,11 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 	NTSTATUS ret = Old_RtlDecompressBuffer(CompressionFormat, UncompressedBuffer, UncompressedBufferSize,
 		CompressedBuffer, CompressedBufferSize, FinalUncompressedSize);
 
-    if (g_config.compression) {
-        CapeMetaData->DumpType = COMPRESSION;
+    if (g_config.compression || g_config.plugx) {
+        if (g_config.compression)
+            CapeMetaData->DumpType = COMPRESSION;
+        if (g_config.plugx)
+            CapeMetaData->DumpType = PLUGX_PAYLOAD;
         if ((ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
             DoOutputDebugString("RtlDecompressBuffer hook: Checking for PE image(s) despite STATUS_BAD_COMPRESSION_BUFFER.\n", UncompressedBuffer, *FinalUncompressedSize);
             if (!DumpPEsInRange(UncompressedBuffer, UncompressedBufferSize))
@@ -656,7 +659,6 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 
 	return ret;
 }
-#endif
 
 HOOKDEF(NTSTATUS, WINAPI, RtlCompressBuffer,
 	_In_  USHORT CompressionFormatAndEngine,
@@ -1147,6 +1149,29 @@ HOOKDEF(void, WINAPIV, memcpy,
     if (count > 0xa00)
         LOQ_void("misc", "bppi", "DestinationBuffer", count, dest, "source", src, "destination", dest, "count", count);
 
+	if (g_config.plugx && !PlugXConfigDumped &&
+    (
+		count == 0xae4  ||
+		count == 0xbe4  ||
+        count == 0x150c ||
+        count == 0x1510 ||
+        count == 0x1516 ||
+        count == 0x170c ||
+		count == 0x1b18 ||
+        count == 0x1d18 ||
+        count == 0x2540 ||
+        count == 0x254c ||
+		count == 0x2d58 ||
+		count == 0x36a4 ||
+        count == 0x4ea4
+        //count > 0xa00 &&            //fuzzy matching (2560)
+		//count < 0x5000              //fuzzy matching (20480)
+	))
+    {
+		DoOutputDebugString("PlugX config detected (size 0x%d), dumping.\n", count);
+        CapeMetaData->DumpType = PLUGX_CONFIG;
+        DumpMemory((BYTE*)src, count);
+    }
 	return;
 }
 

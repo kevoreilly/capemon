@@ -142,7 +142,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 
-BOOL ProcessDumped, FilesDumped, ModuleDumped;
+BOOL ProcessDumped, FilesDumped, ModuleDumped, PlugXConfigDumped;
 PVOID ImageBase;
 static unsigned int DumpCount;
 
@@ -2092,6 +2092,9 @@ void init_CAPE()
 
     if (g_config.extraction)
         ExtractionInit();
+
+    if (g_config.plugx)
+        PlugXConfigDumped = FALSE;
 
     if (g_config.upx)
     {

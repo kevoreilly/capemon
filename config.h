@@ -150,6 +150,9 @@ struct _g_config {
 	// for dumping reg values greater than 512 bytes
 	int dump_reg;
 
+	// for PlugX config & payload extraction
+	int plugx;
+
     // for Hancitor config & payload extraction
     int hancitor;
 
