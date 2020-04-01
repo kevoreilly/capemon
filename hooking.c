@@ -36,6 +36,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TLS_LAST_WIN32_ERROR 0x34
 #define TLS_LAST_NTSTATUS_ERROR 0xbf4
 #endif
+#define HOOK_TIME_SAMPLE 0x10
+#define HOOK_RATE_LIMIT 0x40
 
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
@@ -219,6 +221,7 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 extern BOOLEAN is_ignored_thread(DWORD tid);
 static hook_info_t tmphookinfo;
 DWORD tmphookinfo_threadid;
+FILETIME ft;
 
 // returns 1 if we should call our hook, 0 if we should call the original function instead
 // on x86 this is actually: hook, esp, ebp
@@ -245,25 +248,45 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	hookinfo = hook_info();
 
-	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
-		hookinfo->last_hook = hookinfo->current_hook;
-		hookinfo->current_hook = h;
-		hookinfo->stack_pointer = sp;
-		hookinfo->return_address = *(ULONG_PTR *)sp;
-		hookinfo->frame_pointer = ebp_or_rip;
+    if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-		/* set caller information */
-		hookinfo->main_caller_retaddr = 0;
-		hookinfo->parent_caller_retaddr = 0;
+        if (g_config.api_rate_cap) {
+            if (h->hook_disabled)
+                return 0;
 
-		operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
+            Old_GetSystemTimeAsFileTime(&ft);
+            if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
+                h->rate_counter++;
+                if (h->rate_counter > HOOK_RATE_LIMIT) {
+                    h->rate_counter = 0;
+                    h->hook_disabled = 1;
+                    return 0;
+                }
+            }
+            else {
+                h->rate_counter = 0;
+                h->hook_timer = ft.dwLowDateTime;
+            }
+        }
 
-		api_dispatch(h, hookinfo);
+        hookinfo->last_hook = hookinfo->current_hook;
+        hookinfo->current_hook = h;
+        hookinfo->stack_pointer = sp;
+        hookinfo->return_address = *(ULONG_PTR *)sp;
+        hookinfo->frame_pointer = ebp_or_rip;
 
-		return 1;
-	}
+        /* set caller information */
+        hookinfo->main_caller_retaddr = 0;
+        hookinfo->parent_caller_retaddr = 0;
 
-	return 0;
+        operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
+
+        api_dispatch(h, hookinfo);
+
+        return 1;
+    }
+
+    return 0;
 }
 
 hook_info_t *hook_info()
