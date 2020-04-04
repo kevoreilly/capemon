@@ -940,80 +940,6 @@ out:
     return RetVal;
 }
 
-static int Execute(const char *ExePath, const char *Args)
-{
-    STARTUPINFOEX sie = {sizeof(sie)};
-    PROCESS_INFORMATION pi;
-    HANDLE hParentProcess = NULL;
-    SIZE_T cbAttributeListSize = 0;
-    PPROC_THREAD_ATTRIBUTE_LIST pAttributeList = NULL;
-    DWORD dwPid = 0;
-    char szCommand[2048];
-    szCommand[0] = L'\0';
-
-    memset(&sie, 0, sizeof(sie));
-    memset(&pi, 0, sizeof(pi));
-
-    if (Args && strlen(Args))
-    {
-        StringCchCat(szCommand, sizeof(szCommand), ExePath);
-        StringCchCat(szCommand, sizeof(szCommand), " ");
-        StringCchCat(szCommand, sizeof(szCommand), Args);
-    }
-    else
-        strncpy(szCommand, ExePath, strlen(ExePath)+1);
-
-    DoOutputDebugString("Loader: Executing %s (%s).\n", ExePath, szCommand);
-
-    InitializeProcThreadAttributeList(NULL, 1, 0, &cbAttributeListSize);
-
-    pAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)HeapAlloc(GetProcessHeap(), 0, cbAttributeListSize);
-
-    if (pAttributeList == NULL)
-    {
-        DoOutputErrorString("Loader: HeapAlloc error");
-        return 0;
-    }
-
-    if (!InitializeProcThreadAttributeList(pAttributeList, 1, 0, &cbAttributeListSize))
-    {
-        DoOutputErrorString("Loader: InitializeProcThreadAttributeList error");
-        return 0;
-    }
-
-    // Get the PID of explorer by its windows handle
-    GetWindowThreadProcessId(GetShellWindow(), &dwPid);
-
-    // Credit to Didier Stevens - SelectMyParent
-    hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwPid);
-
-    if (hParentProcess == NULL)
-    {
-        DoOutputErrorString("Loader: OpenProcess error");
-        return 0;
-    }
-
-    if (!UpdateProcThreadAttribute(pAttributeList, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &hParentProcess, sizeof(HANDLE), NULL, NULL))
-    {
-        DoOutputErrorString("Loader: UpdateProcThreadAttribute error");
-        return 0;
-    }
-
-    sie.lpAttributeList = pAttributeList;
-
-    if (!CreateProcess(ExePath, szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, NULL, NULL, &sie.StartupInfo, &pi))
-    {
-        DoOutputErrorString("Loader: CreateProcess error");
-        return 0;
-    }
-
-    DeleteProcThreadAttributeList(pAttributeList);
-
-    CloseHandle(hParentProcess);
-
-    return pi.dwProcessId;
-}
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     DoOutputDebugString("CAPE loader.\n");
@@ -1059,18 +985,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         return ret;
     }
-    else if (!strcmp(__argv[1], "execute"))
-    {
-        // usage: loader.exe execute <binary> <commandline>
-        // returns: process id
-        DoOutputDebugString("Execute %s %s.\n", __argv[2], __argv[3]);
-        return Execute(__argv[2], __argv[3]);
-    }
     else if (!strcmp(__argv[1], "load"))
     {
         // usage: loader.exe load <monitor dll> <binary> <commandline>
-        HANDLE ProcessHandle = NULL;
-        DWORD ProcessId = 0;
+        DWORD ExplorerPid = 0, ProcessId = 0;
+        SIZE_T cbAttributeListSize = 0;
+        PROCESS_INFORMATION pi;
+        STARTUPINFOEX sie = {sizeof(sie)};
+        HANDLE hParentProcess = NULL, ProcessHandle = NULL, ThreadHandle = NULL;
+        PPROC_THREAD_ATTRIBUTE_LIST pAttributeList = NULL;
         char szCommand[2048];
         szCommand[0] = L'\0';
         int ret;
@@ -1086,44 +1009,87 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         DoOutputDebugString("Loader: Loading %s (%s) with DLL %s.\n", __argv[3], szCommand, __argv[2]);
 
-        ProcessId = Execute(__argv[3], __argv[4]);
+        memset(&sie, 0, sizeof(sie));
+        memset(&pi, 0, sizeof(pi));
 
-        if (!ProcessId)
+        DoOutputDebugString("Loader: Executing %s (%s).\n", __argv[3], szCommand);
+
+        InitializeProcThreadAttributeList(NULL, 1, 0, &cbAttributeListSize);
+
+        pAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)HeapAlloc(GetProcessHeap(), 0, cbAttributeListSize);
+
+        if (pAttributeList == NULL)
+        {
+            DoOutputErrorString("Loader: HeapAlloc error");
+            return 0;
+        }
+
+        if (!InitializeProcThreadAttributeList(pAttributeList, 1, 0, &cbAttributeListSize))
+        {
+            DoOutputErrorString("Loader: InitializeProcThreadAttributeList error");
+            return 0;
+        }
+
+        // Get the PID of explorer by its windows handle
+        GetWindowThreadProcessId(GetShellWindow(), &ExplorerPid);
+
+        // Credit to Didier Stevens - SelectMyParent
+        hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ExplorerPid);
+
+        if (hParentProcess == NULL)
+        {
+            DoOutputErrorString("Loader: OpenProcess error");
+            return 0;
+        }
+
+        if (!UpdateProcThreadAttribute(pAttributeList, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &hParentProcess, sizeof(HANDLE), NULL, NULL))
+        {
+            DoOutputErrorString("Loader: UpdateProcThreadAttribute error");
+            return 0;
+        }
+
+        sie.lpAttributeList = pAttributeList;
+
+        if (!CreateProcess(__argv[3], szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, NULL, NULL, &sie.StartupInfo, &pi))
+        {
+            DoOutputErrorString("Loader: CreateProcess error");
+            return 0;
+        }
+
+        DeleteProcThreadAttributeList(pAttributeList);
+
+        CloseHandle(hParentProcess);
+
+        if (!pi.dwProcessId)
         {
             DoOutputDebugString("Loader: Failed to execute %s.\n", __argv[3]);
             return 0;
         }
 
-        if (!ReadConfig(ProcessId, __argv[2]))
-            DoOutputDebugString("Loader: Failed to load config for process %d.\n", ProcessId);
+        if (!ReadConfig(pi.dwProcessId, __argv[2]))
+            DoOutputDebugString("Loader: Failed to load config for process %d.\n", pi.dwProcessId);
 #ifdef DEBUG_COMMENTS
         else
-            DoOutputDebugString("Loader: Loaded config for process %d.\n", ProcessId);
+            DoOutputDebugString("Loader: Loaded config for process %d.\n", pi.dwProcessId);
 #endif
-        ret = InjectDll(ProcessId, 0, __argv[2]);
+        ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[2]);
 
         if (ret)
             DoOutputDebugString("Successfully injected DLL %s.\n", __argv[2]);
         else
             DoOutputDebugString("Failed to inject DLL %s.\n", __argv[2]);
 
-        ProcessHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ProcessId);
+        ThreadHandle = OpenThread(THREAD_SUSPEND_RESUME, FALSE, pi.dwThreadId);
 
-        if (ProcessHandle)
+        if (ThreadHandle)
         {
-            _NtResumeProcess pNtResumeProcess;
-            pNtResumeProcess = (_NtResumeProcess)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtResumeProcess");
-            pNtResumeProcess(ProcessHandle);
-            CloseHandle(ProcessHandle);
-            DoOutputDebugString("Process %s resumed successfully\n", __argv[3]);
+            ResumeThread(ThreadHandle);
+            CloseHandle(ThreadHandle);
         }
         else
-        {
             DoOutputDebugString("There was a problem resuming the new process %s.\n", __argv[3]);
-            return 0;
-        }
 
-        return ProcessId;
+        return pi.dwProcessId;
     }
     else if (!strcmp(__argv[1], "shellcode"))
     {
