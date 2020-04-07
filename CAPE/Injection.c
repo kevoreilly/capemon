@@ -809,7 +809,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
         if (!CurrentSectionView)
         {
             CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
-            DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x amd local view 0x%p to global list (%ws).\n", SectionHandle, BaseAddress, CurrentSectionView->SectionName);
+            DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x amd local view 0x%p to global list.\n", SectionHandle, BaseAddress);
         }
         else
         {
@@ -817,7 +817,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
             {
                 CurrentSectionView->LocalView = BaseAddress;
                 CurrentSectionView->ViewSize = ViewSize;
-                DoOutputDebugString("MapSectionViewHandler: Updated local view to 0x%p for section view with handle 0x%x (%ws).\n", BaseAddress, SectionHandle, CurrentSectionView->SectionName);
+                DoOutputDebugString("MapSectionViewHandler: Updated local view to 0x%p for section view with handle 0x%x.\n", BaseAddress, SectionHandle);
             }
         }
     }
@@ -828,11 +828,11 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
         if (CurrentSectionView)
         {
 	        CurrentSectionView->TargetProcessId = Pid;
-            DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x to target process %d (%ws).\n", SectionHandle, Pid, CurrentSectionView->SectionName);
+            DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
         }
         else
         {
-            DoOutputDebugString("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d (%ws).\n", SectionHandle, Pid, CurrentSectionView->SectionName);
+            DoOutputDebugString("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
         }
     }
     else if (!CurrentInjectionInfo && Pid != GetCurrentProcessId())
@@ -871,10 +871,10 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
             if (CurrentSectionView)
             {
                 CurrentSectionView->TargetProcessId = Pid;
-                DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x to target process %d (%ws).\n", SectionHandle, Pid, CurrentSectionView->SectionName);
+                DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
             }
             else
-                DoOutputDebugString("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d (%ws).\n", SectionHandle, Pid, CurrentSectionView->SectionName);
+                DoOutputDebugString("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
         }
     }
 }
@@ -1056,7 +1056,7 @@ void DuplicationHandler(HANDLE SourceHandle, HANDLE TargetHandle)
     if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
     {
         CurrentSectionView->TargetProcessId = Pid;
-        DoOutputDebugString("DuplicationHandler: Added section view with source handle 0x%x to target process %d (%ws).\n", SourceHandle, Pid, CurrentSectionView->SectionName);
+        DoOutputDebugString("DuplicationHandler: Added section view with source handle 0x%x to target process %d.\n", SourceHandle, Pid);
     }
     else if (!CurrentInjectionInfo && Pid != GetCurrentProcessId())
     {
@@ -1094,10 +1094,10 @@ void DuplicationHandler(HANDLE SourceHandle, HANDLE TargetHandle)
             if (CurrentSectionView)
             {
                 CurrentSectionView->TargetProcessId = Pid;
-                DoOutputDebugString("DuplicationHandler: Added section view with handle 0x%x to target process %d (%ws).\n", SourceHandle, Pid, CurrentSectionView->SectionName);
+                DoOutputDebugString("DuplicationHandler: Added section view with handle 0x%x to target process %d.\n", SourceHandle, Pid);
             }
             else
-                DoOutputDebugString("DuplicationHandler: Error, failed to add section view with handle 0x%x and target process %d (%ws).\n", SourceHandle, Pid, CurrentSectionView->SectionName);
+                DoOutputDebugString("DuplicationHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SourceHandle, Pid);
         }
     }
 }
