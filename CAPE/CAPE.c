@@ -324,6 +324,9 @@ PVOID GetAllocationBase(PVOID Address)
 {
     MEMORY_BASIC_INFORMATION MemInfo;
 
+    if (!Address)
+        return NULL;
+
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);
 
@@ -339,6 +342,9 @@ PVOID GetAllocationBase(PVOID Address)
         return 0;
     }
 
+#ifdef DEBUG_COMMENTS
+    DoOutputErrorString("GetAllocationBase: Address 0x%p allocation base: 0x%p", Address, MemInfo.AllocationBase);
+#endif
     return MemInfo.AllocationBase;
 }
 
@@ -348,6 +354,9 @@ SIZE_T GetAllocationSize(PVOID Address)
 {
     MEMORY_BASIC_INFORMATION MemInfo;
     PVOID OriginalAllocationBase, AddressOfPage;
+
+    if (!Address)
+        return 0;
 
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);
