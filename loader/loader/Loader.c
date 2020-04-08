@@ -560,9 +560,9 @@ rebase:
         goto out;
     }
 
-    if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE || (DWORD)DosHeader.e_lfanew < sizeof(DosHeader))
+    if (!DosHeader.e_lfanew)
     {
-        DoOutputDebugString("InjectDllViaIAT: Executable DOS header invalid.\n");
+        DoOutputDebugString("InjectDllViaIAT: Executable DOS header zero.\n");
         RetVal = 1; // In case this is mid-hollowing
         goto out;
     }

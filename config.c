@@ -128,6 +128,7 @@ int read_config(void)
                     ARRAYSIZE(g_config.pythonpath) - 1);
 				for (i = 0; i < ARRAYSIZE(g_config.pythonpath); i++)
 					g_config.w_pythonpath[i] = (wchar_t)(unsigned short)g_config.pythonpath[i];
+                DoOutputDebugString("Python path set to '%ws'.\n", g_config.w_pythonpath);
 			}
 			else if (!strcmp(key, "file-of-interest")) {
 				unsigned int len = (unsigned int)strlen(value);
@@ -609,6 +610,14 @@ int read_config(void)
 	/* don't suspend logging if this isn't the first process or if we want all the logs */
 	if (!g_config.first_process || g_config.full_logs)
 		g_config.suspend_logging = FALSE;
+
+    if (!wcslen(g_config.w_pythonpath)) {
+        char* DummyString = "default";
+        strncpy(g_config.pythonpath, DummyString, strlen(DummyString));
+        for (i = 0; i < ARRAYSIZE(g_config.pythonpath); i++)
+            g_config.w_pythonpath[i] = (wchar_t)(unsigned short)g_config.pythonpath[i];
+        DoOutputDebugString("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
+    }
 
 	/* if no option supplied for dropped limit set a sensible value */
 	if (!g_config.dropped_limit) {

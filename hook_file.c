@@ -1063,7 +1063,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExW,
         lpFindFileData, fSearchOp, lpSearchFilter, dwAdditionalFlags);
 
 	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && lpFileName &&
-		(!wcsnicmp(lpFileName, g_config.w_analyzer, wcslen(g_config.w_analyzer))
+        (!wcsnicmp(lpFileName, g_config.w_analyzer, wcslen(g_config.w_analyzer))
             || !wcsnicmp(lpFileName, g_config.w_results, wcslen(g_config.w_results))
             || !wcsnicmp(lpFileName, g_config.w_pythonpath, wcslen(g_config.w_pythonpath)))
 	) {

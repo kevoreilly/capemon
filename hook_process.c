@@ -193,7 +193,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	memset(&_ProcessParameters, 0, sizeof(_ProcessParameters));
 
-	if(ProcessParameters == NULL)
+	if (ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
     ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
         ProcessDesiredAccess, ThreadDesiredAccess,
@@ -367,7 +367,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
     int pid = 0;
 	NTSTATUS ret;
 
-    if(ClientId != NULL) {
+    if (ClientId != NULL) {
 		__try {
 			pid = (int)(ULONG_PTR)ClientId->UniqueProcess;
 		}
@@ -376,7 +376,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 		}
     }
 
-    if(is_protected_pid(pid)) {
+    if (is_protected_pid(pid)) {
         ret = STATUS_ACCESS_DENIED;
         LOQ_ntstatus("process", "ppl", "ProcessHandle", NULL, "DesiredAccess", DesiredAccess,
             "ProcessIdentifier", pid);
