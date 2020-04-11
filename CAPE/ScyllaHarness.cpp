@@ -432,10 +432,7 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
         }
 
         if (!ScanForNonZero((LPVOID)PointerToLastSection, SizeOfLastSection))
-        {
             DoOutputDebugString("DumpPE: Empty or inaccessible last section, file image seems incomplete (from 0x%p to 0x%p).\n", PointerToLastSection, (DWORD_PTR)PointerToLastSection + SizeOfLastSection);
-            return 0;
-        }
 
         entrypoint = peFile->getEntryPoint();
 
@@ -507,10 +504,7 @@ extern "C" int ScyllaDumpPEToFileHandle(DWORD_PTR Buffer, HANDLE FileHandle)
         }
 
         if (!ScanForNonZero((LPVOID)PointerToLastSection, SizeOfLastSection))
-        {
             DoOutputDebugString("DumpPEToFileHandle: Empty or inaccessible last section, file image seems incomplete (from 0x%p to 0x%p).\n", PointerToLastSection, (DWORD_PTR)PointerToLastSection + SizeOfLastSection);
-            return 0;
-        }
 
         entrypoint = peFile->getEntryPoint();
 
