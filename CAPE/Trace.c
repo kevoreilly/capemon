@@ -61,10 +61,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 BOOL DoSetSingleStepMode(int Register, PCONTEXT Context, PVOID Handler)
 {
-    GetNextAvailableBreakpoint(GetCurrentThreadId(), &StepOverRegister);
-    if (!StepOverRegister)
+    if (!GetNextAvailableBreakpoint(GetCurrentThreadId(), &StepOverRegister))
         StepOverRegister = Register;
-    return SetSingleStepMode(Context, Trace);
+    return SetSingleStepMode(Context, Handler);
 }
 
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, PCHAR Instruction, PCHAR Action, PVOID CIP)
@@ -119,7 +118,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, PCHAR Instructi
         else
             DebuggerOutput("ActionDispatcher: Failed to dump breaking module at 0x%p.\n", CallingModule);
     }
-    if (!stricmp(Action, "dumpebx"))
+    else if (!stricmp(Action, "dumpebx"))
     {
         if (!stricmp(DumpSizeString, "eax"))
         {
@@ -189,6 +188,39 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, PCHAR Instructi
             else
                 DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p.\n", DumpAddress);
         }
+    }
+    else if (!stricmp(Action, "dumpesi"))
+    {
+#ifdef _WIN64
+        DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Rsi;
+#else
+        DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Esi;
+#endif
+        if (!stricmp(DumpSizeString, "eax"))
+        {
+#ifdef _WIN64
+            DumpSize = ExceptionInfo->ContextRecord->Rax;
+#else
+            DumpSize = ExceptionInfo->ContextRecord->Eax;
+#endif
+        }
+        else if (!stricmp(DumpSizeString, "eax"))
+        {
+#ifdef _WIN64
+            DumpSize = ExceptionInfo->ContextRecord->Rax;
+#else
+            DumpSize = ExceptionInfo->ContextRecord->Eax;
+#endif
+        }
+        if (g_config.dumptype0)
+            CapeMetaData->DumpType = g_config.dumptype0;
+        else
+            CapeMetaData->DumpType = EXTRACTION_PE;
+
+        if (DumpAddress && DumpSize && DumpMemory(DumpAddress, DumpSize))
+            DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+        else
+            DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
     }
     else
         DebuggerOutput("ActionDispatcher: Unrecognised ! (%s)", Action);
@@ -307,7 +339,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     if (StepCount > StepLimit)
     {
         DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
+        OutputThreadBreakpoints(GetCurrentThreadId());
         StepCount = 0;
+        ClearSingleStepMode(ExceptionInfo->ContextRecord);
         return TRUE;
     }
 
@@ -560,7 +594,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll) || (StepOver == TRUE && !TraceAll) || ForceStepOver)
         {
             ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-            if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+            if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
 
             if (ForceStepOver)
@@ -598,7 +632,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
     {
         ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-        if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+        if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
             DoOutputDebugString("Trace: Failed to set breakpoint on Heaven's Gate return address 0x%p\n", ReturnAddress);
 
         LastContext = *ExceptionInfo->ContextRecord;
@@ -729,7 +763,16 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     BreakpointsHit = TRUE;
 
-    for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
+    if (StepOverRegister && pBreakpointInfo->Register == StepOverRegister)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("BreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
+#endif
+        ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+        StepOverRegister = 0;
+    }
+    else for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
+    //for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
     {
         if (pBreakpointInfo->Register == bp)
         {
@@ -901,7 +944,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         {
             if (!strcmp(DecodedInstructions[i].mnemonic.p, "RET"))
             {
-                if (ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, 0, (BYTE*)CIP + Delta, BP_EXEC, StepOutCallback))
+                if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)CIP + Delta, BP_EXEC, StepOutCallback))
                     DoOutputDebugString("BreakpointCallback: Breakpoint %d set on ret instruction at 0x%p.\n", Register, (BYTE*)CIP + Delta);
                 else
                     DoOutputDebugString("BreakpointCallback: Failed to set breakpoint %d on ret instruction at 0x%p.\n", Register, (BYTE*)CIP + Delta);
@@ -927,10 +970,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         if ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll)
         {
             ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-            if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-            {
+            if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 DoOutputDebugString("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-            }
 
             LastContext = *ExceptionInfo->ContextRecord;
 
@@ -941,7 +982,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         else if (!FilterTrace)
             TraceDepthCount++;
 #endif
-}
+    }
     else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
     {
         //if (TraceDepthCount < 0)
@@ -973,6 +1014,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     if (!StopTrace)
         DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+    //    SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
 
     return TRUE;
 }
@@ -1130,12 +1172,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type0, Callback))
         {
-            DebuggerOutput("Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp0, Type0);
+            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp0, Type0);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DebuggerOutput("SetBreakpoint failed for breakpoint %d.\n", Register);
+            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1166,12 +1208,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type1, Callback))
         {
-            DebuggerOutput("Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp1, Type1);
+            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp1, Type1);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DebuggerOutput("SetBreakpoint failed for breakpoint %d.\n", Register);
+            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1202,12 +1244,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type2, Callback))
         {
-            DebuggerOutput("Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp2, Type2);
+            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp2, Type2);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DebuggerOutput("SetBreakpoint failed for breakpoint %d.\n", Register);
+            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1238,12 +1280,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type3, Callback))
         {
-            DebuggerOutput("Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp3, Type3);
+            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp3, Type3);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DebuggerOutput("SetBreakpoint failed for breakpoint %d.\n", Register);
+            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
