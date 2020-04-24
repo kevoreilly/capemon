@@ -15,7 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
-//#define DEBUG_COMMENTS
+#define DEBUG_COMMENTS
 
 #include <stdio.h>
 #include <tchar.h>
@@ -518,9 +518,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
         // If not it's a single-step
         if (!BreakpointFlag)
         {
-            if (SingleStepHandler)
-                SingleStepHandler(ExceptionInfo);
-            else if (TrapIndex)
+            if (TrapIndex)
             // this is from a 'StepOver' function
             {
                 DoOutputDebugString("CAPEExceptionFilter: Stepping over execution breakpoint to: 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
@@ -529,6 +527,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
                 ResumeAfterExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
             }
+            else if (SingleStepHandler)
+                SingleStepHandler(ExceptionInfo);
             else
                 // Unhandled single-step exception, pass it on
                 return EXCEPTION_CONTINUE_SEARCH;
@@ -1468,8 +1468,6 @@ BOOL ClearSingleStepMode(PCONTEXT Context)
     // Clear the trap flag & index
     Context->EFlags &= ~FL_TF;
 
-    TrapIndex = 0;
-
     SingleStepHandler = NULL;
 
     return TRUE;
@@ -1549,6 +1547,9 @@ BOOL ResumeAfterExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpoin
         return FALSE;
     }
 #endif
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("ResumeAfterExecutionBreakpoint: TrapIndex %d, SingleStepHandler 0x%p.\n", TrapIndex, SingleStepHandler);
+#endif
 
     switch(TrapIndex-1)
 	{
@@ -1566,8 +1567,9 @@ BOOL ResumeAfterExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpoin
             break;
 	}
 
-    // Clear the trap flag
-    Context->EFlags &= ~FL_TF;
+    // Reset the trap flag if single-stepping
+    if (SingleStepHandler)
+        Context->EFlags |= FL_TF;
 
 #ifdef _WIN64
 	if (pBreakpointInfo->ThreadHandle == NULL)
