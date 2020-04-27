@@ -1019,6 +1019,42 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     return TRUE;
 }
 
+BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP,ReturnAddress;
+
+	if (pBreakpointInfo == NULL)
+	{
+		DoOutputDebugString("BreakOnReturnCallback executed with pBreakpointInfo NULL.\n");
+		return FALSE;
+	}
+
+	if (pBreakpointInfo->ThreadHandle == NULL)
+	{
+		DoOutputDebugString("BreakOnReturnCallback executed with NULL thread handle.\n");
+		return FALSE;
+	}
+
+    BreakpointsHit = TRUE;
+
+#ifdef _WIN64
+    CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+    ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+#else
+    CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+    ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+#endif
+
+    if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+        DoOutputDebugString("BreakOnReturnCallback: Breakpoint set on return address at 0x%p.\n", ReturnAddress);
+    else
+        DoOutputDebugString("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
+
+    StepOverExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+
+    return TRUE;
+}
+
 BOOL WriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
@@ -1116,6 +1152,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
             DebuggerOutput("Failed to get address for function %s::%s.", g_config.break_on_modname, g_config.break_on_apiname);
     }
 
+    // break-on-entrypoint uses bp0
     if (EntryPointRegister)
     {
         PVOID EntryPoint = (PVOID)GetEntryPointVA((DWORD_PTR)ImageBase);
@@ -1281,6 +1318,76 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type3, Callback))
         {
             DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp3, Type3);
+            BreakpointsSet = TRUE;
+        }
+        else
+        {
+            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            BreakpointsSet = FALSE;
+            return FALSE;
+        }
+    }
+
+    if (!bp0 && g_config.br0)
+    {
+        Register = 0;
+
+        if (g_config.file_offsets)
+        {
+            if (!IsDisguisedPEHeader(ImageBase))
+            {
+                DoOutputDebugString("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                BreakpointsSet = FALSE;
+                return FALSE;
+            }
+            BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
+        }
+        else
+        {
+            if ((SIZE_T)g_config.br0 > RVA_LIMIT)
+                BreakpointVA = (DWORD_PTR)g_config.br0;
+            else
+                BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0;
+        }
+
+        if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, BreakOnReturnCallback))
+        {
+            DoOutputDebugString("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br0, BP_EXEC);
+            BreakpointsSet = TRUE;
+        }
+        else
+        {
+            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            BreakpointsSet = FALSE;
+            return FALSE;
+        }
+    }
+
+    if (!bp1 && g_config.br1)
+    {
+        Register = 1;
+
+        if (g_config.file_offsets)
+        {
+            if (!IsDisguisedPEHeader(ImageBase))
+            {
+                DoOutputDebugString("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                BreakpointsSet = FALSE;
+                return FALSE;
+            }
+            BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
+        }
+        else
+        {
+            if ((SIZE_T)g_config.br1 > RVA_LIMIT)
+                BreakpointVA = (DWORD_PTR)g_config.br1;
+            else
+                BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1;
+        }
+
+        if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, BreakOnReturnCallback))
+        {
+            DoOutputDebugString("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br1, BP_EXEC);
             BreakpointsSet = TRUE;
         }
         else

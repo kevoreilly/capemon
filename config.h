@@ -171,6 +171,8 @@ struct _g_config {
     BOOLEAN break_on_return_set;
     BOOLEAN break_on_apiname_set;
 
+    // break-on-return: brX
+    PVOID br0, br1, br2, br3;
     int dumptype0;
     int trace_all;
     int step_out;

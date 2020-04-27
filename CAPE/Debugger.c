@@ -322,16 +322,15 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId)
         if (!MainThreadBreakpointList->BreakpointInfo[Register].Address)
             continue;
 
-        NewThreadBreakpoints->BreakpointInfo[Register] = MainThreadBreakpointList->BreakpointInfo[Register];
-
-        if (!NewThreadBreakpoints->BreakpointInfo[Register].Address)
-            DoOutputDebugString("InitNewThreadBreakpoints error: failed to copy the breakpoint struct!\n");
-
-        if (NewThreadBreakpoints->BreakpointInfo[Register].Address && !SetThreadBreakpoint(ThreadId, Register, NewThreadBreakpoints->BreakpointInfo[Register].Size, NewThreadBreakpoints->BreakpointInfo[Register].Address, NewThreadBreakpoints->BreakpointInfo[Register].Type, NewThreadBreakpoints->BreakpointInfo[Register].Callback))
+        if (!SetThreadBreakpoint(ThreadId, Register, MainThreadBreakpointList->BreakpointInfo[Register].Size, MainThreadBreakpointList->BreakpointInfo[Register].Address, MainThreadBreakpointList->BreakpointInfo[Register].Type, MainThreadBreakpointList->BreakpointInfo[Register].Callback))
         {
             DoOutputDebugString("InitNewThreadBreakpoints error: failed to set breakpoint %d for new thread %d.\n", Register, ThreadId);
             return FALSE;
         }
+
+        if (!NewThreadBreakpoints->BreakpointInfo[Register].Address)
+            DoOutputDebugString("InitNewThreadBreakpoints error: problem detected setting breakpoint %d for new thread %d.\n", Register, ThreadId);
+
     }
 
     return TRUE;
@@ -521,7 +520,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
             if (TrapIndex)
             // this is from a 'StepOver' function
             {
+#ifdef DEBUG_COMMENTS
                 DoOutputDebugString("CAPEExceptionFilter: Stepping over execution breakpoint to: 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+#endif
 
                 pBreakpointInfo = &(CurrentThreadBreakpoint->BreakpointInfo[TrapIndex-1]);
 
@@ -537,9 +538,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
         }
 
         if (TrapIndex)
-        {
             DoOutputDebugString("CAPEExceptionFilter: Anomaly detected: Trap index set on non-single-step: %d\n", TrapIndex);
-        }
 
         if (!TraceRunning)
             DoOutputDebugString("CAPEExceptionFilter: breakpoint hit by instruction at 0x%p (thread %d)\n", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
@@ -896,7 +895,9 @@ BOOL SetDebugRegister
         return FALSE;
     }
 
+#ifdef DEBUG_COMMENTS
 	DoOutputDebugString("SetDebugRegister: Setting breakpoint %i hThread=0x%x, Size=0x%x, Address=0x%p and Type=0x%x.\n", Register, hThread, Size, Address, Type);
+#endif
 
     Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
 
