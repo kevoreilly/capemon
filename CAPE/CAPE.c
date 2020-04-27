@@ -1338,6 +1338,13 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
 
     Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
 
+    if (!Size)
+    {
+        DoOutputDebugString("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
+        free(FullPathName);
+        return 0;
+    }
+
     BufferCopy = (LPVOID)((BYTE*)malloc(Size));
 
     if (BufferCopy == NULL)

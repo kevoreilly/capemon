@@ -358,7 +358,7 @@ int read_config(void)
                     else {
                         p = strchr(value, '-');
                         if (p) {
-                            delta = - strtoul(p+1, NULL, 0);
+                            delta = - (int)strtoul(p+1, NULL, 0);
                             DoOutputDebugString("Config: Delta 0x%x.\n", delta);
                             *p = '\0';
                         }
@@ -408,6 +408,72 @@ int read_config(void)
                     DoOutputDebugString("Config: bp3 set to 0x%x.\n", bp3);
                 }
 			}
+            else if (!stricmp(key, "br0")) {
+                int delta;
+                p = strchr(value, '+');
+                if (p) {
+                    delta = strtoul(p+1, NULL, 0);
+                    DoOutputDebugString("Config: Delta 0x%x.\n", delta);
+                    *p = '\0';
+                }
+                else {
+                    p = strchr(value, '-');
+                    if (p) {
+                        delta = - (int)strtoul(p+1, NULL, 0);
+                        DoOutputDebugString("Config: Delta 0x%x.\n", delta);
+                        *p = '\0';
+                    }
+                }
+                g_config.br0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                if (g_config.br0) {
+                    g_config.debugger = 1;
+                    DoOutputDebugString("Config: br0 set to 0x%x (break-on-return)\n", g_config.br0);
+                    if (delta) {
+                        DoOutputDebugString("Config: br0 was 0x%x.\n", g_config.br0);
+                        g_config.br0 = (PVOID)(DWORD_PTR)((int)g_config.br0 + delta);
+                    }
+                }
+			}
+            else if (!stricmp(key, "br1")) {
+                int delta;
+                p = strchr(value, '+');
+                if (p) {
+                    delta = strtoul(p+1, NULL, 0);
+                    DoOutputDebugString("Config: Delta 0x%x.\n", delta);
+                    *p = '\0';
+                }
+                else {
+                    p = strchr(value, '-');
+                    if (p) {
+                        delta = - (int)strtoul(p+1, NULL, 0);
+                        DoOutputDebugString("Config: Delta 0x%x.\n", delta);
+                        *p = '\0';
+                    }
+                }
+                g_config.br1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                if (g_config.br1) {
+                    g_config.debugger = 1;
+                    DoOutputDebugString("Config: br1 set to 0x%x (break-on-return)\n", g_config.br1);
+                    if (delta) {
+                        DoOutputDebugString("Config: br1 was 0x%x.\n", g_config.br1);
+                        g_config.br1 = (PVOID)(DWORD_PTR)((int)g_config.br1 + delta);
+                    }
+                }
+			}
+            else if (!stricmp(key, "br2")) {
+                g_config.br2 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                if (g_config.br2) {
+                    g_config.debugger = 1;
+                    DoOutputDebugString("Config: br2 set to 0x%x (break-on-return)\n", g_config.br2);
+                }
+			}
+            else if (!stricmp(key, "br3")) {
+                g_config.br3 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                if (g_config.br3) {
+                    g_config.debugger = 1;
+                    DoOutputDebugString("Config: br3 set to 0x%x (break-on-return)\n", g_config.br3);
+                }
+			}
             else if (!stricmp(key, "depth")) {
 				TraceDepthLimit = (int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Config: Trace depth set to 0x%x", TraceDepthLimit);
@@ -437,21 +503,21 @@ int read_config(void)
                 strncpy(Action0, value, strlen(value));
                 DoOutputDebugString("Config: Action0 set to %s.", Action0);
 			}
-            else if (!stricmp(key, "instruction0")) {
+            else if (!stricmp(key, "instruction0") || !stricmp(key, "instr0")) {
                 Instruction0 = calloc(1, MAX_PATH);
                 strncpy(Instruction0, value, strlen(value));
                 DoOutputDebugString("Config: Instruction0 set to %s.", value);
 			}
-            else if (!stricmp(key, "instruction1")) {
+            else if (!stricmp(key, "instruction1") || !stricmp(key, "instr1")) {
                 Instruction1 = calloc(1, MAX_PATH);
                 strncpy(Instruction1, value, strlen(value));
                 DoOutputDebugString("Config: Instruction1 set to %s.", value);
 			}
             else if (!stricmp(key, "break-on-return")) {
                 g_config.debugger = 1;
-				strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return));
-                g_config.break_on_return_set = TRUE;
+                strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return));
                 DoOutputDebugString("Config: Break-on-return set to %s.", g_config.break_on_return);
+                g_config.break_on_return_set = TRUE;
 			}
             else if (!stricmp(key, "trace-all")) {
                 g_config.debugger = 1;
