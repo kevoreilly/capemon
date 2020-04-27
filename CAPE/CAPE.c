@@ -343,7 +343,7 @@ PVOID GetAllocationBase(PVOID Address)
     }
 
 #ifdef DEBUG_COMMENTS
-    DoOutputErrorString("GetAllocationBase: Address 0x%p allocation base: 0x%p", Address, MemInfo.AllocationBase);
+//    DoOutputErrorString("GetAllocationBase: Address 0x%p allocation base: 0x%p", Address, MemInfo.AllocationBase);
 #endif
     return MemInfo.AllocationBase;
 }
@@ -1845,21 +1845,25 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
         else
             ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
     }
-    // Disable dumping of all calling regions for the moment as this needs further testing.
-    // (This causes lots of useless dumps from Word processes, for example.)
-    //else if (lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
-    else if (!g_config.verbose_dumping && MemInfo.BaseAddress == CallerBase)
+    else if (!g_config.verbose_dumping && lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
     {
+        // We filter for modules/regions that aren't properly 'loaded'
+        char ModulePath[MAX_PATH];
+        if (GetMappedFileName(GetCurrentProcess(), MemInfo.BaseAddress, ModulePath, MAX_PATH))
+            return;
+
         DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
 
-        CapeMetaData->ModulePath = NULL;
-        CapeMetaData->DumpType = DATADUMP;
         CapeMetaData->Address = MemInfo.BaseAddress;
 
-        if (IsDisguisedPEHeader(MemInfo.BaseAddress))
+        if (IsDisguisedPEHeader(MemInfo.BaseAddress)) {
+            CapeMetaData->DumpType = EXTRACTION_PE;
             DumpImageInCurrentProcess(MemInfo.BaseAddress);
-        else
+        }
+        else {
+            CapeMetaData->DumpType = EXTRACTION_SHELLCODE;
             DumpRegion(MemInfo.BaseAddress);
+        }
     }
 }
 
