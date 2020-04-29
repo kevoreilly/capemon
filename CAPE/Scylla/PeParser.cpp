@@ -1034,8 +1034,6 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
 		if (!newFile)
         {
-            closeFileHandle();
-
             if (!GetFullPathName(CAPE_OUTPUT_FILE, MAX_PATH, CapeOutputPath, NULL))
             {
                 DoOutputErrorString("savePeFileToDisk: There was a problem obtaining the full file path");
@@ -1044,6 +1042,9 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
             CapeName = GetName();
 
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("PeParser::savePeFileToDisk: Full file path %s, CapeName %s.\n", CapeOutputPath, CapeName);
+#endif
             if (MoveFile(CapeOutputPath, CapeName))
             {
                 memset(CapeOutputPath, 0, MAX_PATH);
@@ -1108,7 +1109,7 @@ bool PeParser::savePeFileToHandle(HANDLE FileHandle)
 	bool retValue = true, SectionDataWritten = false;
 
 #ifdef DEBUG_COMMENTS
-    //DoOutputDebugString("PeParser::savePeFileToDisk: Function entry.\n");
+    //DoOutputDebugString("PeParser::savePeFileToHandle: Function entry.\n");
 #endif
 
 	DWORD dwFileOffset = 0, dwWriteSize = 0;
@@ -1116,7 +1117,7 @@ bool PeParser::savePeFileToHandle(HANDLE FileHandle)
 	if (getNumberOfSections() != listPeSection.size())
 	{
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("PeParser::savePeFileToDisk: Number of sections mismatch error.\n");
+        DoOutputDebugString("PeParser::savePeFileToHandle: Number of sections mismatch error.\n");
 #endif
 		return false;
 	}
@@ -1192,7 +1193,7 @@ bool PeParser::savePeFileToHandle(HANDLE FileHandle)
         if (dwWriteSize)
         {
 #ifdef DEBUG_COMMENTS
-            DoOutputDebugString("PeParser::savePeFileToDisk: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
+            DoOutputDebugString("PeParser::savePeFileToHandle: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
 #endif
             if (!ProcessAccessHelp::writeMemoryToFile(FileHandle, listPeSection[i].sectionHeader.PointerToRawData, dwWriteSize, listPeSection[i].data))
             {
@@ -1217,7 +1218,7 @@ bool PeParser::savePeFileToHandle(HANDLE FileHandle)
         }
 #ifdef DEBUG_COMMENTS
         else
-            DoOutputDebugString("PeParser::savePeFileToDisk: Nothing to write for section %d.\n", i+1);
+            DoOutputDebugString("PeParser::savePeFileToHandle: Nothing to write for section %d.\n", i+1);
 #endif
     }
 
@@ -1277,12 +1278,10 @@ bool PeParser::saveCompletePeToDisk(const CHAR *newFile)
 		SetEndOfFile(hFile);
         dumpSize = dwWriteSize;
 
-		if (newFile)
-            closeFileHandle();
-        else
-        {
-            closeFileHandle();
+        closeFileHandle();
 
+		if (!newFile)
+        {
             if (!GetFullPathName(CAPE_OUTPUT_FILE, MAX_PATH, CapeOutputPath, NULL))
             {
                 DoOutputErrorString("saveCompletePeToDisk: There was a problem obtaining the full file path");

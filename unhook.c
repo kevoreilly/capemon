@@ -264,6 +264,8 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     CloseHandle(g_terminate_event_handle);
 
+    hook_disable();
+
     if (g_config.debugger)
     {
         StopTrace = TRUE;

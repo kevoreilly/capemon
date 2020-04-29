@@ -1847,9 +1847,12 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
     }
     else if (!g_config.verbose_dumping && lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
     {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("DumpInterestingRegions: Inspecting region at 0x%p.\n", MemInfo.BaseAddress);
+#endif
         // We filter for modules/regions that aren't properly 'loaded'
         char ModulePath[MAX_PATH];
-        if (GetMappedFileName(GetCurrentProcess(), MemInfo.BaseAddress, ModulePath, MAX_PATH))
+        if (MemInfo.BaseAddress != CallerBase && GetMappedFileName(GetCurrentProcess(), MemInfo.BaseAddress, ModulePath, MAX_PATH))
             return;
 
         DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);

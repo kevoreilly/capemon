@@ -15,6 +15,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
+
 #include "Scylla\PeParser.h"
 #include "Scylla\ProcessAccessHelp.h"
 #include "Scylla\NativeWinApi.h"
@@ -33,7 +35,6 @@ typedef unsigned __int64 QWORD;
 
 #define	PE_HEADER_LIMIT 0x200
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
-//#define DEBUG_COMMENTS
 
 extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -320,7 +321,7 @@ extern "C" unsigned int ScyllaDumpProcessToFileHandle(HANDLE hProcess, DWORD_PTR
 
 	ScyllaInit(hProcess);
 
-    DoOutputDebugString("DumpProcess: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
+    DoOutputDebugString("DumpProcessToFileHandle: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
 
     peFile = new PeParser(ModuleBase, TRUE);
 
@@ -335,30 +336,30 @@ extern "C" unsigned int ScyllaDumpProcessToFileHandle(HANDLE hProcess, DWORD_PTR
 
         if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
         {
-            DoOutputDebugString("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
+            DoOutputDebugString("DumpProcessToFileHandle: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
             entrypoint = NULL;
         }
         else
         {
-            DoOutputDebugString("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
+            DoOutputDebugString("DumpProcessToFileHandle: Module entry point VA is 0x%p.\n", entrypoint);
             entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
         }
 
         if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
         {
             BytesWritten = peFile->dumpSize;
-            DoOutputDebugString("DumpProcess: Module image dump success - dump size 0x%x.\n", BytesWritten);
+            DoOutputDebugString("DumpProcessToFileHandle: Module image dump success - dump size 0x%x.\n", BytesWritten);
         }
         else
         {
-            DoOutputDebugString("DumpProcess: Error - Cannot dump image.\n");
+            DoOutputDebugString("DumpProcessToFileHandle: Error - Cannot dump image.\n");
             delete peFile;
             return 0;
         }
     }
     else
     {
-        DoOutputDebugString("DumpProcess: Invalid PE file or invalid PE header.\n");
+        DoOutputDebugString("DumpProcessToFileHandle: Invalid PE file or invalid PE header.\n");
         delete peFile;
         return 0;
     }
