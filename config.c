@@ -655,6 +655,11 @@ int read_config(void)
                 if (g_config.plugx)
                     DoOutputDebugString("PlugX package enabled.\n");
 			}
+			else if (!strcmp(key, "dump-reg")) {
+			g_config.dump_reg = value[0] == '1';
+			if (g_config.dump_reg)
+				DoOutputDebugString("Dumping of registry set values enabled.\n");
+			}
             else if (!strcmp(key, "hancitor")) {
 				g_config.hancitor = value[0] == '1';
                 if (g_config.hancitor) {
