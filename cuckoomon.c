@@ -639,6 +639,15 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptImportKey),
 
 	HOOK(vbe7, rtcEnvironBstr),
+
+	// Additional misc hooks
+	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
+	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
+	HOOK(shlwapi, StrCmpNICW),
+	HOOK(shlwapi, UrlCanonicalizeW),
+	HOOK(oleaut32, SysFreeString),
+	HOOK(oleaut32, VarBstrCat),
+	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 };
 
 void set_hooks_dll(const wchar_t *library)

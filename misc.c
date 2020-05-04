@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
+extern char *CommandLine;
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
@@ -457,6 +458,14 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMWar", L"Lenov");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
+	}
+
+	if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings") &&
+		strstr(CommandLine, "reg.exe")) {
+		if (*(DWORD*)Data == 1) {
+			*(DWORD*)Data = (DWORD)4;
+			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+		}
 	}
 }
 

@@ -51,6 +51,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\lookup.h"
 
 #pragma comment(lib, "Shlwapi.lib")
+char *CommandLine;
 
 typedef union _UNWIND_CODE {
     struct {
@@ -2047,7 +2048,7 @@ void RestoreHeaders()
 
 void init_CAPE()
 {
-    char *CommandLine, *Character;
+    char *Character;
 
     // Restore headers in case of IAT patching
     RestoreHeaders();
