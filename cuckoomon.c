@@ -456,6 +456,7 @@ static hook_t g_hooks[] = {
 	HOOK(netapi32, NetGetJoinInformation),
 	HOOK(netapi32, NetUserGetLocalGroups),
 	HOOK(urlmon, URLDownloadToFileW),
+	HOOK(urlmon, URLDownloadToFileA),
     HOOK(urlmon, URLDownloadToCacheFileW),
 	HOOK(urlmon, ObtainUserAgentString),
 	HOOK(wininet, InternetGetConnectedState),
