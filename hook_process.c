@@ -918,7 +918,7 @@ HOOKDEF(BOOL, WINAPI, WaitForDebugEvent,
 		LOQ_bool("process", "iiip", "EventCode", lpDebugEvent->dwDebugEventCode, "ProcessId", lpDebugEvent->dwProcessId, "ThreadId", lpDebugEvent->dwThreadId, "StartAddress", lpDebugEvent->u.CreateThread.lpStartAddress);
 		break;
 	case LOAD_DLL_DEBUG_EVENT:
-		// we could continue ourselves here and skip notification to the malware of cuckoomon loading
+		// we could continue ourselves here and skip notification to the malware of capemon loading
 	default:
 		LOQ_bool("process", "iii", "EventCode", lpDebugEvent->dwDebugEventCode, "ProcessId", lpDebugEvent->dwProcessId, "ThreadId", lpDebugEvent->dwThreadId);
 	}
@@ -942,7 +942,7 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 				wchar_t *fname = calloc(32768, sizeof(wchar_t));
 
 				path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
-				// we could continue ourselves here and skip notification to the malware of cuckoomon loading
+				// we could continue ourselves here and skip notification to the malware of capemon loading
 				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
 				free(fname);
 			}
@@ -992,13 +992,8 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	// flush logs prior to handling of an exception without having to register a vectored exception handler
 	log_flush();
 
-    if (g_config.debugger)
-    {
-        if (CAPEExceptionDispatcher(ExceptionRecord, Context))
-            return 1;
-        else
-            RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
-    }
+    if (CAPEExceptionDispatcher(ExceptionRecord, Context))
+        return 1;
     else
         RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
 
@@ -1014,6 +1009,11 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
         }
     }
 
+    struct _EXCEPTION_POINTERS ExceptionInfo;
+    ExceptionInfo.ExceptionRecord = ExceptionRecord;
+    ExceptionInfo.ContextRecord = Context;
+    capemon_exception_handler(&ExceptionInfo);
+
     return RetVal;
 }
 
@@ -1028,7 +1028,7 @@ HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
 	exc.ExceptionRecord = ExceptionRecord;
 
 	if (g_config.debug)
-		cuckoomon_exception_handler(&exc);
+		capemon_exception_handler(&exc);
 
 	return 0;
 }

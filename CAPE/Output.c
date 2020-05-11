@@ -354,17 +354,18 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 //**************************************************************************************
 {
     va_list args;
+    char *FullPathName, *OutputFilename, *Character;
 
     va_start(args, lpOutputString);
 
-    if (g_config.divert_debugger_log)
+    if (g_config.divert_debugger_log > 1)
+        return;
+    else if (g_config.divert_debugger_log)
     {
         OutputString(lpOutputString, args);
         va_end(args);
         return;
     }
-
-    char *FullPathName, *OutputFilename, *Character;
 
     FullPathName = GetResultsPath("debugger");
 

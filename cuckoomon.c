@@ -40,7 +40,7 @@ wchar_t *our_commandline;
 BOOL is_64bit_os;
 volatile int dummy_val;
 
-extern void init_CAPE();
+extern void CAPE_init();
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
@@ -841,7 +841,7 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 	return 0;
 }
 
-LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo)
+LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo)
 {
 	char *msg;
 	char *dllname;
@@ -1092,7 +1092,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
         if (g_config.standalone) {
             // initialise CAPE
-            init_CAPE();
+            CAPE_init();
             DoOutputDebugString("Standalone mode initialised.\n");
             return TRUE;
         }
@@ -1120,7 +1120,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		else
 			DoOutputDebugString("Config loaded.\n");
 #else
-			// if we're not debugging, then failure to read the cuckoomon config should be a critical error
+			// if we're not debugging, then failure to read the capemon config should be a critical error
 			goto abort;
 #endif
 
@@ -1129,8 +1129,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 			goto abort;
 
 		if (g_config.debug) {
-			AddVectoredExceptionHandler(1, cuckoomon_exception_handler);
-			SetUnhandledExceptionFilter(cuckoomon_exception_handler);
+			AddVectoredExceptionHandler(1, capemon_exception_handler);
+			SetUnhandledExceptionFilter(capemon_exception_handler);
 			SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 			_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 		}
@@ -1173,14 +1173,16 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		// initialize misc critical sections
 		InitializeCriticalSection(&readfile_critsec);
 
+        // initialise CAPE
+        CAPE_init();
+
 		// initialize all hooks
         set_hooks();
 
-		// initialize context watchdog
-		//init_watchdog();
+		CAPE_post_init();
 
-        // initialise CAPE
-        init_CAPE();
+        // initialize context watchdog
+		//init_watchdog();
 
 #ifndef _WIN64
 		if (!g_config.no_stealth) {

@@ -410,7 +410,7 @@ BOOL ContextGetNextAvailableBreakpoint(PCONTEXT Context, unsigned int* Register)
 
 	if (CurrentThreadBreakpoint == NULL)
 	{
-		DoOutputDebugString("ContextGetNextAvailableBreakpoint: Cannot create new thread breakpoints - FATAL.\n");
+		DoOutputDebugString("ContextGetNextAvailableBreakpoint: Cannot create new thread breakpoints.\n");
 		return FALSE;
 	}
 
@@ -442,7 +442,7 @@ void DebugOutputThreadBreakpoints()
 
         if (pBreakpointInfo == NULL)
         {
-            DoOutputDebugString("DebugOutputThreadBreakpoints: Can't get BreakpointInfo - FATAL.\n");
+            DoOutputDebugString("DebugOutputThreadBreakpoints: Can't get BreakpointInfo.\n");
         }
 
 		DoOutputDebugString("Callback = 0x%x, Address = 0x%x, Size = 0x%x, Register = %i, ThreadHandle = 0x%x, Type = 0x%x\n",
@@ -470,6 +470,8 @@ BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context
 //**************************************************************************************
 {
     struct _EXCEPTION_POINTERS ExceptionInfo;
+    if (!g_config.debugger)
+        return FALSE;
     ExceptionInfo.ExceptionRecord = ExceptionRecord;
     ExceptionInfo.ContextRecord = Context;
     if (CAPEExceptionFilter(&ExceptionInfo) == EXCEPTION_CONTINUE_EXECUTION)
@@ -500,7 +502,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (CurrentThreadBreakpoint == NULL)
 		{
-			DoOutputDebugString("CAPEExceptionFilter: Can't get thread breakpoints - FATAL.\n");
+			DoOutputDebugString("CAPEExceptionFilter: Can't get thread breakpoints.\n");
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
@@ -528,7 +530,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
                 ResumeAfterExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
             }
-            else if (SingleStepHandler)
+
+            if (SingleStepHandler)
                 SingleStepHandler(ExceptionInfo);
             else
                 // Unhandled single-step exception, pass it on
@@ -551,7 +554,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
                 if (pBreakpointInfo == NULL)
                 {
-                    DoOutputDebugString("CAPEExceptionFilter: Can't get BreakpointInfo - FATAL.\n");
+                    DoOutputDebugString("CAPEExceptionFilter: Can't get BreakpointInfo.\n");
                     return EXCEPTION_CONTINUE_EXECUTION;
                 }
 
@@ -631,10 +634,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 
 		if (pBreakpointInfo->Callback == NULL)
-		{
-			DoOutputDebugString("CAPEExceptionFilter: Can't get callback - FATAL.\n");
-			return EXCEPTION_CONTINUE_EXECUTION;
-		}
+			DoOutputDebugString("CAPEExceptionFilter: Can't get callback.\n");
 
 		Handler = (BREAKPOINT_HANDLER)pBreakpointInfo->Callback;
 
@@ -713,7 +713,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
     //else
     //    DllName = "unknown";
     //
-    //DoOutputDebugString("CAPEExceptionFilter: Exception 0x%x caught at 0x%x accessing 0x%x (RVA 0x%x in %s) passing.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], DllRVA, DllName);
+    //DoOutputDebugString("CAPEExceptionFilter: Exception 0x%x at 0x%x accessing 0x%x (RVA 0x%x in %s), passing.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], DllRVA, DllName);
+
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -2154,7 +2155,7 @@ BOOL SetBreakpointWithoutThread
 
 	if (CurrentThreadBreakpoint == NULL)
 	{
-		DoOutputDebugString("SetBreakpointWithoutThread: Cannot create new thread breakpoints - FATAL.\n");
+		DoOutputDebugString("SetBreakpointWithoutThread: Cannot create new thread breakpoints.\n");
 		return FALSE;
 	}
 
@@ -2428,7 +2429,7 @@ BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register)
 
 	if (CurrentThreadBreakpoint == NULL)
 	{
-		DoOutputDebugString("ClearThreadBreakpoint: Cannot create new thread breakpoints - FATAL.\n");
+		DoOutputDebugString("ClearThreadBreakpoint: Cannot create new thread breakpoints.\n");
 		return FALSE;
 	}
 
@@ -2511,7 +2512,7 @@ BOOL SetNextAvailableBreakpoint
 
 	if (CurrentThreadBreakpoint == NULL)
 	{
-		DoOutputDebugString("SetNextAvailableBreakpoint: Cannot create new thread breakpoints - FATAL.\n");
+		DoOutputDebugString("SetNextAvailableBreakpoint: Cannot create new thread breakpoints.\n");
 		return FALSE;
 	}
 
@@ -2764,7 +2765,7 @@ BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD Creati
     Context.ContextFlags = CONTEXT_ALL;
     if (!GetThreadContext(hThread, &Context))
     {
-        DoOutputDebugString("DebugNewProcess: GetThreadContext failed - FATAL\n");
+        DoOutputDebugString("DebugNewProcess: GetThreadContext failed.\n");
         return FALSE;
     }
 
@@ -3023,7 +3024,8 @@ void NtContinueHandler(PCONTEXT ThreadContext)
         if (ThreadId == MainThreadId)
         {
             PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
-            if (ThreadBreakpoints) {
+            if (ThreadBreakpoints)
+            {
                 DoOutputDebugString("NtContinue hook: restoring breakpoints for thread %d.\n", ThreadId);
                 ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, TRUE);
             }

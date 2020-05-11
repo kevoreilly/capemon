@@ -45,7 +45,7 @@ struct _g_config {
 	// python directory, has to be hidden
 	wchar_t w_pythonpath[MAX_PATH];
 
-	// cuckoomon DLL directory
+	// capemon DLL directory
 	wchar_t dllpath[MAX_PATH];
 
 	// file of interest
@@ -62,7 +62,7 @@ struct _g_config {
     char shutdown_mutex[MAX_PATH];
 
 	// event set by analyzer when our process is potentially going to be terminated
-	// cuckoomon itself will flush logs at this point, but the analyzer may take additional
+	// capemon itself will flush logs at this point, but the analyzer may take additional
 	// actions, like process dumping
 	char terminate_event_name[MAX_PATH];
 
