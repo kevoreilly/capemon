@@ -41,6 +41,7 @@ BOOL is_64bit_os;
 volatile int dummy_val;
 
 extern void CAPE_init();
+extern void CAPE_post_init();
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
