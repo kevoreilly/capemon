@@ -427,11 +427,11 @@ int read_config(void)
                 g_config.br0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
                 if (g_config.br0) {
                     g_config.debugger = 1;
-                    DoOutputDebugString("Config: br0 set to 0x%x (break-on-return)\n", g_config.br0);
                     if (delta) {
-                        DoOutputDebugString("Config: br0 was 0x%x.\n", g_config.br0);
+                        DoOutputDebugString("Config: br0 was 0x%x (delta 0x%x).\n", g_config.br0, delta);
                         g_config.br0 = (PVOID)(DWORD_PTR)((int)g_config.br0 + delta);
                     }
+                    DoOutputDebugString("Config: br0 set to 0x%x (break-on-return)\n", g_config.br0);
                 }
 			}
             else if (!stricmp(key, "br1")) {
@@ -453,11 +453,11 @@ int read_config(void)
                 g_config.br1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
                 if (g_config.br1) {
                     g_config.debugger = 1;
-                    DoOutputDebugString("Config: br1 set to 0x%x (break-on-return)\n", g_config.br1);
                     if (delta) {
-                        DoOutputDebugString("Config: br1 was 0x%x.\n", g_config.br1);
+                        DoOutputDebugString("Config: br1 was 0x%x (delta 0x%x).\n", g_config.br1, delta);
                         g_config.br1 = (PVOID)(DWORD_PTR)((int)g_config.br1 + delta);
                     }
+                    DoOutputDebugString("Config: br1 set to 0x%x (break-on-return)\n", g_config.br1);
                 }
 			}
             else if (!stricmp(key, "br2")) {
