@@ -460,11 +460,23 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
 	}
 
-	if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings") &&
+	if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings") ||
+		!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings") ||
+		!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings")) &&
 		strstr(CommandLine, "reg.exe")) {
 		if (*(DWORD*)Data == 1) {
-			*(DWORD*)Data = (DWORD)4;
+			*(DWORD*)Data = (DWORD)2;
 			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+		}
+	}
+
+	if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM") ||
+		!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM") ||
+		!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM")) &&
+		strstr(CommandLine, "reg.exe")) {
+		if (*(DWORD*)Data == 1) {
+			*(DWORD*)Data = (DWORD)0;
+			DoOutputDebugString("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
 		}
 	}
 }

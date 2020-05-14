@@ -1666,8 +1666,7 @@ HOOKDEF(HRESULT, WINAPI, VarBstrCat,
 )
 {
 	HRESULT ret = Old_VarBstrCat(bstrLeft, bstrRight, pbstrResult);
-	//LOQ_hresult("misc", "");
-	LOQ_hresult("misc", "uuu", "bstrLeft", bstrLeft, "bstrRight", bstrRight, "pbstrResult", pbstrResult);
+	LOQ_void("misc", "uuu", "bstrLeft", bstrLeft, "bstrRight", bstrRight, "pbstrResult", *pbstrResult);
 	return ret;
 }
 
