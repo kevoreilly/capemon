@@ -51,7 +51,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\lookup.h"
 
 #pragma comment(lib, "Shlwapi.lib")
-char *CommandLine;
 
 typedef union _UNWIND_CODE {
     struct {
@@ -145,6 +144,7 @@ extern BOOL BreakpointsSet;
 
 BOOL ProcessDumped, FilesDumped, ModuleDumped, PlugXConfigDumped;
 PVOID ImageBase;
+char *CommandLine;
 static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
@@ -2046,7 +2046,46 @@ void RestoreHeaders()
     DoOutputDebugString("RestoreHeaders: Restored original import table.\n");
 }
 
-void init_CAPE()
+void CAPE_post_init()
+{
+    if (g_config.debugger)
+    {
+        // Start the debugger
+        g_config.debugger = 1;
+        if (!launch_debugger())
+        {
+            DoOutputDebugString("Failed to initialise debugger.\n");
+            return;
+        }
+        DoOutputDebugString("Debugger initialised.\n");
+        if (!g_config.base_on_apiname[0])
+            SetInitialBreakpoints(GetModuleHandle(NULL));
+    }
+
+    if (g_config.extraction)
+        ExtractionInit();
+
+    if (g_config.plugx)
+        PlugXConfigDumped = FALSE;
+
+    if (g_config.upx)
+    {
+        g_config.debugger = 1;
+        CapeMetaData->DumpType = UPX;
+        g_config.procdump = 0;
+        if (launch_debugger())
+            DoOutputDebugString("UPX unpacker: Debugger initialised.\n");
+        else
+            DoOutputDebugString("UPX unpacker: Failed to initialise debugger.\n");
+        UPXInitialBreakpoints(GetModuleHandle(NULL));
+    }
+
+
+    lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
+    lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
+}
+
+void CAPE_init()
 {
     char *Character;
 
@@ -2082,9 +2121,6 @@ void init_CAPE()
 
     InitializeCriticalSection(&ProcessDumpCriticalSection);
 
-    lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
-    lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
-
     // Cuckoo debug output level for development (0=none, 2=max)
     // g_config.debug = 2;
 
@@ -2099,38 +2135,6 @@ void init_CAPE()
 #endif
 
     DoOutputDebugString("Commandline: %s.\n", CommandLine);
-
-    if (g_config.debugger)
-    {
-        // Start the debugger
-        g_config.debugger = 1;
-        if (!launch_debugger())
-        {
-            DoOutputDebugString("Failed to initialise debugger.\n");
-            return;
-        }
-        DoOutputDebugString("Debugger initialised.\n");
-        if (!g_config.base_on_apiname[0])
-            SetInitialBreakpoints(GetModuleHandle(NULL));
-    }
-
-    if (g_config.extraction)
-        ExtractionInit();
-
-    if (g_config.plugx)
-        PlugXConfigDumped = FALSE;
-
-    if (g_config.upx)
-    {
-        g_config.debugger = 1;
-        CapeMetaData->DumpType = UPX;
-        g_config.procdump = 0;
-        if (launch_debugger())
-            DoOutputDebugString("UPX unpacker: Debugger initialised.\n");
-        else
-            DoOutputDebugString("UPX unpacker: Failed to initialise debugger.\n");
-        UPXInitialBreakpoints(GetModuleHandle(NULL));
-    }
 
     return;
 }

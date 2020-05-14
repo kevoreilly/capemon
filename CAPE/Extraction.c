@@ -163,7 +163,7 @@ PIMAGE_NT_HEADERS GetNtHeaders(PVOID BaseAddress)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("GetNtHeaders: Exception occured reading around base address 0x%p\n", BaseAddress);
+        DoOutputDebugString("GetNtHeaders: Exception occurred reading around base address 0x%p\n", BaseAddress);
         return NULL;
     }
 }

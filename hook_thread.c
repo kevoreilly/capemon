@@ -322,7 +322,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		ret = 0;
 		*PreviousSuspendCount = 0;
 		LOQ_ntstatus("threading", "pLsi", "ThreadHandle", ThreadHandle,
-			"SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend cuckoomon thread",
+			"SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread",
 			"ProcessId", pid);
 	}
 	else {
@@ -374,7 +374,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
 		tid == g_watchdog_thread_id || tid == g_terminate_event_thread_id || tid == g_log_thread_id ||
 		tid == g_logwatcher_thread_id || tid == g_procname_watcher_thread_id)) {
 		ret = 0;
-		LOQ_ntstatus("threading", "phsi", "ThreadHandle", ThreadHandle, "ExitStatus", ExitStatus, "Alert", "Attempted to kill cuckoomon thread",
+		LOQ_ntstatus("threading", "phsi", "ThreadHandle", ThreadHandle, "ExitStatus", ExitStatus, "Alert", "Attempted to kill capemon thread",
 		"ProcessId", pid);
 		return ret;
 	}

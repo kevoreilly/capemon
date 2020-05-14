@@ -264,8 +264,6 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     CloseHandle(g_terminate_event_handle);
 
-    hook_disable();
-
     if (g_config.debugger)
     {
         StopTrace = TRUE;
@@ -394,13 +392,13 @@ int procname_watch_init()
 DWORD g_watchdog_thread_id;
 
 #ifndef _WIN64
-static ULONG_PTR cuckoomonaddrs[60];
-static int cuckoomonaddrs_num;
+static ULONG_PTR capemonaddrs[60];
+static int capemonaddrs_num;
 
-static int find_cuckoomon_addrs(void *unused, ULONG_PTR addr)
+static int find_capemon_addrs(void *unused, ULONG_PTR addr)
 {
-	if (cuckoomonaddrs_num < 60)
-		cuckoomonaddrs[cuckoomonaddrs_num++] = addr;
+	if (capemonaddrs_num < 60)
+		capemonaddrs[capemonaddrs_num++] = addr;
 	return 0;
 }
 
@@ -434,8 +432,8 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 
 		CONTEXT ctx;
 		raw_sleep(5000);
-		memset(&cuckoomonaddrs, 0, sizeof(cuckoomonaddrs));
-		cuckoomonaddrs_num = 0;
+		memset(&capemonaddrs, 0, sizeof(capemonaddrs));
+		capemonaddrs_num = 0;
 		memset(&ctx, 0, sizeof(ctx));
 		SuspendThread((HANDLE)param);
 		ctx.ContextFlags = CONTEXT_FULL;
@@ -443,11 +441,11 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 		dllname = convert_address_to_dll_name_and_offset(ctx.Eip, &off);
 		sprintf(msg, "INFO: PID %u thread: %p EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx\n", GetCurrentProcessId(), param, dllname ? dllname : "", off, ctx.Eip, ctx.Eax, ctx.Ebx, ctx.Ecx, ctx.Edx, ctx.Esi, ctx.Edi, ctx.Ebp, ctx.Esp);
 
-		_operate_on_backtrace(ctx.Eip, ctx.Ebp, NULL, find_cuckoomon_addrs);
+		_operate_on_backtrace(ctx.Eip, ctx.Ebp, NULL, find_capemon_addrs);
 
-		for (i = 0; i < cuckoomonaddrs_num; i++) {
-			char *dllname2 = convert_address_to_dll_name_and_offset(cuckoomonaddrs[i], &off);
-			sprintf(msg + strlen(msg), " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, cuckoomonaddrs[i]);
+		for (i = 0; i < capemonaddrs_num; i++) {
+			char *dllname2 = convert_address_to_dll_name_and_offset(capemonaddrs[i], &off);
+			sprintf(msg + strlen(msg), " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
 			if (dllname2)
 				free(dllname2);
 		}
