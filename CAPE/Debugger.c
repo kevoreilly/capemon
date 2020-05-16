@@ -16,7 +16,6 @@ You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
 //#define DEBUG_COMMENTS
-
 #include <stdio.h>
 #include <tchar.h>
 #include <windows.h>
@@ -130,7 +129,8 @@ unsigned int TrapIndex;
 unsigned int DepthCount;
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL TraceRunning, BreakpointsSet;
+extern BOOL TraceRunning, BreakpointsSet, StopTrace;
+extern HANDLE DebuggerLog;
 
 //**************************************************************************************
 BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address)
@@ -525,13 +525,12 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #ifdef DEBUG_COMMENTS
                 DoOutputDebugString("CAPEExceptionFilter: Stepping over execution breakpoint to: 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
-
                 pBreakpointInfo = &(CurrentThreadBreakpoint->BreakpointInfo[TrapIndex-1]);
-
                 ResumeAfterExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+                if (SingleStepHandler)
+                    SingleStepHandler(ExceptionInfo);
             }
-
-            if (SingleStepHandler)
+            else if (SingleStepHandler)
                 SingleStepHandler(ExceptionInfo);
             else
                 // Unhandled single-step exception, pass it on
@@ -543,7 +542,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
         if (TrapIndex)
             DoOutputDebugString("CAPEExceptionFilter: Anomaly detected: Trap index set on non-single-step: %d\n", TrapIndex);
 
+#ifndef DEBUG_COMMENTS
         if (!TraceRunning)
+#endif
             DoOutputDebugString("CAPEExceptionFilter: breakpoint hit by instruction at 0x%p (thread %d)\n", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 
         for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
@@ -638,6 +639,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		Handler = (BREAKPOINT_HANDLER)pBreakpointInfo->Callback;
 
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("CAPEExceptionFilter: About to call breakpoint handler at: 0x%p\n", Handler);
+#endif
 		// Invoke the handler
         Handler(pBreakpointInfo, ExceptionInfo);
 
@@ -833,6 +837,10 @@ BOOL ContextSetDebugRegisterEx
         DoOutputErrorString("ContextSetDebugRegister: SetThreadContext failed");
         return FALSE;
     }
+#endif
+
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("ContextSetDebugRegisterEx completed successfully.");
 #endif
 
 	return TRUE;
@@ -1819,6 +1827,9 @@ BOOL ContextSetThreadBreakpointEx
         return FALSE;
     }
 
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("ContextSetThreadBreakpointEx: Calling ContextSetDebugRegisterEx.");
+#endif
     if (!ContextSetDebugRegisterEx(Context, Register, Size, Address, Type, NoSetThreadContext))
 	{
 		DoOutputDebugString("ContextSetThreadBreakpoint: Call to ContextSetDebugRegister failed.\n");
@@ -1911,7 +1922,9 @@ BOOL ContextSetNextAvailableBreakpoint
             OutputThreadBreakpoints(GetCurrentThreadId());
             return FALSE;
         }
-
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("ContextSetNextAvailableBreakpoint: Calling ContextSetThreadBreakpoint with register %d", *Register);
+#endif
         return ContextSetThreadBreakpoint(Context, *Register, Size, Address, Type, Callback);
     }
     else
@@ -2034,7 +2047,10 @@ BOOL ContextSetThreadBreakpointsEx(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Th
 //**************************************************************************************
 {
     if (!ThreadContext)
+    {
+        DoOutputDebugString("ContextSetThreadBreakpointsEx: Error - no thread context.\n");
         return FALSE;
+    }
 
     for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++)
     {
@@ -3014,6 +3030,18 @@ int launch_debugger()
         g_config.debugger = 1;
         return DebuggerInitialised;
     }
+}
+
+void DebuggerShutdown()
+{
+    StopTrace = TRUE;
+    if (DebuggerLog) {
+        CloseHandle(DebuggerLog);
+        DebuggerLog = NULL;
+        ClearAllBreakpoints();
+        g_config.debugger = 0;
+    }
+
 }
 
 void NtContinueHandler(PCONTEXT ThreadContext)

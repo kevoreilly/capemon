@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
 #include <stdio.h>
 #include <distorm.h>
 #include "..\hooking.h"
@@ -241,6 +242,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     PVOID BranchTarget;
 #endif
 
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("Trace: Function entry.");
+#endif
     TraceRunning = TRUE;
 
     _DecodeType DecodeType;
@@ -805,7 +809,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     if (!is_in_dll_range((ULONG_PTR)CIP) || TraceAll || g_config.break_on_apiname)
         FilterTrace = FALSE;
     else if (InsideHook(NULL, CIP) || is_in_dll_range((ULONG_PTR)CIP))
+    {
         FilterTrace = TRUE;
+        if (InsideHook(NULL, CIP))
+            DebuggerOutput("InsideHook!");
+        if (is_in_dll_range((ULONG_PTR)CIP))
+            DebuggerOutput("in_dll_range!");
+    }
 
     //if (CIP == bp0 || CIP == bp1 || CIP == bp2 || CIP == bp3)
     //if (!TraceRunning)
@@ -994,7 +1004,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         StepOver = FALSE;
         ForceStepOver = FALSE;
 
-        DebuggerOutput("\ncall handler\n");
         if (FilterTrace && !TraceAll)
             StepOver = TRUE;
         else if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
@@ -1194,9 +1203,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
             if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 DoOutputDebugString("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+#ifdef DEBUG_COMMENTS
             else
-                DebuggerOutput("\nBreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+                DoOutputDebugString("BreakpointCallback: Breakpoint set on return address 0x%p\n", ReturnAddress);
+#endif
+#ifndef DEBUG_COMMENTS
             if (ForceStepOver)
+#endif
                 DoOutputDebugString("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
 
             LastContext = *ExceptionInfo->ContextRecord;
