@@ -44,13 +44,15 @@ extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Alloca
 extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
 extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
+extern void DebuggerShutdown();
 
 extern HANDLE g_terminate_event_handle;
 extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 extern void file_handle_terminate();
 extern int DoProcessDump(PVOID CallerBase);
 extern PVOID GetHookCallerBase();
-extern BOOL ProcessDumped;
+extern BOOL ProcessDumped, StopTrace;
+extern HANDLE DebuggerLog;
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
 	__in DWORD dwFlags,
@@ -447,16 +449,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		pipe("KILL:%d", PID);
 	}
 
-    if (process_shutting_down && g_config.extraction)
-    {
+    if (process_shutting_down && g_config.debugger)
+        DebuggerShutdown();
+
+    if (process_shutting_down && g_config.extraction) {
         DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
         g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
         ProcessTrackedRegions();
         ClearAllBreakpoints();
     }
 
-    if (process_shutting_down && g_config.procdump && !ProcessDumped)
-    {
+    if (process_shutting_down && g_config.procdump && !ProcessDumped) {
         DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
         DoProcessDump(GetHookCallerBase());
     }
