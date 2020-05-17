@@ -281,23 +281,6 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
     return ret;
 }
 
-HOOKDEF(HRESULT, WINAPI, URLDownloadToFileA,
-	LPUNKNOWN pCaller,
-	LPCSTR szURL,
-	LPCSTR szFileName,
-	DWORD dwReserved,
-	LPVOID lpfnCB
-) {
-	HRESULT ret = Old_URLDownloadToFileA(pCaller, szURL, szFileName, dwReserved, lpfnCB);
-	LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
-		pipe("FILE_NEW:%Z", szFileName);
-		dropped_count++;
-	}
-
-	return ret;
-}
-
 HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
   _In_ LPUNKNOWN lpUnkcalled,
   _In_ LPCWSTR szURL,
