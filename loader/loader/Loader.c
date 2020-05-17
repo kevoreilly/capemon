@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
 #include "Loader.h"
 #include <tlhelp32.h>
 #include <strsafe.h>
@@ -24,7 +25,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #pragma warning(push )
 #pragma warning(disable : 4996)
 
-//#define DEBUG_COMMENTS
+#define MAX_ADDRESS 0x7000000
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
@@ -716,6 +717,7 @@ rebase:
 
     for (FreeAddress = EndOfImage;; FreeAddress = (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize)
     {
+        PBYTE StartAddress;
         memset(&MemoryInfo, 0, sizeof(MemoryInfo));
 
         if (VirtualQueryEx(ProcessHandle, (PVOID)FreeAddress, &MemoryInfo, sizeof(MemoryInfo)) == 0)
@@ -734,17 +736,47 @@ rebase:
         if (MemoryInfo.State != MEM_FREE)
             continue;
 
+        if (MemoryInfo.RegionSize < 0x400000)
+        {
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("InjectDllViaIAT: Free region too small from 0x%p - 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
+#endif
+            continue;
+        }
+
+        if ((int)MemoryInfo.BaseAddress > MAX_ADDRESS || (int)((PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize) < MAX_ADDRESS)
+        {
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("InjectDllViaIAT: Free region from 0x%p - 0x%p does not contain system DLL range.\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
+#endif
+            continue;
+        }
+
 #ifdef DEBUG_COMMENTS
         DoOutputDebugString("InjectDllViaIAT: Found a free region from 0x%p - 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
 #endif
 
-        for (AllocationAddress = (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress < (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize; AllocationAddress += SystemInfo.dwPageSize)
+        // Start from the last page
+        StartAddress = (PBYTE)MAX_ADDRESS;
+
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("InjectDllViaIAT: Starting reverse scan from 0x%p - 0x%p (region size 0x%x)\n", StartAddress, MemoryInfo.BaseAddress, MemoryInfo.RegionSize);
+#endif
+
+        for (AllocationAddress = StartAddress; AllocationAddress > (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress -= SystemInfo.dwPageSize)
         {
+            DWORD Test;
+            if (ReadProcessMemory(ProcessHandle, AllocationAddress, &Test, sizeof(DWORD), &BytesRead) && BytesRead == sizeof(DWORD))
+            {
+                DoOutputDebugString("InjectDllViaIAT: Memory region at 0x%p not empty.\n", AllocationAddress);
+                continue;
+            }
+
             TargetImportTable = (PBYTE)VirtualAllocEx(ProcessHandle, AllocationAddress, TotalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
             if (TargetImportTable == NULL)
             {
-                DoOutputErrorString("InjectDllViaIAT: Failed to allocate new memory region at 0x%p.\n", AllocationAddress);
+                DoOutputErrorString("InjectDllViaIAT: Failed to allocate new memory region at 0x%p", AllocationAddress);
                 continue;
             }
 
