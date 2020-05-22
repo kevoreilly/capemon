@@ -175,6 +175,7 @@ struct _g_config {
     int step_out;
     int file_offsets;
     int divert_debugger_log;
+    int disable_logging;
     char *trace_into_api[EXCLUSION_MAX];
 };
 

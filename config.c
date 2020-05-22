@@ -564,6 +564,11 @@ int read_config(void)
                 if (g_config.divert_debugger_log)
                     DoOutputDebugString("Debugger log diverted (to analysis log).\n");
 			}
+            else if (!strcmp(key, "disable-logging")) {
+				g_config.disable_logging = value[0] == '1';
+                if (g_config.disable_logging)
+                    DoOutputDebugString("Logging disabled (analysis log).\n");
+			}
             else if (!strcmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
                 if (g_config.procdump)

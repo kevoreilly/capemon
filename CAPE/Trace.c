@@ -68,6 +68,37 @@ BOOL DoSetSingleStepMode(int Register, PCONTEXT Context, PVOID Handler)
     return SetSingleStepMode(Context, Handler);
 }
 
+void SkipInstruction(PCONTEXT Context)
+{
+	PVOID CIP;
+    _DecodeType DecodeType;
+    _DecodeResult Result;
+    _OffsetType Offset = 0;
+    _DecodedInst DecodedInstruction;
+    unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+    CIP = (PVOID)Context->Rip;
+    DecodeType = Decode64Bits;
+#else
+    CIP = (PVOID)Context->Eip;
+    DecodeType = Decode32Bits;
+#endif
+    if (CIP)
+        Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+    if (!DecodedInstruction.size)
+        return;
+
+#ifdef _WIN64
+    Context->Rip += DecodedInstruction.size;
+#else
+    Context->Eip += DecodedInstruction.size;
+#endif
+
+    return;
+}
+
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, PCHAR Action, PVOID CIP)
 {
     if (!stricmp(Action, "ClearZeroFlag"))
@@ -99,6 +130,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
     {
         FlipSignFlag(ExceptionInfo->ContextRecord);
         DebuggerOutput("ActionDispatcher: %s detected, flipping Sign flag.\n", DecodedInstruction.mnemonic.p);
+    }
+    else if (!stricmp(Action, "Skip"))
+    {
+        SkipInstruction(ExceptionInfo->ContextRecord);
+        DebuggerOutput("ActionDispatcher: %s detected, skipping instruction.\n", DecodedInstruction.mnemonic.p);
     }
 #ifndef _WIN64
     else if (!stricmp(Action, "PrintEAX"))
@@ -224,8 +260,8 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         else
             DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
     }
-    else
-        DebuggerOutput("ActionDispatcher: Unrecognised ! (%s)", Action);
+    else if (stricmp(Action, "custom"))
+        DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
 
     InstructionCount++;
 

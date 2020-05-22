@@ -43,6 +43,9 @@ extern BOOL StopTrace;
 void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 //**************************************************************************************
 {
+    if (g_config.disable_logging)
+        return;
+
     memset(DebugOutput, 0, MAX_PATH*sizeof(CHAR));
     _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
     if (g_config.standalone)
@@ -388,7 +391,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
         time_t Time;
         CHAR TimeBuffer[64];
 
-        DebuggerLog = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        DebuggerLog = CreateFile(FullPathName, GENERIC_READ | GENERIC_WRITE | FILE_SHARE_READ | FILE_SHARE_WRITE, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
         if (DebuggerLog == INVALID_HANDLE_VALUE)
         {

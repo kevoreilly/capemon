@@ -2999,6 +2999,9 @@ DWORD WINAPI DebuggerLaunch(LPVOID lpParam)
 int launch_debugger()
 //**************************************************************************************
 {
+    if (DebuggerInitialised)
+        return DebuggerInitialised;
+
     if (DEBUGGER_LAUNCHER)
     {
         DWORD NewThreadId;
