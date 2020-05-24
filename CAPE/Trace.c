@@ -278,9 +278,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     PVOID BranchTarget;
 #endif
 
-#ifdef DEBUG_COMMENTS
-    DoOutputDebugString("Trace: Function entry.");
-#endif
     TraceRunning = TRUE;
 
     _DecodeType DecodeType;
@@ -433,6 +430,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     if (CIP)
         Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("Trace: %s instruction at 0x%p.\n", DecodedInstruction.mnemonic.p, CIP);
+#endif
     // Dispatch any actions
     if (Instruction0 && !stricmp(DecodedInstruction.mnemonic.p, Instruction0))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0, CIP);
@@ -653,6 +653,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
         if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll) || (StepOver == TRUE && !TraceAll) || ForceStepOver)
         {
+            ClearSingleStepMode(ExceptionInfo->ContextRecord);
             ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
             if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
@@ -709,8 +710,16 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     LastContext = *ExceptionInfo->ContextRecord;
 
     if (!StopTrace)
+    {
         SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
-
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("Trace: Restoring single-step mode!\n");
+    }
+    else
+        DoOutputDebugString("Trace: Stopping trace!\n");
+#else
+    }
+#endif
     TraceRunning = FALSE;
 
     return TRUE;
@@ -1365,9 +1374,9 @@ BOOL BreakpointOnReturn(PVOID Address)
         DoOutputDebugString("BreakpointOnReturn: failed to set breakpoint.\n");
         return FALSE;
     }
+
     // TODO: add option to break once only, clearing bp
-    //strncpy(g_config.break_on_return, "\0", 2);
-    DoOutputDebugString("BreakpointOnReturn: breakpoint set with register %d.", Register);
+    DoOutputDebugString("BreakpointOnReturn: execution breakpoint set at 0x%p with register %d.", Address, Register);
     return TRUE;
 }
 

@@ -107,7 +107,7 @@ extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern BOOLEAN is_address_in_ntdll(ULONG_PTR address);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
-extern LONG WINAPI cuckoomon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
+extern LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
 
 extern BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern PTRACKEDREGION GetTrackedRegion(PVOID Address);
@@ -1462,6 +1462,9 @@ BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler)
 	PDR7 Dr7 = (PDR7)&(Context->Dr7);
     //Dr7->LE = 1;
     Dr7->GE = 1;
+#endif
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("SetSingleStepMode: Setting single-step mode with handler at 0x%p\n", Handler);
 #endif
     SingleStepHandler = (SINGLE_STEP_HANDLER)Handler;
 
