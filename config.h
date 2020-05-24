@@ -122,7 +122,7 @@ struct _g_config {
 
     // behavioural payload extraction options
     int compression;
-    int extraction;
+    int unpacker;
     int injection;
 
     // should we dump each process on exit/analysis timeout?

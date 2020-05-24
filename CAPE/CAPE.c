@@ -137,7 +137,7 @@ extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
-extern void ExtractionInit();
+extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
@@ -433,7 +433,7 @@ BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVO
             return FALSE;
         }
     }
-    else if (DumpType == EXTRACTION_PE || DumpType == EXTRACTION_SHELLCODE || DumpType == URSNIF_PAYLOAD)
+    else if (DumpType == UNPACKED_PE || DumpType == UNPACKED_SHELLCODE || DumpType == URSNIF_PAYLOAD)
     {
         if (!Address)
         {
@@ -1428,7 +1428,7 @@ BOOL DumpRegion(PVOID Address)
 
     AllocationSize = (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
 
-    SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, (PVOID)OriginalAllocationBase);
+    SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalAllocationBase);
 
     if (DumpMemory(OriginalAllocationBase, AllocationSize))
     {
@@ -1442,7 +1442,7 @@ BOOL DumpRegion(PVOID Address)
     {
         DoOutputDebugString("DumpRegion: Failed to dump entire allocation from 0x%p size 0x%x.\n", OriginalAllocationBase, AllocationSize);
 
-        SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, (PVOID)OriginalBaseAddress);
+        SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalBaseAddress);
 
         if (DumpMemory(OriginalBaseAddress, OriginalRegionSize))
         {
@@ -1833,7 +1833,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
 
         if (IsDisguisedPEHeader(MemInfo.BaseAddress))
         {
-            CapeMetaData->DumpType = EXTRACTION_PE;
+            CapeMetaData->DumpType = UNPACKED_PE;
             __try
             {
                 DumpImageInCurrentProcess(MemInfo.BaseAddress);
@@ -1845,7 +1845,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
             }
         }
         else {
-            CapeMetaData->DumpType = EXTRACTION_SHELLCODE;
+            CapeMetaData->DumpType = UNPACKED_SHELLCODE;
             __try
             {
                 DumpRegion(MemInfo.BaseAddress);
@@ -2109,8 +2109,8 @@ void CAPE_post_init()
             SetInitialBreakpoints(GetModuleHandle(NULL));
     }
 
-    if (g_config.extraction)
-        ExtractionInit();
+    if (g_config.unpacker)
+        UnpackerInit();
 
     if (g_config.plugx)
         PlugXConfigDumped = FALSE;

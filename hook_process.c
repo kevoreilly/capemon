@@ -29,7 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
-#include "CAPE\Extraction.h"
+#include "CAPE\Unpacker.h"
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -452,7 +452,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
     if (process_shutting_down && g_config.debugger)
         DebuggerShutdown();
 
-    if (process_shutting_down && g_config.extraction) {
+    if (process_shutting_down && g_config.unpacker) {
         DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
         g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
         ProcessTrackedRegions();
@@ -569,7 +569,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	if (NT_SUCCESS(ret)) {
         if (g_config.injection)
             MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
-        //if (g_config.extraction)
+        //if (g_config.unpacker)
         //    ProtectionHandler(*BaseAddress, *ViewSize, Win32Protect, 0);
         if (!g_config.single_process && pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
@@ -594,7 +594,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
     NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
         ZeroBits, RegionSize, AllocationType, Protect);
 
-	if (NT_SUCCESS(ret) && g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
         AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
 
     LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
@@ -796,7 +796,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		set_lasterrors(&lasterrors);
 	}
 
-	if (NT_SUCCESS(ret) && g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
     {
         ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, *OldAccessProtection);
 
@@ -848,7 +848,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		set_lasterrors(&lasterrors);
 	}
 
-	if (NT_SUCCESS(ret) && g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
+	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
     {
         ProtectionHandler(lpAddress, dwSize, flNewProtect, *lpflOldProtect);
 
@@ -875,7 +875,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
     IN OUT  PSIZE_T RegionSize,
     IN      ULONG FreeType
 ) {
-    if (g_config.extraction && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+    if (g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
         FreeHandler(*BaseAddress);
 
     NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,

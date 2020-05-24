@@ -25,7 +25,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\alloc.h"
 #include "..\config.h"
 #include "..\pipe.h"
-#include "Extraction.h"
+#include "Unpacker.h"
 
 #define PIPEBUFSIZE 512
 
@@ -109,7 +109,7 @@ extern BOOLEAN is_address_in_ntdll(ULONG_PTR address);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
 
-extern BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
+extern BOOL UnpackerGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern PTRACKEDREGION GetTrackedRegion(PVOID Address);
 extern PVOID GetPageAddress(PVOID Address);
 extern unsigned int address_is_in_stack(DWORD Address);
@@ -650,7 +650,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
     // Page guard violations generate STATUS_GUARD_PAGE_VIOLATION
     else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
     {
-        if (g_config.extraction)
+        if (g_config.unpacker)
         {
             if (ExceptionInfo->ExceptionRecord->NumberParameters < 2)
             {

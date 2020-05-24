@@ -149,7 +149,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         if (g_config.dumptype0)
             CapeMetaData->DumpType = g_config.dumptype0;
         else
-            CapeMetaData->DumpType = EXTRACTION_PE;
+            CapeMetaData->DumpType = UNPACKED_PE;
 
         if (DumpImageInCurrentProcess(CallingModule))
             DebuggerOutput("ActionDispatcher: Dumped breaking module at 0x%p.\n", CallingModule);
@@ -170,7 +170,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
             {
@@ -196,7 +196,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -219,7 +219,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -253,7 +253,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         if (g_config.dumptype0)
             CapeMetaData->DumpType = g_config.dumptype0;
         else
-            CapeMetaData->DumpType = EXTRACTION_PE;
+            CapeMetaData->DumpType = UNPACKED_PE;
 
         if (DumpAddress && DumpSize && DumpMemory(DumpAddress, DumpSize))
             DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -778,7 +778,7 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
                 DoOutputDebugString("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);

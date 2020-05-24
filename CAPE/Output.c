@@ -218,9 +218,9 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
             CapeMetaData->ProcessPath = "Unknown path";
         CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
 
-		if (CapeMetaData->DumpType == EXTRACTION_PE || CapeMetaData->DumpType == EXTRACTION_SHELLCODE)
+		if (CapeMetaData->DumpType == UNPACKED_PE || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
         {
-            // Extraction-specific format
+            // Unpacker-specific format
             _snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n0x%p\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
         }
 		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE || CapeMetaData->DumpType == EVILGRAB_PAYLOAD || CapeMetaData->DumpType == EVILGRAB_DATA)
@@ -312,9 +312,9 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
             CapeMetaData->ProcessPath = "Unknown path";
         CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
 
-		if (CapeMetaData->DumpType == EXTRACTION_PE || CapeMetaData->DumpType == EXTRACTION_SHELLCODE)
+		if (CapeMetaData->DumpType == UNPACKED_PE || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
         {
-            // Extraction-specific format
+            // Unpacker-specific format
             _snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%p;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
         }
 		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE || CapeMetaData->DumpType == EVILGRAB_PAYLOAD || CapeMetaData->DumpType == EVILGRAB_DATA)

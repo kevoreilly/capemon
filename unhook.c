@@ -268,8 +268,8 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     if (g_config.debugger)
         DebuggerShutdown();
 
-    if (g_config.extraction) {
-        g_config.extraction = FALSE;
+    if (g_config.unpacker) {
+        g_config.unpacker = FALSE;
         DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
         ProcessTrackedRegions();
         ClearAllBreakpoints();

@@ -606,10 +606,10 @@ int read_config(void)
                 if (g_config.compression)
                     DoOutputDebugString("Capture of compressed payloads enabled.\n");
 			}
-            else if (!strcmp(key, "extraction")) {
-				g_config.extraction = value[0] == '1';
-                if (g_config.extraction)
-                    DoOutputDebugString("Capture of extracted payloads enabled.\n");
+            else if (!strcmp(key, "unpacker")) {
+				g_config.unpacker = value[0] == '1';
+                if (g_config.unpacker)
+                    DoOutputDebugString("Auto-unpacking of payloads enabled.\n");
 			}
             else if (!strcmp(key, "injection")) {
 				g_config.injection = value[0] == '1';
@@ -620,7 +620,7 @@ int read_config(void)
                 if (value[0] == '1') {
                     DoOutputDebugString("Combined payload extractions enabled.\n");
                     g_config.compression = 1;
-                    g_config.extraction = 1;
+                    g_config.unpacker = 1;
                     g_config.injection = 1;
                     //g_config.verbose_dumping = 1;
                 }
