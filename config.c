@@ -84,6 +84,9 @@ int read_config(void)
     g_config.procdump = 1;
     g_config.procmemdump = 0;
     g_config.dropped_limit = 0;
+    // We now enable Injection and Compression by default:
+    g_config.injection = 1;
+    g_config.compression = 1;
 
     memset(g_config.results, 0, MAX_PATH);
     memset(g_config.analyzer, 0, MAX_PATH);
