@@ -114,8 +114,8 @@ enum {
     INJECTION_SHELLCODE     = 4,
     //INJECTION_RUNPE         = 5,
 
-    EXTRACTION_PE           = 8,
-    EXTRACTION_SHELLCODE    = 9,
+    UNPACKED_PE           = 8,
+    UNPACKED_SHELLCODE    = 9,
 
     PLUGX_PAYLOAD           = 0x10,
     PLUGX_CONFIG            = 0x11,

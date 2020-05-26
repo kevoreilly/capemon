@@ -21,7 +21,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <distorm.h>
 #include "Debugger.h"
 #include "CAPE.h"
-#include "Extraction.h"
+#include "Unpacker.h"
 #include "..\alloc.h"
 #include "..\config.h"
 
@@ -892,7 +892,7 @@ unsigned int DumpPEsInTrackedRegion(PTRACKEDREGION TrackedRegion)
 
     TrackedRegion->Entropy = GetEntropy(TrackedRegion->AllocationBase);
     CapeMetaData->Size = Size;
-    SetCapeMetaData(EXTRACTION_PE, 0, NULL, BaseAddress);
+    SetCapeMetaData(UNPACKED_PE, 0, NULL, BaseAddress);
     PEsDumped = DumpPEsInRange(BaseAddress, Size);
 
     if (PEsDumped)
@@ -938,7 +938,7 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
     TrackedRegion->MinPESize = MinPESize;
     TrackedRegion->Entropy = Entropy;
 
-    SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
+    SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
     //DumpCurrentProcessFixImports((PVOID)TrackedRegion->EntryPoint);
     DumpImageInCurrentProcess(TrackedRegion->AllocationBase);
@@ -972,7 +972,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
     }
     else
     {
-        SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
+        SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
 
         TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
 
@@ -1202,7 +1202,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
     {
         DoOutputDebugString("ProtectionHandler: New code detected at (0x%p), scanning for PE images.\n", TrackedRegion->AllocationBase);
 
-        SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
+        SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
         TrackedRegion->PagesDumped = DumpPEsInTrackedRegion(TrackedRegion);
 
         if (TrackedRegion->PagesDumped)
@@ -1218,7 +1218,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
 #endif
         if (!(Protect & WRITABLE_FLAGS))
         {
-            SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, Address);
+            SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, Address);
             if (DumpMemory(TrackedRegion->AllocationBase, TrackedRegion->RegionSize))
             {
                 DoOutputDebugString("ProtectionHandler: dumped memory (sub)region at 0x%p, size 0x%x\n", TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
@@ -1296,7 +1296,7 @@ void FreeHandler(PVOID BaseAddress)
             DoOutputDebugString("FreeHandler: Found and dumped PE image(s) in range 0x%p - 0x%p.\n", TrackedRegion->AllocationBase, (BYTE*)TrackedRegion->AllocationBase + TrackedRegion->RegionSize);
         else if (TrackedRegion->Protect & EXECUTABLE_FLAGS)
         {
-            SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
+            SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
 
             TrackedRegion->Entropy = GetEntropy(TrackedRegion->AllocationBase);
 
@@ -1554,7 +1554,7 @@ BOOL StepOverGuardPageFault(struct _EXCEPTION_POINTERS* ExceptionInfo)
 }
 
 //**************************************************************************************
-BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
+BOOL UnpackerGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
     DWORD AccessType        = (DWORD)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
@@ -1565,7 +1565,7 @@ BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
     if (TrackedRegion == NULL)
     {
-        DoOutputDebugString("ExtractionGuardPageHandler error: address 0x%p not in tracked regions.\n", AccessAddress);
+        DoOutputDebugString("UnpackerGuardPageHandler error: address 0x%p not in tracked regions.\n", AccessAddress);
         return FALSE;
     }
 
@@ -1576,7 +1576,7 @@ BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
     {
         case EXCEPTION_WRITE_FAULT:
 
-            //DoOutputDebugString("ExtractionGuardPageHandler: Write detected at 0x%p by 0x%p\n", AccessAddress, FaultingAddress);
+            //DoOutputDebugString("UnpackerGuardPageHandler: Write detected at 0x%p by 0x%p\n", AccessAddress, FaultingAddress);
 
             TrackedRegion->LastAccessAddress = AccessAddress;
 
@@ -1614,23 +1614,23 @@ BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
         case EXCEPTION_EXECUTE_FAULT:
 
-            DoOutputDebugString("ExtractionGuardPageHandler: Execution detected at 0x%p\n", AccessAddress);
+            DoOutputDebugString("UnpackerGuardPageHandler: Execution detected at 0x%p\n", AccessAddress);
 
             if (AccessAddress != FaultingAddress)
             {
-                DoOutputDebugString("ExtractionGuardPageHandler: Anomaly detected - AccessAddress != FaultingAddress (0x%p, 0x%p).\n", AccessAddress, FaultingAddress);
+                DoOutputDebugString("UnpackerGuardPageHandler: Anomaly detected - AccessAddress != FaultingAddress (0x%p, 0x%p).\n", AccessAddress, FaultingAddress);
             }
 
             TrackedRegion->LastAccessAddress = AccessAddress;
 
             if (!(TrackedRegion->Protect & EXECUTABLE_FLAGS))
             {
-                DoOutputDebugString("ExtractionGuardPageHandler: Anomaly detected - pages not marked with execute flag in tracked region list.\n");
+                DoOutputDebugString("UnpackerGuardPageHandler: Anomaly detected - pages not marked with execute flag in tracked region list.\n");
             }
 
             if (!TrackedRegion->PagesDumped)
             {
-                DoOutputDebugString("ExtractionGuardPageHandler: Execution within guarded page detected, dumping.\n");
+                DoOutputDebugString("UnpackerGuardPageHandler: Execution within guarded page detected, dumping.\n");
 
                 if (!GuardPagesDisabled && DeactivateGuardPages(TrackedRegion))
                 {
@@ -1638,31 +1638,31 @@ BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
                         TrackedRegion->PagesDumped = TRUE;
 
                     if (TrackedRegion->PagesDumped)
-                        DoOutputDebugString("ExtractionGuardPageHandler: PE image(s) detected and dumped.\n");
+                        DoOutputDebugString("UnpackerGuardPageHandler: PE image(s) detected and dumped.\n");
                     else
                     {
-                        SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
+                        SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->AllocationBase);
 
                         TrackedRegion->Entropy = GetEntropy(TrackedRegion->AllocationBase);
 
                         TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
 
                         if (TrackedRegion->PagesDumped)
-                            DoOutputDebugString("ExtractionGuardPageHandler: shellcode detected and dumped from range 0x%p - 0x%p.\n", TrackedRegion->AllocationBase, (BYTE*)TrackedRegion->AllocationBase + TrackedRegion->RegionSize);
+                            DoOutputDebugString("UnpackerGuardPageHandler: shellcode detected and dumped from range 0x%p - 0x%p.\n", TrackedRegion->AllocationBase, (BYTE*)TrackedRegion->AllocationBase + TrackedRegion->RegionSize);
                         else
-                            DoOutputDebugString("ExtractionGuardPageHandler: failed to dump detected shellcode from range 0x%p - 0x%p.\n", TrackedRegion->AllocationBase, (BYTE*)TrackedRegion->AllocationBase + TrackedRegion->RegionSize);
+                            DoOutputDebugString("UnpackerGuardPageHandler: failed to dump detected shellcode from range 0x%p - 0x%p.\n", TrackedRegion->AllocationBase, (BYTE*)TrackedRegion->AllocationBase + TrackedRegion->RegionSize);
                     }
 
                     ClearTrackedRegion(TrackedRegion);
                 }
                 else
-                    DoOutputDebugString("ExtractionGuardPageHandler: Failed to disable guard pages for dump.\n");
+                    DoOutputDebugString("UnpackerGuardPageHandler: Failed to disable guard pages for dump.\n");
             }
 
             break;
 
         default:
-            DoOutputDebugString("ExtractionGuardPageHandler: Unknown access type: 0x%x - error.\n", AccessType);
+            DoOutputDebugString("UnpackerGuardPageHandler: Unknown access type: 0x%x - error.\n", AccessType);
             return FALSE;
     }
 
@@ -1670,12 +1670,12 @@ BOOL ExtractionGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 }
 
 //**************************************************************************************
-void ExtractionCallback(hook_info_t *hookinfo)
+void UnpackerCallback(hook_info_t *hookinfo)
 //**************************************************************************************
 {
     if (hookinfo == NULL)
     {
-        DoOutputDebugString("ExtractionCallback: Error, no hook info supplied.\n");
+        DoOutputDebugString("UnpackerCallback: Error, no hook info supplied.\n");
 		return;
     }
 
@@ -1691,7 +1691,7 @@ void ExtractionCallback(hook_info_t *hookinfo)
     if (TrackedRegionFromHook && ((hookinfo->main_caller_retaddr && IsInTrackedRegion(TrackedRegionFromHook, (PVOID)hookinfo->main_caller_retaddr)) ||
         (hookinfo->parent_caller_retaddr && IsInTrackedRegion(TrackedRegionFromHook, (PVOID)hookinfo->parent_caller_retaddr))))
     {
-        DoOutputDebugString("ExtractionCallback: hooked call to %ws::%s from within tracked region (from hook) at 0x%p.\n", hookinfo->current_hook->library, hookinfo->current_hook->funcname, hookinfo->main_caller_retaddr);
+        DoOutputDebugString("UnpackerCallback: hooked call to %ws::%s from within tracked region (from hook) at 0x%p.\n", hookinfo->current_hook->library, hookinfo->current_hook->funcname, hookinfo->main_caller_retaddr);
         TrackedRegionFromHook->CanDump = TRUE;
         ProcessTrackedRegion(TrackedRegionFromHook);
     }
@@ -1732,7 +1732,7 @@ BOOL HookReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	DoOutputDebugString("HookReturnCallback: Breakpoint %i at Address 0x%p.\n", pBreakpointInfo->Register, pBreakpointInfo->Address);
 
-    SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
+    SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
     if (DumpPEsInTrackedRegion(TrackedRegion))
     {
@@ -1843,7 +1843,7 @@ BOOL FinalByteWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
 	DoOutputDebugString("FinalByteWriteCallback: Breakpoint %i at Address 0x%p.\n", pBreakpointInfo->Register, pBreakpointInfo->Address);
 
-    SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
+    SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
     if (DumpPEsInTrackedRegion(TrackedRegion))
     {
@@ -1980,7 +1980,7 @@ BOOL EntryPointExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
     ContextClearTrackedRegion(ExceptionInfo->ContextRecord, TrackedRegion);
 
-    SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
+    SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
     if (DumpPEsInTrackedRegion(TrackedRegion))
     {
@@ -2626,7 +2626,7 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
         DoOutputDebugString("ShellcodeExecCallback: About to scan region for a PE image (base 0x%p, size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
 
 
-        SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
+        SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
         TrackedRegion->PagesDumped = DumpPEsInRange(TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
 
         if (TrackedRegion->PagesDumped)
@@ -2635,7 +2635,7 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
         {
             SIZE_T DumpSize = (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase;
 
-            SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
+            SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
 
             TrackedRegion->Entropy = GetEntropy(TrackedRegion->AllocationBase);
 
@@ -2652,7 +2652,7 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
     if (!GuardPagesDisabled && DeactivateGuardPages(TrackedRegion))
     {
-        SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
+        SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
 
         if (!address_is_in_stack((PVOID)pBreakpointInfo->Address) && (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress > (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase)
         {
@@ -2674,7 +2674,7 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
         {
             if (!address_is_in_stack((PVOID)pBreakpointInfo->Address) && (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress > (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase)
             {
-                SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
+                SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
 
                 TrackedRegion->Entropy = GetEntropy(TrackedRegion->AllocationBase);
                 TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
@@ -2687,7 +2687,7 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
             }
             else if (address_is_in_stack((PVOID)pBreakpointInfo->Address) || (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress == (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase)
             {
-                SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.BaseAddress);
+                SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.BaseAddress);
 
                 if (ScanForNonZero(TrackedRegion->MemInfo.BaseAddress, TrackedRegion->MemInfo.RegionSize))
                 {
@@ -2769,7 +2769,7 @@ BOOL BaseAddressWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
         {
             if (*(DWORD*)((unsigned char*)pDosHeader + pDosHeader->e_lfanew) == IMAGE_NT_SIGNATURE)
             {
-                SetCapeMetaData(EXTRACTION_PE, 0, NULL, TrackedRegion->AllocationBase);
+                SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
                 TrackedRegion->PagesDumped = DumpPEsInRange(TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
 
                 if (TrackedRegion->PagesDumped)
@@ -3017,11 +3017,11 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
     return TRUE;    // this should set TrackedRegion->BreakpointsSet in calling function
 }
 
-void ExtractionDllInit(PVOID DllBase)
+void UnpackerDllInit(PVOID DllBase)
 {
     // We remove exe (rundll32) image from tracked regions
     if (!DropTrackedRegion(GetTrackedRegion(GetModuleHandle(NULL))))
-        DoOutputDebugString("ExtractionDllInit: Error removing exe image base from tracked regions.\n");
+        DoOutputDebugString("UnpackerDllInit: Error removing exe image base from tracked regions.\n");
 
     ImageBase = DllBase;
 
@@ -3029,7 +3029,7 @@ void ExtractionDllInit(PVOID DllBase)
     PTRACKEDREGION TrackedRegion = GetTrackedRegion(DllBase);
     if (!TrackedRegion)
     {
-        DoOutputDebugString("ExtractionDllInit: Adding target dll image base to tracked regions.\n");
+        DoOutputDebugString("UnpackerDllInit: Adding target dll image base to tracked regions.\n");
         TrackedRegion = AddTrackedRegion(DllBase, 0, 0);
     }
     else
@@ -3038,7 +3038,7 @@ void ExtractionDllInit(PVOID DllBase)
     }
 }
 
-void ExtractionInit()
+void UnpackerInit()
 {
 //    if (!wcsnicmp(our_commandline, L"c:\\windows\\system32\\rundll32.exe", 32) ||
 //        !wcsnicmp(our_commandline, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
@@ -3049,17 +3049,17 @@ void ExtractionInit()
     if (launch_debugger())
     {
         g_config.debugger = 1;
-        DoOutputDebugString("ExtractionInit: Debugger initialised.\n");
+        DoOutputDebugString("UnpackerInit: Debugger initialised.\n");
     }
     else
-        DoOutputDebugString("ExtractionInit: Failed to initialise debugger.\n");
+        DoOutputDebugString("UnpackerInit: Failed to initialise debugger.\n");
 
-    CapeMetaData->DumpType = EXTRACTION_PE;
+    CapeMetaData->DumpType = UNPACKED_PE;
 
     // We add the main image to tracked regions
     PTRACKEDREGION TrackedRegion = AddTrackedRegion(GetModuleHandle(NULL), 0, 0);
     if (TrackedRegion)
-        DoOutputDebugString("ExtractionInit: Adding main image base to tracked regions.\n");
+        DoOutputDebugString("UnpackerInit: Adding main image base to tracked regions.\n");
     else
-        DoOutputDebugString("ExtractionInit: Error adding image base to tracked regions.\n");
+        DoOutputDebugString("UnpackerInit: Error adding image base to tracked regions.\n");
 }

@@ -278,16 +278,41 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
     if (g_config.injection)
         GetThreadContextHandler(pid, Context);
+
+    if (g_config.debugger) {
+        Context->Dr0 = 0;
+        Context->Dr1 = 0;
+        Context->Dr2 = 0;
+        Context->Dr3 = 0;
+        Context->Dr6 = 0;
+        Context->Dr7 = 0;
+    }
+
     return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
     __in  HANDLE ThreadHandle,
-    __in  const CONTEXT *Context
+    __in  CONTEXT *Context
 ) {
 	NTSTATUS ret;
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
+
+    if (g_config.debugger && Context && Context->ContextFlags & CONTEXT_CONTROL) {
+        CONTEXT CurrentContext;
+        ret = Old_NtGetContextThread(ThreadHandle, &CurrentContext);
+        if (NT_SUCCESS(ret)) {
+            Context->Dr0 = CurrentContext.Dr0;
+            Context->Dr1 = CurrentContext.Dr1;
+            Context->Dr2 = CurrentContext.Dr2;
+            Context->Dr3 = CurrentContext.Dr3;
+            Context->Dr6 = CurrentContext.Dr6;
+            Context->Dr7 = CurrentContext.Dr7;
+        }
+        else
+            DoOutputDebugString("NtSetContextThread: Failed to protect debugger breakpoints.\n");
+    }
 
     ret = Old_NtSetContextThread(ThreadHandle, Context);
 

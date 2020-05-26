@@ -276,13 +276,13 @@
     <ClCompile Include="CAPE\Injection.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
-    <ClCompile Include="CAPE\Extraction.c">
-      <Filter>Source Files\CAPE</Filter>
-    </ClCompile>
     <ClCompile Include="CAPE\Trace.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
     <ClCompile Include="CAPE\UPX.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\Unpacker.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
   </ItemGroup>
@@ -422,10 +422,10 @@
     <ClInclude Include="CAPE\w64wow64\windef.h">
       <Filter>Header Files\CAPE\w64wow64</Filter>
     </ClInclude>
-    <ClInclude Include="CAPE\Extraction.h">
+    <ClInclude Include="CAPE\Injection.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
-    <ClInclude Include="CAPE\Injection.h">
+    <ClInclude Include="CAPE\Unpacker.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
   </ItemGroup>

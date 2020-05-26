@@ -1909,6 +1909,14 @@ extern HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
     LPVOID lpfnCB
 );
 
+extern HOOKDEF(HRESULT, WINAPI, URLDownloadToFileA,
+	LPUNKNOWN            pCaller,
+	LPCSTR               szURL,
+	LPCSTR               szFileName,
+	DWORD                dwReserved,
+	LPVOID				 lpfnCB
+);
+
 extern HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
   _In_ LPUNKNOWN lpUnkcalled,
   _In_ LPCWSTR szURL,
