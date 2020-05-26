@@ -1,4 +1,4 @@
-#define EXTRACTION_MIN_SIZE 0x1001
+#define UNPACKER_MIN_SIZE 0x1001
 
 typedef struct TrackedRegion
 {
@@ -43,7 +43,7 @@ struct TrackedRegion *TrackedRegionList;
 
 PTRACKEDREGION AddTrackedRegion(PVOID Address, SIZE_T RegionSize, ULONG Protect);
 PTRACKEDREGION GetTrackedRegion(PVOID Address);
-void ExtractionCallback();
+void UnpackerCallback();
 void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 //void MapSectionViewHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect);

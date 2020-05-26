@@ -137,7 +137,7 @@ extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
-extern void ExtractionInit();
+extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
@@ -433,7 +433,7 @@ BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVO
             return FALSE;
         }
     }
-    else if (DumpType == EXTRACTION_PE || DumpType == EXTRACTION_SHELLCODE || DumpType == URSNIF_PAYLOAD)
+    else if (DumpType == UNPACKED_PE || DumpType == UNPACKED_SHELLCODE || DumpType == URSNIF_PAYLOAD)
     {
         if (!Address)
         {
@@ -1428,7 +1428,7 @@ BOOL DumpRegion(PVOID Address)
 
     AllocationSize = (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
 
-    SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, (PVOID)OriginalAllocationBase);
+    SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalAllocationBase);
 
     if (DumpMemory(OriginalAllocationBase, AllocationSize))
     {
@@ -1442,7 +1442,7 @@ BOOL DumpRegion(PVOID Address)
     {
         DoOutputDebugString("DumpRegion: Failed to dump entire allocation from 0x%p size 0x%x.\n", OriginalAllocationBase, AllocationSize);
 
-        SetCapeMetaData(EXTRACTION_SHELLCODE, 0, NULL, (PVOID)OriginalBaseAddress);
+        SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalBaseAddress);
 
         if (DumpMemory(OriginalBaseAddress, OriginalRegionSize))
         {
@@ -1800,10 +1800,6 @@ int DumpPE(LPVOID Buffer)
 void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
 //**************************************************************************************
 {
-    //PIMAGE_DOS_HEADER pDosHeader;
-    //wchar_t *MappedPath, *ModulePath, *AbsoluteMapped, *AbsoluteModule;
-    PVOID NewImageBase;
-
     if (!MemInfo.BaseAddress)
         return;
 
@@ -1819,6 +1815,72 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
     {
         // No point in continuing if we can't read!
         return;
+    }
+
+    if (!g_config.verbose_dumping && lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
+    {
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("DumpInterestingRegions: Inspecting region at 0x%p.\n", MemInfo.BaseAddress);
+#endif
+        // We filter for modules/regions that aren't properly 'loaded'
+        char ModulePath[MAX_PATH];
+        if (MemInfo.BaseAddress != CallerBase && GetMappedFileName(GetCurrentProcess(), MemInfo.BaseAddress, ModulePath, MAX_PATH))
+            return;
+
+        DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
+
+        CapeMetaData->Address = MemInfo.BaseAddress;
+
+        if (IsDisguisedPEHeader(MemInfo.BaseAddress))
+        {
+            CapeMetaData->DumpType = UNPACKED_PE;
+            __try
+            {
+                DumpImageInCurrentProcess(MemInfo.BaseAddress);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("DumpInterestingRegions: Failed to dumping calling PE image at 0x%p.\n", MemInfo.BaseAddress);
+                return;
+            }
+        }
+        else {
+            CapeMetaData->DumpType = UNPACKED_SHELLCODE;
+            __try
+            {
+                DumpRegion(MemInfo.BaseAddress);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("DumpInterestingRegions: Failed to dumping calling PE image at 0x%p.\n", MemInfo.BaseAddress);
+                return;
+            }
+        }
+    }
+}
+
+//**************************************************************************************
+int DoProcessDump(PVOID CallerBase)
+//**************************************************************************************
+{
+    PUCHAR Address;
+    MEMORY_BASIC_INFORMATION MemInfo;
+    HANDLE FileHandle;
+    char *FullDumpPath, *OutputFilename;
+    PVOID NewImageBase;
+
+    EnterCriticalSection(&ProcessDumpCriticalSection);
+
+    PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
+    DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        DoOutputErrorString("DoProcessDump: Failed to obtain system page size.\n");
+        goto out;
     }
 
     if (base_of_dll_of_interest)
@@ -1837,63 +1899,49 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
             NewImageBase = NULL;
     }
 
-    if (MemInfo.BaseAddress == ImageBase || MemInfo.BaseAddress == NewImageBase)
+    // First: 'main' process dumps
+    if (g_config.procdump)
     {
-        DoOutputDebugString("DumpInterestingRegions: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
-        CapeMetaData->DumpType = PROCDUMP;
-        if (g_config.import_reconstruction)
-            ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
-        else
-            ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
-    }
-    else if (!g_config.verbose_dumping && lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
-    {
-#ifdef DEBUG_COMMENTS
-        DoOutputDebugString("DumpInterestingRegions: Inspecting region at 0x%p.\n", MemInfo.BaseAddress);
-#endif
-        // We filter for modules/regions that aren't properly 'loaded'
-        char ModulePath[MAX_PATH];
-        if (MemInfo.BaseAddress != CallerBase && GetMappedFileName(GetCurrentProcess(), MemInfo.BaseAddress, ModulePath, MAX_PATH))
-            return;
+        if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)))
+        {
+            DoOutputDebugString("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
 
-        DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
-
-        CapeMetaData->Address = MemInfo.BaseAddress;
-
-        if (IsDisguisedPEHeader(MemInfo.BaseAddress)) {
-            CapeMetaData->DumpType = EXTRACTION_PE;
-            DumpImageInCurrentProcess(MemInfo.BaseAddress);
+            CapeMetaData->DumpType = PROCDUMP;
+            __try
+            {
+                if (g_config.import_reconstruction)
+                    ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
+                else
+                    ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("DoProcessDump: Failed to dump main process image at 0x%p.\n", MemInfo.BaseAddress);
+                goto out;
+            }
         }
-        else {
-            CapeMetaData->DumpType = EXTRACTION_SHELLCODE;
-            DumpRegion(MemInfo.BaseAddress);
+
+        if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
+        {
+            DoOutputDebugString("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", MemInfo.BaseAddress);
+
+            CapeMetaData->DumpType = PROCDUMP;
+            __try
+            {
+                if (g_config.import_reconstruction)
+                    ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
+                else
+                    ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", MemInfo.BaseAddress);
+                goto out;
+            }
         }
     }
-}
 
-//**************************************************************************************
-int DoProcessDump(PVOID CallerBase)
-//**************************************************************************************
-{
-    PUCHAR Address;
-    MEMORY_BASIC_INFORMATION MemInfo;
-    HANDLE FileHandle;
-    char *FullDumpPath, *OutputFilename;
-
-    EnterCriticalSection(&ProcessDumpCriticalSection);
-
-    PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
-    DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
-
-    if (!SystemInfo.dwPageSize)
-        GetSystemInfo(&SystemInfo);
-
-    if (!SystemInfo.dwPageSize)
-    {
-        DoOutputErrorString("DoProcessDump: Failed to obtain system page size.\n");
-        goto out;
-    }
-
+    // For full-memory dumps, creat the output file
     if (g_config.procmemdump)
     {
         FullDumpPath = GetResultsPath("memory");
@@ -1921,6 +1969,7 @@ int DoProcessDump(PVOID CallerBase)
         DoOutputDebugString("DoProcessDump: Created dump file for full process memory dump: %s.\n", FullDumpPath);
     }
 
+    // Scan entire user-mode space for both full dump and 'interesting' regions
     for (Address = (PUCHAR)SystemInfo.lpMinimumApplicationAddress; Address < (PUCHAR)SystemInfo.lpMaximumApplicationAddress;)
     {
         if (!VirtualQuery(Address, &MemInfo, sizeof(MemInfo)))
@@ -1935,10 +1984,8 @@ int DoProcessDump(PVOID CallerBase)
             continue;
         }
 
-        if (g_config.procdump)
-        {
+        if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase)
             DumpInterestingRegions(MemInfo, CallerBase);
-        }
 
         if (g_config.procmemdump)
         {
@@ -2062,8 +2109,8 @@ void CAPE_post_init()
             SetInitialBreakpoints(GetModuleHandle(NULL));
     }
 
-    if (g_config.extraction)
-        ExtractionInit();
+    if (g_config.unpacker)
+        UnpackerInit();
 
     if (g_config.plugx)
         PlugXConfigDumped = FALSE;

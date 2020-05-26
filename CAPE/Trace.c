@@ -68,6 +68,37 @@ BOOL DoSetSingleStepMode(int Register, PCONTEXT Context, PVOID Handler)
     return SetSingleStepMode(Context, Handler);
 }
 
+void SkipInstruction(PCONTEXT Context)
+{
+	PVOID CIP;
+    _DecodeType DecodeType;
+    _DecodeResult Result;
+    _OffsetType Offset = 0;
+    _DecodedInst DecodedInstruction;
+    unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+    CIP = (PVOID)Context->Rip;
+    DecodeType = Decode64Bits;
+#else
+    CIP = (PVOID)Context->Eip;
+    DecodeType = Decode32Bits;
+#endif
+    if (CIP)
+        Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+    if (!DecodedInstruction.size)
+        return;
+
+#ifdef _WIN64
+    Context->Rip += DecodedInstruction.size;
+#else
+    Context->Eip += DecodedInstruction.size;
+#endif
+
+    return;
+}
+
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, PCHAR Action, PVOID CIP)
 {
     if (!stricmp(Action, "ClearZeroFlag"))
@@ -100,6 +131,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         FlipSignFlag(ExceptionInfo->ContextRecord);
         DebuggerOutput("ActionDispatcher: %s detected, flipping Sign flag.\n", DecodedInstruction.mnemonic.p);
     }
+    else if (!stricmp(Action, "Skip"))
+    {
+        SkipInstruction(ExceptionInfo->ContextRecord);
+        DebuggerOutput("ActionDispatcher: %s detected, skipping instruction.\n", DecodedInstruction.mnemonic.p);
+    }
 #ifndef _WIN64
     else if (!stricmp(Action, "PrintEAX"))
     {
@@ -113,7 +149,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         if (g_config.dumptype0)
             CapeMetaData->DumpType = g_config.dumptype0;
         else
-            CapeMetaData->DumpType = EXTRACTION_PE;
+            CapeMetaData->DumpType = UNPACKED_PE;
 
         if (DumpImageInCurrentProcess(CallingModule))
             DebuggerOutput("ActionDispatcher: Dumped breaking module at 0x%p.\n", CallingModule);
@@ -134,7 +170,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
             {
@@ -160,7 +196,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -183,7 +219,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -217,15 +253,15 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         if (g_config.dumptype0)
             CapeMetaData->DumpType = g_config.dumptype0;
         else
-            CapeMetaData->DumpType = EXTRACTION_PE;
+            CapeMetaData->DumpType = UNPACKED_PE;
 
         if (DumpAddress && DumpSize && DumpMemory(DumpAddress, DumpSize))
             DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
         else
             DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
     }
-    else
-        DebuggerOutput("ActionDispatcher: Unrecognised ! (%s)", Action);
+    else if (stricmp(Action, "custom"))
+        DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
 
     InstructionCount++;
 
@@ -242,9 +278,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     PVOID BranchTarget;
 #endif
 
-#ifdef DEBUG_COMMENTS
-    DoOutputDebugString("Trace: Function entry.");
-#endif
     TraceRunning = TRUE;
 
     _DecodeType DecodeType;
@@ -397,6 +430,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     if (CIP)
         Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("Trace: %s instruction at 0x%p.\n", DecodedInstruction.mnemonic.p, CIP);
+#endif
     // Dispatch any actions
     if (Instruction0 && !stricmp(DecodedInstruction.mnemonic.p, Instruction0))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0, CIP);
@@ -617,6 +653,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
         if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll) || (StepOver == TRUE && !TraceAll) || ForceStepOver)
         {
+            ClearSingleStepMode(ExceptionInfo->ContextRecord);
             ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
             if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
@@ -673,8 +710,16 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     LastContext = *ExceptionInfo->ContextRecord;
 
     if (!StopTrace)
+    {
         SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
-
+#ifdef DEBUG_COMMENTS
+        DoOutputDebugString("Trace: Restoring single-step mode!\n");
+    }
+    else
+        DoOutputDebugString("Trace: Stopping trace!\n");
+#else
+    }
+#endif
     TraceRunning = FALSE;
 
     return TRUE;
@@ -733,7 +778,7 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
             if (g_config.dumptype0)
                 CapeMetaData->DumpType = g_config.dumptype0;
             else
-                CapeMetaData->DumpType = EXTRACTION_PE;
+                CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpMemory(DumpAddress, DumpSize))
                 DoOutputDebugString("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -1329,9 +1374,9 @@ BOOL BreakpointOnReturn(PVOID Address)
         DoOutputDebugString("BreakpointOnReturn: failed to set breakpoint.\n");
         return FALSE;
     }
+
     // TODO: add option to break once only, clearing bp
-    //strncpy(g_config.break_on_return, "\0", 2);
-    DoOutputDebugString("BreakpointOnReturn: breakpoint set with register %d.", Register);
+    DoOutputDebugString("BreakpointOnReturn: execution breakpoint set at 0x%p with register %d.", Address, Register);
     return TRUE;
 }
 

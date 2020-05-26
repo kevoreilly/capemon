@@ -203,7 +203,6 @@
     <ClCompile Include="alloc.c" />
     <ClCompile Include="CAPE\CAPE.c" />
     <ClCompile Include="CAPE\Debugger.c" />
-    <ClCompile Include="CAPE\Extraction.c" />
     <ClCompile Include="CAPE\GetThreadId.c" />
     <ClCompile Include="CAPE\Injection.c" />
     <ClCompile Include="CAPE\Output.c" />
@@ -220,6 +219,7 @@
     <ClCompile Include="CAPE\Scylla\StringConversion.cpp" />
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp" />
     <ClCompile Include="CAPE\Trace.c" />
+    <ClCompile Include="CAPE\Unpacker.c" />
     <ClCompile Include="CAPE\UPX.c" />
     <ClCompile Include="CAPE\w64wow64\w64wow64.c" />
     <ClCompile Include="CAPE\wow64_fix.c" />
@@ -414,7 +414,6 @@
     <ClInclude Include="bson\bson.h" />
     <ClInclude Include="CAPE\CAPE.h" />
     <ClInclude Include="CAPE\Debugger.h" />
-    <ClInclude Include="CAPE\Extraction.h" />
     <ClInclude Include="CAPE\Injection.h" />
     <ClInclude Include="CAPE\Scylla\ApiReader.h" />
     <ClInclude Include="CAPE\Scylla\Architecture.h" />
@@ -430,6 +429,7 @@
     <ClInclude Include="CAPE\Scylla\StringConversion.h" />
     <ClInclude Include="CAPE\Scylla\SystemInformation.h" />
     <ClInclude Include="CAPE\Scylla\Thunks.h" />
+    <ClInclude Include="CAPE\Unpacker.h" />
     <ClInclude Include="CAPE\w64wow64\internal.h" />
     <ClInclude Include="CAPE\w64wow64\w64wow64.h" />
     <ClInclude Include="CAPE\w64wow64\w64wow64defs.h" />

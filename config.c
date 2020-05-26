@@ -84,6 +84,9 @@ int read_config(void)
     g_config.procdump = 1;
     g_config.procmemdump = 0;
     g_config.dropped_limit = 0;
+    // We now enable Injection and Compression by default:
+    g_config.injection = 1;
+    g_config.compression = 1;
 
     memset(g_config.results, 0, MAX_PATH);
     memset(g_config.analyzer, 0, MAX_PATH);
@@ -564,6 +567,11 @@ int read_config(void)
                 if (g_config.divert_debugger_log)
                     DoOutputDebugString("Debugger log diverted (to analysis log).\n");
 			}
+            else if (!strcmp(key, "disable-logging")) {
+				g_config.disable_logging = value[0] == '1';
+                if (g_config.disable_logging)
+                    DoOutputDebugString("Logging disabled (analysis log).\n");
+			}
             else if (!strcmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
                 if (g_config.procdump)
@@ -601,10 +609,10 @@ int read_config(void)
                 if (g_config.compression)
                     DoOutputDebugString("Capture of compressed payloads enabled.\n");
 			}
-            else if (!strcmp(key, "extraction")) {
-				g_config.extraction = value[0] == '1';
-                if (g_config.extraction)
-                    DoOutputDebugString("Capture of extracted payloads enabled.\n");
+            else if (!strcmp(key, "unpacker")) {
+				g_config.unpacker = value[0] == '1';
+                if (g_config.unpacker)
+                    DoOutputDebugString("Auto-unpacking of payloads enabled.\n");
 			}
             else if (!strcmp(key, "injection")) {
 				g_config.injection = value[0] == '1';
@@ -615,7 +623,7 @@ int read_config(void)
                 if (value[0] == '1') {
                     DoOutputDebugString("Combined payload extractions enabled.\n");
                     g_config.compression = 1;
-                    g_config.extraction = 1;
+                    g_config.unpacker = 1;
                     g_config.injection = 1;
                     //g_config.verbose_dumping = 1;
                 }
