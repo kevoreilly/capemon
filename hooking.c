@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <stddef.h>
 #include "ntapi.h"
+#include <psapi.h>
 #include "hooking.h"
 #include "hooks.h"
 #include "ignore.h"
@@ -68,6 +69,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
 	if (!is_in_dll_range(addr)) {
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
         if (AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
+            char ModulePath[MAX_PATH];
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
             if (g_config.unpacker) {
@@ -76,24 +78,32 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                     TrackedRegion->CanDump = 1;
                     ProcessTrackedRegion(TrackedRegion);
                 }
-                else if (g_config.verbose_dumping) {
-                    TrackedRegion = AddTrackedRegion((PVOID)addr, 0,0);
-                    TrackedRegion->CanDump = 1;
-                    ProcessTrackedRegion(TrackedRegion);
+            }
+            else if (!GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
+                CapeMetaData->Address = AllocationBase;
+                if (IsDisguisedPEHeader(AllocationBase)) {
+                    CapeMetaData->DumpType = UNPACKED_PE;
+                    __try {
+                        DumpImageInCurrentProcess(AllocationBase);
+                    }
+                    __except(EXCEPTION_EXECUTE_HANDLER) {
+                        DoOutputDebugString("set_caller_info: Failed to dumping calling PE image at 0x%p.\n", AllocationBase);
+                        return 0;
+                    }
+                }
+                else {
+                    CapeMetaData->DumpType = UNPACKED_SHELLCODE;
+                    __try {
+                        DumpRegion(AllocationBase);
+                    }
+                    __except(EXCEPTION_EXECUTE_HANDLER) {
+                        DoOutputDebugString("set_caller_info: Failed to dumping calling PE image at 0x%p.\n", AllocationBase);
+                        return 0;
+                    }
                 }
             }
-            else if (g_config.verbose_dumping) {
-                DoOutputDebugString("VerboseDump: Dumping calling region at 0x%p.\n", AllocationBase);
-
-                CapeMetaData->ModulePath = NULL;
-                CapeMetaData->DumpType = DATADUMP;
-                CapeMetaData->Address = AllocationBase;
-
-                if (IsDisguisedPEHeader(AllocationBase))
-                    DumpImageInCurrentProcess(AllocationBase);
-                else
-                    DumpRegion(AllocationBase);
-            }
+            else
+                DoOutputDebugString("set_caller_info: Calling region at 0x%p skipped.\n", AllocationBase);
         }
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
