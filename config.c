@@ -625,13 +625,7 @@ int read_config(void)
                     g_config.compression = 1;
                     g_config.unpacker = 1;
                     g_config.injection = 1;
-                    //g_config.verbose_dumping = 1;
                 }
-			}
-            else if (!strcmp(key, "verbose-dumping")) {
-				g_config.verbose_dumping = value[0] == '1';
-                if (g_config.verbose_dumping)
-                    DoOutputDebugString("Verbose dumping enabled.\n");
 			}
             else if (!strcmp(key, "dump-config-region")) {
 				g_config.dump_config_region = value[0] == '1';

@@ -373,11 +373,17 @@ void DumpSectionViewsForPid(DWORD Pid)
                 CapeMetaData->TargetPid = Pid;
                 CapeMetaData->Address = PEPointer;
 
-                if (DumpImageInCurrentProcess(PEPointer))
+                __try
                 {
-                    DoOutputDebugString("DumpSectionViewsForPid: Dumped PE image from shared section view.\n");
-                    Dumped = TRUE;
+                    Dumped = DumpImageInCurrentProcess(PEPointer);
                 }
+                __except(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    DoOutputDebugString("DumpSectionViewsForPid: Exception dumping PE image from shared section view 0x%p.\n", PEPointer);
+                }
+
+                if (Dumped)
+                    DoOutputDebugString("DumpSectionViewsForPid: Dumped PE image from shared section view.\n");
                 else
                     DoOutputDebugString("DumpSectionViewsForPid: Failed to dump PE image from shared section view.\n");
 
@@ -392,11 +398,17 @@ void DumpSectionViewsForPid(DWORD Pid)
 
                 CapeMetaData->TargetPid = Pid;
 
-                if (DumpMemory(CurrentSectionView->LocalView, CurrentSectionView->ViewSize))
+                __try
                 {
-                    DoOutputDebugString("DumpSectionViewsForPid: Dumped shared section view.");
-                    Dumped = TRUE;
+                    Dumped = DumpMemory(CurrentSectionView->LocalView, CurrentSectionView->ViewSize);
                 }
+                __except(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    DoOutputDebugString("DumpSectionViewsForPid: Exception dumping shared section view at 0x%p.\n", CurrentSectionView->LocalView);
+                }
+
+                if (Dumped)
+                    DoOutputDebugString("DumpSectionViewsForPid: Dumped shared section view.");
                 else
                     DoOutputDebugString("DumpSectionViewsForPid: Failed to dump shared section view.");
             }
@@ -445,7 +457,14 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
 
     CapeMetaData->Address = SectionView->LocalView;
 
-    Dumped = DumpPEsInRange(SectionView->LocalView, SectionView->ViewSize);
+    __try
+    {
+        Dumped = DumpPEsInRange(SectionView->LocalView, SectionView->ViewSize);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputDebugString("DumpSectionView: Exception dumping PE image from shared section view 0x%p.\n", SectionView->LocalView);
+    }
 
     if (Dumped)
         DoOutputDebugString("DumpSectionView: Dumped PE image from shared section view with local address 0x%p.\n", SectionView->LocalView);
@@ -455,10 +474,18 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
 
         CapeMetaData->DumpType = INJECTION_SHELLCODE;
 
-        if (DumpMemory(SectionView->LocalView, SectionView->ViewSize))
+        __try
+        {
+            Dumped = DumpMemory(SectionView->LocalView, SectionView->ViewSize);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DoOutputDebugString("DumpSectionView: Exception dumping shared section view at 0x%p.\n", SectionView->LocalView);
+        }
+
+        if (Dumped)
         {
             DoOutputDebugString("DumpSectionView: Dumped shared section view with local address at 0x%p", SectionView->LocalView);
-            Dumped = TRUE;
         }
         else
             DoOutputDebugString("DumpSectionView: Failed to dump shared section view with address view at 0x%p", SectionView->LocalView);
@@ -480,7 +507,14 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
         {
             CapeMetaData->DumpType = INJECTION_PE;
 
-            Dumped = DumpPEsInRange(BaseAddress, ViewSize);
+            __try
+            {
+                Dumped = DumpPEsInRange(BaseAddress, ViewSize);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("DumpSectionView: Exception dumping remapped shared section view at 0x%p.\n", BaseAddress);
+            }
 
             if (Dumped)
                 DoOutputDebugString("DumpSectionView: Remapped and dumped section view with handle 0x%x.\n", SectionView->SectionHandle);
@@ -492,11 +526,17 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
 
                 CapeMetaData->TargetPid = SectionView->TargetProcessId;
 
-                if (DumpMemory(BaseAddress, ViewSize))
+                __try
                 {
-                    DoOutputDebugString("DumpSectionView: Dumped remapped section view with handle 0x%x.\n", SectionView->SectionHandle);
-                    Dumped = TRUE;
+                    Dumped = DumpMemory(BaseAddress, ViewSize);
                 }
+                __except(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    DoOutputDebugString("DumpSectionView: Exception dumping remapped shared section view at 0x%p.\n", BaseAddress);
+                }
+
+                if (Dumped)
+                    DoOutputDebugString("DumpSectionView: Dumped remapped section view with handle 0x%x.\n", SectionView->SectionHandle);
                 else
                     DoOutputDebugString("DumpSectionView: Failed to dump remapped section view with handle 0x%x.\n", SectionView->SectionHandle);
             }
@@ -574,10 +614,15 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
         if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)Context->Rcx, &MemoryInfo, sizeof(MemoryInfo)))
             CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
         else
+        {
             DoOutputErrorString("SetThreadContextHandler: Failed to query target process memory at address 0x%p", Context->Rcx);
+            return;
+        }
 
-        if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
-            CurrentInjectionInfo->EntryPoint = Context->Rcx - CurrentInjectionInfo->ImageBase;  // rcx holds ep on 64-bit
+        if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
+            return;
+
+        CurrentInjectionInfo->EntryPoint = Context->Rcx - CurrentInjectionInfo->ImageBase;  // rcx holds ep on 64-bit
 
         if (Context->Rip == (DWORD_PTR)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
             DoOutputDebugString("SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
@@ -587,10 +632,15 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
         if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)Context->Eax, &MemoryInfo, sizeof(MemoryInfo)))
             CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
         else
+        {
             DoOutputErrorString("SetThreadContextHandler: Failed to query target process memory at address 0x%x", Context->Eax);
+            return;
+        }
 
-        if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
-            CurrentInjectionInfo->EntryPoint = Context->Eax - CurrentInjectionInfo->ImageBase;  // eax holds ep on 32-bit
+        if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
+            return;
+
+        CurrentInjectionInfo->EntryPoint = Context->Eax - CurrentInjectionInfo->ImageBase;  // eax holds ep on 32-bit
 
         if (Context->Eip == (DWORD)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
             DoOutputDebugString("SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
@@ -617,7 +667,14 @@ void ResumeThreadHandler(DWORD Pid)
 
         DoOutputDebugString("ResumeThreadHandler: Dumping hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
 
-        CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+        __try
+        {
+            CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DoOutputDebugString("ResumeThreadHandler: Failed to dump hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
+        }
 
         if (CurrentInjectionInfo->ImageDumped)
             DoOutputDebugString("ResumeThreadHandler: Dumped PE image from buffer.\n");
@@ -690,7 +747,14 @@ void CreateRemoteThreadHandler(DWORD Pid)
 
         DoOutputDebugString("CreateRemoteThreadHandler: Dumping hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
 
-        CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+        __try
+        {
+            CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DoOutputDebugString("CreateRemoteThreadHandler: Failed to dump hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
+        }
 
         if (CurrentInjectionInfo->ImageDumped)
         {
@@ -768,7 +832,14 @@ void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 
             DoOutputDebugString("ResumeProcessHandler: Dumping hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
 
-            CurrentInjectionInfo->ImageDumped = DumpProcess(ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+            __try
+            {
+                CurrentInjectionInfo->ImageDumped = DumpProcess(ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("ResumeProcessHandler: Failed to dump hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
+            }
 
             if (CurrentInjectionInfo->ImageDumped)
                 DoOutputDebugString("ResumeProcessHandler: Dumped PE image from buffer.\n");
@@ -969,7 +1040,14 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
         {
             SetCapeMetaData(INJECTION_PE, Pid, ProcessHandle, NULL);
 
-            CurrentInjectionInfo->ImageDumped = DumpImageInCurrentProcess((PVOID)Buffer);
+            __try
+            {
+                CurrentInjectionInfo->ImageDumped = DumpImageInCurrentProcess((PVOID)Buffer);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("WriteMemoryHandler: Exception dumping injected binary at 0x%p.\n", Buffer);
+            }
 
             if (CurrentInjectionInfo->ImageDumped)
             {
@@ -1115,7 +1193,14 @@ void TerminateHandler()
 
             DoOutputDebugString("TerminateHandler: Dumping hollowed process %d, image base 0x%p.\n", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
 
-            CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+            __try
+            {
+                CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DoOutputDebugString("TerminateHandler: Failed to dump hollowed process %d, image base 0x%p.\n", CurrentInjectionInfo->ImageBase);
+            }
 
             if (CurrentInjectionInfo->ImageDumped)
                 DoOutputDebugString("TerminateHandler: Dumped PE image from buffer.\n");

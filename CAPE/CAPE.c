@@ -1797,69 +1797,6 @@ int DumpPE(LPVOID Buffer)
 }
 
 //**************************************************************************************
-void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo, PVOID CallerBase)
-//**************************************************************************************
-{
-    if (!MemInfo.BaseAddress)
-        return;
-
-    if (MemInfo.BaseAddress == (PVOID)g_our_dll_base)
-        return;
-
-    __try
-    {
-        BYTE Test = *(BYTE*)MemInfo.BaseAddress;
-        Test = *(BYTE*)MemInfo.BaseAddress + PE_HEADER_LIMIT;
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        // No point in continuing if we can't read!
-        return;
-    }
-
-    if (!g_config.verbose_dumping && lookup_get(&g_caller_regions, (ULONG_PTR)MemInfo.BaseAddress, NULL) || MemInfo.BaseAddress == CallerBase)
-    {
-#ifdef DEBUG_COMMENTS
-        DoOutputDebugString("DumpInterestingRegions: Inspecting region at 0x%p.\n", MemInfo.BaseAddress);
-#endif
-        // We filter for modules/regions that aren't properly 'loaded'
-        char ModulePath[MAX_PATH];
-        if (MemInfo.BaseAddress != CallerBase && GetMappedFileName(GetCurrentProcess(), MemInfo.BaseAddress, ModulePath, MAX_PATH))
-            return;
-
-        DoOutputDebugString("DumpInterestingRegions: Dumping calling region at 0x%p.\n", MemInfo.BaseAddress);
-
-        CapeMetaData->Address = MemInfo.BaseAddress;
-
-        if (IsDisguisedPEHeader(MemInfo.BaseAddress))
-        {
-            CapeMetaData->DumpType = UNPACKED_PE;
-            __try
-            {
-                DumpImageInCurrentProcess(MemInfo.BaseAddress);
-            }
-            __except(EXCEPTION_EXECUTE_HANDLER)
-            {
-                DoOutputDebugString("DumpInterestingRegions: Failed to dumping calling PE image at 0x%p.\n", MemInfo.BaseAddress);
-                return;
-            }
-        }
-        else {
-            CapeMetaData->DumpType = UNPACKED_SHELLCODE;
-            __try
-            {
-                DumpRegion(MemInfo.BaseAddress);
-            }
-            __except(EXCEPTION_EXECUTE_HANDLER)
-            {
-                DoOutputDebugString("DumpInterestingRegions: Failed to dumping calling PE image at 0x%p.\n", MemInfo.BaseAddress);
-                return;
-            }
-        }
-    }
-}
-
-//**************************************************************************************
 int DoProcessDump(PVOID CallerBase)
 //**************************************************************************************
 {
@@ -1983,9 +1920,6 @@ int DoProcessDump(PVOID CallerBase)
             Address += MemInfo.RegionSize;
             continue;
         }
-
-        if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase)
-            DumpInterestingRegions(MemInfo, CallerBase);
 
         if (g_config.procmemdump)
         {
