@@ -739,7 +739,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             TraceDepthCount--;
         }
     }
-#ifndef _fWIN64
+#ifndef _WIN64
     else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
     {
         ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
@@ -753,6 +753,18 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         return TRUE;
     }
 #endif
+    else if (!strncmp(DecodedInstruction.mnemonic.p, "LOCK ", 5))
+    {
+        ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+        if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+            DoOutputDebugString("Trace: Failed to set breakpoint on instruction following LOCK at 0x%p\n", ReturnAddress);
+
+        LastContext = *ExceptionInfo->ContextRecord;
+
+        if (!FilterTrace)
+            DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+        return TRUE;
+    }
     else if (!FilterTrace)
 #ifdef _WIN64
         DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
@@ -840,7 +852,7 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
         }
     }
 
-    StepOverExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
 
     return TRUE;
 }
@@ -1315,7 +1327,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
             LastContext = *ExceptionInfo->ContextRecord;
 
-            StepOverExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+            ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
 
             return TRUE;
         }
@@ -1327,7 +1339,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         //if (TraceDepthCount < 0)
         //{
         //    DebuggerOutput("BreakpointCallback: Stepping out of initial depth, releasing.\n");
-        //    StepOverExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+        //    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
         //    return TRUE;
         //}
         //else if (!FilterTrace)
@@ -1342,7 +1354,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     LastContext = *ExceptionInfo->ContextRecord;
 
-    StepOverExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
 
     DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
 
@@ -1380,7 +1392,7 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
     else
         DoOutputDebugString("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
-    StepOverExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
 
     return TRUE;
 }

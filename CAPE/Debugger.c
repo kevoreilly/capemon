@@ -519,18 +519,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
         // If not it's a single-step
         if (!BreakpointFlag)
         {
-            if (TrapIndex)
-            // this is from a 'StepOver' function
-            {
-#ifdef DEBUG_COMMENTS
-                DoOutputDebugString("CAPEExceptionFilter: Stepping over execution breakpoint to: 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
-#endif
-                pBreakpointInfo = &(CurrentThreadBreakpoint->BreakpointInfo[TrapIndex-1]);
-                ResumeAfterExecutionBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
-                if (SingleStepHandler)
-                    SingleStepHandler(ExceptionInfo);
-            }
-            else if (SingleStepHandler)
+            if (SingleStepHandler)
                 SingleStepHandler(ExceptionInfo);
             else
                 // Unhandled single-step exception, pass it on
@@ -1489,121 +1478,14 @@ BOOL ClearSingleStepMode(PCONTEXT Context)
 }
 
 //**************************************************************************************
-BOOL StepOverExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
+BOOL ResumeFromBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
 //**************************************************************************************
-// This function allows us to get past an execution breakpoint while leaving it set. It
-// diaables the breakpoint, sets single-step mode to step over the instruction, whereupon
-// the breakpoint is restored in ResumeAfterExecutionBreakpoint and execution resumed.
 {
-	PDR7 Dr7;
-
 	if (Context == NULL)
         return FALSE;
 
-    Dr7 = (PDR7)&(Context->Dr7);
-
-	switch(pBreakpointInfo->Register)
-	{
-        case 0:
-            Dr7->L0 = 0;
-            break;
-        case 1:
-            Dr7->L1 = 0;
-            break;
-        case 2:
-            Dr7->L2 = 0;
-            break;
-        case 3:
-            Dr7->L3 = 0;
-            break;
-	}
-
-    // set the trap flag
-    Context->EFlags |= FL_TF;
-
-    // set the 'trap index' so we know which 'register' we're skipping
-    // (off by one to allow 'set'/'unset' to be signified by !0/0)
-    TrapIndex = pBreakpointInfo->Register + 1;
-
-#ifdef _WIN64
-	if (pBreakpointInfo->ThreadHandle == NULL)
-	{
-		DoOutputDebugString("StepOverExecutionBreakpoint: No thread handle found in breakpoints found for current thread %d.\n", GetCurrentThreadId());
-		return FALSE;
-	}
-
-    Context->ContextFlags = CONTEXT_DEBUG_REGISTERS;
-
-    if (!SetThreadContext(pBreakpointInfo->ThreadHandle, Context))
-    {
-        DoOutputErrorString("StepOverExecutionBreakpoint: SetThreadContext failed");
-        return FALSE;
-    }
-#endif
-
-    return TRUE;
-}
-
-//**************************************************************************************
-BOOL ResumeAfterExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
-//**************************************************************************************
-{
-	PDR7 Dr7;
-
-	if (Context == NULL)
-        return FALSE;
-
-    Dr7 = (PDR7)&(Context->Dr7);
-
-#ifdef _WIN64
-    if (!pBreakpointInfo)
-    {
-        DoOutputDebugString("ResumeAfterExecutionBreakpoint: pBreakpointInfo NULL.\n");
-        return FALSE;
-    }
-#endif
-#ifdef DEBUG_COMMENTS
-    DoOutputDebugString("ResumeAfterExecutionBreakpoint: TrapIndex %d, SingleStepHandler 0x%p.\n", TrapIndex, SingleStepHandler);
-#endif
-
-    switch(TrapIndex-1)
-	{
-        case 0:
-            Dr7->L0 = 1;
-            break;
-        case 1:
-            Dr7->L1 = 1;
-            break;
-        case 2:
-            Dr7->L2 = 1;
-            break;
-        case 3:
-            Dr7->L3 = 1;
-            break;
-	}
-
-    // Reset the trap flag if single-stepping
-    if (SingleStepHandler)
-        Context->EFlags |= FL_TF;
-
-#ifdef _WIN64
-	if (pBreakpointInfo->ThreadHandle == NULL)
-	{
-		DoOutputDebugString("ResumeAfterExecutionBreakpoint: No thread handle found in breakpoints found for current thread %d.\n", GetCurrentThreadId());
-		return FALSE;
-	}
-
-    Context->ContextFlags = CONTEXT_DEBUG_REGISTERS;
-
-    if (!SetThreadContext(pBreakpointInfo->ThreadHandle, Context))
-    {
-        DoOutputErrorString("ResumeAfterExecutionBreakpoint: SetThreadContext failed");
-        return FALSE;
-    }
-#endif
-
-    // clear the 'trap index'
-    TrapIndex = 0;
+    // set the resume flag
+    Context->EFlags |= FL_RF;
 
     return TRUE;
 }

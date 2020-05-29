@@ -121,8 +121,7 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId);
 BOOL InitialiseDebugger(void);
 BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD CreationFlags);
 BOOL SendDebuggerMessage(PVOID Input);
-BOOL StepOverExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
-BOOL ResumeAfterExecutionBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
+BOOL ResumeFromBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
 void OutputThreadBreakpoints(DWORD ThreadId);
 
 void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords);
