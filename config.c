@@ -604,6 +604,11 @@ int read_config(void)
                 else
                     DoOutputDebugString("Terminate processes on terminate_event disabled.\n");
 			}
+            else if (!strcmp(key, "branch-trace")) {
+				g_config.branch_trace = value[0] == '1';
+                if (g_config.branch_trace)
+                    DoOutputDebugString("Branch tracing enabled.\n");
+			}
             else if (!strcmp(key, "compression")) {
 				g_config.compression = value[0] == '1';
                 if (g_config.compression)

@@ -141,6 +141,9 @@ struct _g_config {
     // prevent monitoring child processes
     int single_process;
 
+    // branch tracing
+    int branch_trace;
+
     // for monitor testing
     int standalone;
 

@@ -2,7 +2,6 @@
 
 #define DEBUGGER_LAUNCHER 0
 #define DisableThreadSuspend 0
-//#define BRANCH_TRACE
 
 #define BP_EXEC        0x00
 #define BP_WRITE       0x01

@@ -274,9 +274,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	PVOID ReturnAddress, CIP;
     BOOL StepOver, ForceStepOver;
     unsigned int DllRVA;
-#ifdef BRANCH_TRACE
     PVOID BranchTarget;
-#endif
 
     TraceRunning = TRUE;
 
@@ -311,7 +309,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     //        FilterTrace = FALSE;
     //}
 #ifdef _WIN64
-    if (!FilterTrace && LastContext.Rip)
+    if (!g_config.branch_trace && !FilterTrace && LastContext.Rip)
     {
         memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -339,7 +337,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
             _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbp);
 #else
-    if (!FilterTrace && LastContext.Eip)
+    if (!g_config.branch_trace && !FilterTrace && LastContext.Eip)
     {
         memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -371,7 +369,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         DebuggerOutput(DebuggerBuffer);
     }
 
-    if (!FilterTrace)
+    if (!g_config.branch_trace && !FilterTrace)
         DebuggerOutput("\n");
 
     if (StepCount > StepLimit)
@@ -398,9 +396,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             {
                 DoOutputDebugString("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
             }
-            if (FilterTrace)
+            if (FilterTrace && !g_config.branch_trace)
                 DebuggerOutput("\n");
-            if (FunctionName)
+            if (FunctionName && !g_config.branch_trace)
             {
                 DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
                 for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
@@ -411,21 +409,70 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                         StepOver = FALSE;
                 }
             }
-            else
+            else if (!g_config.branch_trace)
+            {
                 DebuggerOutput("Break in %s (RVA 0x%x, thread %d)\n", ModuleName, DllRVA, GetCurrentThreadId());
-            if (PreviousModuleName)
-                free (PreviousModuleName);
-            PreviousModuleName = ModuleName;
+                PreviousModuleName = ModuleName;
+                FunctionName = NULL;
+                ModuleName = NULL;
+            }
+
         }
     }
 
-#ifdef BRANCH_TRACE
-    if (ExceptionInfo->ExceptionRecord->ExceptionInformation[0])
+    if (g_config.branch_trace && ExceptionInfo->ExceptionRecord->ExceptionInformation[0] > 0x20000)
     {
         BranchTarget = CIP;
         CIP = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
-    }
+
+        Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+#ifdef _WIN64
+        DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+        DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #endif
+        if (ModuleName)
+        {
+            if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
+            {
+                if (FunctionName)
+                    DebuggerOutput(" -> %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
+                else
+                    DebuggerOutput(" -> %s (RVA 0x%x, thread %d)\n", ModuleName, DllRVA, GetCurrentThreadId());
+                PreviousModuleName = ModuleName;
+                FunctionName = NULL;
+                ModuleName = NULL;
+            }
+            else
+                DebuggerOutput("\n");
+        }
+        else
+            DebuggerOutput("\n");
+
+        Result = distorm_decode(Offset, (const unsigned char*)BranchTarget, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+#ifdef _WIN64
+        DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s\n", BranchTarget, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+        DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s\n", (unsigned int)BranchTarget, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#endif
+        if (!StopTrace)
+        {
+            SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
+#ifdef DEBUG_COMMENTS
+            DoOutputDebugString("Trace: Restoring single-step mode!\n");
+        }
+        else
+            DoOutputDebugString("Trace: Stopping trace!\n");
+#else
+        }
+#endif
+        TraceRunning = FALSE;
+
+        return TRUE;
+    }
+
     // We disassemble once for the action dispatcher
     if (CIP)
         Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
@@ -632,61 +679,67 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         }
         else
             DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-#ifdef BRANCH_TRACE
-        if (!FilterTrace)
-            TraceDepthCount++;
-#else
-        if (ExportName)
+
+        if (g_config.branch_trace)
         {
-            for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
-            {
-                if (!g_config.trace_into_api[i])
-                    break;
-                if (!stricmp(ExportName, g_config.trace_into_api[i]))
-                {
-                    StepOver = FALSE;
-                    TraceDepthCount--;
-                    DebuggerOutput("\nTrace: Stepping into %s\n", ExportName);
-                }
-            }
-        }
-
-        if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll) || (StepOver == TRUE && !TraceAll) || ForceStepOver)
-        {
-            ClearSingleStepMode(ExceptionInfo->ContextRecord);
-            ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-            if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-                DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-
-            if (ForceStepOver)
-                DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
-
-            LastContext = *ExceptionInfo->ContextRecord;
-
-            return TRUE;
+            if (!FilterTrace)
+                TraceDepthCount++;
         }
         else
-            TraceDepthCount++;
-#endif
+        {
+            if (ExportName)
+            {
+                for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+                {
+                    if (!g_config.trace_into_api[i])
+                        break;
+                    if (!stricmp(ExportName, g_config.trace_into_api[i]))
+                    {
+                        StepOver = FALSE;
+                        TraceDepthCount--;
+                        DebuggerOutput("\nTrace: Stepping into %s\n", ExportName);
+                    }
+                }
+            }
+
+            if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll) || (StepOver == TRUE && !TraceAll) || ForceStepOver)
+            {
+                ClearSingleStepMode(ExceptionInfo->ContextRecord);
+                ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+                if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+                    DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+
+                if (ForceStepOver)
+                    DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+
+                LastContext = *ExceptionInfo->ContextRecord;
+
+                return TRUE;
+            }
+            else
+                TraceDepthCount++;
+        }
     }
     else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
     {
-#ifdef BRANCH_TRACE
-        if (!FilterTrace)
+        if (g_config.branch_trace)
+        {
+            if (!FilterTrace)
+                TraceDepthCount--;
+        }
+        else
+        {
+            if (!FilterTrace || TraceAll)
+                DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+            //if ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit)
+            //{
+            //    DebuggerOutput("Trace: Stepping out of initial depth, releasing.");
+            //    return TRUE;
+            //}
             TraceDepthCount--;
-#else
-        if (!FilterTrace || TraceAll)
-            DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-        //if ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit)
-        //{
-        //    DebuggerOutput("Trace: Stepping out of initial depth, releasing.");
-        //    return TRUE;
-        //}
-
-        TraceDepthCount--;
-#endif
+        }
     }
-#ifndef _WIN64
+#ifndef _fWIN64
     else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
     {
         ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
@@ -1224,10 +1277,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         }
         else
             DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-#ifdef BRANCH_TRACE
-        if (!FilterTrace)
-            TraceDepthCount++;
-#else
+
+        if (g_config.branch_trace)
+        {
+            if (!FilterTrace)
+                TraceDepthCount++;
+        }
+
         if (ExportName)
         {
             for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
@@ -1265,7 +1321,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         }
         else
             TraceDepthCount++;
-#endif
     }
     else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
     {
@@ -1281,6 +1336,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     }
     else if (!FilterTrace)
         DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+
+    if (g_config.branch_trace)
+        DebuggerOutput("\n");
 
     LastContext = *ExceptionInfo->ContextRecord;
 
@@ -1411,6 +1469,9 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
     if (TraceAll)
         DebuggerOutput("Trace mode: All.\n");
+
+    if (g_config.branch_trace)
+        DebuggerOutput("Branch tracing: On.\n");
 
     if (g_config.break_on_apiname_set)
     {

@@ -1457,12 +1457,14 @@ BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler)
     // set the trap flag
     Context->EFlags |= FL_TF;
 
-#ifdef BRANCH_TRACE
-    // set bits 8 & 9, LBR & BTF bits for branch trace
-	PDR7 Dr7 = (PDR7)&(Context->Dr7);
-    //Dr7->LE = 1;
-    Dr7->GE = 1;
-#endif
+    if (g_config.branch_trace)
+    {
+        // set bits 8 & 9, LBR & BTF bits for branch trace
+        PDR7 Dr7 = (PDR7)&(Context->Dr7);
+        //Dr7->LE = 1;
+        Dr7->GE = 1;
+    }
+
 #ifdef DEBUG_COMMENTS
     DoOutputDebugString("SetSingleStepMode: Setting single-step mode with handler at 0x%p\n", Handler);
 #endif
@@ -2187,7 +2189,6 @@ BOOL SetBreakpointWithoutThread
         DoOutputErrorString("SetBreakpointWithoutThread: Exception getting pBreakpointInfo");
         return FALSE;
     }
-    DoOutputErrorString("SetBreakpointWithoutThread: pBreakpointInfo 0x%p", pBreakpointInfo);
 
 	if (CurrentThreadBreakpoint->ThreadHandle == NULL)
 	{
