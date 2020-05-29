@@ -33,7 +33,7 @@ static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 	DWORD size = 0;
 	PUCHAR retbuf;
 	for (i = 0; i < count; i++) {
-		size += buf->len;
+		size += buf[i].len;
 	}
 
 	retbuf = malloc(size);
@@ -44,8 +44,8 @@ static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 
 	size = 0;
 	for (i = 0; i < count; i++) {
-		memcpy(&retbuf[size], buf->buf, buf->len);
-		size += buf->len;
+		memcpy(&retbuf[size], buf[i].buf, buf[i].len);
+		size += buf[i].len;
 	}
 	*outlen = size;
 	return retbuf;
@@ -346,7 +346,7 @@ HOOKDEF(int, WSAAPI, WSARecv,
 	if (lpOverlapped == NULL && lpCompletionRoutine == NULL) {
 		DWORD outlen;
 		PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-		LOQ_sockerr("network", "iBI", "socket", s, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
+		LOQ_sockerr("network", "iCI", "socket", s, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
 		if (buf)
 			free(buf);
 	}
@@ -377,7 +377,7 @@ HOOKDEF(int, WSAAPI, WSARecvFrom,
 	if (lpOverlapped == NULL && lpCompletionRoutine == NULL) {
 		DWORD outlen;
 		PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-		LOQ_sockerr("network", "isiBI", "socket", s, "ip", ip, "port", port, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
+		LOQ_sockerr("network", "isiCI", "socket", s, "ip", ip, "port", port, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
 		if (buf)
 			free(buf);
 	}
@@ -402,7 +402,8 @@ HOOKDEF(int, WSAAPI, WSASend,
         dwFlags, lpOverlapped, lpCompletionRoutine);
 	DWORD outlen;
 	PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-	LOQ_sockerr("network", "ib", "Socket", s, "Buffer", outlen, buf);
+
+	LOQ_sockerr("network", "ic", "Socket", s, "Buffer", outlen, buf);
 	if (buf)
 		free(buf);
     return ret;
@@ -431,7 +432,7 @@ HOOKDEF(int, WSAAPI, WSASendTo,
     ret = Old_WSASendTo(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent,
         dwFlags, lpTo, iToLen, lpOverlapped, lpCompletionRoutine);
 	buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-	LOQ_sockerr("network", "isib", "socket", s, "ip", ip, "port", port, "Buffer", outlen, buf);
+	LOQ_sockerr("network", "isic", "socket", s, "ip", ip, "port", port, "Buffer", outlen, buf);
 	if (buf)
 		free(buf);
     return ret;
