@@ -167,6 +167,11 @@ static __inline ULONG_PTR get_stack_bottom(void)
 
 CRITICAL_SECTION ProcessDumpCriticalSection;
 
+// We need an export for IAT patching
+__declspec (naked dllexport) void dummy()
+{
+}
+
 //**************************************************************************************
 BOOL InsideHook(LPVOID* ReturnAddress, LPVOID Address)
 //**************************************************************************************
@@ -2033,7 +2038,7 @@ void CAPE_post_init()
     {
         // Start the debugger
         g_config.debugger = 1;
-        if (!launch_debugger())
+        if (!InitialiseDebugger())
         {
             DoOutputDebugString("Failed to initialise debugger.\n");
             return;
@@ -2054,7 +2059,7 @@ void CAPE_post_init()
         g_config.debugger = 1;
         CapeMetaData->DumpType = UPX;
         g_config.procdump = 0;
-        if (launch_debugger())
+        if (InitialiseDebugger())
             DoOutputDebugString("UPX unpacker: Debugger initialised.\n");
         else
             DoOutputDebugString("UPX unpacker: Failed to initialise debugger.\n");

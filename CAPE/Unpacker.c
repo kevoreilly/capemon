@@ -3046,7 +3046,7 @@ void UnpackerInit()
 //            return
 
     // Start the debugger
-    if (launch_debugger())
+    if (InitialiseDebugger())
     {
         g_config.debugger = 1;
         DoOutputDebugString("UnpackerInit: Debugger initialised.\n");

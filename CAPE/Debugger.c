@@ -798,9 +798,6 @@ BOOL ContextSetDebugRegisterEx
         Dr7->L3 = 1;
     }
 
-    Dr7->LE = 1;
-    Context->Dr6 = 0;
-
 #ifdef _WIN64
     if (NoSetThreadContext)
         return TRUE;
@@ -860,8 +857,8 @@ BOOL SetDebugRegister
     DWORD	Type
 )
 {
-	DWORD	Length;
-    CONTEXT	Context;
+	DWORD Length;
+    CONTEXT Context;
 
     PDWORD_PTR Dr0 = &Context.Dr0;
     PDWORD_PTR Dr1 = &Context.Dr1;
@@ -944,9 +941,6 @@ BOOL SetDebugRegister
         Dr7->RWE3 = Type;
         Dr7->L3 = 1;
     }
-
-    Dr7->LE = 1;
-    Context.Dr6 = 0;
 
     Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
 
@@ -1188,8 +1182,6 @@ BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
         WoW64UnpatchBreakpoint(pBreakpointInfo->Register);
 #endif
 
-    Context->Dr6 = 0;
-
 #ifdef _WIN64
 	if (pBreakpointInfo->ThreadHandle == NULL)
 	{
@@ -1277,8 +1269,6 @@ BOOL ContextClearBreakpointsInRange(PCONTEXT Context, PVOID BaseAddress, SIZE_T 
                     Dr7->RWE3 = 0;
                     Dr7->L3 = 0;
                 }
-
-                Context->Dr6 = 0;
 
                 CurrentThreadBreakpoint->BreakpointInfo[Register].Register = 0;
                 CurrentThreadBreakpoint->BreakpointInfo[Register].Size = 0;
@@ -1448,14 +1438,13 @@ BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler)
 
     if (g_config.branch_trace)
     {
-        // set bits 8 & 9, LBR & BTF bits for branch trace
+        // set bit 8: LBR for branch trace
         PDR7 Dr7 = (PDR7)&(Context->Dr7);
-        //Dr7->LE = 1;
         Dr7->GE = 1;
     }
 
 #ifdef DEBUG_COMMENTS
-    DoOutputDebugString("SetSingleStepMode: Setting single-step mode with handler at 0x%p\n", Handler);
+    //DoOutputDebugString("SetSingleStepMode: Setting single-step mode with handler at 0x%p\n", Handler);
 #endif
     SingleStepHandler = (SINGLE_STEP_HANDLER)Handler;
 
@@ -1568,8 +1557,6 @@ BOOL ClearDebugRegister
         WoW64UnpatchBreakpoint(Register);
 #endif
 
-    Context.Dr6 = 0;
-
     Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
 
     if (!SetThreadContext(hThread, &Context))
@@ -1607,7 +1594,6 @@ int ContextCheckDebugRegister(CONTEXT Context, int Register)
     else if (Register == 3)
         return Dr7->L3;
 
-	// should not happen
 	return -1;
 }
 
@@ -1643,7 +1629,6 @@ int CheckDebugRegister(HANDLE hThread, int Register)
     else if (Register == 3)
         return Dr7->L3;
 
-	// should not happen
 	return -1;
 }
 
@@ -2118,9 +2103,6 @@ BOOL SetThreadBreakpoint
 	PVOID	Callback
 )
 {
-    //if (DisableThreadSuspend)
-    //    return SetBreakpointWithoutThread(ThreadId, Register, Size, Address, Type, Callback);
-
     PBREAKPOINTINFO pBreakpointInfo;
 	PTHREADBREAKPOINTS CurrentThreadBreakpoint;
 	HANDLE hSetBreakpointThread;
@@ -2464,7 +2446,9 @@ BOOL InitialiseDebugger(void)
     WoW64fix();
 #endif
 
-    return TRUE;
+    DebuggerInitialised = TRUE;
+
+    return DebuggerInitialised;
 }
 
 //**************************************************************************************
@@ -2480,445 +2464,6 @@ DWORD_PTR GetNestedStackPointer(void)
 #else
     return (DWORD_PTR)context.Esp;
 #endif
-}
-
-#ifndef _WIN64
-//**************************************************************************************
-__declspec (naked dllexport) void DebuggerInit(void)
-//**************************************************************************************
-{
-    DWORD StackPointer;
-
-    _asm
-        {
-        push	ebp
-        mov		ebp, esp
-        // we need the stack pointer
-        mov		StackPointer, esp
-        sub		esp, __LOCAL_SIZE
-		pushad
-        }
-
-	if (!InitialiseDebugger())
-        DoOutputDebugString("Debugger initialisation failure!\n");
-
-// Package specific code
-// End of package specific code
-	DoOutputDebugString("Debugger initialisation complete, about to execute OEP at 0x%p\n", OEP);
-
-    _asm
-    {
-        popad
-		mov     esp, ebp
-        pop     ebp
-        jmp		OEP
-    }
-}
-#else
-#pragma optimize("", off)
-//**************************************************************************************
-__declspec(dllexport) void DebuggerInit(void)
-//**************************************************************************************
-{
-    DWORD_PTR StackPointer;
-
-    StackPointer = GetNestedStackPointer() - 8; // this offset has been determined experimentally - TODO: tidy
-
-	if (!InitialiseDebugger())
-        DoOutputDebugString("Debugger initialisation failure!\n");
-	else
-        DoOutputDebugString("Debugger initialised, ESP = 0x%x\n", StackPointer);
-
-// Package specific code
-// End of package specific code
-
-	DoOutputDebugString("Debugger initialisation complete, about to execute OEP.\n");
-
-    OEP();
-}
-#pragma optimize("", on)
-#endif
-
-BOOL SendDebuggerMessage(PVOID Input)
-{
-    BOOL fSuccess;
-	DWORD cbReplyBytes, cbWritten;
-
-    cbReplyBytes = sizeof(PVOID);
-
-    if (hCapePipe == NULL)
-    {
-        DoOutputErrorString("SendDebuggerMessage: hCapePipe NULL.");
-        return FALSE;
-    }
-
-    // Write the reply to the pipe.
-    fSuccess = WriteFile
-    (
-        hCapePipe,        // handle to pipe
-        &Input,     		// buffer to write from
-        cbReplyBytes, 		// number of bytes to write
-        &cbWritten,   		// number of bytes written
-        NULL          		// not overlapped I/O
-    );
-
-    if (!fSuccess || cbReplyBytes != cbWritten)
-    {
-        DoOutputErrorString("SendDebuggerMessage: Failed to send message via pipe");
-        return FALSE;
-    }
-
-    DoOutputDebugString("SendDebuggerMessage: Sent message via pipe: 0x%x\n", Input);
-
-    return TRUE;
-}
-
-//**************************************************************************************
-BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD CreationFlags)
-//**************************************************************************************
-{
-    HANDLE hProcess, hThread;
-	char lpszPipename[MAX_PATH];
-    BOOL fSuccess, fConnected;
-    CONTEXT Context;
-    DWORD cbBytesRead, cbWritten, cbReplyBytes;
-
-    memset(lpszPipename, 0, MAX_PATH*sizeof(CHAR));
-
-    sprintf_s(lpszPipename, MAX_PATH, "\\\\.\\pipe\\CAPEpipe_%x", ProcessId);
-
-	hProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, ProcessId);
-    if (hProcess == NULL)
-    {
-        DoOutputErrorString("DebugNewProcess: OpenProcess failed");
-        return FALSE;
-    }
-
-    hThread = OpenThread(THREAD_ALL_ACCESS, TRUE, ThreadId);
-    if (hThread == NULL)
-    {
-        DoOutputErrorString("DebugNewProcess: OpenThread failed");
-        return FALSE;
-    }
-
-    hCapePipe = CreateNamedPipe
-    (
-        lpszPipename,
-        PIPE_ACCESS_DUPLEX,
-        PIPE_TYPE_MESSAGE |
-        PIPE_READMODE_MESSAGE |
-        PIPE_WAIT,
-        PIPE_UNLIMITED_INSTANCES,
-        PIPEBUFSIZE,
-        PIPEBUFSIZE,
-        0,
-        NULL
-    );
-
-    if (hCapePipe == INVALID_HANDLE_VALUE)
-    {
-        DoOutputErrorString("DebugNewProcess: CreateNamedPipe failed");
-        return FALSE;
-    }
-
-    DoOutputDebugString("DebugNewProcess: Announcing new process to Cuckoo, pid: %d\n", ProcessId);
-    pipe("DEBUGGER:%d,%d", ProcessId, ThreadId);
-
-    fConnected = ConnectNamedPipe(hCapePipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-    fSuccess = FALSE;
-    cbBytesRead = 0;
-
-    if (!fConnected)
-    {
-        DoOutputDebugString("DebugNewProcess: The client could not connect, closing pipe.\n");
-        CloseHandle(hCapePipe);
-        return FALSE;
-    }
-
-    DoOutputDebugString("DebugNewProcess: Client connected.\n");
-
-    fSuccess = ReadFile
-    (
-        hCapePipe,
-        &DebuggerEP,
-        sizeof(DWORD_PTR),
-        &cbBytesRead,
-        NULL
-    );
-
-    if (!fSuccess || cbBytesRead == 0)
-    {
-        if (GetLastError() == ERROR_BROKEN_PIPE)
-        {
-            DoOutputErrorString("DebugNewProcess: Client disconnected.");
-        }
-        else
-        {
-            DoOutputErrorString("DebugNewProcess: ReadFile failed.");
-        }
-    }
-
-    if (!DebuggerEP)
-    {
-        DoOutputErrorString("DebugNewProcess: Successfully read from pipe, however DebuggerEP = 0.");
-        return FALSE;
-    }
-
-    Context.ContextFlags = CONTEXT_ALL;
-    if (!GetThreadContext(hThread, &Context))
-    {
-        DoOutputDebugString("DebugNewProcess: GetThreadContext failed.\n");
-        return FALSE;
-    }
-
-#ifdef _WIN64
-    OEP = (PVOID)Context.Rcx;
-#else
-    OEP = (PVOID)Context.Eax;
-#endif
-
-    cbWritten = 0;
-    cbReplyBytes = sizeof(DWORD_PTR);
-
-    // Send the OEP to the new process
-    fSuccess = WriteFile
-    (
-        hCapePipe,
-        &OEP,
-        cbReplyBytes,
-        &cbWritten,
-        NULL
-    );
-    if (!fSuccess || cbReplyBytes != cbWritten)
-    {
-        DoOutputErrorString("DebugNewProcess: Failed to send OEP via pipe.");
-        return FALSE;
-    }
-
-    DoOutputDebugString("DebugNewProcess: Sent OEP 0x%p via pipe\n", OEP);
-
-    Context.ContextFlags = CONTEXT_ALL;
-
-#ifdef _WIN64
-    Context.Rcx = DebuggerEP;		// set the new EP to debugger_init
-#else
-    Context.Eax = DebuggerEP;
-#endif
-
-    if (!SetThreadContext(hThread, &Context))
-    {
-        DoOutputDebugString("DebugNewProcess: Failed to set new EP\n");
-        return FALSE;
-    }
-
-#ifdef _WIN64
-    DoOutputDebugString("DebugNewProcess: Set new EP to DebuggerInit: 0x%x\n", Context.Rcx);
-#else
-    DoOutputDebugString("DebugNewProcess: Set new EP to DebuggerInit: 0x%x\n", Context.Eax);
-#endif
-
-    CloseHandle(hProcess);
-    CloseHandle(hThread);
-
-	return TRUE;
-}
-
-//**************************************************************************************
-DWORD WINAPI DebuggerLaunch(LPVOID lpParam)
-//**************************************************************************************
-{
-	HANDLE hPipe;
-	BOOL   fSuccess = FALSE, NT5;
-	DWORD  cbRead, cbToWrite, cbWritten, dwMode;
-	PVOID  FuncAddress;
-
-	char lpszPipename[MAX_PATH];
-    OSVERSIONINFO VersionInfo;
-
-	DoOutputDebugString("DebuggerLaunch: About to connect to CAPEpipe.\n");
-
-    memset(lpszPipename, 0, MAX_PATH*sizeof(CHAR));
-
-    sprintf_s(lpszPipename, MAX_PATH, "\\\\.\\pipe\\CAPEpipe_%x", GetCurrentProcessId());
-
-    while (1)
-	{
-		hPipe = CreateFile(
-		lpszPipename,
-		GENERIC_READ |
-		GENERIC_WRITE,
-		0,
-		NULL,
-		OPEN_EXISTING,
-		0,
-		NULL);
-
-		if (hPipe != INVALID_HANDLE_VALUE)
-			break;
-
-		if (GetLastError() != ERROR_PIPE_BUSY)
-		{
-			DoOutputErrorString("DebuggerLaunch: Could not open pipe");
-			return -1;
-		}
-
-		if (!WaitNamedPipe(lpszPipename, 20))
-		{
-			DoOutputDebugString("DebuggerLaunch: Could not open pipe: 20 ms wait timed out.\n");
-			return -1;
-		}
-	}
-
-	// The pipe connected; change to message-read mode.
-	dwMode = PIPE_READMODE_MESSAGE;
-	fSuccess = SetNamedPipeHandleState
-    (
-		hPipe,
-		&dwMode,
-		NULL,
-		NULL
-	);
-	if (!fSuccess)
-	{
-		DoOutputDebugString("DebuggerLaunch: SetNamedPipeHandleState failed.\n");
-		return -1;
-	}
-
-	// Send VA of DebuggerInit to loader
-	FuncAddress = &DebuggerInit;
-
-	cbToWrite = sizeof(PVOID);
-
-	fSuccess = WriteFile
-    (
-		hPipe,
-		&FuncAddress,
-		cbToWrite,
-		&cbWritten,
-		NULL
-    );
-	if (!fSuccess)
-	{
-		DoOutputErrorString("DebuggerLaunch: WriteFile to pipe failed");
-		return -1;
-	}
-
-	DoOutputDebugString("DebuggerLaunch: DebuggerInit VA sent to loader: 0x%x\n", FuncAddress);
-
-	fSuccess = ReadFile(
-		hPipe,
-		&OEP,
-		sizeof(DWORD_PTR),
-		&cbRead,
-		NULL);
-
-	if (!fSuccess && GetLastError() == ERROR_MORE_DATA)
-	{
-		DoOutputDebugString("DebuggerLaunch: ReadFile on Pipe: ERROR_MORE_DATA\n");
-		CloseHandle(hPipe);
-		return -1;
-	}
-
-	if (!fSuccess)
-	{
-		DoOutputErrorString("DebuggerLaunch: ReadFile (OEP) from pipe failed");
-		CloseHandle(hPipe);
-		return -1;
-	}
-
-	DoOutputDebugString("DebuggerLaunch: Read OEP from pipe: 0x%p\n", OEP);
-
-    while (1)
-    {
-        fSuccess = ReadFile(
-            hPipe,
-            &OEP,
-            sizeof(DWORD_PTR),
-            &cbRead,
-            NULL);
-
-        if (!fSuccess && GetLastError() == ERROR_BROKEN_PIPE)
-        {
-            DoOutputDebugString("DebuggerLaunch: Pipe closed, no further updates to OEP\n");
-            CloseHandle(hPipe);
-            break;
-        }
-
-        if (!fSuccess && GetLastError() == ERROR_MORE_DATA)
-        {
-            DoOutputDebugString("DebuggerLaunch: ReadFile on Pipe: ERROR_MORE_DATA\n");
-            CloseHandle(hPipe);
-            return -1;
-        }
-
-        if (!fSuccess)
-        {
-            DoOutputErrorString("DebuggerLaunch: ReadFile from pipe failed");
-            CloseHandle(hPipe);
-            return -1;
-        }
-        else
-            DoOutputDebugString("DebuggerLaunch: Read updated EP from pipe: 0x%p\n", OEP);
-    }
-
-    ZeroMemory(&VersionInfo, sizeof(OSVERSIONINFO));
-    VersionInfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-    GetVersionEx(&VersionInfo);
-
-    NT5 = (VersionInfo.dwMajorVersion == 5);
-
-    if (NT5)
-    {
-       	DoOutputDebugString("NT5: Leaving debugger thread alive.\n");
-        while (1)
-        {
-            Sleep(500000);
-        }
-    }
-
-    DoOutputDebugString("NT6+: Terminating debugger thread.\n");
-
-	return 0;
-}
-
-//**************************************************************************************
-int launch_debugger()
-//**************************************************************************************
-{
-    if (DebuggerInitialised)
-        return DebuggerInitialised;
-
-    if (DEBUGGER_LAUNCHER)
-    {
-        DWORD NewThreadId;
-        HANDLE hDebuggerLaunch;
-
-        hDebuggerLaunch = CreateThread(
-            NULL,
-            0,
-            DebuggerLaunch,
-            NULL,
-            0,
-            &NewThreadId);
-
-        if (hDebuggerLaunch == NULL)
-        {
-           DoOutputDebugString("CAPE: Failed to create debugger launch thread.\n");
-           return 0;
-        }
-
-        DoOutputDebugString("CAPE: Launching debugger.\n");
-
-        CloseHandle(hDebuggerLaunch);
-
-        return 1;
-    }
-    else
-    {
-        DebuggerInitialised = InitialiseDebugger();
-        g_config.debugger = 1;
-        return DebuggerInitialised;
-    }
 }
 
 void DebuggerShutdown()
