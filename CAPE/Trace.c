@@ -47,7 +47,7 @@ extern ULONG_PTR g_our_dll_base;
 extern BOOL inside_hook(LPVOID Address);
 
 char *ModuleName, *PreviousModuleName;
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, TraceAll, StopTrace;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, TraceAll, StopTrace, ModTimestamp;
 PVOID ModuleBase, DumpAddress, ReturnAddress;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning;
 unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit;
@@ -57,6 +57,7 @@ int StepOverRegister, TraceDepthCount, EntryPointRegister, InstructionCount;
 static CONTEXT LastContext;
 SIZE_T DumpSize, LastWriteLength;
 char DumpSizeString[MAX_PATH], DebuggerBuffer[MAX_PATH];
+DWORD LastTimestamp;
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
@@ -313,7 +314,30 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
             return TRUE;
         }
-        FilterTrace = TRUE;
+        // TODO remove TESTING
+        //FilterTrace = TRUE;
+        StepOver = TRUE;
+    }
+
+    if (ModTimestamp)
+    {
+        ModTimestamp = FALSE;
+        if (!LastTimestamp)
+#ifdef _WIN64
+            LastTimestamp = (DWORD)ExceptionInfo->ContextRecord->Rax;
+#else
+            LastTimestamp = ExceptionInfo->ContextRecord->Eax;
+#endif
+        else
+        {
+            DoOutputDebugString("Trace: Repeated RDTSC detected, patching.");
+            LastTimestamp++;
+#ifdef _WIN64
+            ExceptionInfo->ContextRecord->Rax = LastTimestamp;
+#else
+            ExceptionInfo->ContextRecord->Eax = LastTimestamp;
+#endif
+        }
     }
 
 #ifdef _WIN64
@@ -761,6 +785,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #else
         DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #endif
+
+    if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC")) // && g_config.fake_rdtsc)
+        ModTimestamp = TRUE;
 
     LastContext = *ExceptionInfo->ContextRecord;
 
@@ -1401,6 +1428,10 @@ BOOL WriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* 
 BOOL BreakpointOnReturn(PVOID Address)
 {
     unsigned int Register;
+
+    // We reset the trace depth count
+    TraceDepthCount = 0;
+
     if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, Address, BP_EXEC, BreakpointCallback))
     {
         DoOutputDebugString("BreakpointOnReturn: failed to set breakpoint.\n");
@@ -1424,6 +1455,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
     TraceDepthCount = 0;
     InstructionCount = 0;
     StopTrace = FALSE;
+    ModTimestamp = FALSE;
 
     TraceAll = g_config.trace_all;
 

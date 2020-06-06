@@ -168,7 +168,11 @@ static __inline ULONG_PTR get_stack_bottom(void)
 CRITICAL_SECTION ProcessDumpCriticalSection;
 
 // We need an export for IAT patching
+#ifndef _WIN64
 __declspec (naked dllexport) void dummy()
+#else
+__declspec(dllexport) void dummy()
+#endif
 {
 }
 
@@ -907,7 +911,7 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
     {
         for (p=0; p<Size-1; p++)
             if (*((char*)Buffer+p) != 0)
-                return p;
+                return (int)p;
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -934,7 +938,7 @@ int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size)
     {
         for (p=Size-1; p>=0; p--)
             if (*((char*)Buffer+p) != 0)
-                return p;
+                return (int)p;
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
