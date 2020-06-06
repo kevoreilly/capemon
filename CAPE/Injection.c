@@ -419,9 +419,6 @@ void DumpSectionViewsForPid(DWORD Pid)
         CurrentSectionView = CurrentSectionView->NextSectionView;
     }
 
-    if (Dumped == FALSE)
-        DoOutputDebugString("DumpSectionViewsForPid: no shared section views found for pid %d.\n", Pid);
-
     return;
 }
 
@@ -622,6 +619,8 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
         if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
             return;
 
+        CurrentInjectionInfo->WriteDetected = TRUE;
+
         CurrentInjectionInfo->EntryPoint = Context->Rcx - CurrentInjectionInfo->ImageBase;  // rcx holds ep on 64-bit
 
         if (Context->Rip == (DWORD_PTR)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
@@ -660,12 +659,10 @@ void ResumeThreadHandler(DWORD Pid)
         return;
     }
 
-    if (CurrentInjectionInfo->ImageBase && !CurrentInjectionInfo->ImageDumped)
+    if (CurrentInjectionInfo->WriteDetected && CurrentInjectionInfo->ImageBase && !CurrentInjectionInfo->ImageDumped)
     {
         CapeMetaData->DumpType = INJECTION_PE;
         CapeMetaData->TargetPid = Pid;
-
-        DoOutputDebugString("ResumeThreadHandler: Dumping hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
 
         __try
         {
@@ -826,7 +823,7 @@ void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 
     if (CurrentInjectionInfo)
     {
-        if (CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->ImageDumped == FALSE)
+        if (CurrentInjectionInfo->WriteDetected && CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->ImageDumped == FALSE)
         {
             SetCapeMetaData(INJECTION_PE, Pid, ProcessHandle, NULL);
 
@@ -894,6 +891,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
     }
     else if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
     {
+        CurrentInjectionInfo->WriteDetected = TRUE;
         CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
 
         if (CurrentSectionView)
@@ -908,6 +906,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
     }
     else if (!CurrentInjectionInfo && Pid != GetCurrentProcessId())
     {
+        CurrentInjectionInfo->WriteDetected = TRUE;
         CurrentInjectionInfo = CreateInjectionInfo(Pid);
 
         if (CurrentInjectionInfo == NULL)
@@ -1186,7 +1185,7 @@ void TerminateHandler()
 
 	while (CurrentInjectionInfo && CurrentInjectionInfo->ProcessHandle && CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->ProcessId)
 	{
-        if (!CurrentInjectionInfo->ImageDumped)
+        if (CurrentInjectionInfo->WriteDetected && !CurrentInjectionInfo->ImageDumped)
         {
             CapeMetaData->DumpType = INJECTION_PE;
             CapeMetaData->TargetPid = CurrentInjectionInfo->ProcessId;
