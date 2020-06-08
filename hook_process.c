@@ -417,28 +417,29 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
     __in      NTSTATUS ExitStatus
 ) {
 	// Process will terminate. Default logging will not work. Be aware: return value not valid
-    NTSTATUS ret = 0;
-	lasterror_t lasterror;
+    lasterror_t lasterror;
 	get_lasterrors(&lasterror);
+    NTSTATUS ret = 0;
+	DWORD Pid = 0;
 
     if (ProcessHandle == NULL) {
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
 		// for the subsequent call to NtTerminateProcess against our own process handle
-		process_shutting_down = 1;
+        process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
         file_handle_terminate();
 	}
 	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+        Pid = GetCurrentProcessId();
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
-		pipe("KILL:%d", GetCurrentProcessId());
-		log_free();
+        log_free();
         file_handle_terminate();
 	}
 	else {
-		DWORD PID = pid_from_process_handle(ProcessHandle);
-		if (is_protected_pid(PID)) {
+		Pid = pid_from_process_handle(ProcessHandle);
+		if (is_protected_pid(Pid)) {
 			ret = STATUS_ACCESS_DENIED;
 			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 			return ret;
@@ -446,7 +447,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		else {
 			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 		}
-		pipe("KILL:%d", PID);
 	}
 
     if (process_shutting_down && g_config.debugger)
@@ -463,6 +463,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
         DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
         DoProcessDump(GetHookCallerBase());
     }
+
+    if (Pid)
+        pipe("KILL:%d", Pid);
 
 	set_lasterrors(&lasterror);
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);

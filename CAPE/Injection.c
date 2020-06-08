@@ -195,7 +195,7 @@ PINJECTIONSECTIONVIEW GetSectionView(HANDLE SectionHandle)
             path_from_handle(SectionHandle, SectionViewList->SectionName, MAX_UNICODE_PATH);
             if ((!wcscmp(CurrentSectionView->SectionName, SectionName)))
             {
-                DoOutputDebugString("AddSectionView: New section handle for existing named section %ws.\n", SectionHandle, SectionName);
+                DoOutputDebugString("GetSectionView: New section handle for existing named section %ws.\n", SectionHandle, SectionName);
                 free(SectionName);
                 return CurrentSectionView;
             }
@@ -229,9 +229,12 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
         memset(SectionViewList, 0, sizeof(struct InjectionSectionView));
 
         SectionViewList->SectionHandle = SectionHandle;
-        SectionViewList->LocalView = LocalView;
-        SectionViewList->ViewSize = ViewSize;
         SectionViewList->SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
+        if (LocalView)
+        {
+            SectionViewList->LocalView = LocalView;
+            SectionViewList->ViewSize = ViewSize;
+        }
         if (SectionViewList->SectionName)
             path_from_handle(SectionHandle, SectionViewList->SectionName, MAX_UNICODE_PATH);
 	}
@@ -279,8 +282,11 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 
         CurrentSectionView = CurrentSectionView->NextSectionView;
         CurrentSectionView->SectionHandle = SectionHandle;
-        CurrentSectionView->LocalView = LocalView;
-        CurrentSectionView->ViewSize = ViewSize;
+        if (LocalView)
+        {
+            CurrentSectionView->LocalView = LocalView;
+            CurrentSectionView->ViewSize = ViewSize;
+        }
         CurrentSectionView->SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
         path_from_handle(SectionHandle, CurrentSectionView->SectionName, MAX_UNICODE_PATH);
 	}
@@ -359,9 +365,9 @@ void DumpSectionViewsForPid(DWORD Pid)
 
     while (CurrentSectionView)
     {
-        if (CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
+        if (CurrentInjectionInfo->WriteDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
         {
-            DoOutputDebugString("DumpSectionViewsForPid: Shared section view found with pid %d, local address 0x%p.\n", Pid);
+            DoOutputDebugString("DumpSectionViewsForPid: Shared section view found with pid %d, local address 0x%p.\n", Pid, CurrentSectionView->LocalView);
 
             PEPointer = CurrentSectionView->LocalView;
 
@@ -618,8 +624,6 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
 
         if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
             return;
-
-        CurrentInjectionInfo->WriteDetected = TRUE;
 
         CurrentInjectionInfo->EntryPoint = Context->Rcx - CurrentInjectionInfo->ImageBase;  // rcx holds ep on 64-bit
 
@@ -892,7 +896,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
     else if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
     {
         CurrentInjectionInfo->WriteDetected = TRUE;
-        CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
+        CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
 
         if (CurrentSectionView)
         {
@@ -936,7 +940,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
             else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
                 DoOutputErrorString("MapSectionViewHandler: Error translating target process path");
 
-            CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
+            CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
 
             if (CurrentSectionView)
             {
@@ -960,7 +964,6 @@ void UnmapSectionViewHandler(PVOID BaseAddress)
         if (CurrentSectionView->TargetProcessId && CurrentSectionView->LocalView == BaseAddress)
         {
             DoOutputDebugString("UnmapSectionViewHandler: Attempt to unmap view at 0x%p, dumping.\n", BaseAddress);
-            CapeMetaData->DumpType = INJECTION_PE;
             CapeMetaData->TargetPid = CurrentSectionView->TargetProcessId;
             DumpSectionView(CurrentSectionView);
         }
