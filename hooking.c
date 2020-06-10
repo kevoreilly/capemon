@@ -46,7 +46,6 @@ lookup_t g_caller_regions;
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointOnReturn(PVOID Address);
 extern BOOL BreakpointsSet;
-extern BOOL TraceRunning;
 
 void hook_init()
 {
@@ -218,7 +217,6 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 
     if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
         DoOutputDebugString("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
-        TraceRunning = TRUE;
         if (main_caller_retaddr)
             BreakpointOnReturn((PVOID)main_caller_retaddr);
         else if (parent_caller_retaddr)

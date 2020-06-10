@@ -35,7 +35,6 @@ extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
 extern void ProcessTrackedRegions();
 extern void DebuggerShutdown();
-extern BOOL StopTrace;
 extern HANDLE DebuggerLog;
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;

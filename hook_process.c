@@ -51,7 +51,7 @@ extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT 
 extern void file_handle_terminate();
 extern int DoProcessDump(PVOID CallerBase);
 extern PVOID GetHookCallerBase();
-extern BOOL ProcessDumped, StopTrace;
+extern BOOL ProcessDumped;
 extern HANDLE DebuggerLog;
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
@@ -1014,11 +1014,6 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
             DoOutputDebugString("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, %d parameters: 0x%x, 0x%x & ...\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->NumberParameters, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
         }
     }
-
-    struct _EXCEPTION_POINTERS ExceptionInfo;
-    ExceptionInfo.ExceptionRecord = ExceptionRecord;
-    ExceptionInfo.ContextRecord = Context;
-    capemon_exception_handler(&ExceptionInfo);
 
     return RetVal;
 }

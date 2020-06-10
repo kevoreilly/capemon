@@ -1441,7 +1441,7 @@ BOOL DumpRegion(PVOID Address)
 
     if (DumpMemory(OriginalAllocationBase, AllocationSize))
     {
-        if (address_is_in_stack(Address))
+        if (address_is_in_stack(OriginalAllocationBase))
             DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", OriginalAllocationBase, AllocationSize);
         else
             DoOutputDebugString("DumpRegion: Dumped entire allocation from 0x%p, size 0x%x.\n", OriginalAllocationBase, AllocationSize);
@@ -1451,15 +1451,23 @@ BOOL DumpRegion(PVOID Address)
     {
         DoOutputDebugString("DumpRegion: Failed to dump entire allocation from 0x%p size 0x%x.\n", OriginalAllocationBase, AllocationSize);
 
+        SetCapeMetaData(UNPACKED_PE, 0, NULL, (PVOID)OriginalBaseAddress);
+
+        if (DumpPEsInRange(OriginalBaseAddress, OriginalRegionSize))
+        {
+            DoOutputDebugString("DumpRegion: Dumped PE image(s) from base address 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
+            return TRUE;
+        }
+
         SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalBaseAddress);
 
         if (DumpMemory(OriginalBaseAddress, OriginalRegionSize))
         {
-        if (address_is_in_stack(Address))
-            DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
-        else
-            DoOutputDebugString("DumpRegion: Dumped base address 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
-            return TRUE;
+            if (address_is_in_stack(OriginalBaseAddress))
+                DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
+            else
+                DoOutputDebugString("DumpRegion: Dumped base address 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
+                return TRUE;
         }
         else
         {

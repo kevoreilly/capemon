@@ -277,7 +277,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     PVOID BranchTarget;
 
     TraceRunning = TRUE;
-    BOOL StepOver = FALSE, ForceStepOver = FALSE;
+    BOOL StepOver = FALSE, ForceStepOver = FALSE, StopTrace = FALSE;
 
     _DecodeType DecodeType;
     _DecodeResult Result;
@@ -300,6 +300,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     }
     else if (InsideHook(NULL, CIP) || inside_hook(CIP) || is_in_dll_range((ULONG_PTR)CIP))
     {
+        StepOver = TRUE;
+
         if (ReturnAddress)
         {
             if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
@@ -307,16 +309,17 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             else
                 ClearSingleStepMode(ExceptionInfo->ContextRecord);
 
+#ifndef DEBUG_COMMENTS
             if (ForceStepOver)
+#endif
                 DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
 
             ReturnAddress = NULL;
 
+            TraceRunning = FALSE;
+
             return TRUE;
         }
-        // TODO remove TESTING
-        //FilterTrace = TRUE;
-        StepOver = TRUE;
     }
 
     if (ModTimestamp)
@@ -407,6 +410,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     if (StepCount > StepLimit)
     {
         DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
+        ClearSingleStepMode(ExceptionInfo->ContextRecord);
+        memset(&LastContext, 0, sizeof(CONTEXT));
         TraceRunning = FALSE;
         StopTrace = TRUE;
         StepCount = 0;
@@ -432,7 +437,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                 DebuggerOutput("\n");
             if (FunctionName && !g_config.branch_trace)
             {
-                if (!strcmp(FunctionName, "LdrLockLoaderLock") && !strcmp(ModuleName, "ntdll.dll"))
+                if (!strcmp(FunctionName, "RtlTryEnterCriticalSection") || !strcmp(FunctionName, "RtlEnterCriticalSection"))
                     ForceStepOver = TRUE;
 
                 DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
@@ -752,6 +757,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
                 LastContext = *ExceptionInfo->ContextRecord;
 
+                TraceRunning = FALSE;
+
                 return TRUE;
             }
             else
@@ -893,7 +900,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     _OffsetType Offset = 0;
     _DecodedInst DecodedInstruction;
     unsigned int DllRVA, bp, DecodedInstructionsCount = 0;
-    BOOL StepOver = FALSE, ForceStepOver = FALSE;
+    BOOL StepOver = FALSE, ForceStepOver = FALSE, StopTrace = FALSE;
 
     if (pBreakpointInfo == NULL)
 	{
@@ -949,9 +956,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     {
         FilterTrace = TRUE;
         if (InsideHook(NULL, CIP))
-            DebuggerOutput("InsideHook!");
+            DebuggerOutput("\nInsideHook!");
         if (is_in_dll_range((ULONG_PTR)CIP))
-            DebuggerOutput("in_dll_range!");
+            DebuggerOutput("\nin_dll_range!");
     }
 
 #ifdef _WIN64
