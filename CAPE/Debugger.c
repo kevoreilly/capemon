@@ -133,28 +133,6 @@ extern BOOL TraceRunning, BreakpointsSet, StopTrace;
 extern HANDLE DebuggerLog;
 
 //**************************************************************************************
-BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address)
-//**************************************************************************************
-{
-#ifdef _WIN64
-    if (DepthCount == 0 && ReturnAddress && Address)
-#else
-    if (DepthCount == 2 && ReturnAddress && Address)
-#endif
-    {
-        DepthCount = 0;
-        *ReturnAddress = Address;
-        return TRUE;
-    }
-
-    DepthCount++;
-
-    DoOutputDebugString("CountDepth: Address 0x%p, depthcount = %i.\n", Address, DepthCount);
-
-    return FALSE;
-}
-
-//**************************************************************************************
 PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId)
 //**************************************************************************************
 {

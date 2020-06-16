@@ -133,7 +133,6 @@ extern int ScyllaDumpImageInCurrentProcessFixImports(DWORD_PTR modBase, DWORD_PT
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern int ScyllaDumpPEToFileHandle(DWORD_PTR Buffer, HANDLE FileHandle);
 extern unsigned int ScyllaDumpProcessToFileHandle(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP, HANDLE FileHandle);
-extern BOOL CountDepth(LPVOID* ReturnAddress, LPVOID Address);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern LPVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
