@@ -57,7 +57,7 @@ int StepOverRegister, TraceDepthCount, EntryPointRegister, InstructionCount;
 static CONTEXT LastContext;
 SIZE_T DumpSize, LastWriteLength;
 char DumpSizeString[MAX_PATH], DebuggerBuffer[MAX_PATH];
-DWORD LastTimestamp;
+LARGE_INTEGER LastTimestamp;
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
@@ -300,45 +300,50 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     }
     else if (InsideHook(NULL, CIP) || inside_hook(CIP) || is_in_dll_range((ULONG_PTR)CIP))
     {
+        FilterTrace = TRUE;
         StepOver = TRUE;
 
         if (ReturnAddress)
         {
-            if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-                DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-            else
+            if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+            {
                 ClearSingleStepMode(ExceptionInfo->ContextRecord);
-
 #ifndef DEBUG_COMMENTS
-            if (ForceStepOver)
+                if (ForceStepOver)
 #endif
-                DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+                    DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
 
-            ReturnAddress = NULL;
-
-            TraceRunning = FALSE;
-
-            return TRUE;
+                ReturnAddress = NULL;
+                TraceRunning = FALSE;
+                return TRUE;
+            }
+            else
+                DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
         }
     }
 
     if (ModTimestamp)
     {
         ModTimestamp = FALSE;
-        if (!LastTimestamp)
+        if (!LastTimestamp.QuadPart)
+        {
 #ifdef _WIN64
-            LastTimestamp = (DWORD)ExceptionInfo->ContextRecord->Rax;
+            LastTimestamp.LowPart = (DWORD)ExceptionInfo->ContextRecord->Rax;
+            LastTimestamp.HighPart = (DWORD)ExceptionInfo->ContextRecord->Rdx;
 #else
-            LastTimestamp = ExceptionInfo->ContextRecord->Eax;
+            LastTimestamp.LowPart = ExceptionInfo->ContextRecord->Eax;
+            LastTimestamp.HighPart = ExceptionInfo->ContextRecord->Edx;
 #endif
+        }
         else
         {
-            DoOutputDebugString("Trace: Repeated RDTSC detected, patching.");
-            LastTimestamp++;
+            LastTimestamp.QuadPart = LastTimestamp.QuadPart + 100000000;
 #ifdef _WIN64
-            ExceptionInfo->ContextRecord->Rax = LastTimestamp;
+            ExceptionInfo->ContextRecord->Rax = LastTimestamp.LowPart;
+            ExceptionInfo->ContextRecord->Rdx = LastTimestamp.HighPart;
 #else
-            ExceptionInfo->ContextRecord->Eax = LastTimestamp;
+            ExceptionInfo->ContextRecord->Eax = LastTimestamp.LowPart;
+            ExceptionInfo->ContextRecord->Edx = LastTimestamp.HighPart;
 #endif
         }
     }
@@ -572,7 +577,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             {
                 DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
                 ForceStepOver = TRUE;
-                DebuggerOutput("\nYA GET ME: FORCE STEP OVER = %d\n", ForceStepOver);
+                DebuggerOutput("\nFORCE STEP OVER = %d\n", ForceStepOver);
             }
             else
                 DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s0x%-28x", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", CallTarget);
@@ -723,7 +728,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
         if (g_config.branch_trace)
         {
-            if (!FilterTrace)
+            //if (!FilterTrace)
                 TraceDepthCount++;
         }
         else
@@ -745,21 +750,18 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
             if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !TraceAll) || (StepOver == TRUE && !TraceAll) || ForceStepOver)
             {
-                if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-                    DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-                else
+                if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+                {
                     ClearSingleStepMode(ExceptionInfo->ContextRecord);
-
-                if (ForceStepOver)
-                    DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
-
-                ReturnAddress = NULL;
-
-                LastContext = *ExceptionInfo->ContextRecord;
-
-                TraceRunning = FALSE;
-
-                return TRUE;
+                    if (ForceStepOver)
+                        DoOutputDebugString("Trace: Set breakpoint on return address 0x%p (register %d)\n", ReturnAddress, StepOverRegister);
+                    ReturnAddress = NULL;
+                    LastContext = *ExceptionInfo->ContextRecord;
+                    TraceRunning = FALSE;
+                    return TRUE;
+                }
+                else
+                    DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
             }
             else
                 TraceDepthCount++;
@@ -769,7 +771,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     {
         if (g_config.branch_trace)
         {
-            if (!FilterTrace)
+            //if (!FilterTrace)
                 TraceDepthCount--;
         }
         else
@@ -793,21 +795,23 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #endif
 
-    if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC")) // && g_config.fake_rdtsc)
+    if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC") && g_config.fake_rdtsc)
         ModTimestamp = TRUE;
 
     LastContext = *ExceptionInfo->ContextRecord;
 
     if (ForceStepOver)
     {
-        if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-            DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-        else
+        if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+        {
+            DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
             ClearSingleStepMode(ExceptionInfo->ContextRecord);
-
-        DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
-
-        ReturnAddress = NULL;
+            TraceRunning = FALSE;
+            ReturnAddress = NULL;
+            ReturnAddress = NULL;
+        }
+        else
+            DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
     }
     else if (!StopTrace)
     {
@@ -1295,7 +1299,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
         if (g_config.branch_trace)
         {
-            if (!FilterTrace)
+            //if (!FilterTrace)
                 TraceDepthCount++;
         }
 

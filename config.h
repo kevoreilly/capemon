@@ -162,6 +162,9 @@ struct _g_config {
     // Enable debugger
     int debugger;
 
+    // Fake RDTSC
+    int fake_rdtsc;
+
 	char *break_on_apiname;
 	char *break_on_modname;
     char break_on_return[MAX_PATH];

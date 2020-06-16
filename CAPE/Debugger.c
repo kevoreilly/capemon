@@ -532,7 +532,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
             DoOutputDebugString("CAPEExceptionFilter: Anomaly detected: Trap index set on non-single-step: %d\n", TrapIndex);
 
 #ifndef DEBUG_COMMENTS
-        if (!TraceRunning)
+        if (!TraceRunning && !g_config.divert_debugger_log)
 #endif
             DoOutputDebugString("CAPEExceptionFilter: breakpoint hit by instruction at 0x%p (thread %d)\n", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 
@@ -1781,7 +1781,9 @@ BOOL ContextSetNextAvailableBreakpoint
             CurrentThreadBreakpoint->BreakpointInfo[i].Type == Type
         )
         {
+#ifdef DEBUG_COMMENTS
             DoOutputDebugString("ContextSetNextAvailableBreakpoint: An identical breakpoint (%d) at 0x%p already exists for thread %d (process %d), skipping.\n", i, Address, CurrentThreadBreakpoint->ThreadId, GetCurrentProcessId());
+#endif
             return TRUE;
         }
     }

@@ -410,7 +410,6 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
     }
     else if (StopTrace)
     {
-        CloseHandle(DebuggerLog);
         va_end(args);
         return;
     }

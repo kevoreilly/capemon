@@ -39,8 +39,8 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern wchar_t *our_process_path_w;
 extern PVOID bp0, bp1, bp2, bp3;
-extern int TraceDepthLimit, EntryPointRegister;
-extern unsigned int StepLimit, Type0, Type1, Type2, Type3;
+extern int EntryPointRegister;
+extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2, Type3;
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char DumpSizeString[MAX_PATH];
 extern SIZE_T DumpSize;
@@ -478,7 +478,7 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "depth")) {
-				TraceDepthLimit = (int)strtoul(value, NULL, 10);
+				TraceDepthLimit = (unsigned int)strtoul(value, NULL, 10);
                 DoOutputDebugString("Config: Trace depth set to 0x%x", TraceDepthLimit);
 			}
             else if (!stricmp(key, "count")) {
@@ -563,9 +563,9 @@ int read_config(void)
                 }
 			}
             else if (!strcmp(key, "divert-debugger-log")) {
-				g_config.divert_debugger_log = value[0] == '1';
+				g_config.divert_debugger_log = value[0];
                 if (g_config.divert_debugger_log)
-                    DoOutputDebugString("Debugger log diverted (to analysis log).\n");
+                    DoOutputDebugString("Debugger log diverted.\n");
 			}
             else if (!strcmp(key, "disable-logging")) {
 				g_config.disable_logging = value[0] == '1';
@@ -641,6 +641,11 @@ int read_config(void)
 				g_config.single_process = value[0] == '1';
                 if (g_config.single_process)
                     DoOutputDebugString("Monitoring child processes disabled.\n");
+			}
+            else if (!strcmp(key, "fake-rdtsc")) {
+				g_config.fake_rdtsc = value[0] == '1';
+                if (g_config.fake_rdtsc)
+                    DoOutputDebugString("Fake RDTSC enabled (Trace)\n");
 			}
             else if (!strcmp(key, "api-rate-cap")) {
 				g_config.api_rate_cap = value[0] == '1';

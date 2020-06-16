@@ -450,7 +450,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	}
 
     if (process_shutting_down && g_config.debugger)
+    {
         DebuggerShutdown();
+        DoOutputDebugString("NtTerminateProcess hook: Debugger shutdown (process %d).\n", GetCurrentProcessId());
+    }
 
     if (process_shutting_down && g_config.unpacker) {
         DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
