@@ -41,6 +41,7 @@ extern void UnmapSectionViewHandler(PVOID BaseAddress);
 extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
+extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
 extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
 extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
@@ -602,6 +603,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 
 	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
         AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
+
+	if (NT_SUCCESS(ret) && g_config.debugger && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+        DebuggerAllocationHandler(*BaseAddress, *RegionSize, Protect);
 
     LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
         "RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");

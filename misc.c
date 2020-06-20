@@ -695,10 +695,11 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
 	{
-		char *buf = calloc(1, strlen("capemon.dll") + 1);
+		char our_dll_name[] = "capemon.dll";
+        char *buf = calloc(1, strlen(our_dll_name) + 1);
 		if (buf == NULL)
 			return NULL;
-		strcpy(buf, "capemon.dll");
+		strcpy(buf, our_dll_name);
 		*offset = (unsigned int)(addr - g_our_dll_base);
 		return buf;
 	}

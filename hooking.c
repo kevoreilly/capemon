@@ -67,7 +67,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
 
 	if (!is_in_dll_range(addr)) {
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-        if (AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
+        if (AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
             char ModulePath[MAX_PATH];
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);

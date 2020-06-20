@@ -120,6 +120,9 @@ extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern lookup_t g_caller_regions;
 
+#ifdef CAPE_NIRVANA
+extern void NirvanaInit();
+#endif
 extern void DoOutputFile(_In_ LPCTSTR lpOutputFile);
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -1181,7 +1184,7 @@ int IsDisguisedPEHeader(LPVOID Buffer)
         // In case the header until and including 'PE' is missing
         //MachineProbe = (WORD*)Buffer;
         //pNtHeader = NULL;
-        //while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+        //while ((PUCHAR)MachineProbe < PE_HEADER_LIMIT)
         //{
         //    if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
         //    {
@@ -1221,7 +1224,8 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
 
     PEDetected = FALSE;
 
-    for (p=0; p < Size - PE_HEADER_LIMIT; p++) // we want to stop short of the max look-ahead in IsDisguisedPEHeader
+    // we want to stop short of the max look-ahead in IsDisguisedPEHeader
+    for (p=0; p < Size - PE_HEADER_LIMIT; p += PE_HEADER_LIMIT)
     {
         RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
 
@@ -1874,19 +1878,19 @@ int DoProcessDump(PVOID CallerBase)
 
         if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
         {
-            DoOutputDebugString("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", MemInfo.BaseAddress);
+            DoOutputDebugString("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
 
             CapeMetaData->DumpType = PROCDUMP;
             __try
             {
                 if (g_config.import_reconstruction)
-                    ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
+                    ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)NewImageBase, 0);
                 else
-                    ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
+                    ProcessDumped = DumpImageInCurrentProcess(NewImageBase);
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", MemInfo.BaseAddress);
+                DoOutputDebugString("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", NewImageBase);
                 goto out;
             }
         }
@@ -2043,6 +2047,11 @@ void RestoreHeaders()
 
 void CAPE_post_init()
 {
+#ifdef CAPE_NIRVANA
+    if (g_config.nirvana)
+        NirvanaInit{);
+#endif
+
     if (g_config.debugger)
     {
         // Start the debugger

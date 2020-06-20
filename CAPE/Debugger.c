@@ -116,7 +116,6 @@ extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL WoW64fix(void);
 extern BOOL WoW64PatchBreakpoint(unsigned int Register);
 extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
-extern DWORD MyGetThreadId(HANDLE hThread);
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
@@ -142,7 +141,7 @@ PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId)
 
 	while (CurrentThreadBreakpoint)
 	{
-		CurrentThreadId = MyGetThreadId(CurrentThreadBreakpoint->ThreadHandle);
+        CurrentThreadId = GetThreadId(CurrentThreadBreakpoint->ThreadHandle);
 
         if (CurrentThreadId == ThreadId)
             return CurrentThreadBreakpoint;
@@ -163,7 +162,7 @@ HANDLE GetThreadHandle(DWORD ThreadId)
 
 	while (CurrentThreadBreakpoint)
 	{
-		CurrentThreadId = MyGetThreadId(CurrentThreadBreakpoint->ThreadHandle);
+		CurrentThreadId = GetThreadId(CurrentThreadBreakpoint->ThreadHandle);
 
         if (CurrentThreadId == ThreadId)
             return CurrentThreadBreakpoint->ThreadHandle;
@@ -202,7 +201,7 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 
     while (CurrentThreadBreakpoint)
 	{
-        if (CurrentThreadBreakpoint->ThreadHandle && MyGetThreadId(CurrentThreadBreakpoint->ThreadHandle) == ThreadId)
+        if (CurrentThreadBreakpoint->ThreadHandle && GetThreadId(CurrentThreadBreakpoint->ThreadHandle) == ThreadId)
         {
             //It already exists - shouldn't happen
             DoOutputDebugString("CreateThreadBreakpoints error: found an existing thread breakpoint list for ThreadId 0x%x\n", ThreadId);
@@ -351,7 +350,7 @@ BOOL GetNextAvailableBreakpoint(DWORD ThreadId, unsigned int* Register)
 
     while (CurrentThreadBreakpoint)
 	{
-		CurrentThreadId = MyGetThreadId(CurrentThreadBreakpoint->ThreadHandle);
+		CurrentThreadId = GetThreadId(CurrentThreadBreakpoint->ThreadHandle);
 
         if (CurrentThreadId == ThreadId)
 		{
@@ -2003,8 +2002,8 @@ BOOL SetBreakpointWithoutThread
 	PVOID	Callback
 )
 {
-	PTHREADBREAKPOINTS CurrentThreadBreakpoint;
 	BOOL RetVal;
+	PTHREADBREAKPOINTS CurrentThreadBreakpoint;
     PBREAKPOINTINFO pBreakpointInfo = NULL;
 
     if (Register > 3 || Register < 0)
@@ -2044,9 +2043,8 @@ BOOL SetBreakpointWithoutThread
 	}
 #ifdef DEBUG_COMMENTS
     else
-		DoOutputDebugString("ClearBreakpoint: About to call SetDebugRegister with thread handle 0x%x, register %d, size 0x%x, address 0x%p type %d.\n", CurrentThreadBreakpoint->ThreadHandle, Register, Size, Address, Type);
+		DoOutputDebugString("SetBreakpointWithoutThread: About to call SetDebugRegister with thread handle 0x%x, register %d, size 0x%x, address 0x%p type %d.\n", CurrentThreadBreakpoint->ThreadHandle, Register, Size, Address, Type);
 #endif
-
 
 	pBreakpointInfo->ThreadHandle   = CurrentThreadBreakpoint->ThreadHandle;
 	pBreakpointInfo->Register       = Register;
@@ -2065,8 +2063,9 @@ BOOL SetBreakpointWithoutThread
         return FALSE;
     }
 
-    // Debug
+#ifdef DEBUG_COMMENTS
     DoOutputDebugString("SetBreakpointWithoutThread: bp set with register %d\n", Register);
+#endif
 
     return TRUE;
 }
@@ -2473,4 +2472,27 @@ void NtContinueHandler(PCONTEXT ThreadContext)
             }
         }
     }
+}
+
+void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect)
+{
+    if (!DebuggerInitialised)
+        return;
+
+    if (!BaseAddress || !RegionSize)
+    {
+        DoOutputDebugString("DebuggerAllocationHandler: Error, BaseAddress or RegionSize zero: 0x%p, 0x%p.\n", BaseAddress, RegionSize);
+        return;
+    }
+
+    if (!(Protect & EXECUTABLE_FLAGS))
+        return;
+
+    if (RegionSize <= 0x1000)
+        return;
+
+    if (SetInitialBreakpoints(BaseAddress))
+        DoOutputDebugString("DebuggerAllocationHandler: Breakpoints set on new executable region at: 0x%p size 0x%p.\n", BaseAddress, RegionSize);
+    else
+        DoOutputDebugString("DebuggerAllocationHandler: Error, failed to set breakpoints on new executable region at: 0x%p size 0x%p.\n", BaseAddress, RegionSize);
 }

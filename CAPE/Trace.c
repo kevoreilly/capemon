@@ -25,6 +25,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <psapi.h>
 
 #define MAX_INSTRUCTIONS 0x10
+#define MAX_DUMP_SIZE 0x1000000
 #define SINGLE_STEP_LIMIT 0x4000  // default unless specified in web ui
 #define CHUNKSIZE 0x10 * MAX_INSTRUCTIONS
 #define RVA_LIMIT 0x200000
@@ -45,6 +46,8 @@ extern BOOL ScyllaGetSectionByName(PVOID ImageBase, char* Name, PVOID* SectionDa
 extern PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName);
 extern ULONG_PTR g_our_dll_base;
 extern BOOL inside_hook(LPVOID Address);
+extern void loq(int index, const char *category, const char *name,
+    int is_success, ULONG_PTR return_value, const char *fmt, ...);
 
 char *ModuleName, *PreviousModuleName;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, TraceAll, StopTrace, ModTimestamp;
@@ -173,7 +176,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             else
                 CapeMetaData->DumpType = UNPACKED_PE;
 
-            if (DumpMemory(DumpAddress, DumpSize))
+            if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
             {
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
                 return;
@@ -199,7 +202,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             else
                 CapeMetaData->DumpType = UNPACKED_PE;
 
-            if (DumpMemory(DumpAddress, DumpSize))
+            if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
             else
                 DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p.\n", DumpAddress);
@@ -222,7 +225,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             else
                 CapeMetaData->DumpType = UNPACKED_PE;
 
-            if (DumpMemory(DumpAddress, DumpSize))
+            if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
                 DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
             else
                 DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p.\n", DumpAddress);
@@ -256,7 +259,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         else
             CapeMetaData->DumpType = UNPACKED_PE;
 
-        if (DumpAddress && DumpSize && DumpMemory(DumpAddress, DumpSize))
+        if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
             DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
         else
             DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
@@ -313,6 +316,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif
                     DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
 
+                LastContext = *ExceptionInfo->ContextRecord;
                 ReturnAddress = NULL;
                 TraceRunning = FALSE;
                 return TRUE;
@@ -442,9 +446,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                 DebuggerOutput("\n");
             if (FunctionName && !g_config.branch_trace)
             {
-                if (!strcmp(FunctionName, "RtlTryEnterCriticalSection") || !strcmp(FunctionName, "RtlEnterCriticalSection"))
-                    ForceStepOver = TRUE;
-
                 DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
                 for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
                 {
@@ -553,6 +554,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             StepOver = TRUE;
         else if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
         {
+            // begins with DWORD except "DWORD [E"
             PVOID CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
             __try
             {
@@ -602,6 +604,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             }
             else
                 DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s0x%-28x", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", CallTarget);
+
+            if (CallTarget == &loq)
+                StepOver = TRUE;
         }
         else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
         {
@@ -805,9 +810,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
         {
             DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+            LastContext = *ExceptionInfo->ContextRecord;
             ClearSingleStepMode(ExceptionInfo->ContextRecord);
-            TraceRunning = FALSE;
-            ReturnAddress = NULL;
             ReturnAddress = NULL;
         }
         else
@@ -884,7 +888,7 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
             else
                 CapeMetaData->DumpType = UNPACKED_PE;
 
-            if (DumpMemory(DumpAddress, DumpSize))
+            if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
                 DoOutputDebugString("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
             else
                 DoOutputDebugString("StepOutCallback: Failed to dump region at 0x%p.\n", DumpAddress);
