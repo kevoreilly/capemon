@@ -119,6 +119,7 @@ extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
 
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 
 void DebugOutputThreadBreakpoints();
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
