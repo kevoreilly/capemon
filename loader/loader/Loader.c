@@ -126,7 +126,11 @@ void pipe(char* Buffer, SIZE_T Length)
     if (strlen(LogPipe))
     {
         if (!CallNamedPipe(LogPipe, Buffer, (DWORD)Length, Buffer, (DWORD)Length, (unsigned long *)&BytesRead, NMPWAIT_WAIT_FOREVER))
+#ifdef DEBUG_COMMENTS
             DoOutputErrorString("Loader: Failed to call named pipe %s", LogPipe);
+#else
+            ;
+#endif
     }
 
     return;
@@ -736,42 +740,26 @@ rebase:
         if (MemoryInfo.State != MEM_FREE)
             continue;
 
-        if (MemoryInfo.RegionSize < 0x400000)
-        {
-#ifdef DEBUG_COMMENTS
-            DoOutputDebugString("InjectDllViaIAT: Free region too small from 0x%p - 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
-#endif
-            continue;
-        }
-
-        if ((int)MemoryInfo.BaseAddress > MAX_ADDRESS || (int)((PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize) < MAX_ADDRESS)
-        {
-#ifdef DEBUG_COMMENTS
-            DoOutputDebugString("InjectDllViaIAT: Free region from 0x%p - 0x%p does not contain system DLL range.\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
-#endif
-            continue;
-        }
-
 #ifdef DEBUG_COMMENTS
         DoOutputDebugString("InjectDllViaIAT: Found a free region from 0x%p - 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
 #endif
 
-        // Start from the last page
-        StartAddress = (PBYTE)MAX_ADDRESS;
+#ifdef _WIN64
+        if ((SIZE_T)MemoryInfo.RegionSize > 0xFFFFFFFF)
+            StartAddress = (PBYTE)MemoryInfo.BaseAddress + 0x100000000 - SystemInfo.dwPageSize;
+#else
+        if ((SIZE_T)((PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize) > MAX_ADDRESS)
+            StartAddress = (PBYTE)MAX_ADDRESS - SystemInfo.dwPageSize;
+#endif
+        else
+            StartAddress = (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize - SystemInfo.dwPageSize;
 
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("InjectDllViaIAT: Starting reverse scan from 0x%p - 0x%p (region size 0x%x)\n", StartAddress, MemoryInfo.BaseAddress, MemoryInfo.RegionSize);
+        DoOutputDebugString("InjectDllViaIAT: Starting reverse scan from 0x%p - 0x%p (region size 0x%p)\n", StartAddress, MemoryInfo.BaseAddress, MemoryInfo.RegionSize);
 #endif
 
         for (AllocationAddress = StartAddress; AllocationAddress > (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress -= SystemInfo.dwPageSize)
         {
-            DWORD Test;
-            if (ReadProcessMemory(ProcessHandle, AllocationAddress, &Test, sizeof(DWORD), &BytesRead) && BytesRead == sizeof(DWORD))
-            {
-                DoOutputDebugString("InjectDllViaIAT: Memory region at 0x%p not empty.\n", AllocationAddress);
-                continue;
-            }
-
             TargetImportTable = (PBYTE)VirtualAllocEx(ProcessHandle, AllocationAddress, TotalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
             if (TargetImportTable == NULL)
@@ -779,14 +767,6 @@ rebase:
                 DoOutputErrorString("InjectDllViaIAT: Failed to allocate new memory region at 0x%p", AllocationAddress);
                 continue;
             }
-
-#ifdef _WIN64
-            if ((SIZE_T)(TargetImportTable - EndOfImage) > 0xFFFFFFFF)
-            {
-                DoOutputDebugString("InjectDllViaIAT: Error - free region for import table too far from image base: 0x%p\n", TargetImportTable);
-                goto out;
-            }
-#endif
 
 #ifdef DEBUG_COMMENTS
             DoOutputDebugString("InjectDllViaIAT: Allocated 0x%x bytes for new import table at 0x%p.\n", TotalSize, TargetImportTable);
@@ -972,6 +952,66 @@ out:
     return RetVal;
 }
 
+int CreateMonitorPipe(char* Name, char* Dll)
+{
+    HANDLE PipeHandle;
+    char PipeName[BUFSIZE];
+    int LastPid = 0;
+
+    if (__argc != 4)
+        return ERROR_ARGCOUNT;
+
+    sprintf_s(PipeName, sizeof(PipeName)-1, "\\\\.\\PIPE\\%s", Name);
+
+    DoOutputDebugString("Loader: Starting pipe %s (DLL to inject %s).\n", PipeName, Dll);
+
+    while (1)
+    {
+        PipeHandle = CreateNamedPipeA(PipeName, PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            PIPE_UNLIMITED_INSTANCES,
+            PIPEBUFSIZE,
+            PIPEBUFSIZE,
+            0,
+            NULL);
+
+        if (ConnectNamedPipe(PipeHandle, NULL) || GetLastError() == ERROR_PIPE_CONNECTED)
+        {
+            char buf[PIPEBUFSIZE];
+            char response[PIPEBUFSIZE];
+            int response_len = 0;
+            int bytes_read = 0;
+            int BytesWritten = 0;
+
+            memset(buf, 0, sizeof(buf));
+            memset(response, 0, sizeof(response));
+
+            ReadFile(PipeHandle, buf, sizeof(buf), &bytes_read, NULL);
+            DoOutputDebugString("%s\n", buf);
+            if (!strncmp(buf, "PROCESS:", 8)) {
+                int ProcessId = -1, ThreadId = -1;
+                char *p;
+                if ((p = strchr(buf, ','))) {
+                    *p = '\0';
+                    ProcessId = atoi(&buf[10]); // skipping the '0:' or '1:' suspended flag
+                    ThreadId = atoi(p + 1);     // (soon to be deprecated)
+                }
+                else {
+                    ProcessId = atoi(&buf[10]);
+                }
+                if (ProcessId && ThreadId && ProcessId != LastPid)
+                {
+                    DoOutputDebugString("About to call InjectDll on process %d, thread 5%d.\n", ProcessId, ThreadId);
+                    if (InjectDll(ProcessId, ThreadId, Dll))
+                        LastPid = ProcessId;
+                }
+            }
+            WriteFile(PipeHandle, response, response_len, &BytesWritten, NULL);
+            CloseHandle(PipeHandle);
+        }
+    }
+
+}
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     DoOutputDebugString("CAPE loader.\n");
@@ -1121,7 +1161,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         else
             DoOutputDebugString("There was a problem resuming the new process %s.\n", __argv[3]);
 
-        return pi.dwProcessId;
+        if (!strlen(LogPipe))
+            return pi.dwProcessId;
+
+        return CreateMonitorPipe(LogPipe, __argv[2]);
     }
     else if (!strcmp(__argv[1], "shellcode"))
     {
@@ -1192,62 +1235,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	else if (!strcmp(__argv[1], "pipe"))
     {
 		// usage: loader.exe pipe <pipe name> <dll to load>
-		HANDLE PipeHandle;
-		char PipeName[BUFSIZE];
-        int LastPid = 0;
-
-		if (__argc != 4)
-			return ERROR_ARGCOUNT;
-
-		sprintf_s(PipeName, sizeof(PipeName)-1, "\\\\.\\PIPE\\%s", __argv[2]);
-
-        DoOutputDebugString("Loader: Starting pipe %s (DLL to inject %s).\n", PipeName, __argv[3]);
-
-		while (1)
-        {
-            PipeHandle = CreateNamedPipeA(PipeName, PIPE_ACCESS_DUPLEX,
-				PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-				PIPE_UNLIMITED_INSTANCES,
-				PIPEBUFSIZE,
-				PIPEBUFSIZE,
-				0,
-				NULL);
-
-            if (ConnectNamedPipe(PipeHandle, NULL) || GetLastError() == ERROR_PIPE_CONNECTED)
-            {
-				char buf[PIPEBUFSIZE];
-				char response[PIPEBUFSIZE];
-				int response_len = 0;
-				int bytes_read = 0;
-				int BytesWritten = 0;
-
-				memset(buf, 0, sizeof(buf));
-				memset(response, 0, sizeof(response));
-
-                ReadFile(PipeHandle, buf, sizeof(buf), &bytes_read, NULL);
-                DoOutputDebugString("%s\n", buf);
-				if (!strncmp(buf, "PROCESS:", 8)) {
-					int ProcessId = -1, ThreadId = -1;
-					char *p;
-					if ((p = strchr(buf, ','))) {
-						*p = '\0';
-						ProcessId = atoi(&buf[10]); // skipping the '0:' or '1:' suspended flag
-						ThreadId = atoi(p + 1);     // (soon to be deprecated)
-					}
-					else {
-						ProcessId = atoi(&buf[10]);
-					}
-					if (ProcessId && ThreadId && ProcessId != LastPid)
-                    {
-                        DoOutputDebugString("About to call InjectDll on process %d, thread 5%d.\n", ProcessId, ThreadId);
-                        if (InjectDll(ProcessId, ThreadId, __argv[3]))
-                            LastPid = ProcessId;
-                    }
-				}
-				WriteFile(PipeHandle, response, response_len, &BytesWritten, NULL);
-				CloseHandle(PipeHandle);
-			}
-		}
+        return CreateMonitorPipe(__argv[2], __argv[3]);
 	}
 	return ERROR_MODE;
 }
