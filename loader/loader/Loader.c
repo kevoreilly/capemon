@@ -233,9 +233,6 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
         return FALSE;
     }
 
-    // debug
-    DoOutputErrorString("GetProcessInitialThreadId: Remote PEB 0x%p Local PEB 0x%p Local TEB 0x%p", ProcessBasicInformation.PebBaseAddress, NtCurrentTeb(), get_peb());
-
     PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + (DWORD_PTR)NtCurrentTeb() - (DWORD_PTR)get_peb());
 
     if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
