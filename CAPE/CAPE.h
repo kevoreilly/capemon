@@ -94,6 +94,7 @@ typedef struct CapeMetadata
 	char*	ProcessPath;
 	char*	ModulePath;
     DWORD   Pid;
+    DWORD   PPid;
     DWORD   DumpType;
     char*	TargetProcess;  // For injection
     DWORD	TargetPid;      // "
