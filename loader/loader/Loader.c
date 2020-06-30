@@ -743,7 +743,7 @@ rebase:
 
 #ifdef _WIN64
         if ((SIZE_T)MemoryInfo.RegionSize > 0xFFFFFFFF)
-            StartAddress = (PBYTE)MemoryInfo.BaseAddress + 0x100000000 - SystemInfo.dwPageSize;
+            StartAddress = (PBYTE)MemoryInfo.BaseAddress + 0x10000000;
 #else
         if ((SIZE_T)((PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize) > MAX_ADDRESS)
             StartAddress = (PBYTE)MAX_ADDRESS - SystemInfo.dwPageSize;
