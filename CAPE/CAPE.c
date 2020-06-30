@@ -49,6 +49,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\pipe.h"
 #include "..\config.h"
 #include "..\lookup.h"
+#include "..\misc.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -2101,6 +2102,7 @@ void CAPE_init()
     //if (!g_config.standalone)
     CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
     CapeMetaData->Pid = GetCurrentProcessId();
+    CapeMetaData->PPid = parent_process_id();
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
     WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
     Character = CapeMetaData->ProcessPath;

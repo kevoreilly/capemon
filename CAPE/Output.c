@@ -298,7 +298,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         {
             char OutputBuffer[MAX_PATH];
             memset(OutputBuffer, 0, MAX_PATH*sizeof(char));
-            _snprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_DUMP:%s|%d|%s", lpOutputFile, CapeMetaData->Pid, MetadataString);
+            _snprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_DUMP:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
             pipe(OutputBuffer, strlen(OutputBuffer));
         }
 	}
@@ -341,7 +341,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         {
             char OutputBuffer[MAX_PATH];
             memset(OutputBuffer, 0, MAX_PATH*sizeof(char));
-            _sntprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_CAPE:%s|%d|%s", lpOutputFile, CapeMetaData->Pid, MetadataString);
+            _sntprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_CAPE:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
             pipe(OutputBuffer, strlen(OutputBuffer));
         }
 	}
