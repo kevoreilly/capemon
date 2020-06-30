@@ -49,7 +49,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\pipe.h"
 #include "..\config.h"
 #include "..\lookup.h"
-#include "..\misc.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
