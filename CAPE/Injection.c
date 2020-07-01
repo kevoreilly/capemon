@@ -881,7 +881,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
         if (!CurrentSectionView)
         {
             CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
-            DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x amd local view 0x%p to global list.\n", SectionHandle, BaseAddress);
+            DoOutputDebugString("MapSectionViewHandler: Added section view with handle 0x%x and local view 0x%p to global list.\n", SectionHandle, BaseAddress);
         }
         else
         {
