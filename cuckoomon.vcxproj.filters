@@ -225,9 +225,6 @@
     <ClCompile Include="CAPE\Debugger.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
-    <ClCompile Include="CAPE\GetThreadId.c">
-      <Filter>Source Files\CAPE</Filter>
-    </ClCompile>
     <ClCompile Include="CAPE\Output.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
