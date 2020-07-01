@@ -718,6 +718,7 @@ char* GetHashFromHandle(HANDLE hFile)
     return OutputFilenameBuffer;
 }
 
+//**************************************************************************************
 double GetEntropy(PUCHAR Buffer)
 //**************************************************************************************
 {
@@ -778,6 +779,7 @@ double GetEntropy(PUCHAR Buffer)
     return Entropy;
 }
 
+//**************************************************************************************
 int DumpXorPE(LPBYTE Buffer, unsigned int Size)
 //**************************************************************************************
 {
@@ -1147,6 +1149,36 @@ SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader)
         return 0;
     }
 }
+
+//**************************************************************************************
+int IsDotNetImage(LPVOID Buffer)
+//**************************************************************************************
+{
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+    __try
+    {
+        pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
+
+        if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+
+        if (!pNtHeader || !TestPERequirements(pNtHeader))
+            return 0;
+
+        if (pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress || pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
+            return 1;
+
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        return 0;
+    }
+
+    return 0;
+}
+
 
 //**************************************************************************************
 int IsDisguisedPEHeader(LPVOID Buffer)
@@ -1815,6 +1847,39 @@ int DumpPE(LPVOID Buffer)
 }
 
 //**************************************************************************************
+void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
+//**************************************************************************************
+{
+    if (!MemInfo.BaseAddress)
+        return;
+
+    if (MemInfo.BaseAddress == (PVOID)g_our_dll_base)
+        return;
+
+    __try
+    {
+        BYTE Test = *(BYTE*)MemInfo.BaseAddress;
+        Test = *(BYTE*)MemInfo.BaseAddress + PE_HEADER_LIMIT;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        // No point in continuing if we can't read!
+        return;
+    }
+
+    if (IsDotNetImage(MemInfo.BaseAddress))
+    {
+        DoOutputDebugString("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
+
+        CapeMetaData->ModulePath = NULL;
+        CapeMetaData->DumpType = UNPACKED_PE;
+        CapeMetaData->Address = MemInfo.BaseAddress;
+
+        DumpImageInCurrentProcess(MemInfo.BaseAddress);
+    }
+}
+
+//**************************************************************************************
 int DoProcessDump(PVOID CallerBase)
 //**************************************************************************************
 {
@@ -1840,12 +1905,9 @@ int DoProcessDump(PVOID CallerBase)
 
     if (base_of_dll_of_interest)
     {
-        NewImageBase = GetModuleHandle(NULL);
+        NewImageBase = (PVOID)base_of_dll_of_interest;
         if (ImageBase && ImageBase == NewImageBase)
-        ImageBase = (PVOID)base_of_dll_of_interest;
-        // Prevent dump of rundll32
-        if (CallerBase == GetModuleHandle(NULL))
-            CallerBase = NULL;
+            NewImageBase = NULL;
     }
     else
     {
@@ -1938,6 +2000,9 @@ int DoProcessDump(PVOID CallerBase)
             Address += MemInfo.RegionSize;
             continue;
         }
+
+        if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase)
+            DumpInterestingRegions(MemInfo);
 
         if (g_config.procmemdump)
         {
