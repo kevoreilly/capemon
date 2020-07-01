@@ -45,7 +45,7 @@ extern void CAPE_post_init();
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
-extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase);
 extern PCHAR ScyllaGetExportDirectory(PVOID Address);
 extern void UnpackerDllInit(PVOID DllBase);
 
@@ -681,13 +681,14 @@ void revalidate_all_hooks(void)
 
 PVOID g_dll_notify_cookie;
 
-VOID CALLBACK New_DllLoadNotification(
+    VOID CALLBACK New_DllLoadNotification(
 	_In_     ULONG                       NotificationReason,
 	_In_     const PLDR_DLL_NOTIFICATION_DATA NotificationData,
 	_In_opt_ PVOID                       Context)
 {
 	PWCHAR dllname, rundll_path;
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
+    dllname = get_dll_basename(&library);
 
 	if (g_config.debug) {
 		int ret = 0;
@@ -697,8 +698,8 @@ VOID CALLBACK New_DllLoadNotification(
 
     // for rundll32 only
     rundll_path = wcschr(our_commandline, ' ');
-	if (rundll_path)
-        if (*rundll_path == L' ') rundll_path++;
+	while (rundll_path && *rundll_path == L' ')
+        rundll_path++;
 
     if (NotificationReason == 1) {
 		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) {
@@ -708,12 +709,15 @@ VOID CALLBACK New_DllLoadNotification(
             if (g_config.unpacker)
                 UnpackerDllInit((PVOID)base_of_dll_of_interest);
             if (g_config.debugger)
+            {
+                BreakpointsHit = FALSE;
                 SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
+            }
         }
-        else if (((!wcsnicmp(our_commandline, L"c:\\windows\\system32\\rundll32.exe", 32) ||
-                    !wcsnicmp(our_commandline, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
-                    !wcsnicmp(our_commandline, L"c:\\windows\\sysnative\\rundll32.exe", 33))) &&
-                    !wcsnicmp(rundll_path, library.Buffer, wcslen(library.Buffer))) {
+        else if (((!wcsnicmp(our_process_path_w, L"c:\\windows\\system32\\rundll32.exe", 32) ||
+                    !wcsnicmp(our_process_path_w, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
+                    !wcsnicmp(our_process_path_w, L"c:\\windows\\sysnative\\rundll32.exe", 33))) &&
+                    !wcsnicmp(rundll_path, dllname, wcslen(dllname))) {
             set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
             if (g_config.file_of_interest == NULL) {
                 g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
@@ -721,7 +725,10 @@ VOID CALLBACK New_DllLoadNotification(
             }
             DoOutputDebugString("rundll32 target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
             if (g_config.debugger)
+            {
+                BreakpointsHit = FALSE;
                 SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
+            }
         }
         else {
 
@@ -732,7 +739,6 @@ VOID CALLBACK New_DllLoadNotification(
             // unoptimized, but easy
             add_all_dlls_to_dll_ranges();
 
-            dllname = get_dll_basename(&library);
             set_hooks_dll(dllname);
 
             exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
@@ -752,6 +758,7 @@ VOID CALLBACK New_DllLoadNotification(
             //        dllname = (char*)malloc(MAX_PATH);
             //        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)dllname_w, (int)wcslen(dllname_w)+1, dllname, MAX_PATH, NULL, NULL);
             //        if (!stricmp(dllname, g_config.break_on_modname)) {
+            //            BreakpointsHit = FALSE;
             //            SetInitialBreakpoints(NotificationData->Loaded.DllBase);
             //        }
             //    }
@@ -987,6 +994,7 @@ void get_our_dll_path(void)
 
 	free(tmp);
 }
+
 void get_our_commandline(void)
 {
 	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
@@ -1156,11 +1164,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
         // we skip a random given amount of milliseconds each run
         init_startup_time(g_config.startup_time);
-
-        // disable the retaddr check if the user wants so
-        //if(g_config.retaddr_check == 0) {
-        //    hook_disable_retaddr_check();
-        //}
 
 		// initialize our unhook detection
         unhook_init_detection();
