@@ -64,6 +64,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "hooking.h"
 
+void loq_none(int index, const char *category, const char *name,
+	int is_success, ULONG_PTR return_value, const char *fmt, ...);
+
 void loq(int index, const char *category, const char *name,
     int is_success, ULONG_PTR return_value, const char *fmt, ...);
 void log_new_process();
@@ -107,7 +110,7 @@ do { \
 	static volatile LONG _index; \
     if (_index == 0) \
 		InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
-	loq(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
+	loq_none(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
 } while (0)
 
 #define LOQ_ntstatus(cat, fmt, ...) _LOQ(NT_SUCCESS(ret), cat, fmt, ##__VA_ARGS__)
