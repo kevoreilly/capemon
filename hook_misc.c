@@ -1557,8 +1557,8 @@ HOOKDEF(VOID, WINAPI, LocalFree,
 #define MSGFLT_ADD 1
 #define MSGFLT_REMOVE 2
 HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
-  UINT  message,
-  DWORD dwFlag
+    UINT  message,
+    DWORD dwFlag
 )
 {
 	BOOL ret;
@@ -1585,11 +1585,11 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 }
 
 HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
-  DWORD idThread
+    DWORD idThread
 )
 {
     HKL ret = Old_GetKeyboardLayout(idThread);
-    LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD)ret & 0xFFFF);
+    LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD_PTR)ret & 0xFFFF);
     return ret;
 }
 
@@ -1606,7 +1606,7 @@ HOOKDEF(VOID, WINAPI, RtlMoveMemory,
 }
 
 HOOKDEF(void, WINAPI, OutputDebugStringA,
-  LPCSTR lpOutputString
+    LPCSTR lpOutputString
 )
 {
     int ret = 0;
@@ -1616,11 +1616,103 @@ HOOKDEF(void, WINAPI, OutputDebugStringA,
 }
 
 HOOKDEF(void, WINAPI, OutputDebugStringW,
-  LPCWSTR lpOutputString
+    LPCWSTR lpOutputString
 )
 {
     int ret = 0;
     Old_OutputDebugStringW(lpOutputString);
     LOQ_void("misc", "u", "OutputString", lpOutputString);
     return;
+}
+
+HOOKDEF(void, WINAPI, SysFreeString,
+	BSTR bstrString
+)
+{
+	int ret = 0;
+	if (SysStringLen(bstrString) > 3)
+		LOQ_void("misc", "u", "String", bstrString);
+	Old_SysFreeString(bstrString);
+	return;
+}
+
+HOOKDEF_NOTAIL(WINAPI, ScriptIsComplex,
+	const WCHAR *pwcInChars,
+	int cInChars,
+	DWORD dwFlags
+)
+{
+	DWORD ret = 0;
+	if (cInChars > 1)
+		LOQ_void("misc", "uii", "pwcInChars", pwcInChars, "cInChars", cInChars, "dwFlags", dwFlags);
+	return ret;
+}
+
+HOOKDEF(int, WINAPI, StrCmpNICW,
+	_In_ LPCWSTR pszStr1,
+	_In_ LPCWSTR pszStr2,
+	_In_ int nChar
+)
+{
+	int ret;
+	ret = Old_StrCmpNICW(pszStr1, pszStr2, nChar);
+	LOQ_nonzero("misc", "uui", "String1", pszStr1, "String2", pszStr2, "nChar", nChar);
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, VarBstrCat,
+	_In_ BSTR bstrLeft,
+	_In_ BSTR bstrRight,
+	_In_ LPBSTR pbstrResult
+)
+{
+	HRESULT ret = Old_VarBstrCat(bstrLeft, bstrRight, pbstrResult);
+	LOQ_void("misc", "uuu", "bstrLeft", bstrLeft, "bstrRight", bstrRight, "pbstrResult", *pbstrResult);
+	return ret;
+}
+
+HOOKDEF_NOTAIL(WINAPI, rtcCreateObject2,
+	WORD *arg1,
+	LPCOLESTR arg2,
+	wchar_t arg3
+)
+{
+	DWORD ret = 0;
+	LOQ_void("misc", "u", "ProgID", arg2);
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
+	PCWSTR pszUrl,
+	PWSTR  pszCanonicalized,
+	DWORD* pcchCanonicalized,
+	DWORD  dwFlags
+)
+{
+	HRESULT ret = Old_UrlCanonicalizeW(pszUrl, pszCanonicalized, pcchCanonicalized, dwFlags);
+	LOQ_hresult("misc", "u", "Url", pszUrl);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
+	_In_       PCWSTR DosFileName,
+	_Out_      PUNICODE_STRING NtFileName,
+	_Out_opt_  PWSTR* FilePath,
+	_Out_opt_  VOID* DirectoryInfo
+)
+{
+	BOOL ret = Old_RtlDosPathNameToNtPathName_U(DosFileName, NtFileName, FilePath, DirectoryInfo);
+	LOQ_bool("misc", "u", "DosFileName", DosFileName);
+	return ret;
+}
+
+HOOKDEF_NOTAIL(WINAPI, DownloadFile,
+	LPCSTR url,
+	LPCSTR path,
+	int flag
+)
+{
+	DWORD ret = 0;
+	LOQ_void("network", "ssi", "URL", url,"Path", path, "Flag",flag);
+	return ret;
 }

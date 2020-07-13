@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 struct _g_config g_config;
 char *our_process_path;
+char *our_process_name;
 char *our_dll_path;
 wchar_t *our_process_path_w;
 wchar_t *our_dll_path_w;
@@ -639,6 +640,14 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptImportKey),
 
 	HOOK(vbe7, rtcEnvironBstr),
+	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
+	HOOK(shlwapi, StrCmpNICW),
+	HOOK(shlwapi, UrlCanonicalizeW),
+	HOOK(oleaut32, SysFreeString),
+	HOOK(oleaut32, VarBstrCat),
+	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
+	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
+    HOOK_NOTAIL(inseng,DownloadFile,3),
 };
 
 void set_hooks_dll(const wchar_t *library)
@@ -974,6 +983,8 @@ void get_our_process_path(void)
 	our_process_path_w = tmp2;
 
     WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, our_process_path, MAX_PATH, NULL, NULL);
+
+    our_process_name = get_exe_basename(our_process_path);
 
 	free(tmp);
 }

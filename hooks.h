@@ -3120,3 +3120,51 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtContinue,
   IN PCONTEXT ThreadContext,
   IN BOOLEAN  RaiseAlert
 );
+
+extern HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
+	_In_       PCWSTR DosFileName,
+	_Out_      PUNICODE_STRING NtFileName,
+	_Out_opt_  PWSTR* FilePath,
+	_Out_opt_  VOID* DirectoryInfo
+);
+
+extern HOOKDEF_NOTAIL(WINAPI, ScriptIsComplex,
+	const WCHAR *pwcInChars,
+	int         cInChars,
+	DWORD       dwFlags
+);
+
+extern HOOKDEF(int, WINAPI, StrCmpNICW,
+	LPCWSTR pszStr1,
+	LPCWSTR pszStr2,
+	int     nChar
+);
+
+extern HOOKDEF(void, WINAPI, SysFreeString,
+	BSTR bstrString
+);
+
+extern HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
+	PCWSTR pszUrl,
+	PWSTR  pszCanonicalized,
+	DWORD  *pcchCanonicalized,
+	DWORD  dwFlags
+);
+
+extern HOOKDEF(HRESULT, WINAPI, VarBstrCat,
+	BSTR   bstrLeft,
+	BSTR   bstrRight,
+	LPBSTR pbstrResult
+);
+
+extern HOOKDEF_NOTAIL(WINAPI, rtcCreateObject2,
+	WORD *arg1,
+	LPCOLESTR arg2,
+	wchar_t arg3
+);
+
+extern HOOKDEF_NOTAIL(WINAPI, DownloadFile,
+	LPCSTR url,
+	LPCSTR path,
+	int flag
+);

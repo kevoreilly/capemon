@@ -149,7 +149,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 ) {
 	BOOL ret;
 	hook_info_t saved_hookinfo;
-	
+
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_CreateProcessInternalW(lpUnknown1, lpApplicationName,
         lpCommandLine, lpProcessAttributes, lpThreadAttributes,
@@ -177,7 +177,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 
         disable_sleep_skip();
     }
-	
+
     if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT && lpStartupInfo->cb == sizeof(STARTUPINFOEXW)) {
         HANDLE ParentHandle = (HANDLE)-1;
         unsigned int i;
@@ -251,15 +251,16 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
 		pipe("TASKSCHED:");
 	if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
-		!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046"))
-		pipe("INTEROP:");
+        !strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
+        !strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
+        pipe("INTEROP:");
 
 	set_lasterrors(&lasterror);
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_CoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
-	
+
 	get_lasterrors(&lasterror);
 
 	pProgIDFromCLSID(&id1, &resolv);
@@ -311,7 +312,7 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
 			pipe("TASKSCHED:");
 		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
-			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046"))
+            !strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") || !strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
 			pipe("INTEROP:");
 	}
 	set_lasterrors(&lasterror);
@@ -353,7 +354,7 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 	DWORD newctx = dwClsContext;
 
 	get_lasterrors(&lasterror);
-	
+
 	if (!pCoTaskMemFree)
 		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
 	if (!pProgIDFromCLSID)
