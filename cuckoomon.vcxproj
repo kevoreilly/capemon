@@ -190,7 +190,8 @@
       <AdditionalLibraryDirectories>$(ProjectDir)x64\Release</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
-      <BaseAddress>0x30000000</BaseAddress>
+      <BaseAddress>
+      </BaseAddress>
       <SetChecksum>true</SetChecksum>
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
     </Link>
