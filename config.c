@@ -88,6 +88,7 @@ int read_config(void)
     g_config.injection = 1;
     g_config.compression = 1;
     g_config.dump_caller_regions = 1;
+    g_config.api_rate_cap = 1;
 
     memset(g_config.results, 0, MAX_PATH);
     memset(g_config.analyzer, 0, MAX_PATH);
