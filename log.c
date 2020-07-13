@@ -351,6 +351,12 @@ DWORD get_last_api(void)
 	return last_api_logged;
 }
 
+void loq_none(int index, const char *category, const char *name,
+	int is_success, ULONG_PTR return_value, const char *fmt, ...) {
+	static counter = 0;
+	counter += 1;
+}
+
 void loq(int index, const char *category, const char *name,
     int is_success, ULONG_PTR return_value, const char *fmt, ...)
 {
