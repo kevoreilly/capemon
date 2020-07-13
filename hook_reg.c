@@ -220,7 +220,7 @@ HOOKDEF(LONG, WINAPI, RegCreateKeyExW,
 		}
 		free(keybuf);
 	}
-	
+
 	LOQ_zero("registry", "puuhPEI", "Registry", hKey, "SubKey", lpSubKey, "Class", lpClass,
         "Access", samDesired, "Handle", phkResult, "FullName", hKey, lpSubKey,
 		"Disposition", lpdwDisposition);
@@ -405,7 +405,7 @@ HOOKDEF(LONG, WINAPI, RegEnumValueA,
 	ENSURE_DWORD(lpType);
     ret = Old_RegEnumValueA(hKey, dwIndex, lpValueName, lpcchValueName,
         lpReserved, lpType, lpData, lpcbData);
-    if(ret == ERROR_SUCCESS && lpType != NULL && lpData != NULL &&
+    if (ret == ERROR_SUCCESS && lpType != NULL && lpData != NULL &&
             lpcbData != NULL) {
         LOQ_zero("registry", "pisre", "Handle", hKey, "Index", dwIndex,
             "ValueName", lpValueName, "Data", *lpType, *lpcbData, lpData,
@@ -433,7 +433,7 @@ HOOKDEF(LONG, WINAPI, RegEnumValueW,
 	ENSURE_DWORD(lpType);
     ret = Old_RegEnumValueW(hKey, dwIndex, lpValueName, lpcchValueName,
         lpReserved, lpType, lpData, lpcbData);
-    if(ret == ERROR_SUCCESS && lpType != NULL && lpData != NULL &&
+    if (ret == ERROR_SUCCESS && lpType != NULL && lpData != NULL &&
             lpcbData != NULL) {
         LOQ_zero("registry", "piuRE", "Handle", hKey, "Index", dwIndex,
             "ValueName", lpValueName, "Data", *lpType, *lpcbData, lpData,
@@ -457,7 +457,7 @@ HOOKDEF(LONG, WINAPI, RegSetValueExA,
 ) {
 	LONG ret = Old_RegSetValueExA(hKey, lpValueName, Reserved, dwType, lpData,
         cbData);
-    if(ret == ERROR_SUCCESS) {
+    if (ret == ERROR_SUCCESS) {
         LOQ_zero("registry", "psiriv", "Handle", hKey, "ValueName", lpValueName, "Type", dwType,
 			"Buffer", dwType, cbData, lpData, "BufferLength", cbData,
 			"FullName", hKey, lpValueName);
@@ -479,7 +479,7 @@ HOOKDEF(LONG, WINAPI, RegSetValueExW,
 ) {
 	LONG ret = Old_RegSetValueExW(hKey, lpValueName, Reserved, dwType, lpData,
         cbData);
-    if(ret == ERROR_SUCCESS) {
+    if (ret == ERROR_SUCCESS) {
         LOQ_zero("registry", "puiRiV", "Handle", hKey, "ValueName", lpValueName, "Type", dwType,
 			"Buffer", dwType, cbData, lpData, "BufferLength", cbData,
 			"FullName", hKey, lpValueName);
@@ -503,8 +503,7 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExA,
 	ENSURE_DWORD(lpType);
     ret = Old_RegQueryValueExA(hKey, lpValueName, lpReserved, lpType,
         lpData, lpcbData);
-    if(ret == ERROR_SUCCESS && lpType != NULL && lpData != NULL &&
-            lpcbData != NULL) {
+    if (ret == ERROR_SUCCESS && lpType != NULL && lpData != NULL && lpcbData != NULL) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_keyvalue_pathA(hKey, lpValueName, keybuf, allocsize);
@@ -512,11 +511,11 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExA,
 		// fake some values
 		if (lpData && !g_config.no_stealth)
 			perform_ascii_registry_fakery(keypath, lpData, *lpcbData);
-		free(keybuf);
 
 		LOQ_zero("registry", "psru", "Handle", hKey, "ValueName", lpValueName,
 			"Data", *lpType, *lpcbData, lpData,
 			"FullName", keypath);
+		free(keybuf);
 	}
     else if (ret == ERROR_MORE_DATA) {
         LOQ_zero("registry", "psPIv", "Handle", hKey, "ValueName", lpValueName,
@@ -547,14 +546,14 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExW,
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_keyvalue_pathW(hKey, lpValueName, keybuf, allocsize);
-		
-		LOQ_zero("registry", "puRu", "Handle", hKey, "ValueName", lpValueName,
-            "Data", *lpType, *lpcbData, lpData,
-			"FullName", keypath);
 
         // fake some values
 		if (lpData && !g_config.no_stealth)
 			perform_unicode_registry_fakery(keypath, lpData, *lpcbData);
+
+		LOQ_zero("registry", "puRu", "Handle", hKey, "ValueName", lpValueName,
+            "Data", *lpType, *lpcbData, lpData,
+			"FullName", keypath);
 		free(keybuf);
 	}
     else if (ret == ERROR_MORE_DATA) {
