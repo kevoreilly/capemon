@@ -450,17 +450,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		}
 	}
 
-    if (process_shutting_down && g_config.debugger)
-    {
-        DebuggerShutdown();
-        DoOutputDebugString("NtTerminateProcess hook: Debugger shutdown (process %d).\n", GetCurrentProcessId());
-    }
-
     if (process_shutting_down && g_config.unpacker) {
         DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
         g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
         ProcessTrackedRegions();
         ClearAllBreakpoints();
+    }
+
+    if (process_shutting_down && g_config.debugger)
+    {
+        DebuggerShutdown();
+        DoOutputDebugString("NtTerminateProcess hook: Debugger shutdown (process %d).\n", GetCurrentProcessId());
     }
 
     if (process_shutting_down && g_config.procdump && !ProcessDumped) {
@@ -604,7 +604,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
         AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
 
-	if (NT_SUCCESS(ret) && g_config.debugger && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && g_config.base_on_alloc && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
         DebuggerAllocationHandler(*BaseAddress, *RegionSize, Protect);
 
     LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
@@ -694,8 +694,7 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 	DWORD pid;
     ENSURE_SIZET(lpNumberOfBytesWritten);
 
-    ret = Old_WriteProcessMemory(hProcess, lpBaseAddress, lpBuffer,
-        nSize, lpNumberOfBytesWritten);
+    ret = Old_WriteProcessMemory(hProcess, lpBaseAddress, lpBuffer, nSize, lpNumberOfBytesWritten);
 
 	pid = pid_from_process_handle(hProcess);
 
@@ -994,9 +993,9 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
             ULONG_PTR seh = 0;
             DWORD *tebtmp = (DWORD *)NtCurrentTeb();
             if (tebtmp[0] != 0xffffffff)
-                seh = ((DWORD *)tebtmp[0])[1];
+                seh = ((DWORD*)(DWORD_PTR)tebtmp[0])[1];
             if (seh < g_our_dll_base || seh >= (g_our_dll_base + g_our_dll_size)) {
-                _snprintf(buf, sizeof(buf), "Exception 0x%x reported at offset 0x%x in capemon itself while accessing 0x%x from hook %s", ExceptionRecord->ExceptionCode, (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
+                _snprintf(buf, sizeof(buf), "Exception 0x%x reported at offset 0x%x in capemon itself while accessing 0x%p from hook %s", ExceptionRecord->ExceptionCode, (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), (PVOID)ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
                 log_anomaly("capemon crash", buf);
             }
         }

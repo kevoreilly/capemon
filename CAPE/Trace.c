@@ -56,6 +56,7 @@ PVOID ModuleBase, DumpAddress, ReturnAddress;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning;
 unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
+char *procname0;
 unsigned int Type0, Type1, Type2, Type3;
 int StepOverRegister, TraceDepthCount, EntryPointRegister, InstructionCount;
 static CONTEXT LastContext;
@@ -405,6 +406,18 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
         if (LastContext.R15 != ExceptionInfo->ContextRecord->R15)
             _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R15=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R15);
+
+        if (LastContext.Xmm0.Low != ExceptionInfo->ContextRecord->Xmm0.Low)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.Low);
+
+        if (LastContext.Xmm0.High != ExceptionInfo->ContextRecord->Xmm0.High)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.High);
+
+        if (LastContext.Xmm1.Low != ExceptionInfo->ContextRecord->Xmm1.Low)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.Low);
+
+        if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
 #else
     if (!g_config.branch_trace && !FilterTrace && LastContext.Eip)
     {
@@ -1116,6 +1129,18 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
         if (LastContext.R15 != ExceptionInfo->ContextRecord->R15)
             _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R15=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R15);
+
+        if (LastContext.Xmm0.Low != ExceptionInfo->ContextRecord->Xmm0.Low)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.Low);
+
+        if (LastContext.Xmm0.High != ExceptionInfo->ContextRecord->Xmm0.High)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.High);
+
+        if (LastContext.Xmm1.Low != ExceptionInfo->ContextRecord->Xmm1.Low)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.Low);
+
+        if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
+            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
 #else
     if (!FilterTrace && LastContext.Eip)
     {
@@ -1582,6 +1607,18 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
     if (BreakpointsHit)
         return TRUE;
+
+    if (procname0 && !stristr(CommandLine, procname0))
+        return TRUE;
+
+    if (!DebuggerInitialised)
+    {
+        if (!InitialiseDebugger())
+        {
+            DoOutputDebugString("SetInitialBreakpoints: Failed to initialise debugger.\n");
+            return FALSE;
+        }
+    }
 
     StepCount = 0;
     TraceDepthCount = 0;

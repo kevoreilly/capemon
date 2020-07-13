@@ -169,6 +169,7 @@ int is_wow64_fs_redirection_disabled(void);
 
 void set_dll_of_interest(ULONG_PTR BaseAddress);
 
+PCHAR get_exe_basename(PCHAR ModulePath);
 PWCHAR get_dll_basename(PUNICODE_STRING library);
 void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify);
 
@@ -200,6 +201,7 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength);
 void perform_device_fakery(PVOID OutputBuffer, ULONG OutputBufferLength, ULONG IoControlCode);
 
+char* stristr(char* haystack, char* needle);
 unsigned short our_htons(unsigned short num);
 unsigned int our_htonl(unsigned int num);
 void addr_to_string(const IN_ADDR addr, char *string);

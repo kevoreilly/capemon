@@ -167,8 +167,6 @@ static __inline ULONG_PTR get_stack_bottom(void)
 #endif
 }
 
-CRITICAL_SECTION ProcessDumpCriticalSection;
-
 // We need an export for IAT patching
 #ifndef _WIN64
 __declspec (naked dllexport) void dummy()
@@ -193,12 +191,11 @@ BOOL InsideHook(LPVOID* ReturnAddress, LPVOID Address)
 }
 
 //**************************************************************************************
-BOOL GetCurrentFrame(LPVOID* ReturnAddress, LPVOID Address)
+int GetCurrentFrame(LPVOID ReturnAddress, ULONG_PTR Address)
 //**************************************************************************************
 {
-    *ReturnAddress = Address;
-
-    return TRUE;
+    ReturnAddress = (LPVOID)Address;
+    return 1;
 }
 
 //**************************************************************************************
@@ -1167,6 +1164,11 @@ int IsDotNetImage(LPVOID Buffer)
         if (!pNtHeader || !TestPERequirements(pNtHeader))
             return 0;
 
+#ifndef _WIN64
+        if (pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+            return 0;
+#endif
+
         if (pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress || pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
             return 1;
 
@@ -1178,7 +1180,6 @@ int IsDotNetImage(LPVOID Buffer)
 
     return 0;
 }
-
 
 //**************************************************************************************
 int IsDisguisedPEHeader(LPVOID Buffer)
@@ -1889,8 +1890,6 @@ int DoProcessDump(PVOID CallerBase)
     char *FullDumpPath, *OutputFilename;
     PVOID NewImageBase;
 
-    EnterCriticalSection(&ProcessDumpCriticalSection);
-
     PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
     DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
 
@@ -1986,6 +1985,9 @@ int DoProcessDump(PVOID CallerBase)
         DoOutputDebugString("DoProcessDump: Created dump file for full process memory dump: %s.\n", FullDumpPath);
     }
 
+    if (!g_config.procdump && !g_config.procmemdump)
+        return ProcessDumped;
+
     // Scan entire user-mode space for both full dump and 'interesting' regions
     for (Address = (PUCHAR)SystemInfo.lpMinimumApplicationAddress; Address < (PUCHAR)SystemInfo.lpMaximumApplicationAddress;)
     {
@@ -2001,8 +2003,8 @@ int DoProcessDump(PVOID CallerBase)
             continue;
         }
 
-        if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase)
-            DumpInterestingRegions(MemInfo);
+        //if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase)
+        //    DumpInterestingRegions(MemInfo);
 
         if (g_config.procmemdump)
         {
@@ -2061,7 +2063,6 @@ out:
             free(FullDumpPath);
     }
 
-    LeaveCriticalSection(&ProcessDumpCriticalSection);
     return ProcessDumped;
 }
 
@@ -2117,19 +2118,8 @@ void CAPE_post_init()
         NirvanaInit{);
 #endif
 
-    if (g_config.debugger)
-    {
-        // Start the debugger
-        g_config.debugger = 1;
-        if (!InitialiseDebugger())
-        {
-            DoOutputDebugString("Failed to initialise debugger.\n");
-            return;
-        }
-        DoOutputDebugString("Debugger initialised.\n");
-        if (!g_config.base_on_apiname[0])
-            SetInitialBreakpoints(GetModuleHandle(NULL));
-    }
+    if (g_config.debugger && !g_config.base_on_apiname[0])
+        SetInitialBreakpoints(GetModuleHandle(NULL));
 
     if (g_config.unpacker)
         UnpackerInit();
@@ -2139,7 +2129,6 @@ void CAPE_post_init()
 
     if (g_config.upx)
     {
-        g_config.debugger = 1;
         CapeMetaData->DumpType = UPX;
         g_config.procdump = 0;
         if (InitialiseDebugger())
@@ -2148,7 +2137,6 @@ void CAPE_post_init()
             DoOutputDebugString("UPX unpacker: Failed to initialise debugger.\n");
         UPXInitialBreakpoints(GetModuleHandle(NULL));
     }
-
 
     lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
     lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
@@ -2187,8 +2175,6 @@ void CAPE_init()
     ProcessDumped = FALSE;
 
     DumpCount = 0;
-
-    InitializeCriticalSection(&ProcessDumpCriticalSection);
 
     // Cuckoo debug output level for development (0=none, 2=max)
     // g_config.debug = 2;

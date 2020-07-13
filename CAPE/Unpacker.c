@@ -118,6 +118,8 @@ extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern HANDLE g_terminate_event_handle;
 extern PVOID ImageBase;
+extern char *our_process_name;
+extern char *our_process_path;
 
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern int WINAPI enter_hook(ULONG_PTR *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip);
@@ -2044,8 +2046,6 @@ BOOL EntryPointWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_
         return FALSE;
     }
 
-    TrackedRegion->EntryPoint = (DWORD)pBreakpointInfo->Address;
-
     DoOutputDebugString("EntryPointWriteCallback: Execution bp %d set on EntryPoint address 0x%p.\n", TrackedRegion->ExecBpRegister, pBreakpointInfo->Address);
 
     pDosHeader = (PIMAGE_DOS_HEADER)TrackedRegion->AllocationBase;
@@ -2197,9 +2197,9 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
         return TRUE;
     }
 
-    if ((unsigned int)pNtHeader->OptionalHeader.AddressOfEntryPoint < ((unsigned int)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (DWORD_PTR)TrackedRegion->AllocationBase))
+    if ((DWORD_PTR)pNtHeader->OptionalHeader.AddressOfEntryPoint < ((DWORD_PTR)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (DWORD_PTR)TrackedRegion->AllocationBase))
     {
-        DoOutputDebugString("AddressOfEPWriteCallback: Valid magic value but AddressOfEntryPoint 0x%x too small, possibly only partially written (<0x%x).\n", pNtHeader->OptionalHeader.AddressOfEntryPoint, (unsigned int)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (unsigned int)TrackedRegion->AllocationBase);
+        DoOutputDebugString("AddressOfEPWriteCallback: Valid magic value but AddressOfEntryPoint 0x%x too small, possibly only partially written (<0x%x).\n", pNtHeader->OptionalHeader.AddressOfEntryPoint, (DWORD_PTR)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (DWORD_PTR)TrackedRegion->AllocationBase);
         return TRUE;
     }
 
@@ -2387,9 +2387,9 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         return TRUE;
     }
 
-    if ((unsigned int)pNtHeader->OptionalHeader.AddressOfEntryPoint < ((unsigned int)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (DWORD_PTR)TrackedRegion->AllocationBase))
+    if ((DWORD_PTR)pNtHeader->OptionalHeader.AddressOfEntryPoint < ((DWORD_PTR)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (DWORD_PTR)TrackedRegion->AllocationBase))
     {
-        DoOutputDebugString("MagicWriteCallback: Valid magic value but AddressOfEntryPoint 0x%x too small, possibly only partially written (<0x%x).\n", pNtHeader->OptionalHeader.AddressOfEntryPoint, (unsigned int)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (unsigned int)TrackedRegion->AllocationBase);
+        DoOutputDebugString("MagicWriteCallback: Valid magic value but AddressOfEntryPoint 0x%x too small, possibly only partially written (<0x%x).\n", pNtHeader->OptionalHeader.AddressOfEntryPoint, (DWORD_PTR)&pNtHeader->OptionalHeader.DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES] - (DWORD_PTR)TrackedRegion->AllocationBase);
         return TRUE;
     }
 
@@ -3040,23 +3040,20 @@ void UnpackerDllInit(PVOID DllBase)
 
 void UnpackerInit()
 {
-//    if (!wcsnicmp(our_commandline, L"c:\\windows\\system32\\rundll32.exe", 32) ||
-//        !wcsnicmp(our_commandline, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
-//        !wcsnicmp(our_commandline, L"c:\\windows\\sysnative\\rundll32.exe", 33))
-//            return
-
     // Start the debugger
     if (InitialiseDebugger())
-    {
-        g_config.debugger = 1;
         DoOutputDebugString("UnpackerInit: Debugger initialised.\n");
-    }
     else
         DoOutputDebugString("UnpackerInit: Failed to initialise debugger.\n");
 
-    CapeMetaData->DumpType = UNPACKED_PE;
+    if (!_strnicmp(our_process_path, "c:\\windows\\sys", 14) && !_strnicmp(our_process_name, "rundll32", 8))
+    {
+        DoOutputDebugString("UnpackerInit: Skipping rundll32 module.\n");
+        return;
+    }
 
     // We add the main image to tracked regions
+    CapeMetaData->DumpType = UNPACKED_PE;
     PTRACKEDREGION TrackedRegion = AddTrackedRegion(GetModuleHandle(NULL), 0, 0);
     if (TrackedRegion)
         DoOutputDebugString("UnpackerInit: Adding main image base to tracked regions.\n");

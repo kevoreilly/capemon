@@ -33,6 +33,7 @@ extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
 extern void NtContinueHandler(PCONTEXT ThreadContext);
+extern BOOL BreakpointsSet;
 unsigned int TestFlag = 0;
 
 static lookup_t g_ignored_threads;
@@ -147,7 +148,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 		//if (called_by_hook() && pid == GetCurrentProcessId())
 		//	add_ignored_thread(tid);
 
-        if (g_config.debugger && !called_by_hook()) {
+        if (g_config.debugger && !called_by_hook() && BreakpointsSet) {
             DoOutputDebugString("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }
@@ -268,11 +269,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
     DWORD pid = pid_from_thread_handle(ThreadHandle);
     if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx,
-		"ProcessId", pid);
+		LOQ_ntstatus("threading", "pppi", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer",
+            Context->Rcx, "CurrentInstructionPointer", Context->Rip, "ProcessId", pid);
 #else
-		LOQ_ntstatus("threading", "ppi", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Eax,
-		"ProcessId", pid);
+		LOQ_ntstatus("threading", "pppi", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer",
+            Context->Eax, "CurrentInstructionPointer", Context->Eip, "ProcessId", pid);
 #endif
 	else
 		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
@@ -318,9 +319,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 
     if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Rcx);
+		LOQ_ntstatus("threading", "ppp", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Rcx, "CurrentInstructionPointer", Context->Rip);
 #else
-		LOQ_ntstatus("threading", "pp", "ThreadHandle", ThreadHandle, "InstructionPointer", Context->Eax);
+		LOQ_ntstatus("threading", "ppp", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Eax, "CurrentInstructionPointer", Context->Eip);
 #endif
 	else
 		LOQ_ntstatus("threading", "p", "ThreadHandle", ThreadHandle);
@@ -518,10 +519,6 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	ret = Old_RtlCreateUserThread(ProcessHandle, SecurityDescriptor,
         TRUE, StackZeroBits, StackReserved, StackCommit,
         StartAddress, StartParameter, ThreadHandle, ClientId);
-    LOQ_ntstatus("threading", "pippPi", "ProcessHandle", ProcessHandle,
-        "CreateSuspended", CreateSuspended, "StartAddress", StartAddress,
-        "StartParameter", StartParameter, "ThreadHandle", ThreadHandle,
-        "ThreadIdentifier", ClientId->UniqueThread);
 
 	if (NT_SUCCESS(ret) && ClientId && ThreadHandle) {
         DWORD tid = tid_from_thread_handle(ThreadHandle);

@@ -119,10 +119,9 @@ BOOL ClearSingleStepMode(PCONTEXT Context);
 // Misc
 BOOL InitNewThreadBreakpoints(DWORD ThreadId);
 BOOL InitialiseDebugger(void);
-BOOL DebugNewProcess(unsigned int ProcessId, unsigned int ThreadId, DWORD CreationFlags);
-BOOL SendDebuggerMessage(PVOID Input);
 BOOL ResumeFromBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
 void OutputThreadBreakpoints(DWORD ThreadId);
+void DebugOutputThreadBreakpoints();
 
 void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords);
 

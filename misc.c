@@ -233,6 +233,24 @@ void replace_ci_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR rep
 	}
 }
 
+// https://stackoverflow.com/questions/27303062/strstr-function-like-that-ignores-upper-or-lower-case
+char* stristr(char* haystack, char* needle) {
+    int c = tolower(*needle);
+    if (c == '\0')
+        return haystack;
+    for (; *haystack; haystack++) {
+        if (tolower(*haystack) == c) {
+            for (size_t i = 0;;) {
+                if (needle[++i] == '\0')
+                    return haystack;
+                if (tolower(haystack[i]) != tolower(needle[i]))
+                    break;
+            }
+        }
+    }
+    return NULL;
+}
+
 void perform_device_fakery(PVOID OutputBuffer, ULONG OutputBufferLength, ULONG IoControlCode)
 {
 	/* Fake harddrive size to 256GB */
@@ -461,15 +479,26 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 	}
 
 	// Zloader macro checks using reg.exe to check macros are not enabled
-    if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings") &&
-		strstr(CommandLine, "reg.exe")) {
+    if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings") ||
+        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings") ||
+        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings") &&
+		!stristr(CommandLine, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)4;   // The most secure setting
 			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x", *(DWORD*)Data);
 		}
 	}
-}
 
+    if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM") ||
+        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM") ||
+        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM") &&
+		!stristr(CommandLine, "excel.exe")) {
+		if (*(DWORD*)Data == 1) {
+			*(DWORD*)Data = (DWORD)0;
+			DoOutputDebugString("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+		}
+	}
+}
 
 DWORD get_image_size(ULONG_PTR base)
 {
@@ -502,7 +531,7 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 	PROCESS_BASIC_INFORMATION pbi;
     ULONG ulSize = 0;
 
-    if(pNtQueryInformationProcess(GetCurrentProcess(), 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+    if (pNtQueryInformationProcess(GetCurrentProcess(), ProcessBasicInformation, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
         return (DWORD)pbi.ParentProcessId;
 
 	return 0;
@@ -528,7 +557,7 @@ DWORD pid_from_process_handle(HANDLE process_handle)
 	
 	duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
 
-    if(pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+    if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
         PID = (DWORD)pbi.UniqueProcessId;
 
 	if (duped)
@@ -555,7 +584,7 @@ static BOOL cid_from_thread_handle(HANDLE thread_handle, PCLIENT_ID cid)
 
 	duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
 	
-	if(pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
+	if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
 		memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
 		ret = TRUE;
     }
@@ -625,7 +654,7 @@ DWORD randint(DWORD min, DWORD max)
 BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj)
 {
     FILE_BASIC_INFORMATION basic_information;
-    if(NT_SUCCESS(pNtQueryAttributesFile(obj, &basic_information))) {
+    if (NT_SUCCESS(pNtQueryAttributesFile(obj, &basic_information))) {
         return basic_information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
     }
     return FALSE;
@@ -639,7 +668,6 @@ BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 		return TRUE;
 	return FALSE;
 }
-
 
 DWORD loaded_dlls;
 struct dll_range dll_ranges[MAX_DLLS];
@@ -723,7 +751,6 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 	return NULL;
 }
 
-
 // hide our module from PEB
 // http://www.openrce.org/blog/view/844/How_to_hide_dll
 
@@ -739,7 +766,7 @@ void hide_module_from_peb(HMODULE module_handle)
          mod->BaseAddress != NULL;
          mod = (LDR_MODULE *) mod->InLoadOrderModuleList.Flink) {
 
-        if(mod->BaseAddress == module_handle) {
+        if (mod->BaseAddress == module_handle) {
             CUT_LIST(mod->InLoadOrderModuleList);
             CUT_LIST(mod->InInitializationOrderModuleList);
             CUT_LIST(mod->InMemoryOrderModuleList);
@@ -768,7 +795,6 @@ PUNICODE_STRING get_basename_of_module(HMODULE module_handle)
 
 	return NULL;
 }
-
 
 uint32_t path_from_handle(HANDLE handle,
     wchar_t *path, uint32_t path_buffer_len)
@@ -816,7 +842,7 @@ uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
 
 	copylen = min(obj_length, buffer_length - 1);
 
-    if(obj->RootDirectory == NULL) {
+    if (obj->RootDirectory == NULL) {
         memcpy(path, obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
 		path[copylen] = L'\0';
         return copylen;
@@ -885,7 +911,7 @@ normal_copy:
 		out[0] = '\0';
 	}
 out:
-	if (is_wow64_fs_redirection_disabled() && !strnicmp(out, system32dir_a, system32dir_len)) {
+	if (is_wow64_fs_redirection_disabled() && !_strnicmp(out, system32dir_a, system32dir_len)) {
 		memmove(out + system32dir_len + 1, out + system32dir_len, strlen(out + system32dir_len) + 1);
 		memcpy(out, sysnativedir_a, sysnativedir_len);
 	}
@@ -1325,7 +1351,7 @@ int is_shutting_down()
 	get_lasterrors(&lasterror);
 
 	mutex_handle = OpenMutex(SYNCHRONIZE, FALSE, g_config.shutdown_mutex);
-    if(mutex_handle != NULL) {
+    if (mutex_handle != NULL) {
 		log_flush();
         CloseHandle(mutex_handle);
         ret = 1;
@@ -1687,6 +1713,16 @@ ULONG_PTR get_olescript_compile_addr(HMODULE mod)
 	return (ULONG_PTR)p;
 }
 
+PCHAR get_exe_basename(PCHAR ModulePath)
+{
+	PCHAR end, start;
+	end = strrchr(ModulePath, '.');
+	start = strrchr(ModulePath, '\\');
+	if (start && end && !stricmp(end, ".exe"))
+		return start + 1;
+	return NULL;
+}
+
 PWCHAR get_dll_basename(PUNICODE_STRING library)
 {
 	PWCHAR dllname, end, start, start2;
@@ -1844,21 +1880,11 @@ void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify)
 #endif
 }
 
-unsigned int address_is_in_stack(PVOID Address)
+unsigned int address_is_in_stack(PVOID address)
 {
-    __try {
-        PNT_TIB pTib = (PNT_TIB)(NtCurrentTeb());
-
-        if ((Address < pTib->StackBase) && (Address > pTib->StackLimit))
-            DoOutputDebugString("Address 0x%p within stack base = 0x%p, limit = 0x%p\r\n", Address, pTib->StackBase, pTib->StackLimit);
-            return 1;
-
-        DoOutputDebugString("Address 0x%x not within stack base = 0x%p, limit = 0x%p\r\n", Address, pTib->StackBase, pTib->StackLimit);
-        return 0;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-	}
+    if (((ULONG_PTR)address < get_stack_bottom()) && ((ULONG_PTR)address > get_stack_top()))
+        return 1;
+    return 0;
 }
 
 PVOID get_process_image_base(HANDLE process_handle)

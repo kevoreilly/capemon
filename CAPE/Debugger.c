@@ -95,20 +95,12 @@ typedef struct _INJECT_STRUCT {
 
 DWORD LengthMask[MAX_DEBUG_REGISTER_DATA_SIZE + 1] = DEBUG_REGISTER_LENGTH_MASKS;
 
-DWORD MainThreadId;
-struct ThreadBreakpoints *MainThreadBreakpointList;
-SINGLE_STEP_HANDLER SingleStepHandler;
-GUARD_PAGE_HANDLER GuardPageHandler;
-HANDLE hCapePipe;
-
 extern SYSTEM_INFO SystemInfo;
-
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern BOOLEAN is_address_in_ntdll(ULONG_PTR address);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
-
 extern BOOL UnpackerGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern PTRACKEDREGION GetTrackedRegion(PVOID Address);
 extern PVOID GetPageAddress(PVOID Address);
@@ -116,21 +108,21 @@ extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL WoW64fix(void);
 extern BOOL WoW64PatchBreakpoint(unsigned int Register);
 extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
-
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
-
-void DebugOutputThreadBreakpoints();
-BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
-BOOL ClearSingleStepMode(PCONTEXT Context);
-unsigned int TrapIndex;
-
-unsigned int DepthCount;
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL TraceRunning, BreakpointsSet, StopTrace;
 extern HANDLE DebuggerLog;
+
+DWORD MainThreadId;
+struct ThreadBreakpoints *MainThreadBreakpointList;
+SINGLE_STEP_HANDLER SingleStepHandler;
+GUARD_PAGE_HANDLER GuardPageHandler;
+unsigned int TrapIndex, DepthCount;
+HANDLE hCapePipe;
+BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
 
 //**************************************************************************************
 PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId)
@@ -447,15 +439,12 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
 //**************************************************************************************
 {
-    struct _EXCEPTION_POINTERS ExceptionInfo;
     if (!g_config.debugger)
         return FALSE;
+    struct _EXCEPTION_POINTERS ExceptionInfo;
     ExceptionInfo.ExceptionRecord = ExceptionRecord;
     ExceptionInfo.ContextRecord = Context;
-    if (CAPEExceptionFilter(&ExceptionInfo) == EXCEPTION_CONTINUE_EXECUTION)
-        return TRUE;
-    else
-        return FALSE;
+    return (CAPEExceptionFilter(&ExceptionInfo) == EXCEPTION_CONTINUE_EXECUTION);
 }
 
 //**************************************************************************************
@@ -1992,7 +1981,7 @@ DWORD WINAPI ClearBreakpointThread(LPVOID lpParam)
 }
 
 //**************************************************************************************
-BOOL SetBreakpointWithoutThread
+BOOL SetThreadBreakpoint
 //**************************************************************************************
 (
     DWORD	ThreadId,
@@ -2006,94 +1995,6 @@ BOOL SetBreakpointWithoutThread
 	BOOL RetVal;
 	PTHREADBREAKPOINTS CurrentThreadBreakpoint;
     PBREAKPOINTINFO pBreakpointInfo = NULL;
-
-    if (Register > 3 || Register < 0)
-    {
-        DoOutputDebugString("SetBreakpointWithoutThread: Error - register value %d, can only have value 0-3.\n", Register);
-        return FALSE;
-    }
-
-    CurrentThreadBreakpoint = GetThreadBreakpoints(ThreadId);
-
-	if (CurrentThreadBreakpoint == NULL)
-	{
-		DoOutputDebugString("SetBreakpointWithoutThread: Creating new thread breakpoints for thread %d.\n", ThreadId);
-		CurrentThreadBreakpoint = CreateThreadBreakpoints(ThreadId);
-	}
-
-	if (CurrentThreadBreakpoint == NULL)
-	{
-		DoOutputDebugString("SetBreakpointWithoutThread: Cannot create new thread breakpoints.\n");
-		return FALSE;
-	}
-
-    __try
-    {
-        pBreakpointInfo = &CurrentThreadBreakpoint->BreakpointInfo[Register];
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        DoOutputErrorString("SetBreakpointWithoutThread: Exception getting pBreakpointInfo");
-        return FALSE;
-    }
-
-	if (CurrentThreadBreakpoint->ThreadHandle == NULL)
-	{
-		DoOutputDebugString("SetBreakpointWithoutThread: There is no thread handle in the thread breakpoint - Error.\n");
-		return FALSE;
-	}
-#ifdef DEBUG_COMMENTS
-    else
-		DoOutputDebugString("SetBreakpointWithoutThread: About to call SetDebugRegister with thread handle 0x%x, register %d, size 0x%x, address 0x%p type %d.\n", CurrentThreadBreakpoint->ThreadHandle, Register, Size, Address, Type);
-#endif
-
-	pBreakpointInfo->ThreadHandle   = CurrentThreadBreakpoint->ThreadHandle;
-	pBreakpointInfo->Register       = Register;
-	pBreakpointInfo->Size           = Size;
-	pBreakpointInfo->Address        = Address;
-	pBreakpointInfo->Type	        = Type;
-	pBreakpointInfo->Callback       = Callback;
-
-    __try
-    {
-        RetVal = SetDebugRegister(pBreakpointInfo->ThreadHandle, Register, Size, Address, Type);
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        DoOutputErrorString("SetBreakpointWithoutThread: Exception calling SetDebugRegister");
-        return FALSE;
-    }
-
-#ifdef DEBUG_COMMENTS
-    DoOutputDebugString("SetBreakpointWithoutThread: bp set with register %d\n", Register);
-#endif
-
-    return TRUE;
-}
-
-//**************************************************************************************
-BOOL SetThreadBreakpoint
-//**************************************************************************************
-(
-    DWORD	ThreadId,
-    int		Register,
-    int		Size,
-    LPVOID	Address,
-    DWORD	Type,
-	PVOID	Callback
-)
-{
-    PBREAKPOINTINFO pBreakpointInfo;
-	PTHREADBREAKPOINTS CurrentThreadBreakpoint;
-	HANDLE hSetBreakpointThread;
-    DWORD SetBreakpointThreadId;
-    BOOL RetVal;
-
-    if (!Address)
-    {
-        DoOutputDebugString("SetThreadBreakpoint: Error - breakpoint address is zero!\n");
-        return FALSE;
-    }
 
     if (Register > 3 || Register < 0)
     {
@@ -2111,33 +2012,29 @@ BOOL SetThreadBreakpoint
 
 	if (CurrentThreadBreakpoint == NULL)
 	{
-		DoOutputDebugString("SetThreadBreakpoint: Cannot create new thread breakpoints - error.\n");
+		DoOutputDebugString("SetThreadBreakpoint: Cannot create new thread breakpoints.\n");
 		return FALSE;
 	}
 
-	pBreakpointInfo = &CurrentThreadBreakpoint->BreakpointInfo[Register];
+    __try
+    {
+        pBreakpointInfo = &CurrentThreadBreakpoint->BreakpointInfo[Register];
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DoOutputErrorString("SetThreadBreakpoint: Exception getting pBreakpointInfo");
+        return FALSE;
+    }
 
 	if (CurrentThreadBreakpoint->ThreadHandle == NULL)
 	{
 		DoOutputDebugString("SetThreadBreakpoint: There is no thread handle in the thread breakpoint - Error.\n");
 		return FALSE;
 	}
-
-    // Check whether an identical breakpoint already exists
-    for (unsigned int i = 0; i < NUMBER_OF_DEBUG_REGISTERS; i++)
-    {
-        if
-        (
-            CurrentThreadBreakpoint->ThreadId == ThreadId &&
-            CurrentThreadBreakpoint->BreakpointInfo[i].Size == Size &&
-            CurrentThreadBreakpoint->BreakpointInfo[i].Address == Address &&
-            CurrentThreadBreakpoint->BreakpointInfo[i].Type == Type
-        )
-        {
-            DoOutputDebugString("SetThreadBreakpoint: An identical breakpoint (%d) at 0x%p already exists for thread %d (process %d), skipping.\n", i, Address, ThreadId, GetCurrentProcessId());
-            return TRUE;
-        }
-    }
+#ifdef DEBUG_COMMENTS
+    else
+		DoOutputDebugString("SetThreadBreakpoint: About to call SetDebugRegister with thread handle 0x%x, register %d, size 0x%x, address 0x%p type %d.\n", CurrentThreadBreakpoint->ThreadHandle, Register, Size, Address, Type);
+#endif
 
 	pBreakpointInfo->ThreadHandle   = CurrentThreadBreakpoint->ThreadHandle;
 	pBreakpointInfo->Register       = Register;
@@ -2148,66 +2045,17 @@ BOOL SetThreadBreakpoint
 
     __try
     {
-        hSetBreakpointThread = CreateThread(NULL, 0, SetBreakpointThread, pBreakpointInfo, 0, &SetBreakpointThreadId);
+        RetVal = SetDebugRegister(pBreakpointInfo->ThreadHandle, Register, Size, Address, Type);
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputErrorString("SetThreadBreakpoint: An exception was raised creating SetBreakpointThread thread");
+        DoOutputErrorString("SetThreadBreakpoint: Exception calling SetDebugRegister");
+        return FALSE;
     }
 
-	if (!hSetBreakpointThread)
-    {
-        DoOutputDebugString("SetThreadBreakpoint: Failed to create SetBreakpointThread thread, falling back to SetBreakpointWithoutThread.\n");
-
-        __try
-        {
-            RetVal = SetBreakpointWithoutThread(ThreadId, Register, Size, Address, Type, Callback);
-        }
-        __except(EXCEPTION_EXECUTE_HANDLER)
-        {
-            DoOutputErrorString("SetThreadBreakpoint: Error calling SetBreakpointWithoutThread");
-            return FALSE;
-        }
-
-        return RetVal;
-    }
-
-    // We wait for the thread to complete - if this hasn't happened
-    // in under a second, we bail and set without creating a thread
-    RetVal = WaitForSingleObject(hSetBreakpointThread, 1000);
-
-    if (RetVal != WAIT_OBJECT_0)
-    {
-        TerminateThread(hSetBreakpointThread, 0);
-        DoOutputDebugString("SetThreadBreakpoint: SetBreakpointThread timeout, thread killed.\n");
-
-        RetVal = ResumeThread(CurrentThreadBreakpoint->ThreadHandle);
-        if (RetVal == -1)
-        {
-            DoOutputErrorString("SetThreadBreakpoint: ResumeThread failed. About to set breakpoint without thread.\n");
-        }
-        else if (RetVal == 0)
-        {
-            DoOutputDebugString("SetThreadBreakpoint: Sample thread was not suspended. About to set breakpoint without thread.\n");
-        }
-        else
-        {
-            DoOutputDebugString("SetThreadBreakpoint: Sample thread was suspended, now resumed. About to set breakpoint without thread.\n");
-        }
-
-        return SetBreakpointWithoutThread(ThreadId, Register, Size, Address, Type, Callback);
-    }
-
-    DoOutputDebugString("SetThreadBreakpoint: Set bp %d thread id %d type %d at address 0x%p, size %d with Callback 0x%x.\n",
-        Register,
-        ThreadId,
-        Type,
-        Address,
-        Size,
-        Callback
-        );
-
-    CloseHandle(hSetBreakpointThread);
+#ifdef DEBUG_COMMENTS
+    DoOutputDebugString("SetThreadBreakpoint: bp set with register %d\n", Register);
+#endif
 
     return TRUE;
 }
@@ -2426,6 +2274,7 @@ BOOL InitialiseDebugger(void)
     WoW64fix();
 #endif
 
+    g_config.debugger = 1;
     DebuggerInitialised = TRUE;
 
     return DebuggerInitialised;
@@ -2452,10 +2301,9 @@ void DebuggerShutdown()
     if (DebuggerLog) {
         CloseHandle(DebuggerLog);
         DebuggerLog = NULL;
-        ClearAllBreakpoints();
-        g_config.debugger = 0;
     }
-
+    ClearAllBreakpoints();
+    g_config.debugger = 0;
 }
 
 void NtContinueHandler(PCONTEXT ThreadContext)

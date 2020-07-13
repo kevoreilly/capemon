@@ -103,7 +103,7 @@ struct _g_config {
 	int disable_hook_content;
 
     // Disable api hooks that spam
-    int api_rate_cap;
+    unsigned int api_rate_cap;
 
     // server ip and port
     //unsigned int host_ip;
@@ -124,6 +124,7 @@ struct _g_config {
     int compression;
     int unpacker;
     int injection;
+    int dump_caller_regions;
 
     // should we dump each process on exit/analysis timeout?
     int procdump;
@@ -179,6 +180,8 @@ struct _g_config {
     int file_offsets;
     int divert_debugger_log;
     int disable_logging;
+    int base_on_alloc;
+    int base_on_caller;
     char *trace_into_api[EXCLUSION_MAX];
 };
 

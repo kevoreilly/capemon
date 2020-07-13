@@ -42,6 +42,7 @@ extern PVOID bp0, bp1, bp2, bp3;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2, Type3;
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
+extern char *procname0;
 extern char DumpSizeString[MAX_PATH];
 extern SIZE_T DumpSize;
 
@@ -84,9 +85,9 @@ int read_config(void)
     g_config.procdump = 1;
     g_config.procmemdump = 0;
     g_config.dropped_limit = 0;
-    // We now enable Injection and Compression by default:
     g_config.injection = 1;
     g_config.compression = 1;
+    g_config.dump_caller_regions = 1;
 
     memset(g_config.results, 0, MAX_PATH);
     memset(g_config.analyzer, 0, MAX_PATH);
@@ -345,7 +346,7 @@ int read_config(void)
                             DoOutputDebugString("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
                     }
                 }
-                else if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
+                else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp0 set to entry point.\n", bp0);
                     EntryPointRegister = 1;
                     g_config.debugger = 1;
@@ -370,13 +371,13 @@ int read_config(void)
                     g_config.debugger = 1;
                     if (delta) {
                         DoOutputDebugString("Config: bp0 was 0x%x.\n", bp0);
-                        bp0 = (PVOID)(DWORD_PTR)((int)bp0 + delta);
+                        bp0 = (PVOID)(DWORD_PTR)((PUCHAR)bp0 + delta);
                     }
                     DoOutputDebugString("Config: bp0 set to 0x%x.\n", bp0);
                 }
 			}
             else if (!stricmp(key, "bp1")) {
-                if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
+                if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp1 set to entry point.\n", bp1);
                     EntryPointRegister = 2;
                     g_config.debugger = 1;
@@ -388,7 +389,7 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "bp2")) {
-                if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
+                if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp2 set to entry point.\n", bp2);
                     EntryPointRegister = 3;
                     g_config.debugger = 1;
@@ -400,7 +401,7 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "bp3")) {
-                if (!strnicmp(value, "ep", 2) || !strnicmp(value, "entrypoint", 10)) {
+                if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
                     DoOutputDebugString("Config: bp3 set to entry point.\n", bp3);
                     EntryPointRegister = 4;
                     g_config.debugger = 1;
@@ -432,7 +433,7 @@ int read_config(void)
                     g_config.debugger = 1;
                     if (delta) {
                         DoOutputDebugString("Config: br0 was 0x%x (delta 0x%x).\n", g_config.br0, delta);
-                        g_config.br0 = (PVOID)(DWORD_PTR)((int)g_config.br0 + delta);
+                        g_config.br0 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.br0 + delta);
                     }
                     DoOutputDebugString("Config: br0 set to 0x%x (break-on-return)\n", g_config.br0);
                 }
@@ -458,7 +459,7 @@ int read_config(void)
                     g_config.debugger = 1;
                     if (delta) {
                         DoOutputDebugString("Config: br1 was 0x%x (delta 0x%x).\n", g_config.br1, delta);
-                        g_config.br1 = (PVOID)(DWORD_PTR)((int)g_config.br1 + delta);
+                        g_config.br1 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.br1 + delta);
                     }
                     DoOutputDebugString("Config: br1 set to 0x%x (break-on-return)\n", g_config.br1);
                 }
@@ -516,6 +517,11 @@ int read_config(void)
                 strncpy(Instruction1, value, strlen(value));
                 DoOutputDebugString("Config: Instruction1 set to %s.", value);
 			}
+            else if (!stricmp(key, "procname0")) {
+                procname0 = calloc(1, MAX_PATH);
+                strncpy(procname0, value, strlen(value));
+                DoOutputDebugString("Config: procname0 set to %s.", value);
+			}
             else if (!stricmp(key, "break-on-return")) {
                 g_config.debugger = 1;
                 strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return));
@@ -549,15 +555,15 @@ int read_config(void)
                 g_config.dumptype0 = (unsigned int)strtoul(value, NULL, 0);
             }
             else if (!stricmp(key, "type0")) {
-                if (!strnicmp(value, "w", 1)) {
+                if (!_strnicmp(value, "w", 1)) {
                     DoOutputDebugString("Config: Breakpoint 0 type set to write (Type0 = BP_WRITE).\n");
                     Type0 = BP_WRITE;
                 }
-                else if (!strnicmp(value, "r", 1) || !strnicmp(value, "rw", 2)) {
+                else if (!_strnicmp(value, "r", 1) || !_strnicmp(value, "rw", 2)) {
                     DoOutputDebugString("Config: Breakpoint 0 type set to read/write (Type0 = BP_READWRITE).\n");
                     Type0 = BP_READWRITE;
                 }
-                else if (!strnicmp(value, "x", 1)) {
+                else if (!_strnicmp(value, "x", 1)) {
                     DoOutputDebugString("Config: Breakpoint 0 type set to execute (Type0 = BP_EXEC).\n");
                     Type0 = BP_EXEC;
                 }
@@ -571,6 +577,16 @@ int read_config(void)
 				g_config.disable_logging = value[0] == '1';
                 if (g_config.disable_logging)
                     DoOutputDebugString("Logging disabled (analysis log).\n");
+			}
+            else if (!strcmp(key, "base-on-alloc")) {
+				g_config.base_on_alloc = value[0] == '1';
+                if (g_config.base_on_alloc)
+                    DoOutputDebugString("Base breakpoints on executable memory allocations.\n");
+			}
+            else if (!strcmp(key, "base-on-caller")) {
+				g_config.base_on_caller = value[0] == '1';
+                if (g_config.base_on_caller)
+                    DoOutputDebugString("Base breakpoints on new calling regions.\n");
 			}
             else if (!strcmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
@@ -648,14 +664,19 @@ int read_config(void)
                     DoOutputDebugString("Fake RDTSC enabled (Trace)\n");
 			}
             else if (!strcmp(key, "api-rate-cap")) {
-				g_config.api_rate_cap = value[0] == '1';
+				g_config.api_rate_cap = (unsigned int)strtoul(value, NULL, 10);
                 if (g_config.api_rate_cap)
-                    DoOutputDebugString("API spam prevention enabled.\n");
+                    DoOutputDebugString("API spam prevention enabled (%d).\n", g_config.api_rate_cap);
 			}
             else if (!strcmp(key, "dump-crypto")) {
 				g_config.dump_crypto = value[0] == '1';
                 if (g_config.dump_crypto)
                     DoOutputDebugString("Dumping of crypto API buffers enabled.\n");
+			}
+            else if (!strcmp(key, "dump-caller-regions")) {
+				g_config.dump_caller_regions = value[0] == '1';
+                if (!g_config.dump_caller_regions)
+                    DoOutputDebugString("Dumping of caller regions disabled.\n");
 			}
             else if (!strcmp(key, "upx")) {
 				g_config.upx = value[0] == '1';
