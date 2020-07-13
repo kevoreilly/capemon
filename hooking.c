@@ -37,8 +37,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TLS_LAST_WIN32_ERROR 0x34
 #define TLS_LAST_NTSTATUS_ERROR 0xbf4
 #endif
-#define HOOK_TIME_SAMPLE 0x10
-#define HOOK_RATE_LIMIT 8
+#define HOOK_TIME_SAMPLE 0x20
+#define HOOK_RATE_LIMIT 0x100
 
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
@@ -71,6 +71,8 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
             char ModulePath[MAX_PATH];
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
+            if (g_config.debugger && g_config.base_on_caller)
+                SetInitialBreakpoints((PVOID)AllocationBase);
             if (g_config.unpacker) {
                 PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
                 if (TrackedRegion) {
@@ -78,7 +80,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                     ProcessTrackedRegion(TrackedRegion);
                 }
             }
-            else if (!GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
+            else if (g_config.dump_caller_regions && !GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
                 CapeMetaData->Address = AllocationBase;
                 if (IsDisguisedPEHeader(AllocationBase)) {
                     CapeMetaData->DumpType = UNPACKED_PE;
@@ -265,7 +267,8 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
             Old_GetSystemTimeAsFileTime(&ft);
             if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
                 h->rate_counter++;
-                if (h->rate_counter > HOOK_RATE_LIMIT) {
+                if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
+                    DoOutputDebugString("enter_hook: %s hook disabled (in %d ms).\n", h->funcname, ft.dwLowDateTime - h->hook_timer);
                     h->rate_counter = 0;
                     h->hook_disabled = 1;
                     return 0;
