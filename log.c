@@ -357,7 +357,13 @@ void loq_none(int index, const char *category, const char *name,
 	counter += 1;
 }
 
-void loq(int index, const char *category, const char *name,
+void loq(int index, const char *category, const char *name, 
+	int is_success, ULONG_PTR return_value, const char *fmt, ...) {
+	static counter = 0;
+	counter += 1;
+}
+
+void loq_old(int index, const char *category, const char *name,
     int is_success, ULONG_PTR return_value, const char *fmt, ...)
 {
     va_list args;
@@ -1281,3 +1287,4 @@ void log_free()
 	}
 	*/
 }
+
