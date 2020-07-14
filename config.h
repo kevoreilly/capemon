@@ -166,6 +166,9 @@ struct _g_config {
     // Fake RDTSC
     int fake_rdtsc;
 
+    // Adobe Reader settings
+    int pdf;
+
 	char *break_on_apiname;
 	char *break_on_modname;
     char break_on_return[MAX_PATH];

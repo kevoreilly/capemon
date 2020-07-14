@@ -659,6 +659,13 @@ int read_config(void)
                 if (g_config.single_process)
                     DoOutputDebugString("Monitoring child processes disabled.\n");
 			}
+            else if (!strcmp(key, "pdf")) {
+				g_config.pdf = value[0] == '1';
+                if (g_config.pdf && g_config.first_process) {
+                    DoOutputDebugString("PDF (Adobe) settings enabled.\n");
+                    g_config.api_rate_cap = 0x10;
+                }
+			}
             else if (!strcmp(key, "fake-rdtsc")) {
 				g_config.fake_rdtsc = value[0] == '1';
                 if (g_config.fake_rdtsc)
