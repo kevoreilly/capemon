@@ -1,5 +1,4 @@
 #ifndef _WIN64
-
 /*
 Cuckoo Sandbox - Automated Malware Analysis
 Copyright (C) 2010-2015 Cuckoo Sandbox Developers, Optiv, Inc. (brad.spengler@optiv.com)
@@ -17,7 +16,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
 #include <stdio.h>
 #include <stddef.h>
 #include "ntapi.h"
