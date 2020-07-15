@@ -28,7 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
-extern char *CommandLine;
+extern char *our_process_name;
 extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
@@ -397,6 +397,27 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 		replace_string_in_buf(Data, DataLength, "VMWar", "Lenov");
 		replace_string_in_buf(Data, DataLength, "VBOX", "DELL");
 	}
+
+	// Zloader macro checks using reg.exe to check macros are not enabled
+    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings"))
+        && stricmp(our_process_name, "excel.exe")) {
+		if (*(DWORD*)Data == 1) {
+			*(DWORD*)Data = (DWORD)4;   // The most secure setting
+			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
+		}
+	}
+
+    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM"))
+        && stricmp(our_process_name, "excel.exe")) {
+		if (*(DWORD*)Data == 1) {
+			*(DWORD*)Data = (DWORD)0;
+			DoOutputDebugString("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+		}
+	}
 }
 
 void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength)
@@ -441,7 +462,7 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 		!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\HARDWARE\\ACPI\\RSDT\\VBOX__\\VBOXRSDT\\00000001\\00000000")) {
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
 	}
-	
+
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Services\\Disk\\Enum\\0")) {
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"QEMU", L"DELL");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"DELL__");
@@ -479,20 +500,20 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 	}
 
 	// Zloader macro checks using reg.exe to check macros are not enabled
-    if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings") ||
-        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings") ||
-        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings") &&
-		!stristr(CommandLine, "excel.exe")) {
+    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings"))
+        && stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)4;   // The most secure setting
-			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
 		}
 	}
 
-    if (!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM") ||
-        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM") ||
-        !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM") &&
-		!stristr(CommandLine, "excel.exe")) {
+    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM")
+        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM"))
+        && stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)0;
 			DoOutputDebugString("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
@@ -554,7 +575,7 @@ DWORD pid_from_process_handle(HANDLE process_handle)
 	}
 
 	memset(&pbi, 0, sizeof(pbi));
-	
+
 	duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
 
     if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
@@ -583,7 +604,7 @@ static BOOL cid_from_thread_handle(HANDLE thread_handle, PCLIENT_ID cid)
 	memset(&tbi, 0, sizeof(tbi));
 
 	duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
-	
+
 	if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
 		memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
 		ret = TRUE;
@@ -849,7 +870,7 @@ uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
     }
 
     length = path_from_handle(obj->RootDirectory, path, buffer_length);
-	
+
 	path[length++] = L'\\';
 	if (length >= (buffer_length - 1))
 		copylen = 0;
@@ -1906,18 +1927,18 @@ PVOID get_process_image_base(HANDLE process_handle)
 	}
 
 	memset(&pbi, 0, sizeof(pbi));
-	
+
     if (pNtQueryInformationProcess(process_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
     {
         pPEB = pbi.PebBaseAddress;
-        
+
         if (ReadProcessMemory(process_handle, pPEB, &Peb, sizeof(Peb), &dwBytesRead))
         {
             ImageBase = Peb.ImageBaseAddress;
         }
         else return NULL;
     }
-    
+
 out:
 	set_lasterrors(&lasterror);
 
@@ -1931,7 +1952,7 @@ BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 
 	if (address >= ntdll_base && address < (ntdll_base + ntdll_size))
 		return TRUE;
-	
+
 	return FALSE;
 }
 
