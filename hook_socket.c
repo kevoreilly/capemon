@@ -29,52 +29,52 @@ extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 
 static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 {
-	DWORD i;
-	DWORD size = 0;
-	PUCHAR retbuf;
-	for (i = 0; i < count; i++) {
-		size += buf->len;
-	}
+    DWORD i;
+    DWORD size = 0;
+    PUCHAR retbuf;
+    for (i = 0; i < count; i++) {
+        size += buf[i].len;
+    }
 
-	retbuf = malloc(size);
-	if (retbuf == NULL) {
-		*outlen = 0;
-		return retbuf;
-	}
+    retbuf = malloc(size);
+    if (retbuf == NULL) {
+        *outlen = 0;
+        return retbuf;
+    }
 
-	size = 0;
-	for (i = 0; i < count; i++) {
-		memcpy(&retbuf[size], buf->buf, buf->len);
-		size += buf->len;
-	}
-	*outlen = size;
-	return retbuf;
+    size = 0;
+    for (i = 0; i < count; i++) {
+        memcpy(&retbuf[size], buf[i].buf, buf[i].len);
+        size += buf[i].len;
+    }
+    *outlen = size;
+    return retbuf;
 }
 
 static BOOLEAN get_ip_port(const struct sockaddr *addr,
     char *ip, int *port)
 {
-	lasterror_t lasterror;
-	BOOLEAN ret = TRUE;
+    lasterror_t lasterror;
+    BOOLEAN ret = TRUE;
 
-	if (addr == NULL)
-		return FALSE;
+    if (addr == NULL)
+        return FALSE;
 
-	get_lasterrors(&lasterror);
+    get_lasterrors(&lasterror);
 
-	__try {
-		// TODO IPv6 support.
-		if (addr->sa_family == AF_INET) {
-			const struct sockaddr_in *addr4 = (const struct sockaddr_in *) addr;
-			addr_to_string(addr4->sin_addr, ip);
-			*port = our_htons(addr4->sin_port);
-		}
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER) {
-		ret = FALSE;
-	}
-	set_lasterrors(&lasterror);
-	return ret;
+    __try {
+        // TODO IPv6 support.
+        if (addr->sa_family == AF_INET) {
+            const struct sockaddr_in *addr4 = (const struct sockaddr_in *) addr;
+            addr_to_string(addr4->sin_addr, ip);
+            *port = our_htons(addr4->sin_port);
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        ret = FALSE;
+    }
+    set_lasterrors(&lasterror);
+    return ret;
 }
 
 HOOKDEF(int, WINAPI, WSAStartup,
@@ -91,8 +91,8 @@ HOOKDEF(struct hostent *, WSAAPI, gethostbyname,
 ) {
     struct hostent *ret = Old_gethostbyname(name);
 
-	if (g_config.url_of_interest && g_config.suspend_logging)
-		g_config.suspend_logging = FALSE;
+    if (g_config.url_of_interest && g_config.suspend_logging)
+        g_config.suspend_logging = FALSE;
 
     LOQ_nonnull("network", "s", "Name", name);
     return ret;
@@ -146,8 +146,8 @@ HOOKDEF(int, WSAAPI, sendto,
     __in  int tolen
 ) {
     int ret = Old_sendto(s, buf, len, flags, to, tolen);
-	char ip[16] = { 0 };
-	int port = 0;
+    char ip[16] = { 0 };
+    int port = 0;
     get_ip_port(to, ip, &port);
     LOQ_sockerr("network", "ibsi", "socket", s, "buffer", ret < 1 ? len : ret, buf,
         "ip", ip, "port", port);
@@ -174,8 +174,8 @@ HOOKDEF(int, WSAAPI, recvfrom,
     __inout_opt  int *fromlen
 ) {
     int ret = Old_recvfrom(s, buf, len, flags, from, fromlen);
-	char ip[16] = { 0 };
-	int port = 0;
+    char ip[16] = { 0 };
+    int port = 0;
     if(ret > 0) {
         get_ip_port(from, ip, &port);
     }
@@ -185,29 +185,29 @@ HOOKDEF(int, WSAAPI, recvfrom,
 }
 
 typedef int (WSAAPI * __getpeername)(
-	__in SOCKET s,
-	__out_bcount_part(*namelen, *namelen) struct sockaddr FAR * name,
-	__inout int FAR * namelen
-	);
+    __in SOCKET s,
+    __out_bcount_part(*namelen, *namelen) struct sockaddr FAR * name,
+    __inout int FAR * namelen
+    );
 static __getpeername _getpeername;
 
 int WSAAPI our_getpeername(__in SOCKET s,
-	__out_bcount_part(*namelen, *namelen) struct sockaddr FAR * name,
-	__inout int FAR * namelen
+    __out_bcount_part(*namelen, *namelen) struct sockaddr FAR * name,
+    __inout int FAR * namelen
 ) {
-	lasterror_t lasterror;
-	int ret = 1;
+    lasterror_t lasterror;
+    int ret = 1;
 
-	get_lasterrors(&lasterror);
+    get_lasterrors(&lasterror);
 
-	if (s != INVALID_SOCKET) {
-		if (!_getpeername) {
-			_getpeername = (__getpeername)GetProcAddress(LoadLibraryA("ws2_32"), "getpeername");
-		}
-		ret = _getpeername(s, name, namelen);
-	}
-	set_lasterrors(&lasterror);
-	return ret;
+    if (s != INVALID_SOCKET) {
+        if (!_getpeername) {
+            _getpeername = (__getpeername)GetProcAddress(LoadLibraryA("ws2_32"), "getpeername");
+        }
+        ret = _getpeername(s, name, namelen);
+    }
+    set_lasterrors(&lasterror);
+    return ret;
 }
 
 HOOKDEF(SOCKET, WSAAPI, accept,
@@ -216,9 +216,9 @@ HOOKDEF(SOCKET, WSAAPI, accept,
     __inout  int *addrlen
 ) {
     SOCKET ret = Old_accept(s, addr, addrlen);
-	char ip_s[16] = { 0 };
-	char ip_c[16] = { 0 };
-	int port_s = 0, port_c = 0;
+    char ip_s[16] = { 0 };
+    char ip_c[16] = { 0 };
+    int port_s = 0, port_c = 0;
     struct sockaddr addr_c; int addr_c_len = sizeof(addr_c);
 
     get_ip_port(addr, ip_s, &port_s);
@@ -238,8 +238,8 @@ HOOKDEF(int, WSAAPI, bind,
     __in  int namelen
 ) {
     int ret = Old_bind(s, name, namelen);
-	char ip[16] = { 0 };
-	int port = 0;
+    char ip[16] = { 0 };
+    int port = 0;
     get_ip_port(name, ip, &port);
 
     LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
@@ -316,9 +316,9 @@ HOOKDEF(SOCKET, WSAAPI, WSAAccept,
 ) {
     SOCKET ret = Old_WSAAccept(s, addr, addrlen, lpfnCondition,
         dwCallbackData);
-	char ip_s[16] = {0};
-	char ip_c[16] = {0};
-	int port_s = 0, port_c = 0;
+    char ip_s[16] = {0};
+    char ip_c[16] = {0};
+    int port_s = 0, port_c = 0;
     struct sockaddr addr_c; int addr_c_len = sizeof(addr_c);
 
     get_ip_port(addr, ip_s, &port_s);
@@ -343,17 +343,17 @@ HOOKDEF(int, WSAAPI, WSARecv,
 ) {
     int ret = Old_WSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd,
         lpFlags, lpOverlapped, lpCompletionRoutine);
-	if (lpOverlapped == NULL && lpCompletionRoutine == NULL) {
-		DWORD outlen;
-		PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-		LOQ_sockerr("network", "iBI", "socket", s, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
-		if (buf)
-			free(buf);
-	}
-	else {
-		// TODO: handle completion routine case
-		LOQ_sockerr("network", "i", "socket", s);
-	}
+    if (lpOverlapped == NULL && lpCompletionRoutine == NULL) {
+        DWORD outlen;
+        PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
+        LOQ_sockerr("network", "iCI", "socket", s, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
+        if (buf)
+            free(buf);
+    }
+    else {
+        // TODO: handle completion routine case
+        LOQ_sockerr("network", "i", "socket", s);
+    }
     return ret;
 }
 
@@ -371,21 +371,21 @@ HOOKDEF(int, WSAAPI, WSARecvFrom,
     int ret = Old_WSARecvFrom(s, lpBuffers, dwBufferCount,
         lpNumberOfBytesRecvd, lpFlags, lpFrom, lpFromlen, lpOverlapped,
         lpCompletionRoutine);
-	char ip[16] = { 0 };
-	int port = 0;
+    char ip[16] = { 0 };
+    int port = 0;
     get_ip_port(lpFrom, ip, &port);
-	if (lpOverlapped == NULL && lpCompletionRoutine == NULL) {
-		DWORD outlen;
-		PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-		LOQ_sockerr("network", "isiBI", "socket", s, "ip", ip, "port", port, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
-		if (buf)
-			free(buf);
-	}
-	else {
-		// TODO: handle completion routine case
-		LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
-	}
-	return ret;
+    if (lpOverlapped == NULL && lpCompletionRoutine == NULL) {
+        DWORD outlen;
+        PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
+        LOQ_sockerr("network", "isiCI", "socket", s, "ip", ip, "port", port, "Buffer", lpNumberOfBytesRecvd, buf, "NumberOfBytesReceived", lpNumberOfBytesRecvd);
+        if (buf)
+            free(buf);
+    }
+    else {
+        // TODO: handle completion routine case
+        LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
+    }
+    return ret;
 }
 
 HOOKDEF(int, WSAAPI, WSASend,
@@ -397,14 +397,14 @@ HOOKDEF(int, WSAAPI, WSASend,
     __in   LPWSAOVERLAPPED lpOverlapped,
     __in   LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
 ) {
-	// TODO: handle completion routine case
-	int ret = Old_WSASend(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent,
+    // TODO: handle completion routine case
+    int ret = Old_WSASend(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent,
         dwFlags, lpOverlapped, lpCompletionRoutine);
-	DWORD outlen;
-	PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-	LOQ_sockerr("network", "ib", "Socket", s, "Buffer", outlen, buf);
-	if (buf)
-		free(buf);
+    DWORD outlen;
+    PVOID buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
+    LOQ_sockerr("network", "ic", "Socket", s, "Buffer", outlen, buf);
+    if (buf)
+        free(buf);
     return ret;
 }
 
@@ -419,21 +419,21 @@ HOOKDEF(int, WSAAPI, WSASendTo,
     __in   LPWSAOVERLAPPED lpOverlapped,
     __in   LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
 ) {
-	// TODO: handle completion routine case
-	char ip[16] = { 0 };
-	int port = 0;
-	BOOL ret;
-	DWORD outlen;
-	PVOID buf;
+    // TODO: handle completion routine case
+    char ip[16] = { 0 };
+    int port = 0;
+    BOOL ret;
+    DWORD outlen;
+    PVOID buf;
 
     get_ip_port(lpTo, ip, &port);
 
     ret = Old_WSASendTo(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent,
         dwFlags, lpTo, iToLen, lpOverlapped, lpCompletionRoutine);
-	buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
-	LOQ_sockerr("network", "isib", "socket", s, "ip", ip, "port", port, "Buffer", outlen, buf);
-	if (buf)
-		free(buf);
+    buf = alloc_combined_wsabuf(lpBuffers, dwBufferCount, &outlen);
+    LOQ_sockerr("network", "isic", "socket", s, "ip", ip, "port", port, "Buffer", outlen, buf);
+    if (buf)
+        free(buf);
     return ret;
 }
 
@@ -464,20 +464,20 @@ HOOKDEF(SOCKET, WSAAPI, WSASocketW,
 }
 
 HOOKDEF(int, WSAAPI, WSAConnect,
-	__in   SOCKET s,
-	__in   const struct sockaddr *name,
-	__in   int namelen,
-	__in   LPWSABUF lpCallerData,
-	__out  LPWSABUF lpCalleeData,
-	__in   LPQOS lpSQOS,
-	__in   LPQOS lpGQOS
+    __in   SOCKET s,
+    __in   const struct sockaddr *name,
+    __in   int namelen,
+    __in   LPWSABUF lpCallerData,
+    __out  LPWSABUF lpCalleeData,
+    __in   LPQOS lpSQOS,
+    __in   LPQOS lpGQOS
 ) {
-	int ret = Old_WSAConnect(s, name, namelen, lpCallerData, lpCalleeData, lpSQOS, lpGQOS);
-	char ip[16] = { 0 };
-	int port = 0;
-	get_ip_port(name, ip, &port);
-	LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
-	return ret;
+    int ret = Old_WSAConnect(s, name, namelen, lpCallerData, lpCalleeData, lpSQOS, lpGQOS);
+    char ip[16] = { 0 };
+    int port = 0;
+    get_ip_port(name, ip, &port);
+    LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
+    return ret;
 }
 
 HOOKDEF(BOOL, PASCAL, ConnectEx,
@@ -491,8 +491,8 @@ HOOKDEF(BOOL, PASCAL, ConnectEx,
 ) {
     BOOL ret = Old_ConnectEx(s, name, namelen, lpSendBuffer, dwSendDataLength,
         lpdwBytesSent, lpOverlapped);
-	char ip[16] = { 0 };
-	int port = 0;
+    char ip[16] = { 0 };
+    int port = 0;
     get_ip_port(name, ip, &port);
     LOQ_bool("network", "iBsi", "socket", s, "SendBuffer", lpdwBytesSent, lpSendBuffer,
         "ip", ip, "port", port);
@@ -517,71 +517,71 @@ HOOKDEF(BOOL, PASCAL, TransmitFile,
 }
 
 HOOKDEF(int, WSAAPI, gethostname,
-	_Out_ char *name,
-	_In_  int  namelen
+    _Out_ char *name,
+    _In_  int  namelen
 ) {
-	int ret = Old_gethostname(name, namelen);
-	
-	LOQ_sockerr("network", "s", "HostName", ret != SOCKET_ERROR && namelen ? name : NULL);
+    int ret = Old_gethostname(name, namelen);
+    
+    LOQ_sockerr("network", "s", "HostName", ret != SOCKET_ERROR && namelen ? name : NULL);
 
-	return ret;
+    return ret;
 }
 
 HOOKDEF(BOOL, PASCAL, WSAConnectByList,
-	_In_          SOCKET               s,
-	_In_          PSOCKET_ADDRESS_LIST SocketAddressList,
-	_Inout_       LPDWORD              LocalAddressLength,
-	_Out_         LPSOCKADDR           LocalAddress,
-	_Inout_       LPDWORD              RemoteAddressLength,
-	_Out_         LPSOCKADDR           RemoteAddress,
-	_In_          PVOID				   timeout,
-	_In_          LPWSAOVERLAPPED      Reserved
+    _In_          SOCKET               s,
+    _In_          PSOCKET_ADDRESS_LIST SocketAddressList,
+    _Inout_       LPDWORD              LocalAddressLength,
+    _Out_         LPSOCKADDR           LocalAddress,
+    _Inout_       LPDWORD              RemoteAddressLength,
+    _Out_         LPSOCKADDR           RemoteAddress,
+    _In_          PVOID                   timeout,
+    _In_          LPWSAOVERLAPPED      Reserved
 ) {
-	char ip[16] = { 0 };
-	int port = 0;
-	BOOL ret = Old_WSAConnectByList(s, SocketAddressList, LocalAddressLength, LocalAddress, RemoteAddressLength, RemoteAddress, timeout, Reserved);
+    char ip[16] = { 0 };
+    int port = 0;
+    BOOL ret = Old_WSAConnectByList(s, SocketAddressList, LocalAddressLength, LocalAddress, RemoteAddressLength, RemoteAddress, timeout, Reserved);
 
-	if (SocketAddressList->iAddressCount > 0)
-		get_ip_port(SocketAddressList->Address[0].lpSockaddr, ip, &port);
+    if (SocketAddressList->iAddressCount > 0)
+        get_ip_port(SocketAddressList->Address[0].lpSockaddr, ip, &port);
 
-	LOQ_bool("network", "isi", "NumberOfAddresses", SocketAddressList->iAddressCount, "ip", ip, "port", port);
-	return ret;
+    LOQ_bool("network", "isi", "NumberOfAddresses", SocketAddressList->iAddressCount, "ip", ip, "port", port);
+    return ret;
 }
 
 HOOKDEF(BOOL, PASCAL, WSAConnectByNameW,
-	_In_          SOCKET          s,
-	_In_          LPWSTR          nodename,
-	_In_          LPWSTR          servicename,
-	_Inout_       LPDWORD         LocalAddressLength,
-	_Out_         LPSOCKADDR      LocalAddress,
-	_Inout_       LPDWORD         RemoteAddressLength,
-	_Out_         LPSOCKADDR      RemoteAddress,
-	_In_		  PVOID			  timeout,
-	LPWSAOVERLAPPED Reserved
+    _In_          SOCKET          s,
+    _In_          LPWSTR          nodename,
+    _In_          LPWSTR          servicename,
+    _Inout_       LPDWORD         LocalAddressLength,
+    _Out_         LPSOCKADDR      LocalAddress,
+    _Inout_       LPDWORD         RemoteAddressLength,
+    _Out_         LPSOCKADDR      RemoteAddress,
+    _In_          PVOID              timeout,
+    LPWSAOVERLAPPED Reserved
 ) {
-	BOOL ret = Old_WSAConnectByNameW(s, nodename, servicename, LocalAddressLength, LocalAddress, RemoteAddressLength, RemoteAddress, timeout, Reserved);
-	LOQ_bool("network", "uu", "NodeName", nodename, "ServiceName", servicename);
-	return ret;
+    BOOL ret = Old_WSAConnectByNameW(s, nodename, servicename, LocalAddressLength, LocalAddress, RemoteAddressLength, RemoteAddress, timeout, Reserved);
+    LOQ_bool("network", "uu", "NodeName", nodename, "ServiceName", servicename);
+    return ret;
 }
 
 HOOKDEF(int, WSAAPI, WSASendMsg,
-	_In_  SOCKET                             s,
-	_In_  LPWSAMSG                           lpMsg,
-	_In_  DWORD                              dwFlags,
-	_Out_ LPDWORD                            lpNumberOfBytesSent,
-	_In_  LPWSAOVERLAPPED                    lpOverlapped,
-	_In_  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+    _In_  SOCKET                             s,
+    _In_  LPWSAMSG                           lpMsg,
+    _In_  DWORD                              dwFlags,
+    _Out_ LPDWORD                            lpNumberOfBytesSent,
+    _In_  LPWSAOVERLAPPED                    lpOverlapped,
+    _In_  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
 ) {
-	char ip[16] = { 0 };
-	int port = 0;
-	PVOID buf;
-	DWORD outlen = 0;
+    char ip[16] = { 0 };
+    int port = 0;
+    PVOID buf;
+    DWORD outlen = 0;
 
-	int ret = Old_WSASendMsg(s, lpMsg, dwFlags, lpNumberOfBytesSent, lpOverlapped, lpCompletionRoutine);
-	buf = alloc_combined_wsabuf(lpMsg->lpBuffers, lpMsg->dwBufferCount, &outlen);
+    int ret = Old_WSASendMsg(s, lpMsg, dwFlags, lpNumberOfBytesSent, lpOverlapped, lpCompletionRoutine);
+    buf = alloc_combined_wsabuf(lpMsg->lpBuffers, lpMsg->dwBufferCount, &outlen);
 
-	get_ip_port(lpMsg->name, ip, &port);
+    get_ip_port(lpMsg->name, ip, &port);
 
-	LOQ_sockerr("network", "Bsi", "MsgBuffer", lpNumberOfBytesSent, buf, "ip", ip, "port", port);
-	return ret;
+    LOQ_sockerr("network", "Bsi", "MsgBuffer", lpNumberOfBytesSent, buf, "ip", ip, "port", port);
+    return ret;
 }
