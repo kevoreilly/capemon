@@ -37,7 +37,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TLS_LAST_WIN32_ERROR 0x34
 #define TLS_LAST_NTSTATUS_ERROR 0xbf4
 #endif
-#define HOOK_TIME_SAMPLE 0x200
+#define HOOK_TIME_SAMPLE 200
 #define HOOK_RATE_LIMIT 0x800
 
 static lookup_t g_hook_info;
