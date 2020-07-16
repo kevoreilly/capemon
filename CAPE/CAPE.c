@@ -27,7 +27,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define BUFSIZE                 1024    // For hashing
 #define DUMP_MAX                100
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
-#define SUSPENDED_THREAD_MAX    4096
+//#define SUSPENDED_THREAD_MAX    4096
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -1890,8 +1890,8 @@ int DoProcessDump(PVOID CallerBase)
     char *FullDumpPath, *OutputFilename;
     PVOID NewImageBase;
 
-    PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
-    DWORD ThreadId = GetCurrentThreadId(), SuspendedThreadCount = 0;
+    //PHANDLE SuspendedThreads = (PHANDLE)malloc(SUSPENDED_THREAD_MAX*sizeof(HANDLE));
+    DWORD ThreadId = GetCurrentThreadId();//, SuspendedThreadCount = 0;
 
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);

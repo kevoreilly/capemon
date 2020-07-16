@@ -1002,7 +1002,7 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
         }
     }
 
-    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+    ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
     return TRUE;
 }
@@ -1481,7 +1481,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
             LastContext = *ExceptionInfo->ContextRecord;
 
-            ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+            ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
             return TRUE;
         }
@@ -1498,7 +1498,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     LastContext = *ExceptionInfo->ContextRecord;
 
-    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+    ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
     DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
 
@@ -1538,7 +1538,7 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
     ReturnAddress = NULL;
 
-    ResumeFromBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+    ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
     return TRUE;
 }

@@ -1434,7 +1434,7 @@ BOOL ClearSingleStepMode(PCONTEXT Context)
 }
 
 //**************************************************************************************
-BOOL ResumeFromBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
+BOOL ResumeFromBreakpoint(PCONTEXT Context)
 //**************************************************************************************
 {
 	if (Context == NULL)
@@ -1919,68 +1919,6 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 }
 
 //**************************************************************************************
-DWORD WINAPI SetBreakpointThread(LPVOID lpParam)
-//**************************************************************************************
-{
-    DWORD RetVal;
-
-    PBREAKPOINTINFO pBreakpointInfo = (PBREAKPOINTINFO)lpParam;
-
-	if (SuspendThread(pBreakpointInfo->ThreadHandle) == 0xFFFFFFFF)
-		DoOutputErrorString("SetBreakpointThread: Call to SuspendThread failed for thread handle 0x%x", pBreakpointInfo->ThreadHandle);
-
-	if (!SetDebugRegister(pBreakpointInfo->ThreadHandle, pBreakpointInfo->Register, pBreakpointInfo->Size, pBreakpointInfo->Address, pBreakpointInfo->Type))
-		DoOutputErrorString("SetBreakpointThread: Call to SetDebugRegister failed for thread handle 0x%x", pBreakpointInfo->ThreadHandle);
-
-    RetVal = ResumeThread(pBreakpointInfo->ThreadHandle);
-
-    if (RetVal == -1)
-        DoOutputErrorString("SetBreakpointThread: ResumeThread failed for thread handle 0x%x", pBreakpointInfo->ThreadHandle);
-    else if (RetVal == 0)
-        DoOutputDebugString("SetBreakpointThread: Error - thread with handle 0x%x was not suspended.\n", pBreakpointInfo->ThreadHandle);
-    else if (g_config.debug)
-        DoOutputDebugString("SetBreakpointThread: Sample thread with handle 0x%x was suspended, now resumed.\n", pBreakpointInfo->ThreadHandle);
-
-    return 1;
-}
-
-//**************************************************************************************
-DWORD WINAPI ClearBreakpointThread(LPVOID lpParam)
-//**************************************************************************************
-{
-    DWORD RetVal;
-    PBREAKPOINTINFO pBreakpointInfo = (PBREAKPOINTINFO)lpParam;
-
-	if (SuspendThread(pBreakpointInfo->ThreadHandle) == 0xFFFFFFFF)
-		DoOutputErrorString("ClearBreakpointThread: Call to SuspendThread failed");
-
-	if (!ClearDebugRegister(pBreakpointInfo->ThreadHandle, pBreakpointInfo->Register, pBreakpointInfo->Size, pBreakpointInfo->Address, pBreakpointInfo->Type))
-	{
-		DoOutputDebugString("ClearBreakpointThread: Call to ClearDebugRegister failed.\n");
-	}
-
-    RetVal = ResumeThread(pBreakpointInfo->ThreadHandle);
-    if (RetVal == -1)
-    {
-        DoOutputErrorString("ClearBreakpointThread: ResumeThread failed.\n");
-    }
-    else if (RetVal == 0)
-    {
-        DoOutputDebugString("ClearBreakpointThread: Error - Sample thread was not suspended.\n");
-    }
-    else if (g_config.debug)
-    {
-        DoOutputDebugString("ClearBreakpointThread: Sample thread was suspended, now resumed.\n");
-    }
-
-#ifdef DEBUG_COMMENTS
-    DebugOutputThreadBreakpoints();
-#endif
-
-    return TRUE;
-}
-
-//**************************************************************************************
 BOOL SetThreadBreakpoint
 //**************************************************************************************
 (
@@ -2159,7 +2097,6 @@ BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register)
         return FALSE;
 	}
 
-	//pBreakpointInfo->Register = 0;
 	pBreakpointInfo->Size = 0;
 	pBreakpointInfo->Address = 0;
 	pBreakpointInfo->Type	  = 0;
@@ -2184,7 +2121,6 @@ BOOL ClearBreakpoint(int Register)
 	{
         if (ThreadBreakpoints->ThreadHandle)
             ThreadBreakpoints->BreakpointInfo[Register].ThreadHandle  = ThreadBreakpoints->ThreadHandle;
-        //ThreadBreakpoints->BreakpointInfo[Register].Register      = Register;
         ThreadBreakpoints->BreakpointInfo[Register].Size          = 0;
         ThreadBreakpoints->BreakpointInfo[Register].Address       = NULL;
         ThreadBreakpoints->BreakpointInfo[Register].Type          = 0;
