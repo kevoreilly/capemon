@@ -224,7 +224,7 @@
     <ClCompile Include="CAPE\w64wow64\w64wow64.c" />
     <ClCompile Include="CAPE\wow64_fix.c" />
     <ClCompile Include="config.c" />
-    <ClCompile Include="cuckoomon.c" />
+    <ClCompile Include="capemon.c" />
     <ClCompile Include="distorm\src\decoder.c" />
     <ClCompile Include="distorm\src\distorm.c" />
     <ClCompile Include="distorm\src\instructions.c" />
