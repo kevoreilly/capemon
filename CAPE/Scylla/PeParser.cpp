@@ -12,6 +12,7 @@ extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
 extern "C" void ProcessDumpOutputFile(LPCTSTR lpOutputFile);
+extern "C" int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size);
 
 char CapeOutputPath[MAX_PATH];
 
@@ -521,7 +522,7 @@ std::vector<PeFileSection> & PeParser::getSectionHeaderList()
 	return listPeSection;
 }
 
-void PeParser::getDosAndNtHeader(BYTE * memory, LONG size)
+void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 {
 	pDosHeader = (PIMAGE_DOS_HEADER)memory;
     DWORD readSize = getInitialHeaderReadSize(true);
@@ -617,6 +618,10 @@ void PeParser::getDosAndNtHeader(BYTE * memory, LONG size)
     {
 		pNTHeader32 = (PIMAGE_NT_HEADERS32)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
 		pNTHeader64 = (PIMAGE_NT_HEADERS64)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
+
+        // data in slack
+        SlackData = (BYTE*)pDosHeader + pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNTHeader32->FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * (pNTHeader32->FileHeader.NumberOfSections));
+        SizeOfSlackData = ReverseScanForNonZero(SlackData, (BYTE*)pDosHeader + readSize - SlackData);
     }
 }
 
@@ -647,14 +652,7 @@ DWORD PeParser::calcCorrectPeHeaderSize(bool readSectionHeaders)
 
 DWORD PeParser::getInitialHeaderReadSize(bool readSectionHeaders)
 {
-	DWORD readSize = sizeof(IMAGE_DOS_HEADER) + 0x300 + sizeof(IMAGE_NT_HEADERS64);
-
-	//if (readSectionHeaders)
-	//{
-	//	readSize += (10 * sizeof(IMAGE_SECTION_HEADER));
-	//}
-
-	return readSize;
+	return 0x400;
 }
 
 DWORD PeParser::getSectionHeaderBasedFileSize()
@@ -931,7 +929,7 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			dwFileOffset += dwWriteSize;
 		}
 
-		//Pe Header
+		//PE header
 		if (isPE32())
 		{
 			dwWriteSize = sizeof(IMAGE_NT_HEADERS32);
@@ -960,7 +958,17 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			dwFileOffset += dwWriteSize;
 		}
 
-		for (WORD i = 0; i < getNumberOfSections(); i++)
+		//PE slack
+        if (SizeOfSlackData)
+		{
+			dwWriteSize = SizeOfSlackData;
+            if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, SlackData))
+				retValue = false;
+			dwFileOffset += dwWriteSize;
+		}
+
+        //sections
+        for (WORD i = 0; i < getNumberOfSections(); i++)
 		{
 			if (!listPeSection[i].sectionHeader.PointerToRawData)
 				continue;

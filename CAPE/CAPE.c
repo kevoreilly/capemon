@@ -937,8 +937,8 @@ int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size)
 
     __try
     {
-        for (p=Size-1; p>=0; p--)
-            if (*((char*)Buffer+p) != 0)
+        for (p=Size; p>0; p--)
+            if (*((char*)Buffer+p-1) != 0)
                 return (int)p;
     }
     __except(EXCEPTION_EXECUTE_HANDLER)

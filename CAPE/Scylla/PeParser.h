@@ -126,12 +126,14 @@ protected:
 	DWORD overlaySize;
 	/************************************************************************/
 
-	BYTE * fileMemory;
-	BYTE * headerMemory;
+	BYTE *fileMemory, *headerMemory;
 
 	HANDLE hFile;
 	HANDLE hInfoFile;
 	DWORD fileSize;
+
+    SIZE_T SizeOfSlackData;
+    BYTE* SlackData;
 
 	bool readPeHeaderFromFile(bool readSectionHeaders);
 	bool readPeHeaderFromProcess(bool readSectionHeaders);
