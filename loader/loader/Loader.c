@@ -29,6 +29,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
+BOOL DisableIATPatching;
 
 void pipe(char* Buffer, SIZE_T Length);
 
@@ -190,7 +191,11 @@ int ReadConfig(DWORD ProcessId, char *DllName)
                     strncpy(LogPipe, Value, Length);
                 DoOutputDebugString("ReadConfig: Successfully loaded pipe name %s.\n", LogPipe);
             }
-        }
+            if(!strcmp(key, "no-iat"))
+            {
+                DisableIATPatching = Value[0] == '1';
+            }
+       }
     }
 
     fclose(fp);
@@ -526,6 +531,9 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     memset(&DosHeader, 0, sizeof(DosHeader));
     memset(&NtHeader, 0, sizeof(NtHeader));
     memset(&MemoryInfo, 0, sizeof(MemoryInfo));
+
+    if (DisableIATPatching)
+        return InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
 
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);
