@@ -1258,7 +1258,7 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
     PEDetected = FALSE;
 
     // we want to stop short of the max look-ahead in IsDisguisedPEHeader
-    for (p=0; p < Size - PE_HEADER_LIMIT; p += PE_HEADER_LIMIT)
+    for (p=0; p < Size - PE_HEADER_LIMIT; p++)
     {
         RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
 
