@@ -676,6 +676,16 @@ void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t
 }
 extern void invalidate_regions_for_hook(const hook_t *hook);
 
+void destroy_pe_header(HANDLE hModule)
+{
+    DWORD old_protect;
+
+    if (VirtualProtect(hModule, 0x1000, PAGE_EXECUTE_READWRITE, &old_protect) != FALSE) {
+        memset(hModule, 0, 0x400);
+        VirtualProtect(hModule, 0x1000, old_protect, &old_protect);
+    }
+}
+
 void revalidate_all_hooks(void)
 {
 	int i;
@@ -1219,6 +1229,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		// so don't call log_free(), as it'll have side-effects
         // log_free();
     }
+
+    destroy_pe_header(hModule);
 
 	g_dll_main_complete = TRUE;
 	set_lasterrors(&lasterror);
