@@ -688,8 +688,7 @@ void destroy_pe_header(HANDLE hModule)
 
 void revalidate_all_hooks(void)
 {
-	int i;
-	for (i = 0; i < ARRAYSIZE(g_hooks); i++) {
+	for (int i = 0; i < ARRAYSIZE(g_hooks); i++) {
 		if (g_hooks[i].hook_addr && !is_valid_address_range((ULONG_PTR)g_hooks[i].hook_addr, 1)) {
 			g_hooks[i].is_hooked = 0;
 			g_hooks[i].hook_addr = NULL;
