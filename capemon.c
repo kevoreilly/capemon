@@ -17,6 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <stdio.h>
+#include <distorm.h>
 #include "ntapi.h"
 #include "misc.h"
 #include "hooking.h"
@@ -48,6 +49,7 @@ extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo
 extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase);
 extern PCHAR ScyllaGetExportDirectory(PVOID Address);
+extern PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZE_T ScanSize);
 extern void UnpackerDllInit(PVOID DllBase);
 
 void disable_tail_call_optimization(void)
@@ -850,7 +852,17 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 	unsigned int offset;
 	char *buf = convert_address_to_dll_name_and_offset(addr, &offset);
 	if (buf) {
-		snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+%x", buf, offset);
+        PCHAR funcname;
+        __try {
+            funcname = ScyllaGetExportNameByScan((PVOID)addr, NULL, 0x50);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER) {
+            ;
+        }
+        if (funcname)
+            snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s::%s(0x%x)\n", buf, funcname, offset);
+        else
+            snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s+0x%x\n", buf, offset);
 		free(buf);
 	}
 
@@ -897,7 +909,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 
     if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
 		return CAPEExceptionFilter(ExceptionInfo);
-
+    
     if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
 		return CAPEExceptionFilter(ExceptionInfo);
 
@@ -912,15 +924,42 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 	dllname = convert_address_to_dll_name_and_offset(eip, &offset);
 
 	sprintf(msg, "Exception Caught! PID: %u EIP:", GetCurrentProcessId());
-	if (dllname)
-		snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+%x", dllname, offset);
+	if (dllname) {
+        PCHAR FunctionName;
+        __try {
+            FunctionName = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x50);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER) {
+            ;
+        }
+        if (FunctionName)
+            snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)", dllname, FunctionName, offset);
+        else
+            snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+0x%x", dllname, offset);
+    }
 
 	sehname = convert_address_to_dll_name_and_offset(seh, &offset);
 	if (sehname)
-		snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " SEH: %s+%x", sehname, offset);
+		snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " SEH: %s+0x%x", sehname, offset);
 
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), " %.08Ix, Fault Address: %.08Ix, Esp: %.08Ix, Exception Code: %08x, ",
+	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), " %.08Ix, Fault Address: %.08Ix, Esp: %.08Ix, Exception Code: %08x\n",
 		eip, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], (ULONG_PTR)stack, ExceptionInfo->ExceptionRecord->ExceptionCode);
+
+#ifdef _WIN64
+    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, 
+        "RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x\nR8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n", 
+        ExceptionInfo->ContextRecord->Rax, ExceptionInfo->ContextRecord->Rbx, ExceptionInfo->ContextRecord->Rcx, ExceptionInfo->ContextRecord->Rdx,
+        ExceptionInfo->ContextRecord->Rsi, ExceptionInfo->ContextRecord->Rdi, ExceptionInfo->ContextRecord->R8, ExceptionInfo->ContextRecord->R9,
+        ExceptionInfo->ContextRecord->R10, ExceptionInfo->ContextRecord->R11, ExceptionInfo->ContextRecord->R12, ExceptionInfo->ContextRecord->R13,
+        ExceptionInfo->ContextRecord->R14, ExceptionInfo->ContextRecord->R15, ExceptionInfo->ContextRecord->Rsp, ExceptionInfo->ContextRecord->Rbp
+        );
+#else
+    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, 
+        "EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x\n ESP 0x%x EBP 0x%x\n", 
+        ExceptionInfo->ContextRecord->Eax, ExceptionInfo->ContextRecord->Ebx, ExceptionInfo->ContextRecord->Ecx, ExceptionInfo->ContextRecord->Edx,
+        ExceptionInfo->ContextRecord->Esi, ExceptionInfo->ContextRecord->Edi, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp
+        );
+#endif
 
 	operate_on_backtrace((ULONG_PTR)stack, ebp_or_rip, msg, &parse_stack_trace);
 
@@ -932,10 +971,20 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 		for (i = 0; i < (get_stack_top() - (ULONG_PTR)stack)/sizeof(ULONG_PTR); i++) {
 			char *buf = convert_address_to_dll_name_and_offset(stack[i], &offset);
 			if (buf) {
-				snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+%x", buf, offset);
+                PCHAR funcname = NULL;
+                __try {
+                    funcname = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x50);
+                }
+                __except(EXCEPTION_EXECUTE_HANDLER) {
+                    ;
+                }
+                if (funcname)
+                    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)\n", buf, funcname, offset);
+                else
+                    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+0x%x\n", buf, offset);
 				free(buf);
 			}
-			if (sizeof(msg) - strlen(msg) < 100)
+			if (sizeof(msg) - strlen(msg) < 0x200)
 				goto next;
 		}
 		strcat(msg, ", ");
@@ -947,11 +996,44 @@ next:
 #endif
 
 	if (is_valid_address_range(eip, 16)) {
-		snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " Bytes at EIP: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-			eipptr[0], eipptr[1], eipptr[2], eipptr[3], eipptr[4], eipptr[5], eipptr[6], eipptr[7], eipptr[8], eipptr[9], eipptr[10], eipptr[11], eipptr[12], eipptr[13], eipptr[14], eipptr[15]);
+        PCHAR FunctionName;
+        _DecodeType DecodeType;
+        _DecodeResult Result;
+        _OffsetType Offset = 0;
+        _DecodedInst DecodedInstruction;
+        unsigned int DecodedInstructionsCount = 0;
+#ifdef _WIN64
+        DecodeType = Decode64Bits;
+#else
+        DecodeType = Decode32Bits;
+#endif
+        Result = distorm_decode(Offset, (const unsigned char*)eip, 0x100, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+        if (dllname) {
+            __try {
+                FunctionName = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x40);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER) {
+                ;
+            }
+            if (FunctionName)
+            {
+                DoOutputDebugString("%s::%s (`) %-20s %-6s%-4s%-30s\n", dllname, FunctionName, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+            }
+                
+            else
+            {
+                DoOutputDebugString("%s::0x%p %-20s %-6s%-4s%-30s\n", dllname, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+            }
+        }
+        else
+        {
+            DoOutputDebugString("0x%p %-20s %-6s%-4s%-30s\n", (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+        }
 	}
-	debug_message(msg);
+
     DoOutputDebugString(msg);
+
 	if (dllname)
 		free(dllname);
 	free(msg);
@@ -1170,7 +1252,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
         hkcu_init();
 
         // initialize the log file
-        log_init(CUCKOODBG);
+        log_init(g_config.debug || g_config.standalone);
 
         // initialize the Sleep() skipping stuff
         init_sleep_skip(g_config.first_process);
