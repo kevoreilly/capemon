@@ -28,6 +28,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
+extern char* GetResultsPath(char* FolderName);
+
 // the size of the logging buffer
 #define BUFFERSIZE 16 * 1024 * 1024
 #define BUFFER_LOG_MAX 256
@@ -103,16 +105,6 @@ static void _send_log(void)
 				WriteFile(g_log_handle, g_buffer, g_idx, &written, NULL);
 			}
 		}
-		/*
-		// old style logging
-		else if (g_sock == INVALID_SOCKET) {
-			g_idx = 0;
-			continue;
-		}
-		else {
-			written = send(g_sock, g_buffer, g_idx, 0);
-		}
-		*/
 
 		if (written < 0)
 			continue;
@@ -260,7 +252,7 @@ static void log_string(const char *str, int length)
 	int ret;
 	char *utf8s;
 	int utf8len;
-	
+
 	if (str == NULL) {
         bson_append_string_n( g_bson, g_istr, "", 0 );
         return;
@@ -538,7 +530,7 @@ void loq(int index, const char *category, const char *name,
 	bson_append_ptr(g_bson, "P", hookinfo->parent_caller_retaddr);
 	bson_append_int(g_bson, "T", GetCurrentThreadId());
     bson_append_int(g_bson, "t", raw_gettickcount() - g_starttick );
-	// number of times this log was repeated -- we'll modify this 
+	// number of times this log was repeated -- we'll modify this
 	bson_append_int(g_bson, "r", 0);
 
 	compare_offset = (unsigned int)(g_bson->cur - bson_data(g_bson));
@@ -783,7 +775,7 @@ void loq(int index, const char *category, const char *name,
 
 			if (size > BUFFER_REGVAL_MAX)
 				size = BUFFER_REGVAL_MAX;
-			
+
 			// bson_append_start_object( g_bson, g_istr );
             // bson_append_int( g_bson, "type", type );
 
@@ -1066,7 +1058,7 @@ void log_environ()
 	else
 		sysvolguid = strdup("");
 
-	
+
 	loq(LOG_ID_ENVIRON, "__notification__", "__environ__", 1, 0, "ssissssssiisssph",
 		"UserName", username,
 		"ComputerName", computername,
@@ -1194,53 +1186,17 @@ void log_init(int debug)
 			return;
 		}
 	}
-	/*
-	// old style logging
-	else {
-        WSADATA wsa;
-		struct sockaddr_in addr;
 
-        WSAStartup(MAKEWORD(2, 2), &wsa);
-
-        g_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = ip;
-		addr.sin_port = htons(port);
-
-		if (connect(g_sock, (struct sockaddr *) &addr, sizeof(addr))) {
-			closesocket(g_sock);
-			g_sock = DEBUG_SOCKET;
-		}
-    }
-	*/
-
+    // will happen when we're in debug mode
 	if (g_sock == DEBUG_SOCKET) {
-		char filename[64];
 		char pid[8];
-
-		strcpy(filename, "c:\\debug");
+		char* filename = GetResultsPath("API");
 		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
+		strcat(filename, "\\");
 		strcat(filename, pid);
 		strcat(filename, ".log");
-		// will happen when we're in debug mode
 		g_debug_log_handle = CreateFileA(filename, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, 0, NULL);
 	}
-
-	/*
-	// old style logging
-	g_log_thread_handle =
-		CreateThread(NULL, 0, &_log_thread, NULL, 0, &g_log_thread_id);
-
-	g_logwatcher_thread_handle =
-		CreateThread(NULL, 0, &_logwatcher_thread, NULL, 0, &g_logwatcher_thread_id);
-
-	if (g_log_thread_handle == NULL || g_logwatcher_thread_handle == NULL) {
-		pipe("CRITICAL:Error initializing logging threads!");
-		return;
-	}
-	*/
 
 	announce_netlog();
     log_new_process();
@@ -1260,18 +1216,4 @@ void log_free()
 		CloseHandle(g_log_handle);
 		g_log_handle = INVALID_HANDLE_VALUE;
 	}
-
-	/*
-	// old logging method
-	if (g_sock != INVALID_SOCKET) {
-		if (g_sock == DEBUG_SOCKET) {
-			g_sock = INVALID_SOCKET;
-		}
-		else {
-			closesocket(g_sock);
-			g_sock = INVALID_SOCKET;
-			WSACleanup();
-		}
-	}
-	*/
 }
