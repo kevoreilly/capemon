@@ -655,6 +655,9 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
 
 void ResumeThreadHandler(DWORD Pid)
 {
+    if (Pid == GetCurrentProcessId())
+        return;
+
     struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
 
     if (!CurrentInjectionInfo)
@@ -774,6 +777,9 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
     DWORD BufferSize = MAX_PATH;
     char DevicePath[MAX_PATH];
     unsigned int PathLength;
+
+    if (Pid == GetCurrentProcessId())
+        return;
 
     CurrentInjectionInfo = GetInjectionInfo(Pid);
 
