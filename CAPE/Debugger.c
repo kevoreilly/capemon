@@ -2166,7 +2166,7 @@ BOOL SetNextAvailableBreakpoint
 
     if (!GetNextAvailableBreakpoint(ThreadId, Register))
     {
-        DoOutputDebugString("SetNextAvailableBreakpoint: GetNextAvailableBreakpoint failed (breakpoints possibly full).\n");
+        DoOutputDebugString("SetNextAvailableBreakpoint: GetNextAvailableBreakpoint failed for thread %d (breakpoints possibly full).\n", ThreadId);
         return FALSE;
     }
 
