@@ -961,7 +961,7 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 		//PE slack
         if (SizeOfSlackData)
 		{
-			dwWriteSize = SizeOfSlackData;
+			dwWriteSize = (DWORD)SizeOfSlackData;
             if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, SlackData))
 				retValue = false;
 			dwFileOffset += dwWriteSize;
