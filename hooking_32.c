@@ -362,7 +362,6 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 	assert ((ULONG_PTR)(p - h->hookdata->pre_tramp) < MAX_PRETRAMP_SIZE);
 }
 
-
 static int hook_api_jmp_direct(hook_t *h, unsigned char *from,
     unsigned char *to)
 {
@@ -839,24 +838,30 @@ int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)
 
 	unsigned int count = HOOK_BACKTRACE_DEPTH;
 
-	if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
-		ret = func(extra, *(ULONG_PTR *)_esp);
-		if (ret)
-			return ret;
-	}
+    __try
+    {
+        if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
+            ret = func(extra, *(ULONG_PTR *)_esp);
+            if (ret)
+                return ret;
+        }
 
-	while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count-- != 0)
-	{
-		// obtain the return address and the next value of ebp
-		ULONG_PTR addr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
-		_ebp = *(ULONG_PTR *)_ebp;
+        while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count-- != 0)
+        {
+            // obtain the return address and the next value of ebp
+            ULONG_PTR addr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
+            _ebp = *(ULONG_PTR *)_ebp;
 
-		ret = func(extra, addr);
-		if (ret)
-			return ret;
-	}
+            ret = func(extra, addr);
+            if (ret)
+                return ret;
+        }
 
-	return ret;
+        return ret;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        return 0;
+    }
 }
-
 #endif

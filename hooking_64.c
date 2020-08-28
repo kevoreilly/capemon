@@ -42,7 +42,6 @@ int lde(void *addr)
 	return ret == DECRES_SUCCESS ? instructions[0].size : 0;
 }
 
-
 static _DInst *get_insn(void *addr)
 {
 	unsigned int used_instruction_count; _DInst instructions[16];
@@ -107,7 +106,6 @@ static unsigned char *emit_indirect_jcc(unsigned char condcode, unsigned char *b
 
 	return buf;
 }
-
 
 static ULONG_PTR get_near_rel_target(unsigned char *buf)
 {
@@ -790,7 +788,6 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 	add_unwind_info(h);
 }
 
-
 static int hook_api_jmp_indirect(hook_t *h, unsigned char *from,
 	unsigned char *to)
 {
@@ -1088,7 +1085,6 @@ static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace
         }
 
         return frame + 1;
-
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -1125,7 +1121,6 @@ int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(v
 	}
 
 out:
-
 	hook_enable();
 	set_lasterrors(&lasterror);
 	return ret;
