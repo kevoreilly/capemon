@@ -13,6 +13,7 @@ extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
 extern "C" void ProcessDumpOutputFile(LPCTSTR lpOutputFile);
 extern "C" int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size);
+extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
 
 char CapeOutputPath[MAX_PATH];
 
@@ -143,16 +144,8 @@ bool PeParser::isValidPeFile()
 
 	if (pDosHeader)
 	{
-		if (pDosHeader->e_magic == IMAGE_DOS_SIGNATURE)
-		{
-			if (pNTHeader32)
-			{
-				if (pNTHeader32->Signature == IMAGE_NT_SIGNATURE)
-				{
-					retValue = true;
-				}
-			}
-		}
+		if (IsDisguisedPEHeader((PVOID)pDosHeader) == 1)
+            retValue = true;
 	}
 
 	return retValue;

@@ -1582,12 +1582,6 @@ int DumpImageInCurrentProcess(LPVOID BaseAddress)
         return 0;
     }
 
-    if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
-    {
-        DoOutputDebugString("DumpImageInCurrentProcess: Invalid PE Image.\n");
-        return 0;
-    }
-
     if (IsPeImageVirtual(BaseAddress) == FALSE)
     {
         DoOutputDebugString("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image.\n");
