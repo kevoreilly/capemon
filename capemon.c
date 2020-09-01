@@ -1179,9 +1179,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 			!memcmp((PUCHAR)WaitForDebugEvent, "\xeb\xf9", 2))
 			goto abort;
 
-		// Don't display error-handler message boxes, instead send errors to calling process
-		SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
-
 		g_our_dll_base = (ULONG_PTR)hModule;
 		g_our_dll_size = get_image_size(g_our_dll_base);
 
