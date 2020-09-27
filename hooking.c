@@ -43,6 +43,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
 
+extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointOnReturn(PVOID Address);
 extern BOOL BreakpointsSet;
@@ -65,7 +66,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = hook_info();
 
-	if (!is_in_dll_range(addr)) {
+	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr)) {
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
         if (AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
             char ModulePath[MAX_PATH];
@@ -80,27 +81,13 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                     ProcessTrackedRegion(TrackedRegion);
                 }
             }
-            else if (g_config.dump_caller_regions && !GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
-                CapeMetaData->Address = AllocationBase;
-                if (IsDisguisedPEHeader(AllocationBase)) {
-                    CapeMetaData->DumpType = UNPACKED_PE;
-                    __try {
-                        DumpImageInCurrentProcess(AllocationBase);
-                    }
-                    __except(EXCEPTION_EXECUTE_HANDLER) {
-                        DoOutputDebugString("set_caller_info: Failed to dumping calling PE image at 0x%p.\n", AllocationBase);
-                        return 0;
-                    }
+            else if (g_config.caller_dump && !GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
+                __try {
+                    DumpRegion((PVOID)addr);
                 }
-                else {
-                    CapeMetaData->DumpType = UNPACKED_SHELLCODE;
-                    __try {
-                        DumpRegion(AllocationBase);
-                    }
-                    __except(EXCEPTION_EXECUTE_HANDLER) {
-                        DoOutputDebugString("set_caller_info: Failed to dumping calling PE image at 0x%p.\n", AllocationBase);
-                        return 0;
-                    }
+                __except(EXCEPTION_EXECUTE_HANDLER) {
+                    DoOutputDebugString("set_caller_info: Failed to dumping calling region at 0x%p.\n", AllocationBase);
+                    return 0;
                 }
             }
             else

@@ -124,7 +124,7 @@ struct _g_config {
     int compression;
     int unpacker;
     int injection;
-    int dump_caller_regions;
+    int caller_dump;
 
     // should we dump each process on exit/analysis timeout?
     int procdump;

@@ -1437,8 +1437,8 @@ BOOL DumpRegion(PVOID Address)
 //**************************************************************************************
 {
     MEMORY_BASIC_INFORMATION MemInfo;
-    PVOID OriginalAllocationBase, OriginalBaseAddress, AddressOfPage;
-    SIZE_T AllocationSize, OriginalRegionSize;
+    PVOID AllocationBase, BaseAddress, AddressOfPage;
+    SIZE_T AllocationSize, RegionSize;
 
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);
@@ -1455,12 +1455,12 @@ BOOL DumpRegion(PVOID Address)
         return 0;
     }
 
-    OriginalAllocationBase = MemInfo.AllocationBase;
-    OriginalBaseAddress = MemInfo.BaseAddress;
-    OriginalRegionSize = MemInfo.RegionSize;
-    AddressOfPage = OriginalAllocationBase;
+    AllocationBase = MemInfo.AllocationBase;
+    BaseAddress = MemInfo.BaseAddress;
+    RegionSize = MemInfo.RegionSize;
+    AddressOfPage = AllocationBase;
 
-    while (MemInfo.AllocationBase == OriginalAllocationBase)
+    while (MemInfo.AllocationBase == AllocationBase)
     {
         (PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
 
@@ -1471,43 +1471,43 @@ BOOL DumpRegion(PVOID Address)
         }
     }
 
-    AllocationSize = (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
+    AllocationSize = (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)AllocationBase);
 
-    SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalAllocationBase);
+    SetCapeMetaData(UNPACKED_PE, 0, NULL, (PVOID)AllocationBase);
 
-    if (DumpMemory(OriginalAllocationBase, AllocationSize))
+    if (DumpPEsInRange(AllocationBase, AllocationSize))
     {
-        if (address_is_in_stack(OriginalAllocationBase))
-            DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", OriginalAllocationBase, AllocationSize);
+        DoOutputDebugString("DumpRegion: Dumped PE image(s) from base address 0x%p, size 0x%x.\n", AllocationBase, AllocationSize);
+        return TRUE;
+    }
+
+    SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)AllocationBase);
+
+    if (DumpMemory(AllocationBase, AllocationSize))
+    {
+        if (address_is_in_stack(AllocationBase))
+            DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", AllocationBase, AllocationSize);
         else
-            DoOutputDebugString("DumpRegion: Dumped entire allocation from 0x%p, size 0x%x.\n", OriginalAllocationBase, AllocationSize);
+            DoOutputDebugString("DumpRegion: Dumped entire allocation from 0x%p, size 0x%x.\n", AllocationBase, AllocationSize);
         return TRUE;
     }
     else
     {
-        DoOutputDebugString("DumpRegion: Failed to dump entire allocation from 0x%p size 0x%x.\n", OriginalAllocationBase, AllocationSize);
+        DoOutputDebugString("DumpRegion: Failed to dump entire allocation from 0x%p size 0x%x.\n", AllocationBase, AllocationSize);
 
-        SetCapeMetaData(UNPACKED_PE, 0, NULL, (PVOID)OriginalBaseAddress);
+        SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)BaseAddress);
 
-        if (DumpPEsInRange(OriginalBaseAddress, OriginalRegionSize))
+        if (DumpMemory(BaseAddress, RegionSize))
         {
-            DoOutputDebugString("DumpRegion: Dumped PE image(s) from base address 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
-            return TRUE;
-        }
-
-        SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)OriginalBaseAddress);
-
-        if (DumpMemory(OriginalBaseAddress, OriginalRegionSize))
-        {
-            if (address_is_in_stack(OriginalBaseAddress))
-                DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
+            if (address_is_in_stack(BaseAddress))
+                DoOutputDebugString("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", BaseAddress, RegionSize);
             else
-                DoOutputDebugString("DumpRegion: Dumped base address 0x%p, size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
-                return TRUE;
+                DoOutputDebugString("DumpRegion: Dumped region at 0x%p, size 0x%x.\n", BaseAddress, RegionSize);
+            return TRUE;
         }
         else
         {
-            DoOutputDebugString("DumpRegion: Failed to dump base address 0x%p size 0x%x.\n", OriginalBaseAddress, OriginalRegionSize);
+            DoOutputDebugString("DumpRegion: Failed to dump region at 0x%p size 0x%x.\n", BaseAddress, RegionSize);
             return FALSE;
         }
     }
@@ -2064,6 +2064,7 @@ void CAPE_init()
         ImageBase = (PVOID)base_of_dll_of_interest;
     else
         ImageBase = GetModuleHandle(NULL);
+
 #ifdef _WIN64
     DoOutputDebugString("CAPE initialised: 64-bit monitor loaded in process %d at 0x%p, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #else

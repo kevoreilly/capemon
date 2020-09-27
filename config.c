@@ -87,7 +87,7 @@ int read_config(void)
     g_config.dropped_limit = 0;
     g_config.injection = 1;
     g_config.compression = 1;
-    g_config.dump_caller_regions = 1;
+    g_config.caller_dump = 1;
     g_config.api_rate_cap = 1;
 
     memset(g_config.results, 0, MAX_PATH);
@@ -681,9 +681,9 @@ int read_config(void)
                 if (g_config.dump_crypto)
                     DoOutputDebugString("Dumping of crypto API buffers enabled.\n");
 			}
-            else if (!strcmp(key, "dump-caller-regions")) {
-				g_config.dump_caller_regions = value[0] == '1';
-                if (!g_config.dump_caller_regions)
+            else if (!strcmp(key, "caller-dump")) {
+				g_config.caller_dump = value[0] == '1';
+                if (!g_config.caller_dump)
                     DoOutputDebugString("Dumping of caller regions disabled.\n");
 			}
             else if (!strcmp(key, "upx")) {
