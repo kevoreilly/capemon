@@ -27,7 +27,7 @@ void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
 void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
 
 PVOID GetHookCallerBase();
-BOOL InsideHook(LPVOID* ReturnAddress, LPVOID Address);
+BOOL InsideMonitor(LPVOID* ReturnAddress, LPVOID Address);
 PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);

@@ -480,6 +480,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 			{
                 BreakpointFlag = TRUE;
+				break;
             }
         }
 
@@ -501,7 +502,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #ifndef DEBUG_COMMENTS
         if (!TraceRunning && !g_config.divert_debugger_log)
 #endif
-            DoOutputDebugString("CAPEExceptionFilter: breakpoint hit by instruction at 0x%p (thread %d)\n", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+            DoOutputDebugString("CAPEExceptionFilter: breakpoint %d hit by instruction at 0x%p (thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 
         for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
 		{
@@ -661,12 +662,11 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
     //}
     if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
     {
-        // This is a CAPE (or Cuckoo) exception
+        // This is an exception in capemon
         DoOutputDebugString("CAPEExceptionFilter: Exception 0x%x caught at RVA 0x%x in capemon caught accessing 0x%x (expected in memory scans), passing to next handler.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, (BYTE*)ExceptionInfo->ExceptionRecord->ExceptionAddress - g_our_dll_base, ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    // Some other exception occurred. Pass it to next handler.
     //DllRVA = 0;
     //if (ExceptionInfo->ExceptionRecord->ExceptionAddress)
     //    DllName = convert_address_to_dll_name_and_offset((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, &DllRVA);
@@ -675,6 +675,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
     //
     //DoOutputDebugString("CAPEExceptionFilter: Exception 0x%x at 0x%x accessing 0x%x (RVA 0x%x in %s), passing.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], DllRVA, DllName);
 
+    // Some other exception occurred. Pass it to next handler.
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -1113,7 +1114,9 @@ BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
     Dr3 = &(Context->Dr3);
     Dr7 = (PDR7)&(Context->Dr7);
 
+#ifdef DEBUG_COMMENTS
 	DoOutputDebugString("ContextClearBreakpoint: Clearing breakpoint %i\n", pBreakpointInfo->Register);
+#endif
 
     if (pBreakpointInfo->Register == 0)
     {

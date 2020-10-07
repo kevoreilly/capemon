@@ -691,25 +691,23 @@ void revalidate_all_hooks(void)
 
 PVOID g_dll_notify_cookie;
 
-    VOID CALLBACK New_DllLoadNotification(
+VOID CALLBACK New_DllLoadNotification(
 	_In_     ULONG                       NotificationReason,
 	_In_     const PLDR_DLL_NOTIFICATION_DATA NotificationData,
 	_In_opt_ PVOID                       Context)
 {
-	PWCHAR dllname, rundll_path;
+	PWCHAR dllname, cmdline;
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
     dllname = get_dll_basename(&library);
 
 	if (g_config.debug) {
 		int ret = 0;
-		/* Just for debug purposes, gives a stripped fake function name */
 		LOQ_void("system", "sup", "NotificationReason", NotificationReason == 1 ? "load" : "unload", "DllName", library.Buffer, "DllBase", NotificationReason == 1 ? NotificationData->Loaded.DllBase : NotificationData->Unloaded.DllBase);
 	}
 
-    // for rundll32 only
-    rundll_path = wcschr(our_commandline, ' ');
-	while (rundll_path && *rundll_path == L' ')
-        rundll_path++;
+    cmdline = wcschr(our_commandline, ' ');
+	while (cmdline && (*cmdline == L' ' || *cmdline == L'"'))
+        cmdline++;
 
     if (NotificationReason == 1) {
 		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) {
@@ -727,7 +725,7 @@ PVOID g_dll_notify_cookie;
         else if (((!wcsnicmp(our_process_path_w, L"c:\\windows\\system32\\rundll32.exe", 32) ||
                     !wcsnicmp(our_process_path_w, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
                     !wcsnicmp(our_process_path_w, L"c:\\windows\\sysnative\\rundll32.exe", 33))) &&
-                    !wcsnicmp(rundll_path, dllname, wcslen(dllname))) {
+                    !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer))) {
             set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
             if (g_config.file_of_interest == NULL) {
                 g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
@@ -1302,7 +1300,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 	set_lasterrors(&lasterror);
 	return TRUE;
 
-abort:
     // delete config file
     strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
     PathRemoveFileSpec(analyzer_path); // remove filename
@@ -1315,6 +1312,7 @@ abort:
 	sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
 	DeleteFileA(config_fname);
 
+abort:
 	set_lasterrors(&lasterror);
 	return FALSE;
 }

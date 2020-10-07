@@ -531,7 +531,7 @@ int read_config(void)
 			}
             else if (!stricmp(key, "trace-all")) {
                 g_config.debugger = 1;
-				g_config.trace_all = value[0] == '1';
+				g_config.trace_all = (unsigned int)strtoul(value, NULL, 10);
                 if (g_config.trace_all)
                     DoOutputDebugString("Config: Trace all enabled.\n");
 			}
@@ -552,7 +552,7 @@ int read_config(void)
 				}
                 g_config.debugger = 1;
 			}
-			else if (!strcmp(key, "dumptype0")) {
+			else if (!stricmp(key, "dumptype0")) {
                 g_config.dumptype0 = (unsigned int)strtoul(value, NULL, 0);
             }
             else if (!stricmp(key, "type0")) {
@@ -569,36 +569,36 @@ int read_config(void)
                     Type0 = BP_EXEC;
                 }
 			}
-            else if (!strcmp(key, "divert-debugger-log")) {
+            else if (!stricmp(key, "divert-debugger-log")) {
 				g_config.divert_debugger_log = value[0];
                 if (g_config.divert_debugger_log)
                     DoOutputDebugString("Debugger log diverted.\n");
 			}
-            else if (!strcmp(key, "disable-logging")) {
+            else if (!stricmp(key, "disable-logging")) {
 				g_config.disable_logging = value[0] == '1';
                 if (g_config.disable_logging)
                     DoOutputDebugString("Logging disabled (analysis log).\n");
 			}
-            else if (!strcmp(key, "base-on-alloc")) {
+            else if (!stricmp(key, "base-on-alloc")) {
 				g_config.base_on_alloc = value[0] == '1';
                 if (g_config.base_on_alloc)
                     DoOutputDebugString("Base breakpoints on executable memory allocations.\n");
 			}
-            else if (!strcmp(key, "base-on-caller")) {
+            else if (!stricmp(key, "base-on-caller")) {
 				g_config.base_on_caller = value[0] == '1';
                 if (g_config.base_on_caller)
                     DoOutputDebugString("Base breakpoints on new calling regions.\n");
 			}
-            else if (!strcmp(key, "procdump")) {
+            else if (!stricmp(key, "procdump")) {
 				g_config.procdump = value[0] == '1';
                 if (g_config.procdump)
                     DoOutputDebugString("Process dumps enabled.\n");
                 else
                     DoOutputDebugString("Process dumps disabled.\n");
 			}
-            else if (!strcmp(key, "procmemdump")) {
+            else if (!stricmp(key, "procmemdump")) {
 				// for backwards compatibility with spender
-                if (!strcmp(value, "yes"))
+                if (!stricmp(value, "yes"))
                     g_config.procmemdump = 1;
                 else
                     g_config.procmemdump = value[0] == '1';
@@ -607,41 +607,41 @@ int read_config(void)
                 else
                     DoOutputDebugString("Full process memory dumps disabled.\n");
 			}
-            else if (!strcmp(key, "import_reconstruction")) {
+            else if (!stricmp(key, "import_reconstruction")) {
 				g_config.import_reconstruction = value[0] == '1';
                 if (g_config.import_reconstruction)
                     DoOutputDebugString("Import reconstruction of process dumps enabled.\n");
                 else
                     DoOutputDebugString("Import reconstruction of process dumps disabled.\n");
 			}
-            else if (!strcmp(key, "terminate-processes")) {
+            else if (!stricmp(key, "terminate-processes")) {
 				g_config.terminate_processes = value[0] == '1';
                 if (g_config.terminate_processes)
                     DoOutputDebugString("Terminate processes on terminate_event enabled.\n");
                 else
                     DoOutputDebugString("Terminate processes on terminate_event disabled.\n");
 			}
-            else if (!strcmp(key, "branch-trace")) {
+            else if (!stricmp(key, "branch-trace")) {
 				g_config.branch_trace = value[0] == '1';
                 if (g_config.branch_trace)
                     DoOutputDebugString("Branch tracing enabled.\n");
 			}
-            else if (!strcmp(key, "compression")) {
+            else if (!stricmp(key, "compression")) {
 				g_config.compression = value[0] == '1';
                 if (g_config.compression)
                     DoOutputDebugString("Capture of compressed payloads enabled.\n");
 			}
-            else if (!strcmp(key, "unpacker")) {
+            else if (!stricmp(key, "unpacker")) {
 				g_config.unpacker = value[0] == '1';
                 if (g_config.unpacker)
                     DoOutputDebugString("Auto-unpacking of payloads enabled.\n");
 			}
-            else if (!strcmp(key, "injection")) {
+            else if (!stricmp(key, "injection")) {
 				g_config.injection = value[0] == '1';
                 if (g_config.injection)
                     DoOutputDebugString("Capture of injected payloads enabled.\n");
 			}
-            else if (!strcmp(key, "combo")) {
+            else if (!stricmp(key, "combo")) {
                 if (value[0] == '1') {
                     DoOutputDebugString("Combined payload extractions enabled.\n");
                     g_config.compression = 1;
@@ -649,54 +649,54 @@ int read_config(void)
                     g_config.injection = 1;
                 }
 			}
-            else if (!strcmp(key, "dump-config-region")) {
+            else if (!stricmp(key, "dump-config-region")) {
 				g_config.dump_config_region = value[0] == '1';
                 if (g_config.dump_config_region)
                     DoOutputDebugString("Dump config region enabled.\n");
 			}
-            else if (!strcmp(key, "single-process")) {
+            else if (!stricmp(key, "single-process")) {
 				g_config.single_process = value[0] == '1';
                 if (g_config.single_process)
                     DoOutputDebugString("Monitoring child processes disabled.\n");
 			}
-            else if (!strcmp(key, "pdf")) {
+            else if (!stricmp(key, "pdf")) {
 				g_config.pdf = value[0] == '1';
                 if (g_config.pdf && g_config.first_process) {
                     DoOutputDebugString("PDF (Adobe) settings enabled.\n");
                     g_config.api_rate_cap = 0x10;
                 }
 			}
-            else if (!strcmp(key, "fake-rdtsc")) {
+            else if (!stricmp(key, "fake-rdtsc")) {
 				g_config.fake_rdtsc = value[0] == '1';
                 if (g_config.fake_rdtsc)
                     DoOutputDebugString("Fake RDTSC enabled (Trace)\n");
 			}
-            else if (!strcmp(key, "api-rate-cap")) {
+            else if (!stricmp(key, "api-rate-cap")) {
 				g_config.api_rate_cap = (unsigned int)strtoul(value, NULL, 10);
                 if (g_config.api_rate_cap)
                     DoOutputDebugString("API spam prevention enabled (%d).\n", g_config.api_rate_cap);
 			}
-            else if (!strcmp(key, "dump-crypto")) {
+            else if (!stricmp(key, "dump-crypto")) {
 				g_config.dump_crypto = value[0] == '1';
                 if (g_config.dump_crypto)
                     DoOutputDebugString("Dumping of crypto API buffers enabled.\n");
 			}
-            else if (!strcmp(key, "caller-dump")) {
+            else if (!stricmp(key, "caller-dump")) {
 				g_config.caller_dump = value[0] == '1';
                 if (!g_config.caller_dump)
                     DoOutputDebugString("Dumping of caller regions disabled.\n");
 			}
-            else if (!strcmp(key, "upx")) {
+            else if (!stricmp(key, "upx")) {
 				g_config.upx = value[0] == '1';
                 if (g_config.upx)
                     DoOutputDebugString("UPX unpacker enabled.\n");
 			}
-            else if (!strcmp(key, "plugx")) {
+            else if (!stricmp(key, "plugx")) {
 				g_config.plugx = value[0] == '1';
                 if (g_config.plugx)
                     DoOutputDebugString("PlugX package enabled.\n");
 			}
-            else if (!strcmp(key, "hancitor")) {
+            else if (!stricmp(key, "hancitor")) {
 				g_config.hancitor = value[0] == '1';
                 if (g_config.hancitor) {
                     g_config.dump_on_apinames[0] = "InternetCrackUrlA";
@@ -705,7 +705,8 @@ int read_config(void)
                     DoOutputDebugString("Hancitor config & payload extraction enabled.\n");
                 }
 			}
-            else DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
+            else if (stricmp(key, "no-iat"))
+				DoOutputDebugString("CAPE debug - unrecognised key %s.\n", key);
 		}
     }
 

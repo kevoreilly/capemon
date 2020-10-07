@@ -1791,7 +1791,7 @@ BOOL OverlayWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POI
 
     if (ReturnAddress && !TrackedRegionFromHook)
     {
-		if (InsideHook(NULL, ReturnAddress))
+		if (InsideMonitor(NULL, ReturnAddress))
         {
             DoOutputDebugString("OverlayWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
             if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
@@ -1861,7 +1861,7 @@ BOOL FinalByteWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
     if (ReturnAddress && !TrackedRegionFromHook)
     {
-		if (InsideHook(NULL, ReturnAddress))
+		if (InsideMonitor(NULL, ReturnAddress))
         {
             DoOutputDebugString("FinalByteWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
             if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
@@ -2149,7 +2149,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 
     if (ReturnAddress && !TrackedRegionFromHook)
     {
-		if (InsideHook(NULL, ReturnAddress))
+		if (InsideMonitor(NULL, ReturnAddress))
         {
             DoOutputDebugString("AddressOfEPWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
             if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
@@ -2345,7 +2345,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     if (ReturnAddress && !TrackedRegionFromHook)
     {
-		if (InsideHook(NULL, ReturnAddress))
+		if (InsideMonitor(NULL, ReturnAddress))
         {
             DoOutputDebugString("MagicWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
             if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))

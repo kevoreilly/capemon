@@ -177,7 +177,7 @@ __declspec(dllexport) void dummy()
 }
 
 //**************************************************************************************
-BOOL InsideHook(LPVOID* ReturnAddress, LPVOID Address)
+BOOL InsideMonitor(LPVOID* ReturnAddress, LPVOID Address)
 //**************************************************************************************
 {
     if ((ULONG_PTR)Address >= g_our_dll_base && (ULONG_PTR)Address < (g_our_dll_base + g_our_dll_size))
@@ -769,7 +769,7 @@ double GetEntropy(PUCHAR Buffer)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("GetEntropy: Exception occured attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
+        DoOutputDebugString("GetEntropy: Exception occurred attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
         return 0;
     }
 
@@ -889,7 +889,7 @@ int ScanPageForNonZero(LPVOID Address)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("ScanPageForNonZero: Exception occured reading memory address 0x%x\n", (char*)AddressOfPage+p);
+        DoOutputDebugString("ScanPageForNonZero: Exception occurred reading memory address 0x%x\n", (char*)AddressOfPage+p);
         return 0;
     }
 
@@ -916,7 +916,7 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+        DoOutputDebugString("ScanForNonZero: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
         return 0;
     }
 
@@ -943,7 +943,7 @@ int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+        DoOutputDebugString("ScanForNonZero: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
         return 0;
     }
 
@@ -996,24 +996,18 @@ int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
                 pDosHeader = (PIMAGE_DOS_HEADER)((char*)Buffer+p);
 
                 if ((ULONG)pDosHeader->e_lfanew == 0)
-                {
                     // e_lfanew is zero
                     continue;
-                }
 
                 if ((ULONG)pDosHeader->e_lfanew > Size-p)
-                {
                     // e_lfanew points beyond end of region
                     continue;
-                }
 
                 pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
 
                 if (pNtHeader->Signature != IMAGE_NT_SIGNATURE)
-                {
                     // No 'PE' header
                     continue;
-                }
 
                 if ((pNtHeader->FileHeader.Machine == 0) || (pNtHeader->FileHeader.SizeOfOptionalHeader == 0 || pNtHeader->OptionalHeader.SizeOfHeaders == 0))
                 {
@@ -1032,7 +1026,7 @@ int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
         }
         __except(EXCEPTION_EXECUTE_HANDLER)
         {
-            DoOutputDebugString("ScanForPE: Exception occured reading memory address 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
+            DoOutputDebugString("ScanForPE: Exception occurred reading memory address 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
             return 0;
         }
     }
@@ -1094,7 +1088,7 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("TestPERequirements: Exception occured reading region at 0x%x\n", (DWORD_PTR)(pNtHeader));
+        DoOutputDebugString("TestPERequirements: Exception occurred reading region at 0x%x\n", (DWORD_PTR)(pNtHeader));
         return FALSE;
     }
 }
@@ -1142,7 +1136,7 @@ SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("GetMinPESize: Exception occured reading region at 0x%x\n", (DWORD_PTR)(pNtHeader));
+        DoOutputDebugString("GetMinPESize: Exception occurred reading region at 0x%x\n", (DWORD_PTR)(pNtHeader));
         return 0;
     }
 }
@@ -1266,7 +1260,7 @@ int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset)
             continue;
         else if (RetVal == -1)
         {
-            DoOutputDebugString("ScanForDisguisedPE: Exception occured scanning buffer at 0x%x\n", (BYTE*)Buffer+p);
+            DoOutputDebugString("ScanForDisguisedPE: Exception occurred scanning buffer at 0x%x\n", (BYTE*)Buffer+p);
             return 0;
         }
 
@@ -1308,7 +1302,7 @@ DWORD GetEntryPoint(LPVOID Address)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("GetEntryPoint: Exception occured attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+        DoOutputDebugString("GetEntryPoint: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
         return 0;
     }
 
@@ -1357,25 +1351,22 @@ BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size)
 int DumpMemory(LPVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-    char *FullPathName;
     DWORD dwBytesWritten;
     HANDLE hOutputFile;
-    LPVOID BufferCopy;
+    LPVOID BufferCopy = NULL;
+    char *FullPathName = NULL;
+    int ret = 0;
 
     FullPathName = GetName();
 
     hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    if (hOutputFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS)
-    {
-        DoOutputDebugString("DumpMemory: CAPE output filename exists already: %s", FullPathName);
-        free(FullPathName);
-        return 0;
-    }
-
     if (hOutputFile == INVALID_HANDLE_VALUE)
     {
-        DoOutputErrorString("DumpMemory: Could not create CAPE output file");
+        if (GetLastError() == ERROR_FILE_EXISTS)
+            DoOutputDebugString("DumpMemory: CAPE output filename exists already: %s", FullPathName);
+        else
+            DoOutputErrorString("DumpMemory: Could not create CAPE output file");
         free(FullPathName);
         return 0;
     }
@@ -1387,8 +1378,7 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
     if (!Size)
     {
         DoOutputDebugString("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
-        free(FullPathName);
-        return 0;
+        goto end;
     }
 
     BufferCopy = (LPVOID)((BYTE*)malloc(Size));
@@ -1396,7 +1386,7 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
     if (BufferCopy == NULL)
     {
         DoOutputDebugString("DumpMemory: Failed to allocate 0x%x bytes for buffer copy.\n", Size);
-        return FALSE;
+        goto end;
     }
 
     __try
@@ -1405,31 +1395,30 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        DoOutputDebugString("DumpMemory: Exception occured reading memory address 0x%x\n", Buffer);
-        return 0;
+        DoOutputDebugString("DumpMemory: Exception occurred reading memory address 0x%x\n", Buffer);
+        goto end;
     }
 
     if (FALSE == WriteFile(hOutputFile, BufferCopy, (DWORD)Size, &dwBytesWritten, NULL))
     {
         DoOutputErrorString("DumpMemory: WriteFile error on CAPE output file");
-        free(FullPathName);
-        free(BufferCopy);
-        return 0;
+        goto end;
     }
-
-    CloseHandle(hOutputFile);
 
     CapeMetaData->Address = Buffer;
     CapeMetaData->Size = Size;
-
     CapeOutputFile(FullPathName);
-
     DoOutputDebugString("DumpMemory: CAPE output file successfully created: %s (size 0x%x)", FullPathName, Size);
-    // We can free the filename buffers
-    free(FullPathName);
-    free(BufferCopy);
+    ret = 1;
 
-    return 1;
+end:
+    CloseHandle(hOutputFile);
+    if (FullPathName)
+        free(FullPathName);
+    if (BufferCopy)
+        free(BufferCopy);
+
+    return ret;
 }
 
 //**************************************************************************************
@@ -1610,7 +1599,7 @@ int DumpImageInCurrentProcess(LPVOID BaseAddress)
         }
         __except(EXCEPTION_EXECUTE_HANDLER)
         {
-            DoOutputDebugString("DumpImageInCurrentProcess: Exception occured restoring PE header at 0x%p\n", BaseAddress);
+            DoOutputDebugString("DumpImageInCurrentProcess: Exception occurred restoring PE header at 0x%p\n", BaseAddress);
             return 0;
         }
 
@@ -1784,11 +1773,7 @@ int DoProcessDump(PVOID CallerBase)
     }
 
     if (base_of_dll_of_interest)
-    {
-        NewImageBase = (PVOID)base_of_dll_of_interest;
-        if (ImageBase && ImageBase == NewImageBase)
-            NewImageBase = NULL;
-    }
+        ImageBase = (PVOID)base_of_dll_of_interest;
     else
     {
         NewImageBase = GetModuleHandle(NULL);
@@ -2071,7 +2056,7 @@ void CAPE_init()
     DoOutputDebugString("CAPE initialised: 32-bit monitor loaded in process %d at 0x%x, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
-    DoOutputDebugString("Commandline: %s.\n", CommandLine);
+    DoOutputDebugString("Commandline: %s\n", CommandLine);
 
     return;
 }
