@@ -123,12 +123,12 @@ HOOKDEF(BOOL, WINAPI, CryptDecrypt,
     if (ret && g_config.hancitor) {
         CapeMetaData->DumpType = HANCITOR_CONFIG;
         DumpMemory(pbData, *pdwDataLen);
-        DoOutputDebugString("CryptDecrypt hook: Dumped Hancitor config at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
+        DebugOutput("CryptDecrypt hook: Dumped Hancitor config at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
     }
     if (ret && g_config.dump_crypto) {
         CapeMetaData->DumpType = DATADUMP;
         DumpMemory(pbData, *pdwDataLen);
-        DoOutputDebugString("CryptDecrypt hook: Dumped buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
+        DebugOutput("CryptDecrypt hook: Dumped buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
     }
 	LOQ_bool("crypto", "ppBii", "CryptKey", hKey, "CryptHash", hHash,
         "Buffer", pdwDataLen, pbData, "Length", *pdwDataLen, "Final", Final);
@@ -148,7 +148,7 @@ HOOKDEF(BOOL, WINAPI, CryptEncrypt,
     if (g_config.dump_crypto) {
         CapeMetaData->DumpType = DATADUMP;
         DumpMemory(pbData, *pdwDataLen);
-        DoOutputDebugString("CryptEncrypt hook: Dumped buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
+        DebugOutput("CryptEncrypt hook: Dumped buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
     }
 	LOQ_bool("crypto", "ppbii", "CryptKey", hKey, "CryptHash", hHash,
         "Buffer", dwBufLen, pbData, "Length", *pdwDataLen, "Final", Final);

@@ -3,8 +3,8 @@
 
 //#define DEBUG_COMMENTS
 
-extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 bool IATSearch::searchImportAddressTableInProcess( DWORD_PTR startAddress, DWORD_PTR* addressIAT, DWORD* sizeIAT, bool advanced )
 {
@@ -23,7 +23,7 @@ bool IATSearch::searchImportAddressTableInProcess( DWORD_PTR startAddress, DWORD
 	if(!addressInIAT)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("searchImportAddressTableInProcess :: addressInIAT not found, startAddress " PRINTF_DWORD_PTR_FULL, startAddress);
+		DebugOutput("searchImportAddressTableInProcess :: addressInIAT not found, startAddress " PRINTF_DWORD_PTR_FULL, startAddress);
 #endif
 		return false;
 	}
@@ -49,7 +49,7 @@ bool IATSearch::findIATAdvanced( DWORD_PTR startAddress, DWORD_PTR* addressIAT, 
 	if (!readMemoryFromProcess((DWORD_PTR)baseAddress, memorySize,dataBuffer))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("findAPIAddressInIAT2 :: error reading memory");
+		DebugOutput("findAPIAddressInIAT2 :: error reading memory");
 #endif
 		delete [] dataBuffer;
 		return false;
@@ -94,8 +94,8 @@ bool IATSearch::findIATAdvanced( DWORD_PTR startAddress, DWORD_PTR* addressIAT, 
 		return false;
 	}
 
-	DoOutputDebugString("IAT Search Adv: Found %d (0x%X) possible IAT entries.", iatPointers.size(), iatPointers.size());
-	DoOutputDebugString("IAT Search Adv: Possible IAT first " PRINTF_DWORD_PTR_FULL " last " PRINTF_DWORD_PTR_FULL " entry.", *(iatPointers.begin()), *(--iatPointers.end()));
+	DebugOutput("IAT Search Adv: Found %d (0x%X) possible IAT entries.", iatPointers.size(), iatPointers.size());
+	DebugOutput("IAT Search Adv: Possible IAT first " PRINTF_DWORD_PTR_FULL " last " PRINTF_DWORD_PTR_FULL " entry.", *(iatPointers.begin()), *(--iatPointers.end()));
 
 	delete [] dataBuffer;
 
@@ -121,7 +121,7 @@ DWORD_PTR IATSearch::findAPIAddressInIAT(DWORD_PTR startAddress)
 		if (!readMemoryFromProcess(startAddress, sizeof(dataBuffer), dataBuffer))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("findAPIAddressInIAT :: error reading memory " PRINTF_DWORD_PTR_FULL, startAddress);
+			DebugOutput("findAPIAddressInIAT :: error reading memory " PRINTF_DWORD_PTR_FULL, startAddress);
 #endif
 			return 0;
 		}
@@ -163,7 +163,7 @@ DWORD_PTR IATSearch::findNextFunctionAddress()
 					{
 #ifdef DEBUG_COMMENTS
 						distorm_format(&decomposerCi, &decomposerResult[i], &inst);
-						DoOutputDebugString("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, INSTRUCTION_GET_TARGET(&decomposerResult[i]));
+						DebugOutput("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, INSTRUCTION_GET_TARGET(&decomposerResult[i]));
 #endif
 						return (DWORD_PTR)INSTRUCTION_GET_TARGET(&decomposerResult[i]);
 					}
@@ -193,7 +193,7 @@ DWORD_PTR IATSearch::findIATPointer()
 					{
 #ifdef DEBUG_COMMENTS
 						distorm_format(&decomposerCi, &decomposerResult[i], &inst);
-						DoOutputDebugString("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]));
+						DebugOutput("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]));
 #endif
 						return INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]);
 					}
@@ -203,7 +203,7 @@ DWORD_PTR IATSearch::findIATPointer()
 						//jmp dword ptr || call dword ptr
 #ifdef DEBUG_COMMENTS
 						distorm_format(&decomposerCi, &decomposerResult[i], &inst);
-						DoOutputDebugString("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, decomposerResult[i].disp);
+						DebugOutput("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, decomposerResult[i].disp);
 #endif
 						return (DWORD_PTR)decomposerResult[i].disp;
 					}
@@ -223,7 +223,7 @@ bool IATSearch::isIATPointerValid(DWORD_PTR iatPointer, bool checkRedirects)
 	if (!readMemoryFromProcess(iatPointer,sizeof(DWORD_PTR),&apiAddress))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("isIATPointerValid :: error reading memory");
+		DebugOutput("isIATPointerValid :: error reading memory");
 #endif
 		return false;
 	}
@@ -276,7 +276,7 @@ bool IATSearch::findIATStartAndSize(DWORD_PTR address, DWORD_PTR * addressIAT, D
 	if (!readMemoryFromProcess(baseAddress, baseSize, dataBuffer))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("findIATStartAddress :: error reading memory");
+		DebugOutput("findIATStartAddress :: error reading memory");
 #endif
 		delete [] dataBuffer;
 		return false;
@@ -331,13 +331,13 @@ DWORD IATSearch::findIATSize(DWORD_PTR baseAddress, DWORD_PTR iatAddress, BYTE *
 	pIATAddress = (DWORD_PTR *)((iatAddress - baseAddress) + (DWORD_PTR)dataBuffer);
 
 #ifdef DEBUG_COMMENTS
-	DoOutputDebugString("findIATSize :: baseAddress %X iatAddress %X dataBuffer %X pIATAddress %X", baseAddress, iatAddress, dataBuffer, pIATAddress);
+	DebugOutput("findIATSize :: baseAddress %X iatAddress %X dataBuffer %X pIATAddress %X", baseAddress, iatAddress, dataBuffer, pIATAddress);
 #endif
 
 	while((DWORD_PTR)pIATAddress < ((DWORD_PTR)dataBuffer + bufferSize - 1))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("findIATSize :: %X %X %X", pIATAddress, *pIATAddress, *(pIATAddress + 1));
+		DebugOutput("findIATSize :: %X %X %X", pIATAddress, *pIATAddress, *(pIATAddress + 1));
 #endif
 		if (isInvalidMemoryForIat(*pIATAddress)) //normal is 0
 		{
@@ -375,7 +375,7 @@ void IATSearch::findIATPointers(std::set<DWORD_PTR> & iatPointers)
 					{
 #ifdef DEBUG_COMMENTS
 						distorm_format(&decomposerCi, &decomposerResult[i], &inst);
-						DoOutputDebugString("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]));
+						DebugOutput("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]));
 #endif
 						iatPointers.insert(INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]));
 					}
@@ -385,7 +385,7 @@ void IATSearch::findIATPointers(std::set<DWORD_PTR> & iatPointers)
 						//jmp dword ptr || call dword ptr
 #ifdef DEBUG_COMMENTS
 						distorm_format(&decomposerCi, &decomposerResult[i], &inst);
-						DoOutputDebugString("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, decomposerResult[i].disp);
+						DebugOutput("%s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, inst.mnemonic.p, inst.operands.p, decomposerResult[i].ops[0].type, decomposerResult[i].size, decomposerResult[i].disp);
 #endif
 						iatPointers.insert((DWORD_PTR)decomposerResult[i].disp);
 					}
@@ -409,7 +409,7 @@ void IATSearch::findExecutableMemoryPagesByStartAddress( DWORD_PTR startAddress,
 	if (VirtualQueryEx(hProcess,(LPCVOID)startAddress, &memBasic, sizeof(MEMORY_BASIC_INFORMATION)) != sizeof(MEMORY_BASIC_INFORMATION))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("findIATStartAddress :: VirtualQueryEx error %u", GetLastError());
+		DebugOutput("findIATStartAddress :: VirtualQueryEx error %u", GetLastError());
 #endif
 		return;
 	}

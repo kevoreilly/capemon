@@ -27,8 +27,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 const int PAGE_SIZE = 0x1000;
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 BOOL WoW64HookInstalled;
 
@@ -46,7 +46,7 @@ extern BOOL WoW64PatchBreakpoint(unsigned int Register)
     if (WoW64HookInstalled == FALSE)
         return FALSE;
 
-    DoOutputDebugString("WoW64PatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+    DebugOutput("WoW64PatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
     switch(Register)
 	{
@@ -64,7 +64,7 @@ extern BOOL WoW64PatchBreakpoint(unsigned int Register)
         break;
     }
 
-    DoOutputDebugString("WoW64PatchBreakpoint: patched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+    DebugOutput("WoW64PatchBreakpoint: patched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
     return TRUE;
 }
@@ -76,7 +76,7 @@ extern BOOL WoW64UnpatchBreakpoint(unsigned int Register)
     if (WoW64HookInstalled == FALSE)
         return FALSE;
 
-    DoOutputDebugString("WoW64UnpatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+    DebugOutput("WoW64UnpatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
     switch(Register)
 	{
@@ -94,7 +94,7 @@ extern BOOL WoW64UnpatchBreakpoint(unsigned int Register)
         break;
     }
 
-    DoOutputDebugString("WoW64UnpatchBreakpoint: unpatched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+    DebugOutput("WoW64UnpatchBreakpoint: unpatched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
     return TRUE;
 }
@@ -167,7 +167,7 @@ const void EnableWow64Hook()
     DWORD dwOldProtect = 0;
     if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, PAGE_EXECUTE_READWRITE, &dwOldProtect))
     {
-        DoOutputErrorString("VirtualProtectEx64 failed to set PAGE_EXECUTE_READWRITE");
+        ErrorOutput("VirtualProtectEx64 failed to set PAGE_EXECUTE_READWRITE");
         return;
     }
 
@@ -175,7 +175,7 @@ const void EnableWow64Hook()
 
     if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, dwOldProtect, &dwOldProtect))
     {
-        DoOutputErrorString("VirtualProtect failed to restore dwOldProtect");
+        ErrorOutput("VirtualProtect failed to restore dwOldProtect");
         return;
     }
 }
@@ -189,20 +189,20 @@ extern BOOL WoW64fix(void)
 
     if (!GetVersionEx(&OSVersion))
     {
-        DoOutputErrorString("WoW64fix: Failed to get OS version");
+        ErrorOutput("WoW64fix: Failed to get OS version");
         return FALSE;
     }
 
     if (OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1)
     {
-        DoOutputDebugString("WoW64fix: Windows version %d.%d not supported.\n", OSVersion.dwMajorVersion, OSVersion.dwMinorVersion);
+        DebugOutput("WoW64fix: Windows version %d.%d not supported.\n", OSVersion.dwMajorVersion, OSVersion.dwMinorVersion);
         return FALSE;
     }
 
     IsWow64Process(GetCurrentProcess(), &WoW64HookInstalled);
     if (WoW64HookInstalled == FALSE)
     {
-        DoOutputDebugString("WoW64 not detected.\n");
+        DebugOutput("WoW64 not detected.\n");
         return FALSE;
     }
 
@@ -212,13 +212,13 @@ extern BOOL WoW64fix(void)
     pfnKiUserExceptionDispatcher = GetProcAddress64(ntdll64, "KiUserExceptionDispatcher");
     pfnNtSetContextThread = GetProcAddress64(ntdll64, "NtSetContextThread");
 
-    DoOutputDebugString("WoW64 detected: 64-bit ntdll base: 0x%x, KiUserExceptionDispatcher: 0x%x, NtSetContextThread: 0x%x, Wow64PrepareForException: 0x%x\n", ntdll64, pfnKiUserExceptionDispatcher, pfnNtSetContextThread, pfnWow64PrepareForException);
+    DebugOutput("WoW64 detected: 64-bit ntdll base: 0x%x, KiUserExceptionDispatcher: 0x%x, NtSetContextThread: 0x%x, Wow64PrepareForException: 0x%x\n", ntdll64, pfnKiUserExceptionDispatcher, pfnNtSetContextThread, pfnWow64PrepareForException);
 
     lpNewJumpLocation = CreateHook((DWORD_PTR)pfnKiUserExceptionDispatcher, (DWORD_PTR)pfnNtSetContextThread, (DWORD_PTR)pfnWow64PrepareForException);
 
     EnableWow64Hook();
 
-    DoOutputDebugString("WoW64 workaround: KiUserExceptionDispatcher hook installed at: 0x%x\n", lpNewJumpLocation);
+    DebugOutput("WoW64 workaround: KiUserExceptionDispatcher hook installed at: 0x%x\n", lpNewJumpLocation);
 
     return TRUE;
 }

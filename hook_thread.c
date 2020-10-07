@@ -28,7 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
@@ -149,7 +149,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 		//	add_ignored_thread(tid);
 
         if (g_config.debugger && !called_by_hook() && BreakpointsSet) {
-            DoOutputDebugString("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
+            DebugOutput("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }
 
@@ -203,7 +203,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 
 		if (pid != GetCurrentProcessId())
             if (g_config.debugger && !called_by_hook()) {
-                DoOutputDebugString("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
+                DebugOutput("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
                 InitNewThreadBreakpoints(tid);
             }
 
@@ -312,7 +312,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
             Context->Dr7 = CurrentContext.Dr7;
         }
         else
-            DoOutputDebugString("NtSetContextThread: Failed to protect debugger breakpoints.\n");
+            DebugOutput("NtSetContextThread: Failed to protect debugger breakpoints.\n");
     }
 
     ret = Old_NtSetContextThread(ThreadHandle, Context);
@@ -430,7 +430,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 
 	if (ret != NULL) {
         if (g_config.debugger && !called_by_hook()) {
-            DoOutputDebugString("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
+            DebugOutput("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
             InitNewThreadBreakpoints(*lpThreadId);
         }
 
@@ -476,7 +476,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
             if (!g_config.single_process)
                 pipe("PROCESS:%d:%d,%d", is_suspended(pid, *lpThreadId), pid, *lpThreadId);
         else if (g_config.debugger && !called_by_hook()) {
-            DoOutputDebugString("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
+            DebugOutput("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
             InitNewThreadBreakpoints(*lpThreadId);
         }
 
@@ -526,7 +526,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
             if (!g_config.single_process)
                 pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
         else if (g_config.debugger && !called_by_hook()) {
-            DoOutputDebugString("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
+            DebugOutput("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
             InitNewThreadBreakpoints(tid);
         }
 		if (CreateSuspended == FALSE && is_valid_address_range((ULONG_PTR)ThreadHandle, 4)) {

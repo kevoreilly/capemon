@@ -44,7 +44,7 @@ volatile int dummy_val;
 
 extern void CAPE_init();
 extern void CAPE_post_init();
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase);
@@ -713,7 +713,7 @@ VOID CALLBACK New_DllLoadNotification(
 		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) {
             if (!base_of_dll_of_interest)
                 set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
-            DoOutputDebugString("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            DebugOutput("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
             if (g_config.unpacker)
                 UnpackerDllInit((PVOID)base_of_dll_of_interest);
             if (g_config.debugger)
@@ -731,7 +731,7 @@ VOID CALLBACK New_DllLoadNotification(
                 g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
                 wcsncpy(g_config.file_of_interest, library.Buffer, wcslen(library.Buffer));
             }
-            DoOutputDebugString("rundll32 target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            DebugOutput("rundll32 target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
             if (g_config.debugger)
             {
                 BreakpointsHit = FALSE;
@@ -771,7 +771,7 @@ VOID CALLBACK New_DllLoadNotification(
             //        }
             //    }
             //}
-            DoOutputDebugString("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            DebugOutput("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
         }
 	}
 	else {
@@ -1016,21 +1016,21 @@ next:
             }
             if (FunctionName)
             {
-                DoOutputDebugString("%s::%s (`) %-20s %-6s%-4s%-30s\n", dllname, FunctionName, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+                DebugOutput("%s::%s (`) %-20s %-6s%-4s%-30s\n", dllname, FunctionName, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
             }
                 
             else
             {
-                DoOutputDebugString("%s::0x%p %-20s %-6s%-4s%-30s\n", dllname, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+                DebugOutput("%s::0x%p %-20s %-6s%-4s%-30s\n", dllname, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
             }
         }
         else
         {
-            DoOutputDebugString("0x%p %-20s %-6s%-4s%-30s\n", (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+            DebugOutput("0x%p %-20s %-6s%-4s%-30s\n", (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
         }
 	}
 
-    DoOutputDebugString(msg);
+    DebugOutput(msg);
 
 	if (dllname)
 		free(dllname);
@@ -1192,7 +1192,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
         if (g_config.standalone) {
             // initialise CAPE
             CAPE_init();
-            DoOutputDebugString("Standalone mode initialised.\n");
+            DebugOutput("Standalone mode initialised.\n");
             return TRUE;
         }
 
@@ -1217,7 +1217,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 #if CUCKOODBG
 			;
 		else
-			DoOutputDebugString("Config loaded.\n");
+			DebugOutput("Config loaded.\n");
 #else
 			// if we're not debugging, then failure to read the capemon config should be a critical error
 			goto abort;

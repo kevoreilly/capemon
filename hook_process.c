@@ -31,8 +31,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\Debugger.h"
 #include "CAPE\Unpacker.h"
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
@@ -451,7 +451,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	}
 
     if (process_shutting_down && g_config.unpacker) {
-        DoOutputDebugString("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
+        DebugOutput("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
         g_terminate_event_handle = NULL;    // This tells ProcessTrackedRegions it's the final time
         ProcessTrackedRegions();
         ClearAllBreakpoints();
@@ -460,11 +460,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
     if (process_shutting_down && g_config.debugger)
     {
         DebuggerShutdown();
-        DoOutputDebugString("NtTerminateProcess hook: Debugger shutdown (process %d).\n", GetCurrentProcessId());
+        DebugOutput("NtTerminateProcess hook: Debugger shutdown (process %d).\n", GetCurrentProcessId());
     }
 
     if (process_shutting_down && g_config.procdump && !ProcessDumped) {
-        DoOutputDebugString("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
+        DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
         DoProcessDump(GetHookCallerBase());
     }
 
@@ -1011,13 +1011,13 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 
     if (!RetVal && ExceptionRecord) {
         if (ExceptionRecord->NumberParameters == 1) {
-            DoOutputDebugString("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, parameter 0x%x.\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->ExceptionInformation[0]);
+            DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, parameter 0x%x.\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->ExceptionInformation[0]);
         }
         else if (ExceptionRecord->NumberParameters == 2) {
-            DoOutputDebugString("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, parameters 0x%x and 0x%x.\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
+            DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, parameters 0x%x and 0x%x.\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
         }
         else {
-            DoOutputDebugString("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, %d parameters: 0x%x, 0x%x & ...\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->NumberParameters, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
+            DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, %d parameters: 0x%x, 0x%x & ...\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->NumberParameters, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
         }
     }
 

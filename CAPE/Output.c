@@ -27,9 +27,9 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 //#define DEBUG_COMMENTS
 #define MAX_INT_STRING_LEN 10 // 4294967294
 
-TCHAR DebugOutput[MAX_PATH];
-TCHAR PipeOutput[MAX_PATH];
-TCHAR ErrorOutput[MAX_PATH];
+TCHAR DebugBuffer[MAX_PATH];
+TCHAR PipeBuffer[MAX_PATH];
+TCHAR ErrorBuffer[MAX_PATH];
 CHAR DebuggerLine[MAX_PATH];
 
 extern char* GetResultsPath(char* FolderName);
@@ -46,21 +46,21 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
     if (g_config.disable_logging)
         return;
 
-    memset(DebugOutput, 0, MAX_PATH*sizeof(CHAR));
-    _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
+    memset(DebugBuffer, 0, MAX_PATH*sizeof(CHAR));
+    _vsntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, lpOutputString, args);
     if (g_config.standalone)
-        OutputDebugString(DebugOutput);
+        OutputDebugString(DebugBuffer);
     else
     {
-        memset(PipeOutput, 0, MAX_PATH*sizeof(CHAR));
-        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugOutput);
-        pipe(PipeOutput, strlen(PipeOutput));
+        memset(PipeBuffer, 0, MAX_PATH*sizeof(CHAR));
+        _sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugBuffer);
+        pipe(PipeBuffer, strlen(PipeBuffer));
     }
     return;
 }
 
 //**************************************************************************************
-void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
+void DebugOutput(_In_ LPCTSTR lpOutputString, ...)
 //**************************************************************************************
 {
     va_list args;
@@ -71,7 +71,7 @@ void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...)
 }
 
 //**************************************************************************************
-void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
+void ErrorOutput(_In_ LPCTSTR lpOutputString, ...)
 //**************************************************************************************
 {
     va_list args;
@@ -90,18 +90,18 @@ void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...)
         0,
 		NULL);
 
-    memset(DebugOutput, 0, MAX_PATH*sizeof(CHAR));
-    _vsntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, lpOutputString, args);
+    memset(DebugBuffer, 0, MAX_PATH*sizeof(CHAR));
+    _vsntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, lpOutputString, args);
 
-    memset(ErrorOutput, 0, MAX_PATH*sizeof(CHAR));
-    _sntprintf_s(ErrorOutput, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugOutput, (char*)lpMsgBuf);
+    memset(ErrorBuffer, 0, MAX_PATH*sizeof(CHAR));
+    _sntprintf_s(ErrorBuffer, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, (char*)lpMsgBuf);
     if (g_config.standalone)
-        OutputDebugString(ErrorOutput);
+        OutputDebugString(ErrorBuffer);
     else
     {
-        memset(PipeOutput, 0, MAX_PATH*sizeof(CHAR));
-        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorOutput);
-        pipe(PipeOutput, strlen(PipeOutput));
+        memset(PipeBuffer, 0, MAX_PATH*sizeof(CHAR));
+        _sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorBuffer);
+        pipe(PipeBuffer, strlen(PipeBuffer));
     }
 
     va_end(args);
@@ -139,13 +139,13 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
         if (hMetadata == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS)
         {
-            DoOutputDebugString("CAPE metadata filename exists already: %s", MetadataPath);
+            DebugOutput("CAPE metadata filename exists already: %s", MetadataPath);
             return;
         }
 
         if (hMetadata == INVALID_HANDLE_VALUE)
         {
-            DoOutputErrorString("Could not create CAPE metadata file");
+            ErrorOutput("Could not create CAPE metadata file");
             return;
         }
 
@@ -158,7 +158,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         {
             if (g_config.file_of_interest == NULL)
             {
-                DoOutputDebugString("CAPE Error: g_config.file_of_interest is NULL.\n", g_config.file_of_interest);
+                DebugOutput("CAPE Error: g_config.file_of_interest is NULL.\n", g_config.file_of_interest);
                 return;
             }
 
@@ -173,7 +173,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
 		if (FALSE == WriteFile(hMetadata, Buffer, (DWORD)strlen(Buffer), &dwBytesWritten, NULL))
 		{
-			DoOutputDebugString("WriteFile error on CAPE metadata file %s\n");
+			DebugOutput("WriteFile error on CAPE metadata file %s\n");
 			CloseHandle(hMetadata);
 			free(Buffer);
 			return;
@@ -181,15 +181,15 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
 		CloseHandle(hMetadata);
 
-        memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
+        memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
 
         if (g_config.standalone)
-            OutputDebugString(DebugOutput);
+            OutputDebugString(DebugBuffer);
 
-        memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "FILE_DUMP:%s", lpOutputFile);
-        pipe(PipeOutput, strlen(PipeOutput));
+        memset(PipeBuffer, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "FILE_DUMP:%s", lpOutputFile);
+        pipe(PipeBuffer, strlen(PipeBuffer));
 
 	}
 	else if (CapeMetaData && CapeMetaData->DumpType != PROCDUMP)
@@ -200,13 +200,13 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
         if (hMetadata == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS)
         {
-            DoOutputDebugString("CAPE metadata filename exists already: %s", MetadataPath);
+            DebugOutput("CAPE metadata filename exists already: %s", MetadataPath);
             return;
         }
 
         if (hMetadata == INVALID_HANDLE_VALUE)
         {
-            DoOutputErrorString("Could not create CAPE metadata file");
+            ErrorOutput("Could not create CAPE metadata file");
             return;
         }
 
@@ -240,7 +240,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
         if (FALSE == WriteFile(hMetadata, Buffer, (DWORD)strlen(Buffer), &dwBytesWritten, NULL))
 		{
-			DoOutputDebugString("WriteFile error on CAPE metadata file %s\n");
+			DebugOutput("WriteFile error on CAPE metadata file %s\n");
 			CloseHandle(hMetadata);
 			free(Buffer);
 			return;
@@ -248,18 +248,18 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
 		CloseHandle(hMetadata);
 
-        memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
+        memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
 
         if (g_config.standalone)
-            OutputDebugString(DebugOutput);
+            OutputDebugString(DebugBuffer);
 
-        memset(PipeOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _sntprintf_s(PipeOutput, MAX_PATH, _TRUNCATE, "FILE_CAPE:%s", lpOutputFile);
-        pipe(PipeOutput, strlen(PipeOutput));
+        memset(PipeBuffer, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "FILE_CAPE:%s", lpOutputFile);
+        pipe(PipeBuffer, strlen(PipeBuffer));
 	}
 	else
-		DoOutputDebugString("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
+		DebugOutput("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
 
 	return;
 #else
@@ -277,7 +277,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         {
             if (g_config.file_of_interest == NULL)
             {
-                DoOutputDebugString("CAPE Error: g_config.file_of_interest is NULL.\n", g_config.file_of_interest);
+                DebugOutput("CAPE Error: g_config.file_of_interest is NULL.\n", g_config.file_of_interest);
                 return;
             }
 
@@ -290,10 +290,10 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		// This metadata format is specific to process dumps
 		_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
-        memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
+        memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
         if (g_config.standalone)
-            OutputDebugString(DebugOutput);
+            OutputDebugString(DebugBuffer);
         else
         {
             char OutputBuffer[MAX_PATH];
@@ -332,11 +332,11 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
             if (CapeMetaData->ProcessPath)
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
-        memset(DebugOutput, 0, MAX_PATH*sizeof(TCHAR));
-        _sntprintf_s(DebugOutput, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
+        memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+        _sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
 
         if (g_config.standalone)
-            OutputDebugString(DebugOutput);
+            OutputDebugString(DebugBuffer);
         else
         {
             char OutputBuffer[MAX_PATH];
@@ -346,7 +346,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
         }
 	}
 	else
-		DoOutputDebugString("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
+		DebugOutput("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
 
 	return;
 #endif
@@ -376,7 +376,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
     if (OutputFilename == NULL)
     {
-        DoOutputErrorString("DebuggerOutput: failed to allocate memory for file name string");
+        ErrorOutput("DebuggerOutput: failed to allocate memory for file name string");
         return;
     }
 
@@ -395,10 +395,10 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
         if (DebuggerLog == INVALID_HANDLE_VALUE)
         {
-            DoOutputErrorString("DebuggerOutput: Unable to open debugger logfile %s.\n", FullPathName);
+            ErrorOutput("DebuggerOutput: Unable to open debugger logfile %s.\n", FullPathName);
             return;
         }
-        DoOutputDebugString("DebuggerOutput: Debugger logfile %s.\n", FullPathName);
+        DebugOutput("DebuggerOutput: Debugger logfile %s.\n", FullPathName);
 
         time(&Time);
         memset(DebuggerLine, 0, MAX_PATH*sizeof(CHAR));

@@ -28,7 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define UNHOOK_MAXCOUNT 2048
 #define UNHOOK_BUFSIZE 32
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
 extern int DoProcessDump(PVOID CallerBase);
 extern BOOL ProcessDumped;
@@ -269,30 +269,30 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     if (g_config.unpacker) {
         g_config.unpacker = FALSE;
-        DoOutputDebugString("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
+        DebugOutput("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
         ProcessTrackedRegions();
         ClearAllBreakpoints();
     }
 
     if (g_config.procdump) {
         if (!ProcessDumped) {
-            DoOutputDebugString("Terminate Event: Attempting to dump process %d\n", ProcessId);
+            DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
             DoProcessDump(NULL);
         }
         else
-            DoOutputDebugString("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
+            DebugOutput("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
     }
     else
-        DoOutputDebugString("Terminate Event: Skipping dump of process %d\n", ProcessId);
+        DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {
         SetEvent(g_terminate_event_handle);
         CloseHandle(g_terminate_event_handle);
-        DoOutputDebugString("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
+        DebugOutput("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
     }
     else
-        DoOutputDebugString("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
+        DebugOutput("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
 
     file_handle_terminate();
     log_flush();

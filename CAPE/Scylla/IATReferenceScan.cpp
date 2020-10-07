@@ -4,8 +4,8 @@
 
 //#define DEBUG_COMMENTS
 
-extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 //FileLog IATReferenceScan::directImportLog("Scylla_direct_imports.log");
 
@@ -74,7 +74,7 @@ void IATReferenceScan::startScan(DWORD_PTR imageBase, DWORD imageSize, DWORD_PTR
 		if (!VirtualQueryEx(ProcessAccessHelp::hProcess, (LPCVOID)section, &memBasic, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("VirtualQueryEx failed %d", GetLastError());
+			DebugOutput("VirtualQueryEx failed %d", GetLastError());
 #endif
 
 			break;
@@ -231,7 +231,7 @@ void IATReferenceScan::findNormalIatReference( _DInst * instruction )
 
 #ifdef DEBUG_COMMENTS
 				distorm_format(&ProcessAccessHelp::decomposerCi, instruction, &inst);
-				DoOutputDebugString(PRINTF_DWORD_PTR_FULL " " PRINTF_DWORD_PTR_FULL " %s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, (DWORD_PTR)instruction->addr, ImageBase, inst.mnemonic.p, inst.operands.p, instruction->ops[0].type, instruction->size, INSTRUCTION_GET_RIP_TARGET(instruction));
+				DebugOutput(PRINTF_DWORD_PTR_FULL " " PRINTF_DWORD_PTR_FULL " %s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, (DWORD_PTR)instruction->addr, ImageBase, inst.mnemonic.p, inst.operands.p, instruction->ops[0].type, instruction->size, INSTRUCTION_GET_RIP_TARGET(instruction));
 #endif
 
 				if (INSTRUCTION_GET_RIP_TARGET(instruction) >= IatAddressVA && INSTRUCTION_GET_RIP_TARGET(instruction) < (IatAddressVA + IatSize))
@@ -240,7 +240,7 @@ void IATReferenceScan::findNormalIatReference( _DInst * instruction )
 
 					getIatEntryAddress(&ref);
 
-					//DoOutputDebugString("iat entry "PRINTF_DWORD_PTR_FULL,ref.targetAddressInIat);
+					//DebugOutput("iat entry "PRINTF_DWORD_PTR_FULL,ref.targetAddressInIat);
 
 					iatReferenceList.push_back(ref);
 				}
@@ -252,7 +252,7 @@ void IATReferenceScan::findNormalIatReference( _DInst * instruction )
 				//jmp dword ptr || call dword ptr
 #ifdef DEBUG_COMMENTS
 				distorm_format(&ProcessAccessHelp::decomposerCi, instruction, &inst);
-				DoOutputDebugString(PRINTF_DWORD_PTR_FULL " " PRINTF_DWORD_PTR_FULL " %s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, (DWORD_PTR)instruction->addr, ImageBase, inst.mnemonic.p, inst.operands.p, instruction->ops[0].type, instruction->size, instruction->disp);
+				DebugOutput(PRINTF_DWORD_PTR_FULL " " PRINTF_DWORD_PTR_FULL " %s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL, (DWORD_PTR)instruction->addr, ImageBase, inst.mnemonic.p, inst.operands.p, instruction->ops[0].type, instruction->size, instruction->disp);
 #endif
 				
 				if (instruction->disp >= IatAddressVA && instruction->disp < (IatAddressVA + IatSize))
@@ -261,7 +261,7 @@ void IATReferenceScan::findNormalIatReference( _DInst * instruction )
 					
 					getIatEntryAddress(&ref);
 
-					//DoOutputDebugString("iat entry "PRINTF_DWORD_PTR_FULL,ref.targetAddressInIat);
+					//DebugOutput("iat entry "PRINTF_DWORD_PTR_FULL,ref.targetAddressInIat);
 
 					iatReferenceList.push_back(ref);
 				}
@@ -395,7 +395,7 @@ void IATReferenceScan::patchNewIat(DWORD_PTR stdImagebase, DWORD_PTR newIatBaseA
 
 		if (memorySize < (DWORD)(patchOffset + 6))
 		{
-			DoOutputDebugString("Error - Cannot fix IAT reference RVA: " PRINTF_DWORD_PTR_FULL, ref->addressVA - ImageBase);
+			DebugOutput("Error - Cannot fix IAT reference RVA: " PRINTF_DWORD_PTR_FULL, ref->addressVA - ImageBase);
 		}
 		else
 		{
@@ -404,14 +404,14 @@ void IATReferenceScan::patchNewIat(DWORD_PTR stdImagebase, DWORD_PTR newIatBaseA
 			*((DWORD *)memory) = patchBytes;
 		}
 		
-        DoOutputDebugString("address %X old %X new %X",ref->addressVA, ref->targetPointer, newIatAddressPointer);
+        DebugOutput("address %X old %X new %X",ref->addressVA, ref->targetPointer, newIatAddressPointer);
 	}
 }
 
 void IATReferenceScan::printDirectImportLog()
 {
-	DoOutputDebugString("------------------------------------------------------------");
-	DoOutputDebugString("ImageBase " PRINTF_DWORD_PTR_FULL " ImageSize %08X IATAddress " PRINTF_DWORD_PTR_FULL " IATSize 0x%X", ImageBase, ImageSize, IatAddressVA, IatSize);
+	DebugOutput("------------------------------------------------------------");
+	DebugOutput("ImageBase " PRINTF_DWORD_PTR_FULL " ImageSize %08X IATAddress " PRINTF_DWORD_PTR_FULL " IATSize 0x%X", ImageBase, ImageSize, IatAddressVA, IatSize);
 	int count = 0;
 	bool isSuspect = false;
 
@@ -445,11 +445,11 @@ void IATReferenceScan::printDirectImportLog()
 			type = "LEA";
 		}
 
-		DoOutputDebugString("%04d AddrVA " PRINTF_DWORD_PTR_FULL " Type %s Value " PRINTF_DWORD_PTR_FULL " IatRefPointer " PRINTF_DWORD_PTR_FULL " Api %s %s", count, ref->addressVA, type, ref->targetAddressInIat, ref->targetPointer,apiInfo->module->getFilename(), apiInfo->name);
+		DebugOutput("%04d AddrVA " PRINTF_DWORD_PTR_FULL " Type %s Value " PRINTF_DWORD_PTR_FULL " IatRefPointer " PRINTF_DWORD_PTR_FULL " Api %s %s", count, ref->addressVA, type, ref->targetAddressInIat, ref->targetPointer,apiInfo->module->getFilename(), apiInfo->name);
 
 	}
 
-	DoOutputDebugString("------------------------------------------------------------");
+	DebugOutput("------------------------------------------------------------");
 }
 
 void IATReferenceScan::findDirectIatReferenceCallJmp( _DInst * instruction )
@@ -549,7 +549,7 @@ void IATReferenceScan::checkMemoryRangeAndAddToList( IATReference * ref, _DInst 
 
 #ifdef DEBUG_COMMENTS
 					distorm_format(&ProcessAccessHelp::decomposerCi, instruction, &inst);
-					DoOutputDebugString(PRINTF_DWORD_PTR_FULL " " PRINTF_DWORD_PTR_FULL " %s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL,(DWORD_PTR)instruction->addr, ImageBase, inst.mnemonic.p, inst.operands.p, instruction->ops[0].type, instruction->size, ref->targetAddressInIat);
+					DebugOutput(PRINTF_DWORD_PTR_FULL " " PRINTF_DWORD_PTR_FULL " %s %s %d %d - target address: " PRINTF_DWORD_PTR_FULL,(DWORD_PTR)instruction->addr, ImageBase, inst.mnemonic.p, inst.operands.p, instruction->ops[0].type, instruction->size, ref->targetAddressInIat);
 #endif
 					iatDirectImportList.push_back(*ref);
 				}
@@ -642,7 +642,7 @@ void IATReferenceScan::patchDirectJumpTable( DWORD_PTR stdImagebase, DWORD direc
 #else
 		patchBytes = newIatAddressPointer;
 		DWORD relocOffset = (directImportsJumpTableRVA + 2);
-		DoOutputDebugString("Relocation direct imports fix: Base RVA %08X Type HIGHLOW Offset %04X RelocTableEntry %04X", relocOffset & 0xFFFFF000, relocOffset & 0x00000FFF, (IMAGE_REL_BASED_HIGHLOW << 12) + (relocOffset & 0x00000FFF));
+		DebugOutput("Relocation direct imports fix: Base RVA %08X Type HIGHLOW Offset %04X RelocTableEntry %04X", relocOffset & 0xFFFFF000, relocOffset & 0x00000FFF, (IMAGE_REL_BASED_HIGHLOW << 12) + (relocOffset & 0x00000FFF));
 #endif
 		jmpTableMemory[0] = 0xFF;
 		jmpTableMemory[1] = 0x25;
@@ -659,7 +659,7 @@ void IATReferenceScan::patchDirectImportInDump32( int patchPreFixBytes, int inst
 {
 	if (memorySize < (DWORD)(patchOffset + instructionSize))
 	{
-		DoOutputDebugString("Error - Cannot fix direct import reference RVA: %X", sectionRVA + patchOffset);
+		DebugOutput("Error - Cannot fix direct import reference RVA: %X", sectionRVA + patchOffset);
 	}
 	else
 	{
@@ -667,7 +667,7 @@ void IATReferenceScan::patchDirectImportInDump32( int patchPreFixBytes, int inst
 		if (generateReloc)
 		{
 			DWORD relocOffset = sectionRVA + patchOffset+ patchPreFixBytes;
-			DoOutputDebugString("Relocation direct imports fix: Base RVA %08X Type HIGHLOW Offset %04X RelocTableEntry %04X", relocOffset & 0xFFFFF000, relocOffset & 0x00000FFF, (IMAGE_REL_BASED_HIGHLOW << 12) + (relocOffset & 0x00000FFF));
+			DebugOutput("Relocation direct imports fix: Base RVA %08X Type HIGHLOW Offset %04X RelocTableEntry %04X", relocOffset & 0xFFFFF000, relocOffset & 0x00000FFF, (IMAGE_REL_BASED_HIGHLOW << 12) + (relocOffset & 0x00000FFF));
 		}
 
 		*((DWORD *)memory) = patchBytes;
@@ -678,7 +678,7 @@ void IATReferenceScan::patchDirectImportInDump64( int patchPreFixBytes, int inst
 {
 	if (memorySize < (DWORD)(patchOffset + instructionSize))
 	{
-		DoOutputDebugString("Error - Cannot fix direct import reference RVA: %X", sectionRVA + patchOffset);
+		DebugOutput("Error - Cannot fix direct import reference RVA: %X", sectionRVA + patchOffset);
 	}
 	else
 	{
@@ -686,7 +686,7 @@ void IATReferenceScan::patchDirectImportInDump64( int patchPreFixBytes, int inst
 		if (generateReloc)
 		{
 			DWORD relocOffset = sectionRVA + patchOffset+ patchPreFixBytes;
-			DoOutputDebugString("Relocation direct imports fix: Base RVA %08X Type DIR64 Offset %04X RelocTableEntry %04X", relocOffset & 0xFFFFF000, relocOffset & 0x00000FFF, (IMAGE_REL_BASED_DIR64 << 12) + (relocOffset & 0x00000FFF));
+			DebugOutput("Relocation direct imports fix: Base RVA %08X Type DIR64 Offset %04X RelocTableEntry %04X", relocOffset & 0xFFFFF000, relocOffset & 0x00000FFF, (IMAGE_REL_BASED_DIR64 << 12) + (relocOffset & 0x00000FFF));
 		}
 
 		*((DWORD_PTR *)memory) = patchBytes;

@@ -25,7 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 
 extern BOOL DumpRegion(PVOID Address);
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 {
@@ -119,9 +119,9 @@ HOOKDEF(int, WSAAPI, connect,
     LOQ_sockerr("network", "isi", "socket", s, "ip", ip, "port", port);
     if (g_config.dump_config_region) {
         if (DumpRegion((PVOID)name))
-            DoOutputDebugString("connect hook: Successfully dumped region at 0x%p around %s.\n", name, ip);
+            DebugOutput("connect hook: Successfully dumped region at 0x%p around %s.\n", name, ip);
         else
-            DoOutputDebugString("connect hook: Failed to dump region at 0x%p around %s.\n", name, ip);
+            DebugOutput("connect hook: Failed to dump region at 0x%p around %s.\n", name, ip);
     }
     return ret;
 }

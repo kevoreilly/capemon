@@ -29,8 +29,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // only skip Sleep()s the first five seconds
 #define MAX_SLEEP_SKIP_DIFF 5000
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 // skipping sleep calls is done while this variable is set to true
 static int sleep_skip_active = 1;
@@ -607,13 +607,13 @@ VOID CALLBACK WaitOrTimerCallbackHook(
     int ret = 0;
 
     if (!HookedCallback) {
-        DoOutputDebugString("Timer callback hook: error, HookedCallback NULL.\n");
+        DebugOutput("Timer callback hook: error, HookedCallback NULL.\n");
         return;
     }
     
     if (g_config.debugger) {
         DWORD Tid = GetCurrentThreadId();
-        DoOutputDebugString("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
+        DebugOutput("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
         InitNewThreadBreakpoints(Tid);
     }
     

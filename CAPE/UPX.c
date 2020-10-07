@@ -28,8 +28,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 extern ULONG_PTR base_of_dll_of_interest;
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 
 extern int DumpCurrentProcessFixImports(LPVOID NewEP);

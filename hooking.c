@@ -71,7 +71,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
         if (AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
             char ModulePath[MAX_PATH];
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-            DoOutputDebugString("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
+            DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
             if (g_config.debugger && g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);
             if (g_config.unpacker) {
@@ -86,12 +86,12 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                     DumpRegion((PVOID)addr);
                 }
                 __except(EXCEPTION_EXECUTE_HANDLER) {
-                    DoOutputDebugString("set_caller_info: Failed to dumping calling region at 0x%p.\n", AllocationBase);
+                    DebugOutput("set_caller_info: Failed to dumping calling region at 0x%p.\n", AllocationBase);
                     return 0;
                 }
             }
             else
-                DoOutputDebugString("set_caller_info: Calling region at 0x%p skipped.\n", AllocationBase);
+                DebugOutput("set_caller_info: Calling region at 0x%p skipped.\n", AllocationBase);
         }
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
@@ -157,17 +157,17 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
             if (!g_config.base_on_apiname[i])
                 break;
             if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
-                DoOutputDebugString("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+                DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
                 AllocationBase = GetHookCallerBase(hookinfo);
                 if (AllocationBase) {
                     BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
                     if (BreakpointsSet)
-                        DoOutputDebugString("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
+                        DebugOutput("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
                     else
-                        DoOutputDebugString("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
+                        DebugOutput("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
                 }
                 else
-                    DoOutputDebugString("Base-on-API: GetHookCallerBase fail.\n");
+                    DebugOutput("Base-on-API: GetHookCallerBase fail.\n");
                 break;
             }
         }
@@ -177,7 +177,7 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 		if (!g_config.dump_on_apinames[i])
 			break;
 		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
-            DoOutputDebugString("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+            DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
             if (main_caller_retaddr) {
                 if (!AllocationBase)
                     AllocationBase = GetHookCallerBase(hookinfo);
@@ -186,18 +186,18 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
                         CapeMetaData->DumpType = g_config.dump_on_api_type;
                     if (DumpImageInCurrentProcess(AllocationBase)) {
                         ModuleDumped = TRUE;
-                        DoOutputDebugString("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+                        DebugOutput("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
                     }
                     else if (DumpRegion(AllocationBase)) {
                         ModuleDumped = TRUE;
-                        DoOutputDebugString("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+                        DebugOutput("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
                     }
                     else {
-                        DoOutputDebugString("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+                        DebugOutput("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
                     }
                 }
                 else
-                    DoOutputDebugString("Dump-on-API: Failed to obtain current module base address.\n");
+                    DebugOutput("Dump-on-API: Failed to obtain current module base address.\n");
             }
             break;
         }
@@ -205,7 +205,7 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 
 
     if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
-        DoOutputDebugString("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
+        DebugOutput("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
         if (main_caller_retaddr)
             BreakpointOnReturn((PVOID)main_caller_retaddr);
         else if (parent_caller_retaddr)
@@ -255,7 +255,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
             if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
                 h->rate_counter++;
                 if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
-                    DoOutputDebugString("api-rate-cap: %s hook disabled.\n", h->funcname);
+                    DebugOutput("api-rate-cap: %s hook disabled.\n", h->funcname);
                     h->rate_counter = 0;
                     h->hook_disabled = 1;
                     return 0;

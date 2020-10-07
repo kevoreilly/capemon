@@ -24,8 +24,8 @@ along with W64oWoW64.  If not, see <http://www.gnu.org/licenses/>.
 #include "w64wow64defs.h"
 #include "windef.h"
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 FUNCTIONPTRS sFunctions = { 0 };
 
@@ -438,7 +438,7 @@ extern BOOL InitializeW64oWoW64()
 		(DWORD64)0, 
 		(DWORD64)&sUnicodeString, 
 		(DWORD64)&lvpKernel32Base ) != NULL ) {
-			DoOutputErrorString("Failed to load 64-bit kernel32.dll");
+			ErrorOutput("Failed to load 64-bit kernel32.dll");
 			return FALSE;
 	}
 

@@ -9,8 +9,8 @@
 
 #pragma comment(lib, "Psapi.lib")
 
-extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 HANDLE ProcessAccessHelp::hProcess = 0;
 
@@ -41,7 +41,7 @@ bool ProcessAccessHelp::openProcessHandle(DWORD dwPID)
 		if (hProcess)
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("openProcessHandle :: There is already a process handle, HANDLE %X", hProcess);
+			DebugOutput("openProcessHandle :: There is already a process handle, HANDLE %X", hProcess);
 #endif
 			return false;
 		}
@@ -59,7 +59,7 @@ bool ProcessAccessHelp::openProcessHandle(DWORD dwPID)
 			else
 			{
 #ifdef DEBUG_COMMENTS
-				DoOutputDebugString("openProcessHandle :: Failed to open handle, PID %X", dwPID);
+				DebugOutput("openProcessHandle :: Failed to open handle, PID %X", dwPID);
 #endif
 				return false;
 			}
@@ -68,7 +68,7 @@ bool ProcessAccessHelp::openProcessHandle(DWORD dwPID)
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("openProcessHandle :: Wrong PID, PID %X", dwPID);
+		DebugOutput("openProcessHandle :: Wrong PID, PID %X", dwPID);
 #endif
 		return false;
 	}
@@ -94,7 +94,7 @@ HANDLE ProcessAccessHelp::NativeOpenProcess(DWORD dwDesiredAccess, DWORD dwProce
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("NativeOpenProcess :: Failed to open handle, PID %X Error 0x%X", dwProcessId, NativeWinApi::RtlNtStatusToDosError(ntStatus));
+		DebugOutput("NativeOpenProcess :: Failed to open handle, PID %X Error 0x%X", dwProcessId, NativeWinApi::RtlNtStatusToDosError(ntStatus));
 #endif
 		return 0;
 	}
@@ -124,7 +124,7 @@ bool ProcessAccessHelp::readMemoryPartlyFromProcess(DWORD_PTR address, SIZE_T si
 	if (!hProcess)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("readMemoryPartlyFromProcess :: hProcess == NULL");
+		DebugOutput("readMemoryPartlyFromProcess :: hProcess == NULL");
 #endif
 		return returnValue;
 	}
@@ -138,7 +138,7 @@ bool ProcessAccessHelp::readMemoryPartlyFromProcess(DWORD_PTR address, SIZE_T si
 			if (!VirtualQueryEx(ProcessAccessHelp::hProcess,(LPCVOID)addressPart,&memBasic,sizeof(memBasic)))
 			{
 #ifdef DEBUG_COMMENTS
-				DoOutputDebugString("readMemoryPartlyFromProcess :: Error VirtualQueryEx %X %X err: %u", addressPart,size, GetLastError());
+				DebugOutput("readMemoryPartlyFromProcess :: Error VirtualQueryEx %X %X err: %u", addressPart,size, GetLastError());
 #endif
 				break;
 			}
@@ -189,7 +189,7 @@ bool ProcessAccessHelp::writeMemoryToProcess(DWORD_PTR address, SIZE_T size, LPV
 	if (!hProcess)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("readMemoryFromProcess :: hProcess == NULL");
+		DebugOutput("readMemoryFromProcess :: hProcess == NULL");
 #endif
 		return false;
 	}
@@ -207,7 +207,7 @@ bool ProcessAccessHelp::readMemoryFromProcess(DWORD_PTR address, SIZE_T size, LP
 	if (!hProcess)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("readMemoryFromProcess :: hProcess == NULL");
+		DebugOutput("readMemoryFromProcess :: hProcess == NULL");
 #endif
 		return returnValue;
 	}
@@ -215,12 +215,12 @@ bool ProcessAccessHelp::readMemoryFromProcess(DWORD_PTR address, SIZE_T size, LP
 	if (!ReadProcessMemory(hProcess, (LPVOID)address, dataBuffer, size, &lpNumberOfBytesRead))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("readMemoryFromProcess :: Error ReadProcessMemory %X %X err: %u", address, size, GetLastError());
+		DebugOutput("readMemoryFromProcess :: Error ReadProcessMemory %X %X err: %u", address, size, GetLastError());
 #endif
 		if (!VirtualProtectEx(hProcess, (LPVOID)address, size, PAGE_READWRITE, &dwProtect))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("readMemoryFromProcess :: Error VirtualProtectEx %X %X err: %u", address,size, GetLastError());
+			DebugOutput("readMemoryFromProcess :: Error VirtualProtectEx %X %X err: %u", address,size, GetLastError());
 #endif
 			returnValue = false;
 		}
@@ -229,7 +229,7 @@ bool ProcessAccessHelp::readMemoryFromProcess(DWORD_PTR address, SIZE_T size, LP
 			if (!ReadProcessMemory(hProcess, (LPVOID)address, dataBuffer, size, &lpNumberOfBytesRead))
 			{
 #ifdef DEBUG_COMMENTS
-				DoOutputDebugString("readMemoryFromProcess :: Error ReadProcessMemory %X %X err: %u", address, size, GetLastError());
+				DebugOutput("readMemoryFromProcess :: Error ReadProcessMemory %X %X err: %u", address, size, GetLastError());
 #endif
 				returnValue = false;
 			}
@@ -250,7 +250,7 @@ bool ProcessAccessHelp::readMemoryFromProcess(DWORD_PTR address, SIZE_T size, LP
 		if (size != lpNumberOfBytesRead)
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("readMemoryFromProcess :: Error ReadProcessMemory read %d bytes requested %d bytes", lpNumberOfBytesRead, size);
+			DebugOutput("readMemoryFromProcess :: Error ReadProcessMemory read %d bytes requested %d bytes", lpNumberOfBytesRead, size);
 #endif
 			returnValue = false;
 		}
@@ -277,7 +277,7 @@ bool ProcessAccessHelp::decomposeMemory(BYTE * dataBuffer, SIZE_T bufferSize, DW
 	if (distorm_decompose(&decomposerCi, decomposerResult, sizeof(decomposerResult)/sizeof(decomposerResult[0]), &decomposerInstructionsCount) == DECRES_INPUTERR)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("decomposeMemory :: distorm_decompose == DECRES_INPUTERR");
+		DebugOutput("decomposeMemory :: distorm_decompose == DECRES_INPUTERR");
 #endif
 		return false;
 	}
@@ -313,7 +313,7 @@ bool ProcessAccessHelp::disassembleMemory(BYTE * dataBuffer, SIZE_T bufferSize, 
 	if (res == DECRES_INPUTERR)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("disassembleMemory :: res == DECRES_INPUTERR");
+		DebugOutput("disassembleMemory :: res == DECRES_INPUTERR");
 #endif
 		return false;
 	}
@@ -325,7 +325,7 @@ bool ProcessAccessHelp::disassembleMemory(BYTE * dataBuffer, SIZE_T bufferSize, 
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("disassembleMemory :: res == %d", res);
+		DebugOutput("disassembleMemory :: res == %d", res);
 #endif
 		return true; //not all instructions fit in buffer
 	}
@@ -381,7 +381,7 @@ LONGLONG ProcessAccessHelp::getFileSize(HANDLE hFile)
 		if (!GetFileSizeEx(hFile, &lpFileSize))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("ProcessAccessHelp::getFileSize :: GetFileSizeEx failed %u", GetLastError());
+			DebugOutput("ProcessAccessHelp::getFileSize :: GetFileSizeEx failed %u", GetLastError());
 #endif
 			return 0;
 		}
@@ -393,7 +393,7 @@ LONGLONG ProcessAccessHelp::getFileSize(HANDLE hFile)
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("ProcessAccessHelp::getFileSize hFile invalid");
+		DebugOutput("ProcessAccessHelp::getFileSize hFile invalid");
 #endif
 		return 0;
 	}
@@ -414,7 +414,7 @@ bool ProcessAccessHelp::readMemoryFromFile(HANDLE hFile, LONG offset, DWORD size
 		if ((retValue == INVALID_SET_FILE_POINTER) && (dwError != NO_ERROR))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("readMemoryFromFile :: SetFilePointer failed error %u", dwError);
+			DebugOutput("readMemoryFromFile :: SetFilePointer failed error %u", dwError);
 #endif
 			return false;
 		}
@@ -427,7 +427,7 @@ bool ProcessAccessHelp::readMemoryFromFile(HANDLE hFile, LONG offset, DWORD size
 			else
 			{
 #ifdef DEBUG_COMMENTS
-				DoOutputDebugString("readMemoryFromFile :: ReadFile failed - size %d - error %u", size, GetLastError());
+				DebugOutput("readMemoryFromFile :: ReadFile failed - size %d - error %u", size, GetLastError());
 #endif
 				return false;
 			}
@@ -436,7 +436,7 @@ bool ProcessAccessHelp::readMemoryFromFile(HANDLE hFile, LONG offset, DWORD size
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("readMemoryFromFile :: hFile invalid");
+		DebugOutput("readMemoryFromFile :: hFile invalid");
 #endif
 		return false;
 	}
@@ -472,7 +472,7 @@ bool ProcessAccessHelp::writeMemoryToFile(HANDLE hFile, LONG offset, DWORD size,
 		if ((retValue == INVALID_SET_FILE_POINTER) && (dwError != NO_ERROR))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputErrorString("writeMemoryToFile :: SetFilePointer failed");
+			ErrorOutput("writeMemoryToFile :: SetFilePointer failed");
 #endif
 			return false;
 		}
@@ -485,7 +485,7 @@ bool ProcessAccessHelp::writeMemoryToFile(HANDLE hFile, LONG offset, DWORD size,
 			else
 			{
 #ifdef DEBUG_COMMENTS
-                DoOutputErrorString("writeMemoryToFile :: WriteFile failed - size %d", size);
+                ErrorOutput("writeMemoryToFile :: WriteFile failed - size %d", size);
 #endif
 				return false;
 			}
@@ -494,7 +494,7 @@ bool ProcessAccessHelp::writeMemoryToFile(HANDLE hFile, LONG offset, DWORD size,
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("writeMemoryToFile :: hFile invalid");
+		DebugOutput("writeMemoryToFile :: hFile invalid");
 #endif
 		return false;
 	}
@@ -516,7 +516,7 @@ bool ProcessAccessHelp::writeMemoryToFileEnd(HANDLE hFile, DWORD size, LPCVOID d
 		else
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("writeMemoryToFileEnd :: WriteFile failed - size %d - error %u", size, GetLastError());
+			DebugOutput("writeMemoryToFileEnd :: WriteFile failed - size %d - error %u", size, GetLastError());
 #endif
 			return false;
 		}
@@ -524,7 +524,7 @@ bool ProcessAccessHelp::writeMemoryToFileEnd(HANDLE hFile, DWORD size, LPCVOID d
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("writeMemoryToFileEnd :: hFile invalid");
+		DebugOutput("writeMemoryToFileEnd :: hFile invalid");
 #endif
 		return false;
 	}
@@ -542,7 +542,7 @@ bool ProcessAccessHelp::readHeaderFromFile(BYTE * buffer, DWORD bufferSize, cons
 	if( hFile == INVALID_HANDLE_VALUE )
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("readHeaderFromFile :: INVALID_HANDLE_VALUE %u", GetLastError());
+		DebugOutput("readHeaderFromFile :: INVALID_HANDLE_VALUE %u", GetLastError());
 #endif
 		returnValue = false;
 	}
@@ -587,8 +587,8 @@ LPVOID ProcessAccessHelp::createFileMappingView(const CHAR * filePath, DWORD acc
 	if( hFile == INVALID_HANDLE_VALUE )
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("Faulting path: %s.\n", filePath);
-		DoOutputErrorString("createFileMappingView :: INVALID_HANDLE_VALUE");
+		DebugOutput("Faulting path: %s.\n", filePath);
+		ErrorOutput("createFileMappingView :: INVALID_HANDLE_VALUE");
 #endif
 		return NULL;
 	}
@@ -599,7 +599,7 @@ LPVOID ProcessAccessHelp::createFileMappingView(const CHAR * filePath, DWORD acc
 	if( hMappedFile == NULL )
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("createFileMappingView :: hMappedFile == NULL");
+		DebugOutput("createFileMappingView :: hMappedFile == NULL");
 #endif
 		return NULL;
 	}
@@ -607,7 +607,7 @@ LPVOID ProcessAccessHelp::createFileMappingView(const CHAR * filePath, DWORD acc
 	if (GetLastError() == ERROR_ALREADY_EXISTS)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("createFileMappingView :: GetLastError() == ERROR_ALREADY_EXISTS");
+		DebugOutput("createFileMappingView :: GetLastError() == ERROR_ALREADY_EXISTS");
 #endif
 		CloseHandle(hMappedFile);
 		return NULL;
@@ -618,7 +618,7 @@ LPVOID ProcessAccessHelp::createFileMappingView(const CHAR * filePath, DWORD acc
 	if( addrMappedDll == NULL )
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("createFileMappingView :: addrMappedDll == NULL");
+		DebugOutput("createFileMappingView :: addrMappedDll == NULL");
 #endif
 		CloseHandle(hMappedFile);
 		return NULL;
@@ -639,7 +639,7 @@ DWORD ProcessAccessHelp::getProcessByName(const CHAR * processName)
 	if( !Process32First( hProcessSnap, &pe32 ) )
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("getProcessByName :: Error getting first Process");
+		DebugOutput("getProcessByName :: Error getting first Process");
 #endif
 		CloseHandle( hProcessSnap );
 		return 0;
@@ -699,14 +699,14 @@ bool ProcessAccessHelp::getProcessModules(HANDLE hProcess, std::vector<ModuleInf
                         }
 #ifdef DEBUG_COMMENTS
                         else
-                            DoOutputDebugString("ProcessAccessHelp::getProcessModules: GetModuleFileNameEx failed");
+                            DebugOutput("ProcessAccessHelp::getProcessModules: GetModuleFileNameEx failed");
 #endif
                     }
                     else
                     {
                         WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)filename, MAX_PATH, module.fullPath, MAX_PATH, NULL, NULL);
 #ifdef DEBUG_COMMENTS
-                        DoOutputDebugString("ProcessAccessHelp::getProcessModules: deviceNameResolver.resolveDeviceLongNameToShort success, module.fullPath: %ws", module.fullPath);
+                        DebugOutput("ProcessAccessHelp::getProcessModules: deviceNameResolver.resolveDeviceLongNameToShort success, module.fullPath: %ws", module.fullPath);
 #endif
                     }
                 }
@@ -734,7 +734,7 @@ bool ProcessAccessHelp::getMemoryRegionFromAddress(DWORD_PTR address, DWORD_PTR 
 	if (VirtualQueryEx(hProcess,(LPCVOID)address,&memBasic,sizeof(MEMORY_BASIC_INFORMATION)) != sizeof(MEMORY_BASIC_INFORMATION))
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputErrorString("getMemoryRegionFromAddress :: VirtualQueryEx");
+		ErrorOutput("getMemoryRegionFromAddress :: VirtualQueryEx");
 #endif
 		return false;
 	}
@@ -787,7 +787,7 @@ SIZE_T ProcessAccessHelp::getSizeOfImageProcess(HANDLE processHandle, DWORD_PTR 
 		if (!VirtualQueryEx(processHandle, (LPCVOID)moduleBase, &lpBuffer, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputErrorString("getSizeOfImageProcess :: VirtualQuery failed");
+			ErrorOutput("getSizeOfImageProcess :: VirtualQuery failed");
 #endif
 			lpBuffer.Type = 0;
 			sizeOfImage = 0;
@@ -834,7 +834,7 @@ bool ProcessAccessHelp::createBackupFile(const CHAR * filePath)
 	if (!retValue)
 	{
 #ifdef DEBUG_COMMENTS
-		DoOutputDebugString("createBackupFile :: CopyFile failed with error 0x%X", GetLastError());
+		DebugOutput("createBackupFile :: CopyFile failed with error 0x%X", GetLastError());
 #endif
 	}
 
@@ -856,7 +856,7 @@ DWORD ProcessAccessHelp::getModuleHandlesFromProcess(const HANDLE hProcess, HMOD
 		if (!EnumProcessModules(hProcess, *hMods, count * sizeof(HMODULE), &cbNeeded))
 		{
 #ifdef DEBUG_COMMENTS
-			DoOutputDebugString("getModuleHandlesFromProcess :: EnumProcessModules failed count %d", count);
+			DebugOutput("getModuleHandlesFromProcess :: EnumProcessModules failed count %d", count);
 #endif
 			delete [] *hMods;
 			return 0;

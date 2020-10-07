@@ -14,8 +14,8 @@ New Scylla section contains:
 
 */
 
-extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
 {
@@ -32,7 +32,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 
 			retValue = buildNewImportTable(copyModule);
 
-            if (!retValue) DoOutputDebugString("buildNewImportTable() failed.\n");
+            if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
 
 			if (retValue)
 			{
@@ -41,17 +41,17 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 
 				if (newIatInSection)
 				{
-                    DoOutputDebugString("About to call patchFileForNewIatLocation..\n");
+                    DebugOutput("About to call patchFileForNewIatLocation..\n");
 					patchFileForNewIatLocation();
 				}
 
 				if (BuildDirectImportsJumpTable)
 				{
-                    DoOutputDebugString("About to call patchFileForDirectImportJumpTable..\n");
+                    DebugOutput("About to call patchFileForDirectImportJumpTable..\n");
 					patchFileForDirectImportJumpTable();
 				}
 
-				DoOutputDebugString("Successfully built new import table, saving fixed file to disk.\n");
+				DebugOutput("Successfully built new import table, saving fixed file to disk.\n");
                 retValue = savePeFileToDisk(newFilePath);
 			}
 		}
@@ -61,7 +61,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 
 			retValue = buildNewImportTable(copyModule);
 
-            if (!retValue) DoOutputDebugString("buildNewImportTable() failed.\n");
+            if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
 			
             if (retValue)
 			{
@@ -87,12 +87,12 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
                     retValue = savePeFileToDisk(newFilePath);
                 }
                
-                if (!retValue) DoOutputDebugString("dumpProcess() failed.\n");
+                if (!retValue) DebugOutput("dumpProcess() failed.\n");
 			}
 		}
-        else DoOutputDebugString("readPeSectionsFromProcess() failed.\n");
+        else DebugOutput("readPeSectionsFromProcess() failed.\n");
 	}
-    else DoOutputDebugString("Invalid PE file: import table rebuild failed.\n");
+    else DebugOutput("Invalid PE file: import table rebuild failed.\n");
     
     return retValue;
 }
@@ -125,7 +125,7 @@ bool ImportRebuilder::buildNewImportTable(std::map<DWORD_PTR, ImportModuleThunk>
 
 	if (!dwSize)
 	{
-        DoOutputDebugString("fillImportSection() failed.\n");
+        DebugOutput("fillImportSection() failed.\n");
 		return false;
 	}
 
@@ -246,11 +246,11 @@ DWORD ImportRebuilder::fillImportSection(std::map<DWORD_PTR, ImportModuleThunk> 
 	{
 		importModuleThunk = &((*mapIt).second);
 
-		//DoOutputDebugString("Calling addImportDescriptor with importModuleThunk:0x%x, offset: 0x%x, offsetOFTArray: 0x%x", importModuleThunk, offset, offsetOFTArray);
+		//DebugOutput("Calling addImportDescriptor with importModuleThunk:0x%x, offset: 0x%x, offsetOFTArray: 0x%x", importModuleThunk, offset, offsetOFTArray);
 		stringLength = addImportDescriptor(importModuleThunk, offset, offsetOFTArray);
 
 #ifdef DEBUG_COMMENTS		
-        //DoOutputDebugString("fillImportSection :: importDesc.Name %s", pImportDescriptor->Name);
+        //DebugOutput("fillImportSection :: importDesc.Name %s", pImportDescriptor->Name);
 #endif
 
 		offset += (DWORD)stringLength; //stringLength has null termination char
@@ -279,7 +279,7 @@ DWORD ImportRebuilder::fillImportSection(std::map<DWORD_PTR, ImportModuleThunk> 
 			if (!pThunk)
 			{
 #ifdef DEBUG_COMMENTS				
-				DoOutputDebugString("fillImportSection :: Failed to get pThunk RVA: %X", importThunk->rva);
+				DebugOutput("fillImportSection :: Failed to get pThunk RVA: %X", importThunk->rva);
 #endif
 				return 0;
 			}
@@ -297,7 +297,7 @@ DWORD ImportRebuilder::fillImportSection(std::map<DWORD_PTR, ImportModuleThunk> 
 			lastRVA = importThunk->rva;
 
 #ifdef DEBUG_COMMENTS			
-			DoOutputDebugString("fillImportSection :: importThunk %X pThunk %X pImportByName %X offset %X", importThunk,pThunk,pImportByName,offset);
+			DebugOutput("fillImportSection :: importThunk %X pThunk %X pImportByName %X offset %X", importThunk,pThunk,pImportByName,offset);
 #endif
 			stringLength = addImportToImportTable(importThunk, pThunk, pImportByName, offset);
 
@@ -324,7 +324,7 @@ size_t ImportRebuilder::addImportDescriptor(ImportModuleThunk * pImportModule, D
 	*/
 
 #ifdef DEBUG_COMMENTS		
-    DoOutputDebugString("ImportRebuilder: dllName: %s, length %d", dllName, stringLength);
+    DebugOutput("ImportRebuilder: dllName: %s, length %d", dllName, stringLength);
 #endif
     
     memcpy((listPeSection[importSectionIndex].data + sectionOffset), dllName, stringLength); //copy module name to section
@@ -333,14 +333,14 @@ size_t ImportRebuilder::addImportDescriptor(ImportModuleThunk * pImportModule, D
 	DWORD Name = (DWORD)convertOffsetToRVAVector(listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffset);
 	pImportDescriptor->Name = (DWORD)convertOffsetToRVAVector(listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffset);
 #ifdef DEBUG_COMMENTS		
-    DoOutputDebugString("pImportDescriptor->Name: 0x%x, @0x%x\n", pImportDescriptor->Name, &pImportDescriptor->Name);
+    DebugOutput("pImportDescriptor->Name: 0x%x, @0x%x\n", pImportDescriptor->Name, &pImportDescriptor->Name);
 #endif
 	   
 	if (useOFT)
 	{
 		pImportDescriptor->OriginalFirstThunk = (DWORD)convertOffsetToRVAVector(listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffsetOFTArray);
 #ifdef DEBUG_COMMENTS		
-        DoOutputDebugString("pImportDescriptor->OriginalFirstThunk set to: 0x%x\n", pImportDescriptor->OriginalFirstThunk);
+        DebugOutput("pImportDescriptor->OriginalFirstThunk set to: 0x%x\n", pImportDescriptor->OriginalFirstThunk);
 #endif
         
 	}
@@ -428,7 +428,7 @@ size_t ImportRebuilder::addImportToImportTable( ImportThunk * pImport, PIMAGE_TH
 		if (!pThunk->u1.AddressOfData)
 		{
 #ifdef DEBUG_COMMENTS		
-			DoOutputDebugString("addImportToImportTable :: failed to get AddressOfData %X %X", listPeSection[importSectionIndex].sectionHeader.PointerToRawData, sectionOffset);
+			DebugOutput("addImportToImportTable :: failed to get AddressOfData %X %X", listPeSection[importSectionIndex].sectionHeader.PointerToRawData, sectionOffset);
 #endif
 		}
 
@@ -437,7 +437,7 @@ size_t ImportRebuilder::addImportToImportTable( ImportThunk * pImport, PIMAGE_TH
 		pThunk->u1.AddressOfData = 0;
 
 #ifdef DEBUG_COMMENTS		
-		DoOutputDebugString("addImportToImportTable :: pThunk->u1.AddressOfData %X %X %X", pThunk->u1.AddressOfData, pThunk, listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffset);
+		DebugOutput("addImportToImportTable :: pThunk->u1.AddressOfData %X %X %X", pThunk->u1.AddressOfData, pThunk, listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffset);
 #endif
 		stringLength += sizeof(WORD);
 	}

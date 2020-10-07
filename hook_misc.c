@@ -31,7 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL PlugXConfigDumped;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
@@ -588,7 +588,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
         if (g_config.plugx)
             CapeMetaData->DumpType = PLUGX_PAYLOAD;
         if ((ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
-            DoOutputDebugString("RtlDecompressBuffer hook: Checking for PE image(s) despite STATUS_BAD_COMPRESSION_BUFFER.\n", UncompressedBuffer, *FinalUncompressedSize);
+            DebugOutput("RtlDecompressBuffer hook: Checking for PE image(s) despite STATUS_BAD_COMPRESSION_BUFFER.\n", UncompressedBuffer, *FinalUncompressedSize);
             if (!DumpPEsInRange(UncompressedBuffer, UncompressedBufferSize))
             {   // If this fails let's try our own buffer
                 NTSTATUS NewRet;
@@ -600,7 +600,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 
                     if (CapeBuffer) {
                         if (DumpPEsInRange(CapeBuffer, NewUncompressedBufferSize)) {
-                            DoOutputDebugString("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
+                            DebugOutput("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
                             break;
                         }
                         free(CapeBuffer);
@@ -610,12 +610,12 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
                     CapeBuffer = (PUCHAR)malloc(NewUncompressedBufferSize);
 
                     if (!CapeBuffer) {
-                        DoOutputDebugString("RtlDecompressBuffer hook: Failed to allocate new buffer.\n");
+                        DebugOutput("RtlDecompressBuffer hook: Failed to allocate new buffer.\n");
                         break;
                     }
                     else
                     {
-                        DoOutputDebugString("RtlDecompressBuffer hook: Allocated new buffer of 0x%x bytes.\n", NewUncompressedBufferSize);
+                        DebugOutput("RtlDecompressBuffer hook: Allocated new buffer of 0x%x bytes.\n", NewUncompressedBufferSize);
                         NewRet = Old_RtlDecompressBuffer(CompressionFormat, CapeBuffer, NewUncompressedBufferSize,
                             CompressedBuffer, CompressedBufferSize, &UncompressedSize);
                     }
@@ -625,10 +625,10 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 
                 if (NT_SUCCESS(NewRet)) {
                     if (DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize))
-                        DoOutputDebugString("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
+                        DebugOutput("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
                 }
                 else
-                    DoOutputErrorString("RtlDecompressBuffer hook: Failed to decompress to new buffer");
+                    ErrorOutput("RtlDecompressBuffer hook: Failed to decompress to new buffer");
 
                 if (CapeBuffer)
                     free(CapeBuffer);
@@ -637,7 +637,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
                 *FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
         }
         else if (NT_SUCCESS(ret)) {
-            DoOutputDebugString("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x for PE image(s).\n", UncompressedBuffer, *FinalUncompressedSize);
+            DebugOutput("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x for PE image(s).\n", UncompressedBuffer, *FinalUncompressedSize);
             DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
             LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
                 *FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
@@ -1168,7 +1168,7 @@ HOOKDEF(void, WINAPIV, memcpy,
 		//count < 0x5000              //fuzzy matching (20480)
 	))
     {
-		DoOutputDebugString("PlugX config detected (size 0x%d), dumping.\n", count);
+		DebugOutput("PlugX config detected (size 0x%d), dumping.\n", count);
         CapeMetaData->DumpType = PLUGX_CONFIG;
         DumpMemory((BYTE*)src, count);
     }

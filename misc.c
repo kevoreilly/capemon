@@ -29,7 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 
 extern char *our_process_name;
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _NtQueryInformationThread pNtQueryInformationThread;
@@ -405,7 +405,7 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
         && stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)4;   // The most secure setting
-			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
+			DebugOutput("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
 		}
 	}
 
@@ -415,7 +415,7 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
         && stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)0;
-			DoOutputDebugString("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+			DebugOutput("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
 		}
 	}
 }
@@ -506,7 +506,7 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
         && stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)4;   // The most secure setting
-			DoOutputDebugString("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
+			DebugOutput("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
 		}
 	}
 
@@ -516,7 +516,7 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
         && stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)0;
-			DoOutputDebugString("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
+			DebugOutput("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
 		}
 	}
 }

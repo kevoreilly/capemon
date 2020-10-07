@@ -35,8 +35,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define DoSetZeroFlag   2
 #define PrintEAX        3
 
-extern void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
@@ -334,14 +334,14 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             {
                 ClearSingleStepMode(ExceptionInfo->ContextRecord);
 #ifdef DEBUG_COMMENTS
-                DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+                DebugOutput("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
 #endif
                 LastContext = *ExceptionInfo->ContextRecord;
                 ReturnAddress = NULL;
                 return TRUE;
             }
             else
-                DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+                DebugOutput("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
         }
     }
 
@@ -495,7 +495,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
+                DebugOutput("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
             }
             if (FilterTrace && !g_config.branch_trace)
                 DebuggerOutput("\n");
@@ -564,7 +564,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #ifdef DEBUG_COMMENTS
         }
         else
-            DoOutputDebugString("Trace: Stopping trace!\n");
+            DebugOutput("Trace: Stopping trace!\n");
 #else
         }
 #endif
@@ -622,7 +622,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("Trace: Error dereferencing CallTarget 0x%x.\n", CallTarget);
+                DebugOutput("Trace: Error dereferencing CallTarget 0x%x.\n", CallTarget);
                 ExportName = NULL;
             }
 
@@ -655,7 +655,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("Trace: Error dereferencing CallTarget 0x%x.", CallTarget);
+                DebugOutput("Trace: Error dereferencing CallTarget 0x%x.", CallTarget);
                 ExportName = NULL;
             }
 
@@ -832,13 +832,13 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #ifndef DEBUG_COMMENTS
                     if (ForceStepOver)
 #endif
-                        DoOutputDebugString("Trace: Set breakpoint on return address 0x%p (register %d)\n", ReturnAddress, StepOverRegister);
+                        DebugOutput("Trace: Set breakpoint on return address 0x%p (register %d)\n", ReturnAddress, StepOverRegister);
                     ReturnAddress = NULL;
                     LastContext = *ExceptionInfo->ContextRecord;
                     return TRUE;
                 }
                 else
-                    DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+                    DebugOutput("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
             }
             else
                 TraceDepthCount++;
@@ -868,7 +868,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("Trace: Error dereferencing JumpTarget 0x%x.\n", JumpTarget);
+                DebugOutput("Trace: Error dereferencing JumpTarget 0x%x.\n", JumpTarget);
                 ExportName = NULL;
             }
 
@@ -894,7 +894,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("Trace: Error dereferencing JumpTarget 0x%x.", JumpTarget);
+                DebugOutput("Trace: Error dereferencing JumpTarget 0x%x.", JumpTarget);
                 ExportName = NULL;
             }
 
@@ -988,7 +988,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
         {
 #ifdef DEBUG_COMMENTS
-            DoOutputDebugString("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+            DebugOutput("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
 #endif
             LastContext = *ExceptionInfo->ContextRecord;
             ClearSingleStepMode(ExceptionInfo->ContextRecord);
@@ -996,16 +996,16 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			return TRUE;
         }
         else
-            DoOutputDebugString("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+            DebugOutput("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
     }
     else if (!StopTrace)
     {
         SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
 #ifdef DEBUG_COMMENTS
-        //DoOutputDebugString("Trace: Restoring single-step mode!\n");
+        //DebugOutput("Trace: Restoring single-step mode!\n");
     }
     else
-        DoOutputDebugString("Trace: Stopping trace!n");
+        DebugOutput("Trace: Stopping trace!n");
 #else
     }
 #endif
@@ -1025,13 +1025,13 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 
 	if (pBreakpointInfo == NULL)
 	{
-		DoOutputDebugString("StepOutCallback executed with pBreakpointInfo NULL.\n");
+		DebugOutput("StepOutCallback executed with pBreakpointInfo NULL.\n");
 		return FALSE;
 	}
 
 	if (pBreakpointInfo->ThreadHandle == NULL)
 	{
-		DoOutputDebugString("StepOutCallback executed with NULL thread handle.\n");
+		DebugOutput("StepOutCallback executed with NULL thread handle.\n");
 		return FALSE;
 	}
 
@@ -1070,9 +1070,9 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
                 CapeMetaData->DumpType = UNPACKED_PE;
 
             if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
-                DoOutputDebugString("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+                DebugOutput("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
             else
-                DoOutputDebugString("StepOutCallback: Failed to dump region at 0x%p.\n", DumpAddress);
+                DebugOutput("StepOutCallback: Failed to dump region at 0x%p.\n", DumpAddress);
         }
     }
 
@@ -1095,13 +1095,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     if (pBreakpointInfo == NULL)
 	{
-		DoOutputDebugString("BreakpointCallback executed with pBreakpointInfo NULL.\n");
+		DebugOutput("BreakpointCallback executed with pBreakpointInfo NULL.\n");
 		return FALSE;
 	}
 
 	if (pBreakpointInfo->ThreadHandle == NULL)
 	{
-		DoOutputDebugString("BreakpointCallback executed with NULL thread handle.\n");
+		DebugOutput("BreakpointCallback executed with NULL thread handle.\n");
 		return FALSE;
 	}
 
@@ -1110,7 +1110,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     if (StepOverRegister && pBreakpointInfo->Register == StepOverRegister)
     {
 #ifdef DEBUG_COMMENTS
-        DoOutputDebugString("BreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
+        DebugOutput("BreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
 #endif
         ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
         StepOverRegister = 0;
@@ -1122,25 +1122,25 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             TraceDepthCount = 0;
             if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr0))
 			{
-                DoOutputDebugString("BreakpointCallback: Breakpoint 0 hit at 0x%p\n", pBreakpointInfo->Address);
+                DebugOutput("BreakpointCallback: Breakpoint 0 hit at 0x%p\n", pBreakpointInfo->Address);
 				break;
 			}
 
             if (bp == 1 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr1))
 			{
-                DoOutputDebugString("BreakpointCallback: Breakpoint 1 hit at 0x%p\n", pBreakpointInfo->Address);
+                DebugOutput("BreakpointCallback: Breakpoint 1 hit at 0x%p\n", pBreakpointInfo->Address);
 				break;
 			}
 
             if (bp == 2 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr2))
 			{
-                DoOutputDebugString("BreakpointCallback: Breakpoint 2 hit at 0x%p\n", pBreakpointInfo->Address);
+                DebugOutput("BreakpointCallback: Breakpoint 2 hit at 0x%p\n", pBreakpointInfo->Address);
 				break;
 			}
 
             if (bp == 3 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr3))
 			{
-                DoOutputDebugString("BreakpointCallback: Breakpoint 3 hit at 0x%p\n", pBreakpointInfo->Address);
+                DebugOutput("BreakpointCallback: Breakpoint 3 hit at 0x%p\n", pBreakpointInfo->Address);
 				break;
 			}
         }
@@ -1286,7 +1286,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("BreakpointCallback: Error dereferencing instruction pointer 0x%p.\n", CIP);
+                DebugOutput("BreakpointCallback: Error dereferencing instruction pointer 0x%p.\n", CIP);
             }
             if (FilterTrace)
                 DebuggerOutput("\n");
@@ -1309,9 +1309,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         Result = distorm_decode(Offset, (const unsigned char*)CIP, ChunkSize, DecodeType, DecodedInstructions, MaxInstructions, &DecodedInstructionsCount);
 
 #ifdef _WIN64
-        DoOutputDebugString("BreakpointCallback: Searching for ret instruction to step-out from 0x%p (0x%x instructions) (0x%p).\n", CIP, DecodedInstructionsCount, *(DWORD_PTR*)((BYTE*) ExceptionInfo->ContextRecord->Rbp+8));
+        DebugOutput("BreakpointCallback: Searching for ret instruction to step-out from 0x%p (0x%x instructions) (0x%p).\n", CIP, DecodedInstructionsCount, *(DWORD_PTR*)((BYTE*) ExceptionInfo->ContextRecord->Rbp+8));
 #else
-        DoOutputDebugString("BreakpointCallback: Searching for ret instruction to step-out from 0x%p (0x%x instructions) (0x%x).\n", CIP, DecodedInstructionsCount, *(DWORD*)((BYTE*) ExceptionInfo->ContextRecord->Ebp+4));
+        DebugOutput("BreakpointCallback: Searching for ret instruction to step-out from 0x%p (0x%x instructions) (0x%x).\n", CIP, DecodedInstructionsCount, *(DWORD*)((BYTE*) ExceptionInfo->ContextRecord->Ebp+4));
 #endif
         g_config.step_out = 0;
 
@@ -1320,9 +1320,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             if (!strcmp(DecodedInstructions[i].mnemonic.p, "RET"))
             {
                 if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)CIP + Delta, BP_EXEC, StepOutCallback))
-                    DoOutputDebugString("BreakpointCallback: Breakpoint %d set on ret instruction at 0x%p.\n", Register, (BYTE*)CIP + Delta);
+                    DebugOutput("BreakpointCallback: Breakpoint %d set on ret instruction at 0x%p.\n", Register, (BYTE*)CIP + Delta);
                 else
-                    DoOutputDebugString("BreakpointCallback: Failed to set breakpoint %d on ret instruction at 0x%p.\n", Register, (BYTE*)CIP + Delta);
+                    DebugOutput("BreakpointCallback: Failed to set breakpoint %d on ret instruction at 0x%p.\n", Register, (BYTE*)CIP + Delta);
                 break;
             }
 
@@ -1378,7 +1378,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("BreakpointCallback: Error dereferencing CallTarget 0x%x.\n", CallTarget);
+                DebugOutput("BreakpointCallback: Error dereferencing CallTarget 0x%x.\n", CallTarget);
                 ExportName = NULL;
             }
 
@@ -1408,7 +1408,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
-                DoOutputDebugString("BreakpointCallback: Error dereferencing CallTarget 0x%x.", CallTarget);
+                DebugOutput("BreakpointCallback: Error dereferencing CallTarget 0x%x.", CallTarget);
                 ExportName = NULL;
             }
 
@@ -1567,15 +1567,15 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         if (ReturnAddress && ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
         {
             if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-                DoOutputDebugString("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+                DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
 #ifdef DEBUG_COMMENTS
             else
-                DoOutputDebugString("BreakpointCallback: Breakpoint set on return address 0x%p\n", ReturnAddress);
+                DebugOutput("BreakpointCallback: Breakpoint set on return address 0x%p\n", ReturnAddress);
 #endif
 #ifndef DEBUG_COMMENTS
             if (ForceStepOver)
 #endif
-                DoOutputDebugString("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+                DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
 
             ReturnAddress = NULL;
 
@@ -1617,12 +1617,12 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     {
         if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
         {
-            DoOutputDebugString("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+            DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
             LastContext = *ExceptionInfo->ContextRecord;
             ReturnAddress = NULL;
         }
         else
-            DoOutputDebugString("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+            DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
     }
     else if (!StopTrace)
 		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
@@ -1636,13 +1636,13 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
 	if (pBreakpointInfo == NULL)
 	{
-		DoOutputDebugString("BreakOnReturnCallback executed with pBreakpointInfo NULL.\n");
+		DebugOutput("BreakOnReturnCallback executed with pBreakpointInfo NULL.\n");
 		return FALSE;
 	}
 
 	if (pBreakpointInfo->ThreadHandle == NULL)
 	{
-		DoOutputDebugString("BreakOnReturnCallback executed with NULL thread handle.\n");
+		DebugOutput("BreakOnReturnCallback executed with NULL thread handle.\n");
 		return FALSE;
 	}
 
@@ -1657,9 +1657,9 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 #endif
 
     if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-        DoOutputDebugString("BreakOnReturnCallback: Breakpoint set on return address at 0x%p.\n", ReturnAddress);
+        DebugOutput("BreakOnReturnCallback: Breakpoint set on return address at 0x%p.\n", ReturnAddress);
     else
-        DoOutputDebugString("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
+        DebugOutput("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
     ReturnAddress = NULL;
 
@@ -1680,13 +1680,13 @@ BOOL WriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* 
 
 	if (pBreakpointInfo == NULL)
 	{
-		DoOutputDebugString("WriteCallback executed with pBreakpointInfo NULL.\n");
+		DebugOutput("WriteCallback executed with pBreakpointInfo NULL.\n");
 		return FALSE;
 	}
 
 	if (pBreakpointInfo->ThreadHandle == NULL)
 	{
-		DoOutputDebugString("WriteCallback executed with NULL thread handle.\n");
+		DebugOutput("WriteCallback executed with NULL thread handle.\n");
 		return FALSE;
 	}
 
@@ -1716,12 +1716,12 @@ BOOL BreakpointOnReturn(PVOID Address)
 
     if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, Address, BP_EXEC, BreakpointCallback))
     {
-        DoOutputDebugString("BreakpointOnReturn: failed to set breakpoint.\n");
+        DebugOutput("BreakpointOnReturn: failed to set breakpoint.\n");
         return FALSE;
     }
 
     // TODO: add option to break once only, clearing bp
-    DoOutputDebugString("BreakpointOnReturn: execution breakpoint set at 0x%p with register %d.", Address, Register);
+    DebugOutput("BreakpointOnReturn: execution breakpoint set at 0x%p with register %d.", Address, Register);
     return TRUE;
 }
 
@@ -1740,7 +1740,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
     {
         if (!InitialiseDebugger())
         {
-            DoOutputDebugString("SetInitialBreakpoints: Failed to initialise debugger.\n");
+            DebugOutput("SetInitialBreakpoints: Failed to initialise debugger.\n");
             return FALSE;
         }
     }
@@ -1811,7 +1811,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
         {
             if (!IsDisguisedPEHeader(ImageBase))
             {
-                DoOutputDebugString("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                DebugOutput("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
                 BreakpointsSet = FALSE;
                 return FALSE;
             }
@@ -1836,12 +1836,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type0, Callback))
         {
-            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp0, Type0);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp0, Type0);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1874,12 +1874,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type1, Callback))
         {
-            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp1, Type1);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp1, Type1);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1912,12 +1912,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type2, Callback))
         {
-            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp2, Type2);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp2, Type2);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1948,12 +1948,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type3, Callback))
         {
-            DoOutputDebugString("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp3, Type3);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, bp3, Type3);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -1967,7 +1967,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
         {
             if (!IsDisguisedPEHeader(ImageBase))
             {
-                DoOutputDebugString("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                DebugOutput("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
                 BreakpointsSet = FALSE;
                 return FALSE;
             }
@@ -1983,12 +1983,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, BreakOnReturnCallback))
         {
-            DoOutputDebugString("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br0, BP_EXEC);
+            DebugOutput("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br0, BP_EXEC);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }
@@ -2002,7 +2002,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
         {
             if (!IsDisguisedPEHeader(ImageBase))
             {
-                DoOutputDebugString("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                DebugOutput("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
                 BreakpointsSet = FALSE;
                 return FALSE;
             }
@@ -2018,12 +2018,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, BreakOnReturnCallback))
         {
-            DoOutputDebugString("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br1, BP_EXEC);
+            DebugOutput("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br1, BP_EXEC);
             BreakpointsSet = TRUE;
         }
         else
         {
-            DoOutputDebugString("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+            DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
             BreakpointsSet = FALSE;
             return FALSE;
         }

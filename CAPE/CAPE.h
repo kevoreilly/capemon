@@ -23,8 +23,8 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MIN_SIZE     ((ULONG)0x1000)
 #define PE_MAX_SECTIONS 0xFFFF
 
-void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 PVOID GetHookCallerBase();
 BOOL InsideMonitor(LPVOID* ReturnAddress, LPVOID Address);

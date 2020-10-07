@@ -5,8 +5,8 @@
 
 //#define DEBUG_COMMENTS
 
-extern "C" void DoOutputDebugString(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void DoOutputErrorString(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 void ImportThunk::invalidate()
 {
@@ -134,7 +134,7 @@ void ImportsHandling::scanAndFixModuleList()
 
 			if (importThunk.moduleName[0] == 0 || importThunk.moduleName[0] == L'?')
 			{
-				DoOutputDebugString("API not found - added to module list.");
+				DebugOutput("API not found - added to module list.");
                 addNotFoundApiToModuleList(&importThunk);
 			}
 			else 
@@ -142,7 +142,7 @@ void ImportsHandling::scanAndFixModuleList()
 				
 				if (_stricmp(importThunk.moduleName, prevModuleName))
 				{
-                    DoOutputDebugString("Adding module to module list: %s", importThunk.moduleName);
+                    DebugOutput("Adding module to module list: %s", importThunk.moduleName);
 					addModuleToModuleList(importThunk.moduleName, importThunk.rva);
 				}
 				
@@ -249,7 +249,7 @@ bool ImportsHandling::addNotFoundApiToModuleList(const ImportThunk * apiNotFound
 			else
 			{
 #ifdef DEBUG_COMMENTS
-				DoOutputDebugString("Error iterator1 != (*moduleThunkList).end()");
+				DebugOutput("Error iterator1 != (*moduleThunkList).end()");
 #endif
 				break;
 			}
@@ -265,7 +265,7 @@ bool ImportsHandling::addNotFoundApiToModuleList(const ImportThunk * apiNotFound
 	if (!module)
 	{
 #ifdef DEBUG_COMMENTS		
-        DoOutputDebugString("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, rva);
+        DebugOutput("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, rva);
 #endif
 		return false;
 	}
@@ -316,7 +316,7 @@ bool ImportsHandling::addFunctionToModuleList(const ImportThunk * apiFound)
 			else
 			{
 #ifdef DEBUG_COMMENTS
-				DoOutputDebugString("Error iterator1 != moduleListNew.end()");
+				DebugOutput("Error iterator1 != moduleListNew.end()");
 #endif
 				break;
 			}
@@ -331,7 +331,7 @@ bool ImportsHandling::addFunctionToModuleList(const ImportThunk * apiFound)
 	if (!module)
 	{
 #ifdef DEBUG_COMMENTS		
-        DoOutputDebugString("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, apiFound->rva);
+        DebugOutput("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, apiFound->rva);
 #endif
 		return false;
 	}
