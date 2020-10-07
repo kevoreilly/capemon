@@ -665,7 +665,7 @@ static int ReflectiveInjectDllViaThread(HANDLE ProcessHandle, const char *DllPat
 
         return 1;
     }
-    
+
     VirtualFree(Buffer, 0, MEM_RELEASE);
     CloseHandle(hFile);
 }
@@ -745,7 +745,7 @@ rebase:
     if (!ReadProcessMemory(ProcessHandle, BaseAddress + DosHeader.e_lfanew, &NtHeader, sizeof(NtHeader), NULL))
     {
         ErrorOutput("InjectDllViaIAT: Failed to read NT headers from 0x%p - 0x%p", BaseAddress + DosHeader.e_lfanew, BaseAddress + DosHeader.e_lfanew + sizeof(NtHeader));
-        RetVal = 0;
+        RetVal = 1; // In case this is mid-hollowing
         goto out;
     }
 
@@ -1084,7 +1084,10 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
         else
         {
             ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, InitialThreadId);
-            DebugOutput("InjectDll: No thread ID supplied. Initial thread ID %d, handle 0x%x\n", InitialThreadId, ThreadHandle);
+            if (ThreadHandle == NULL)
+                DebugOutput("InjectDll: No thread ID supplied, OpenThread on initial thread ID %d failed", InitialThreadId);
+            else
+                DebugOutput("InjectDll: No thread ID supplied, initial thread ID %d, handle 0x%x\n", InitialThreadId, ThreadHandle);
         }
     }
     else
@@ -1182,6 +1185,7 @@ int CreateMonitorPipe(char* Name, char* Dll)
     }
 
 }
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     DebugOutput("CAPE loader.\n");
