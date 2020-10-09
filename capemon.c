@@ -689,6 +689,23 @@ void revalidate_all_hooks(void)
 	}
 }
 
+int path_is_system(const wchar_t *path_w)
+{
+    if (((!wcsnicmp(path_w, L"c:\\windows\\system32\\", 20) ||
+		!wcsnicmp(path_w, L"c:\\windows\\syswow64\\", 20) ||
+		!wcsnicmp(path_w, L"c:\\windows\\sysnative\\", 21))))
+		return 1;
+	return 0;
+}
+
+int loader_is_allowed(const char *loader_name)
+{
+	if (!stricmp(loader_name, "rundll32.exe") ||
+		!stricmp(loader_name, "regsvr32.exe"))
+		return 1;
+	return 0;
+}
+
 PVOID g_dll_notify_cookie;
 
 VOID CALLBACK New_DllLoadNotification(
@@ -722,16 +739,13 @@ VOID CALLBACK New_DllLoadNotification(
                 SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
             }
         }
-        else if (((!wcsnicmp(our_process_path_w, L"c:\\windows\\system32\\rundll32.exe", 32) ||
-                    !wcsnicmp(our_process_path_w, L"c:\\windows\\syswow64\\rundll32.exe", 32) ||
-                    !wcsnicmp(our_process_path_w, L"c:\\windows\\sysnative\\rundll32.exe", 33))) &&
-                    !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer))) {
+        else if (path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer))) {
             set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
             if (g_config.file_of_interest == NULL) {
                 g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
                 wcsncpy(g_config.file_of_interest, library.Buffer, wcslen(library.Buffer));
             }
-            DebugOutput("rundll32 target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            DebugOutput("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
             if (g_config.debugger)
             {
                 BreakpointsHit = FALSE;
