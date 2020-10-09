@@ -93,7 +93,7 @@ void remove_file_from_log_tracking(HANDLE fhandle)
 
 static void new_file_path_ascii(const char *fname)
 {
-	if (dropped_count >= g_config.dropped_limit)
+	if (dropped_count >= g_config.dropped_limit || FilesDumped)
         return;
     char *absolutename = malloc(32768);
 	if (absolutename != NULL) {
@@ -107,7 +107,7 @@ static void new_file_path_ascii(const char *fname)
 
 static void new_file_path_unicode(const wchar_t *fname)
 {
-	if (dropped_count >= g_config.dropped_limit)
+	if (dropped_count >= g_config.dropped_limit || FilesDumped)
         return;
 	wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
 	if (absolutename != NULL) {
@@ -121,14 +121,14 @@ static void new_file_path_unicode(const wchar_t *fname)
 
 static void new_file(const UNICODE_STRING *obj)
 {
-	if (dropped_count >= g_config.dropped_limit)
+	if (dropped_count >= g_config.dropped_limit || FilesDumped)
         return;
     const wchar_t *str = obj->Buffer;
     unsigned int len = obj->Length / sizeof(wchar_t);
 
     // maybe it's an absolute path (or a relative path with a harddisk,
     // such as C:abc.txt)
-    if(isalpha(str[0]) != 0 && str[1] == ':') {
+    if (isalpha(str[0]) != 0 && str[1] == ':') {
         pipe("FILE_NEW:%S", len, str);
         dropped_count++;
     }
@@ -155,7 +155,7 @@ void file_write(HANDLE file_handle)
 	get_lasterrors(&lasterror);
 
 	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
-    if(r == NULL) {
+    if (r == NULL) {
         r = lookup_add(&g_files, (ULONG_PTR)file_handle, sizeof(file_record_t));
         memset(r, 0, sizeof(*r));
     }
@@ -194,7 +194,7 @@ static void handle_new_file(HANDLE file_handle, const OBJECT_ATTRIBUTES *obj)
 
 	get_lasterrors(&lasterror);
 
-    if(is_directory_objattr(obj) == 0) {
+    if (is_directory_objattr(obj) == 0) {
 
         wchar_t *fname = calloc(32768, sizeof(wchar_t));
 		wchar_t *absolutename = calloc(32768, sizeof(wchar_t));
@@ -352,7 +352,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateFile,
     LOQ_ntstatus("filesystem", "PhOiihss", "FileHandle", FileHandle, "DesiredAccess", DesiredAccess,
         "FileName", ObjectAttributes, "CreateDisposition", CreateDisposition,
         "ShareAccess", ShareAccess, "FileAttributes", FileAttributes, "ExistedBefore", file_existed ? "yes" : "no", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-    if(NT_SUCCESS(ret)) {
+    if (NT_SUCCESS(ret)) {
 		add_file_to_log_tracking(*FileHandle);
 		if ((DesiredAccess & DUMP_FILE_MASK) && !(FileAttributes & FILE_ATTRIBUTE_TEMPORARY))
 			handle_new_file(*FileHandle, ObjectAttributes);
@@ -510,7 +510,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 		free(fname);
 	}
 
-	if(NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret)) {
         file_write(FileHandle);
     }
     return ret;
