@@ -119,6 +119,7 @@ extern wchar_t *our_commandline;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern lookup_t g_caller_regions;
+extern DWORD raw_gettickcount(void);
 
 #ifdef CAPE_NIRVANA
 extern void NirvanaInit();
@@ -573,7 +574,7 @@ char* GetName()
 
     FullPathName = GetResultsPath("CAPE");
 
-    OutputFilename = (char*)malloc(MAX_PATH);
+    OutputFilename = (char*)calloc(MAX_PATH, sizeof(char));
 
     if (OutputFilename == NULL)
     {
@@ -583,7 +584,8 @@ char* GetName()
 
     GetSystemTime(&Time);
 
-    if (rand_s(&random))
+    random = raw_gettickcount();
+    if (!random)
     {
         ErrorOutput("GetName: failed to obtain a random number");
         return 0;
@@ -664,7 +666,7 @@ char* GetHashFromHandle(HANDLE hFile)
         return 0;
     }
 
-    OutputFilenameBuffer = (char*) malloc(MAX_PATH);
+    OutputFilenameBuffer = (char*)malloc(MAX_PATH);
 
     if (OutputFilenameBuffer == NULL)
     {
@@ -1823,7 +1825,7 @@ int DoProcessDump(PVOID CallerBase)
         }
     }
 
-    // For full-memory dumps, creat the output file
+    // For full-memory dumps, create the output file
     if (g_config.procmemdump)
     {
         FullDumpPath = GetResultsPath("memory");
