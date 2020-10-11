@@ -584,8 +584,7 @@ char* GetName()
 
     GetSystemTime(&Time);
 
-    random = raw_gettickcount();
-    if (!random)
+    if (rand_s(&random))
     {
         ErrorOutput("GetName: failed to obtain a random number");
         return 0;
