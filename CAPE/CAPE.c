@@ -1407,18 +1407,23 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
         goto end;
     }
 
-    CapeMetaData->Address = Buffer;
-    CapeMetaData->Size = Size;
-    CapeOutputFile(FullPathName);
-    DebugOutput("DumpMemory: CAPE output file successfully created: %s (size 0x%x)", FullPathName, Size);
     ret = 1;
 
 end:
-    CloseHandle(hOutputFile);
-    if (FullPathName)
-        free(FullPathName);
     if (BufferCopy)
         free(BufferCopy);
+    CloseHandle(hOutputFile);
+
+    if (ret)
+    {
+        CapeMetaData->Address = Buffer;
+        CapeMetaData->Size = Size;
+        CapeOutputFile(FullPathName);
+        DebugOutput("DumpMemory: CAPE output file successfully created: %s (size 0x%x)", FullPathName, Size);
+    }
+
+    if (FullPathName)
+        free(FullPathName);
 
     return ret;
 }
