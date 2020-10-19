@@ -62,6 +62,24 @@ void emit_rel(unsigned char *buf, unsigned char *source, unsigned char *target)
 // need to be very careful about what we call in here, as it can be called in the context of any hook
 // including those that hold the loader lock
 
+static int set_caller_info_fallback(void *unused, ULONG_PTR addr)
+{
+	hook_info_t *hookinfo = hook_info();
+
+	if (addr && !inside_hook((PVOID)addr)) {
+        if (!hookinfo->main_caller_retaddr) {
+            hookinfo->main_caller_retaddr = addr;
+            return 0;
+        }
+        else if (!hookinfo->parent_caller_retaddr) {
+            hookinfo->parent_caller_retaddr = addr;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int set_caller_info(void *unused, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = hook_info();
@@ -278,6 +296,9 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
         hookinfo->parent_caller_retaddr = 0;
 
         operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
+
+        if (!hookinfo->main_caller_retaddr)
+            operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info_fallback);
 
         api_dispatch(h, hookinfo);
 
