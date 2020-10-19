@@ -119,7 +119,6 @@ extern wchar_t *our_commandline;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern lookup_t g_caller_regions;
-extern DWORD raw_gettickcount(void);
 
 #ifdef CAPE_NIRVANA
 extern void NirvanaInit();
@@ -584,7 +583,8 @@ char* GetName()
 
     GetSystemTime(&Time);
 
-    if (rand_s(&random))
+    random = rand();
+    if (!random)
     {
         ErrorOutput("GetName: failed to obtain a random number");
         return 0;
@@ -1808,7 +1808,10 @@ int DoProcessDump(PVOID CallerBase)
                 goto out;
             }
         }
-
+#ifdef DEBUG_COMMENTS
+        else
+            DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+#endif
         if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
         {
             DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
@@ -1827,6 +1830,10 @@ int DoProcessDump(PVOID CallerBase)
                 goto out;
             }
         }
+#ifdef DEBUG_COMMENTS
+        else if (NewImageBase)
+            DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+#endif
     }
 
     // For full-memory dumps, create the output file

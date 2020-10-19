@@ -75,7 +75,6 @@ void raw_sleep(int msecs)
 	interval.QuadPart = -(msecs * 10000);
 
 	pNtDelayExecution(FALSE, &interval);
-
 }
 
 // snprintf can end up acquiring the process' heap lock which will be unsafe in the context of a hooked
