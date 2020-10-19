@@ -695,9 +695,6 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
     memset(&NtHeader, 0, sizeof(NtHeader));
     memset(&MemoryInfo, 0, sizeof(MemoryInfo));
 
-    if (DisableIATPatching)
-        return InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
-
     if (!SystemInfo.dwPageSize)
         GetSystemInfo(&SystemInfo);
 
@@ -978,7 +975,7 @@ rebase:
     pOriginalFirstThunk->u1.Ordinal =  OrdinalValue | IMAGE_ORDINAL_FLAG_XX;
 
     // We write to FirstThunk in the same way
-    pFirstThunk = pOriginalFirstThunk+2;
+    pFirstThunk = pOriginalFirstThunk + 2;
     pFirstThunk->u1.Ordinal = OrdinalValue | IMAGE_ORDINAL_FLAG_XX;
 
     // Write the new table to the process
@@ -1103,7 +1100,7 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 
     // We try to use IAT patching in case this is a new process.
     // If it's not, this function is expected to fail.
-    if (ThreadHandle && Peb.ImageBaseAddress)
+    if (!DisableIATPatching && ThreadHandle && Peb.ImageBaseAddress)
     {
         if (InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath, Peb))
             goto out;
@@ -1121,9 +1118,9 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
     }
 
     if (RetVal)
-        DebugOutput("InjectDll: Successfully injected DLL via thread.\n");
+        DebugOutput("InjectDll: Successfully injected DLL.\n");
     else
-        DebugOutput("InjectDll: DLL injection via thread failed.\n");
+        DebugOutput("InjectDll: DLL injection failed.\n");
 
 out:
     if (ProcessHandle)
