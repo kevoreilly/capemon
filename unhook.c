@@ -274,7 +274,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
         ClearAllBreakpoints();
     }
 
-    if (g_config.procdump) {
+    if (g_config.procdump || g_config.procmemdump) {
         if (!ProcessDumped) {
             DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
             DoProcessDump(NULL);
