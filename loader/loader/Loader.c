@@ -25,7 +25,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #pragma warning(push )
 #pragma warning(disable : 4996)
 
-#define MAX_ADDRESS 0x7000000
+#define MAX_ADDRESS 0x70000000
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
@@ -910,14 +910,17 @@ rebase:
         if (MemoryInfo.State != MEM_FREE)
             continue;
 
-#ifdef DEBUG_COMMENTS
-        DebugOutput("InjectDllViaIAT: Found a free region from 0x%p - 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize);
-#endif
-
 #ifdef _WIN64
         if ((SIZE_T)MemoryInfo.RegionSize > 0xFFFFFFFF)
             StartAddress = (PBYTE)MemoryInfo.BaseAddress + 0x10000000;
 #else
+        if ((DWORD_PTR)MemoryInfo.BaseAddress > MAX_ADDRESS)
+        {
+#ifdef DEBUG_COMMENTS
+            DebugOutput("InjectDllViaIAT: Skipping region at 0x%p\n", MemoryInfo.BaseAddress);
+#endif
+            continue;
+        }
         if ((SIZE_T)((PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize) > MAX_ADDRESS)
             StartAddress = (PBYTE)MAX_ADDRESS - SystemInfo.dwPageSize;
 #endif
@@ -925,7 +928,7 @@ rebase:
             StartAddress = (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize - SystemInfo.dwPageSize;
 
 #ifdef DEBUG_COMMENTS
-        DebugOutput("InjectDllViaIAT: Starting reverse scan from 0x%p - 0x%p (region size 0x%p)\n", StartAddress, MemoryInfo.BaseAddress, MemoryInfo.RegionSize);
+        DebugOutput("InjectDllViaIAT: Found a free region from 0x%p - 0x%p, starting reverse scan from 0x%x\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize, StartAddress);
 #endif
 
         for (AllocationAddress = StartAddress; AllocationAddress > (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress -= SystemInfo.dwPageSize)
@@ -1102,14 +1105,20 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
     // If it's not, this function is expected to fail.
     if (ThreadHandle && Peb.ImageBaseAddress)
     {
-        RetVal = InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath, Peb);
-        if (RetVal)
+        if (InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath, Peb))
             goto out;
-        else
-            DebugOutput("InjectDll: IAT patching failed, falling back to thread injection.\n");
     }
 
-    RetVal = InjectDllViaThread(ProcessHandle, DllPath);
+    if (ThreadId && ThreadHandle)
+    {
+        DebugOutput("InjectDll: IAT patching failed, falling back to queued APC injection.\n");
+        RetVal = InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
+    }
+    else
+    {
+        DebugOutput("InjectDll: IAT patching failed, falling back to thread injection.\n");
+        RetVal = InjectDllViaThread(ProcessHandle, DllPath);
+    }
 
     if (RetVal)
         DebugOutput("InjectDll: Successfully injected DLL via thread.\n");
