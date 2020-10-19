@@ -141,7 +141,6 @@ int read_config(void)
 					if (value[1] == ':') {
 						// is a file
 						char *tmp = calloc(1, MAX_PATH);
-
 						ensure_absolute_ascii_path(tmp, value);
 						g_config.file_of_interest = ascii_to_unicode_dup(tmp);
 						free(tmp);
@@ -480,12 +479,24 @@ int read_config(void)
                 }
 			}
             else if (!stricmp(key, "depth")) {
-				TraceDepthLimit = (unsigned int)strtoul(value, NULL, 10);
-                DebugOutput("Config: Trace depth set to 0x%x", TraceDepthLimit);
+				if (!_strnicmp(value, "all", 3)) {
+					TraceDepthLimit = 0x7FFFFFFF;
+					DebugOutput("Config: Trace depth set to all");
+				}
+				else {
+					TraceDepthLimit = (unsigned int)strtoul(value, NULL, 10);
+					DebugOutput("Config: Trace depth set to 0x%x", TraceDepthLimit);
+				}
 			}
             else if (!stricmp(key, "count")) {
-				StepLimit = (unsigned int)strtoul(value, NULL, 10);
-                DebugOutput("Config: Trace instruction count set to 0x%x", StepLimit);
+				if (!_strnicmp(value, "all", 3)) {
+					StepLimit = 0x7FFFFFFF;
+					DebugOutput("Config: Trace instruction count set to all");
+				}
+				else {
+					StepLimit = (unsigned int)strtoul(value, NULL, 10);
+					DebugOutput("Config: Trace instruction count set to 0x%x", StepLimit);
+				}
 			}
             else if (!stricmp(key, "step-out")) {
                 g_config.debugger = 1;
@@ -507,6 +518,14 @@ int read_config(void)
             else if (!stricmp(key, "action0")) {
                 strncpy(Action0, value, strlen(value));
                 DebugOutput("Config: Action0 set to %s.", Action0);
+			}
+            else if (!stricmp(key, "action1")) {
+                strncpy(Action1, value, strlen(value));
+                DebugOutput("Config: Action1 set to %s.", Action1);
+			}
+            else if (!stricmp(key, "action2")) {
+                strncpy(Action2, value, strlen(value));
+                DebugOutput("Config: Action2 set to %s.", Action2);
 			}
             else if (!stricmp(key, "instruction0") || !stricmp(key, "instr0")) {
                 Instruction0 = calloc(1, MAX_PATH);
