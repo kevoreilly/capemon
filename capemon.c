@@ -727,33 +727,24 @@ VOID CALLBACK New_DllLoadNotification(
         cmdline++;
 
     if (NotificationReason == 1) {
-		if (g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) {
+		if ((g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) ||
+            (path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer)))) {
             if (!base_of_dll_of_interest)
                 set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
-            DebugOutput("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
-            if (g_config.unpacker)
-                UnpackerDllInit((PVOID)base_of_dll_of_interest);
-            if (g_config.debugger)
-            {
-                BreakpointsHit = FALSE;
-                SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
-            }
-        }
-        else if (path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer))) {
-            set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
             if (g_config.file_of_interest == NULL) {
                 g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
                 wcsncpy(g_config.file_of_interest, library.Buffer, wcslen(library.Buffer));
             }
             DebugOutput("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
-            if (g_config.debugger)
+            if (g_config.unpacker)
+                UnpackerDllInit((PVOID)base_of_dll_of_interest);
+            else if (g_config.debugger)
             {
                 BreakpointsHit = FALSE;
                 SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
             }
         }
         else {
-
             SIZE_T numconverted, size;
             WCHAR exportdirectory_w[MAX_PATH];
             char* exportdirectory;
@@ -921,7 +912,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 
     if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
 		return CAPEExceptionFilter(ExceptionInfo);
-    
+
     if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
 		return CAPEExceptionFilter(ExceptionInfo);
 
@@ -958,16 +949,16 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 		eip, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], (ULONG_PTR)stack, ExceptionInfo->ExceptionRecord->ExceptionCode);
 
 #ifdef _WIN64
-    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, 
-        "RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x\nR8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n", 
+    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1,
+        "RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x\nR8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n",
         ExceptionInfo->ContextRecord->Rax, ExceptionInfo->ContextRecord->Rbx, ExceptionInfo->ContextRecord->Rcx, ExceptionInfo->ContextRecord->Rdx,
         ExceptionInfo->ContextRecord->Rsi, ExceptionInfo->ContextRecord->Rdi, ExceptionInfo->ContextRecord->R8, ExceptionInfo->ContextRecord->R9,
         ExceptionInfo->ContextRecord->R10, ExceptionInfo->ContextRecord->R11, ExceptionInfo->ContextRecord->R12, ExceptionInfo->ContextRecord->R13,
         ExceptionInfo->ContextRecord->R14, ExceptionInfo->ContextRecord->R15, ExceptionInfo->ContextRecord->Rsp, ExceptionInfo->ContextRecord->Rbp
         );
 #else
-    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, 
-        "EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x\n ESP 0x%x EBP 0x%x\n", 
+    snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1,
+        "EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x\n ESP 0x%x EBP 0x%x\n",
         ExceptionInfo->ContextRecord->Eax, ExceptionInfo->ContextRecord->Ebx, ExceptionInfo->ContextRecord->Ecx, ExceptionInfo->ContextRecord->Edx,
         ExceptionInfo->ContextRecord->Esi, ExceptionInfo->ContextRecord->Edi, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp
         );
@@ -1032,7 +1023,7 @@ next:
             {
                 DebugOutput("%s::%s (`) %-20s %-6s%-4s%-30s\n", dllname, FunctionName, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
             }
-                
+
             else
             {
                 DebugOutput("%s::0x%p %-20s %-6s%-4s%-30s\n", dllname, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
