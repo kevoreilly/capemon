@@ -148,8 +148,13 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
     }
     else if (!stricmp(Action, "Stop"))
     {
-		StopTrace = TRUE;
         DebuggerOutput("ActionDispatcher: %s detected, stopping trace.\n", DecodedInstruction.mnemonic.p);
+        ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+        ClearSingleStepMode(ExceptionInfo->ContextRecord);
+        memset(&LastContext, 0, sizeof(CONTEXT));
+        TraceRunning = FALSE;
+        StopTrace = TRUE;
+        StepCount = 0;
     }
 #ifndef _WIN64
     else if (!stricmp(Action, "PrintEAX"))
@@ -468,7 +473,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         DebuggerOutput(DebuggerBuffer);
     }
 
-    if (!g_config.branch_trace && !FilterTrace)
+    if (!FilterTrace)
         DebuggerOutput("\n");
 
     if (StepCount > StepLimit)
@@ -526,6 +531,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         BranchTarget = CIP;
         CIP = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
 
+        DebuggerOutput("BranchTarget 0x%x, CIP 0x%x\n", BranchTarget, CIP);
         Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
 #ifdef _WIN64
@@ -922,39 +928,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         ForceStepOver = TRUE;
     }
 #endif
-    else if (!strcmp(DecodedInstruction.mnemonic.p, "CPUID"))
-    {
-#ifdef _WIN64
-        DebuggerOutput("0x%p (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-#else
-        DebuggerOutput("0x%p (%02d) %-20s %-6s%-4s%-30s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-#endif
-		SkipInstruction(ExceptionInfo->ContextRecord);
-        // Emulate
-#ifdef _WIN64
-		if (ExceptionInfo->ContextRecord->Rax != function_id)// || ExceptionInfo->ContextRecord->Ecx != subfunction_id)
-		{
-			function_id = (DWORD64)ExceptionInfo->ContextRecord->Rax;
-			subfunction_id = (DWORD64)ExceptionInfo->ContextRecord->Rcx;
-			__cpuidex(cpuInfo, function_id, subfunction_id);
-		}
-		ExceptionInfo->ContextRecord->Rax = cpuInfo[0];
-		ExceptionInfo->ContextRecord->Rbx = cpuInfo[1];
-		ExceptionInfo->ContextRecord->Rcx = cpuInfo[2];
-		ExceptionInfo->ContextRecord->Rdx = cpuInfo[3];
-#else
-		if (ExceptionInfo->ContextRecord->Eax != function_id)// || ExceptionInfo->ContextRecord->Ecx != subfunction_id)
-		{
-			function_id = ExceptionInfo->ContextRecord->Eax;
-			subfunction_id = ExceptionInfo->ContextRecord->Ecx;
-			__cpuidex(cpuInfo, function_id, subfunction_id);
-		}
-		ExceptionInfo->ContextRecord->Eax = cpuInfo[0];
-		ExceptionInfo->ContextRecord->Ebx = cpuInfo[1];
-		ExceptionInfo->ContextRecord->Ecx = cpuInfo[2];
-		ExceptionInfo->ContextRecord->Edx = cpuInfo[3];
-#endif
-	}
     else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
     {
         if (g_config.branch_trace)
@@ -1120,29 +1093,39 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         if (pBreakpointInfo->Register == bp)
         {
             TraceDepthCount = 0;
-            if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr0))
+            if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr0))
 			{
+#ifdef DEBUG_COMMENTS
                 DebugOutput("BreakpointCallback: Breakpoint 0 hit at 0x%p\n", pBreakpointInfo->Address);
+#endif
 				break;
 			}
 
-            if (bp == 1 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr1))
+            if (bp == 1 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr1))
 			{
+#ifdef DEBUG_COMMENTS
                 DebugOutput("BreakpointCallback: Breakpoint 1 hit at 0x%p\n", pBreakpointInfo->Address);
+#endif
 				break;
 			}
 
-            if (bp == 2 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr2))
+            if (bp == 2 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr2))
 			{
+#ifdef DEBUG_COMMENTS
                 DebugOutput("BreakpointCallback: Breakpoint 2 hit at 0x%p\n", pBreakpointInfo->Address);
+#endif
 				break;
 			}
 
-            if (bp == 3 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr3))
+            if (bp == 3 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr3))
 			{
+#ifdef DEBUG_COMMENTS
                 DebugOutput("BreakpointCallback: Breakpoint 3 hit at 0x%p\n", pBreakpointInfo->Address);
+#endif
 				break;
 			}
+
+            DebugOutput("BreakpointCallback: Breakpoint 0x%x, Dr0 0x%x, Dr1 0x%x, Dr2 0x%x, Dr3 0x%x\n", pBreakpointInfo->Address);
         }
     }
 
@@ -1339,16 +1322,16 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     ReDisassemble = FALSE;
 
 	// Dispatch any actions
-    if ((Instruction0 && !stricmp(DecodedInstruction.mnemonic.p, Instruction0)) || (!Instruction0 && bp == 0 && strlen(Action0)))
+    if ((Instruction0 && !stricmp(DecodedInstruction.mnemonic.p, Instruction0)) || (!Instruction0 && pBreakpointInfo->Register == 0 && strlen(Action0)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0);
 
-    if ((Instruction1 && !stricmp(DecodedInstruction.mnemonic.p, Instruction1)) || (!Instruction1 && bp == 1 && strlen(Action1)))
+    if ((Instruction1 && !stricmp(DecodedInstruction.mnemonic.p, Instruction1)) || (!Instruction1 && pBreakpointInfo->Register == 1 && strlen(Action1)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action1);
 
-    if ((Instruction2 && !stricmp(DecodedInstruction.mnemonic.p, Instruction2)) || (!Instruction2 && bp == 2 && strlen(Action2)))
+    if ((Instruction2 && !stricmp(DecodedInstruction.mnemonic.p, Instruction2)) || (!Instruction2 && pBreakpointInfo->Register == 2 && strlen(Action2)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
 
-    if ((Instruction3 && !stricmp(DecodedInstruction.mnemonic.p, Instruction3)) || (!Instruction3 && bp == 3 && strlen(Action3)))
+    if ((Instruction3 && !stricmp(DecodedInstruction.mnemonic.p, Instruction3)) || (!Instruction3 && pBreakpointInfo->Register == 3 && strlen(Action3)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
 
     // We disassemble a second time in case of any changes/patches
