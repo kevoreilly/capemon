@@ -2625,13 +2625,14 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
         DebugOutput("ShellcodeExecCallback: About to scan region for a PE image (base 0x%p, size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
 
-
         SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
         TrackedRegion->PagesDumped = DumpPEsInRange(TrackedRegion->MemInfo.AllocationBase, (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase);
 
         if (TrackedRegion->PagesDumped)
             DebugOutput("ShellcodeExecCallback: PE image(s) detected and dumped.\n");
-        else
+
+        // In the case where dumped PE file(s) come from inside shellcode, still dump the shellcode
+        if (!TrackedRegion->PagesDumped || (TrackedRegion->PagesDumped && !IsDisguisedPEHeader(TrackedRegion->MemInfo.AllocationBase)))
         {
             SIZE_T DumpSize = (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase;
 
