@@ -3168,3 +3168,11 @@ extern HOOKDEF_NOTAIL(WINAPI, DownloadFile,
 	LPCSTR path,
 	int flag
 );
+
+extern HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
+    __in        PUNICODE_STRING Name,
+    __in_opt    ULONG* Type,
+    __in_opt    PVOID Buffer,
+    __in        ULONG Length,
+    __in        ULONG* DataLength
+);

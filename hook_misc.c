@@ -1716,3 +1716,18 @@ HOOKDEF_NOTAIL(WINAPI, DownloadFile,
 	LOQ_void("network", "ssi", "URL", url,"Path", path, "Flag",flag);
 	return ret;
 }
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
+    __in        PUNICODE_STRING Name,
+    __in_opt    ULONG* Type,
+    __in_opt    PVOID Buffer,
+    __in        ULONG Length,
+    __in        ULONG* DataLength
+) {
+    WCHAR VMDetection[] = L"Kernel-VMDetection-Private";
+    NTSTATUS ret = Old_NtQueryLicenseValue(Name, Type, Buffer, Length, DataLength);
+    if (NT_SUCCESS(ret) && Buffer && !wcsncmp(Name->Buffer, VMDetection, Name->Length))
+        *(PBOOL)Buffer = FALSE;
+    LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
+    return ret;
+}

@@ -102,7 +102,6 @@ static hook_t g_hooks[] = {
     //HOOK(kernel32, lstrcpynA),
     //HOOK(kernel32, lstrcmpiA),
 
-	// special handling
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
 	HOOK_NOTAIL(jscript, JsEval, 5),
 	HOOK_SPECIAL(jscript9, JsParseScript),
@@ -641,8 +640,9 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptGenRandom),
 	HOOK(cryptsp, CryptImportKey),
 
-	HOOK(vbe7, rtcEnvironBstr),
 	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
+	HOOK(ntdll, NtQueryLicenseValue),
+	HOOK(vbe7, rtcEnvironBstr),
 	HOOK(shlwapi, StrCmpNICW),
 	HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK(oleaut32, SysFreeString),
