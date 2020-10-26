@@ -1001,13 +1001,13 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
         }
 	}
 
-	// flush logs prior to handling of an exception without having to register a vectored exception handler
-	log_flush();
-
     if (CAPEExceptionDispatcher(ExceptionRecord, Context))
         return 1;
     else
         RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
+
+	// flush logs prior to handling of an exception without having to register a vectored exception handler
+	log_flush();
 
     if (!RetVal && ExceptionRecord) {
         if (ExceptionRecord->NumberParameters == 1) {

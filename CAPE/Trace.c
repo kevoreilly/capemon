@@ -506,7 +506,15 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                 DebuggerOutput("\n");
             if (FunctionName && !g_config.branch_trace)
             {
-                DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
+                if (!strcmp(ModuleName, "ntdll.dll")
+                    && !strcmp(FunctionName, "RtlAllocateHeap"))
+                {
+                    ForceStepOver = TRUE;
+                    FilterTrace = TRUE;
+                }
+                else
+                    DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
+
                 for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
                 {
                     if (!g_config.trace_into_api[i])
@@ -625,6 +633,11 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             __try
             {
                 ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                if (!ExportName)
+                {
+                    CallTarget = *(PVOID*)CallTarget;
+                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                }
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -647,7 +660,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             {
                 DebuggerOutput("0x%p (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
                 ForceStepOver = TRUE;
-                DebuggerOutput("\nFORCE STEP OVER = %d\n", ForceStepOver);
             }
             else if (!FilterTrace || g_config.trace_all)
                 DebuggerOutput("0x%p (%02d) %-20s %-6s%-4s0x%-28x", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", CallTarget);
@@ -871,6 +883,11 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             __try
             {
                 ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+                if (!ExportName)
+                {
+                    CallTarget = *(PVOID*)CallTarget;
+                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                }
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1358,6 +1375,11 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             __try
             {
                 ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                if (!ExportName)
+                {
+                    CallTarget = *(PVOID*)CallTarget;
+                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                }
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1388,6 +1410,11 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             __try
             {
                 ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                if (!ExportName)
+                {
+                    CallTarget = *(PVOID*)CallTarget;
+                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+                }
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {

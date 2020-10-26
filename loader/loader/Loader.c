@@ -172,9 +172,9 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 	{
         // cut off the newline
         char *p = strchr(Buffer, '\r');
-        if(p != NULL) *p = 0;
+        if (p != NULL) *p = 0;
         p = strchr(Buffer, '\n');
-        if(p != NULL) *p = 0;
+        if (p != NULL) *p = 0;
 
         // split key=value
         p = strchr(Buffer, '=');
@@ -185,13 +185,13 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 
 			*p = 0;
 			Length = strlen(Value);
-            if(!strcmp(key, "pipe"))
+            if (!strcmp(key, "pipe"))
             {
 				for (i = 0; i < Length; i++)
                     strncpy(LogPipe, Value, Length);
                 DebugOutput("ReadConfig: Successfully loaded pipe name %s.\n", LogPipe);
             }
-            if(!strcmp(key, "no-iat"))
+            if (!strcmp(key, "no-iat"))
             {
                 DisableIATPatching = Value[0] == '1';
                 if (DisableIATPatching)
