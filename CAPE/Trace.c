@@ -883,11 +883,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             __try
             {
                 ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
-                if (!ExportName)
-                {
-                    CallTarget = *(PVOID*)CallTarget;
-                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-                }
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
