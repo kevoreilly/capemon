@@ -640,15 +640,15 @@ static hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptGenRandom),
 	HOOK(cryptsp, CryptImportKey),
 
-	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
-	HOOK(ntdll, NtQueryLicenseValue),
-	HOOK(vbe7, rtcEnvironBstr),
-	HOOK(shlwapi, StrCmpNICW),
-	HOOK(shlwapi, UrlCanonicalizeW),
+	//HOOK(ntdll, RtlDosPathNameToNtPathName_U),
+	//HOOK(ntdll, NtQueryLicenseValue),
+	//HOOK(vbe7, rtcEnvironBstr),
+	//HOOK(shlwapi, StrCmpNICW),
+	//HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK(oleaut32, SysFreeString),
 	HOOK(oleaut32, VarBstrCat),
 	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
-	//HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),	// crashes
+	//HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
     HOOK_NOTAIL(inseng,DownloadFile,3),
 };
 
