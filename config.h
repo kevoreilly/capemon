@@ -169,6 +169,9 @@ struct _g_config {
     // Adobe Reader settings
     int pdf;
 
+    // Microsoft Office settings
+    int office;
+
 	char *break_on_apiname;
 	char *break_on_modname;
     char break_on_return[MAX_PATH];

@@ -682,7 +682,15 @@ int read_config(void)
 				g_config.pdf = value[0] == '1';
                 if (g_config.pdf && g_config.first_process) {
                     DebugOutput("PDF (Adobe) settings enabled.\n");
-                    g_config.api_rate_cap = 0x10;
+                    g_config.api_rate_cap = 2;
+                }
+			}
+            else if (!stricmp(key, "office")) {
+				g_config.office = value[0] == '1';
+                if (g_config.office && g_config.first_process) {
+                    DebugOutput("Microsoft Office settings enabled.\n");
+                    g_config.caller_dump = 0;
+                    g_config.injection = 0;
                 }
 			}
             else if (!stricmp(key, "fake-rdtsc")) {
