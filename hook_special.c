@@ -33,6 +33,11 @@ extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine,
 
 PVOID LastDllUnload;
 
+static int wmi_sent = 0;
+static int bits_sent = 0;
+static int tasksched_sent = 0;
+static int interop_sent = 0;
+
 HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
     __in_opt    PWCHAR PathToFile,
     __in_opt    PULONG Flags,
@@ -242,18 +247,34 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
 		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
 
-	if (!strcmp(idbuf1, "4590F811-1D3A-11D0-891F-00AA004B2E24") || !strcmp(idbuf1, "4590F812-1D3A-11D0-891F-00AA004B2E24") ||
-		!strcmp(idbuf1, "172BDDF8-CEEA-11D1-8B05-00600806D9B6") || !strcmp(idbuf1, "CF4CC405-E2C5-4DDD-B3CE-5E7582D8C9FA")) {
-		pipe("WMI:");
+#ifndef _WIN64
+	if (!called_by_hook()) {
+		if (!strcmp(idbuf1, "4590F811-1D3A-11D0-891F-00AA004B2E24") || !strcmp(idbuf1, "4590F812-1D3A-11D0-891F-00AA004B2E24") ||
+			!strcmp(idbuf1, "172BDDF8-CEEA-11D1-8B05-00600806D9B6") || !strcmp(idbuf1, "CF4CC405-E2C5-4DDD-B3CE-5E7582D8C9FA")) {
+			if (!wmi_sent) {
+				wmi_sent = 1;
+				pipe("WMI:");
+			}
+		}
+		if (!strcmp(idbuf1, "4991D34B-80A1-4291-83B6-3328366B9097") || !strcmp(idbuf1, "5CE34C0D-0DC9-4C1F-897C-100000000003"))
+			if (!bits_sent) {
+				bits_sent = 1;
+				pipe("BITS:");
+			}
+		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
+			if (!tasksched_sent) {
+				tasksched_sent = 1;
+				pipe("TASKSCHED:");
+			}
+		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
+			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
+			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
+			if (!interop_sent) {
+				interop_sent = 1;
+				pipe("INTEROP:");
+			}
 	}
-	if (!strcmp(idbuf1, "4991D34B-80A1-4291-83B6-3328366B9097") || !strcmp(idbuf1, "5CE34C0D-0DC9-4C1F-897C-100000000003"))
-		pipe("BITS:");
-	if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
-		pipe("TASKSCHED:");
-	if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
-        !strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
-        !strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
-        pipe("INTEROP:");
+#endif
 
 	set_lasterrors(&lasterror);
 
@@ -302,19 +323,35 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
 		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
 
+#ifndef _WIN64
 	if (!called_by_hook()) {
 		if (!strcmp(idbuf1, "4590F811-1D3A-11D0-891F-00AA004B2E24") || !strcmp(idbuf1, "4590F812-1D3A-11D0-891F-00AA004B2E24") ||
 			!strcmp(idbuf1, "172BDDF8-CEEA-11D1-8B05-00600806D9B6") || !strcmp(idbuf1, "CF4CC405-E2C5-4DDD-B3CE-5E7582D8C9FA")) {
-			pipe("WMI:");
+			if (!wmi_sent) {
+				wmi_sent = 1;
+				pipe("WMI:");
+			}
 		}
 		if (!strcmp(idbuf1, "4991D34B-80A1-4291-83B6-3328366B9097") || !strcmp(idbuf1, "5CE34C0D-0DC9-4C1F-897C-100000000003"))
-			pipe("BITS:");
+			if (!bits_sent) {
+				bits_sent = 1;
+				pipe("BITS:");
+			}
 		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
-			pipe("TASKSCHED:");
+			if (!tasksched_sent) {
+				tasksched_sent = 1;
+				pipe("TASKSCHED:");
+			}
 		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
-            !strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") || !strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
-			pipe("INTEROP:");
+			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
+			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
+			if (!interop_sent) {
+				interop_sent = 1;
+				pipe("INTEROP:");
+			}
 	}
+#endif
+
 	set_lasterrors(&lasterror);
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));

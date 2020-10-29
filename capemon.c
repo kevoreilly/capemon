@@ -648,7 +648,7 @@ static hook_t g_hooks[] = {
 	HOOK(oleaut32, SysFreeString),
 	HOOK(oleaut32, VarBstrCat),
 	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
-	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
+	//HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),	// crashes
     HOOK_NOTAIL(inseng,DownloadFile,3),
 };
 
