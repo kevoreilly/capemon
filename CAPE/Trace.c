@@ -634,10 +634,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
             {
                 ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
                 if (!ExportName)
-                {
-                    CallTarget = *(PVOID*)CallTarget;
-                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-                }
+                    ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1371,10 +1368,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             {
                 ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
                 if (!ExportName)
-                {
-                    CallTarget = *(PVOID*)CallTarget;
-                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-                }
+                    ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1406,10 +1400,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             {
                 ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
                 if (!ExportName)
-                {
-                    CallTarget = *(PVOID*)CallTarget;
-                    ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-                }
+                    ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
             }
             __except(EXCEPTION_EXECUTE_HANDLER)
             {
