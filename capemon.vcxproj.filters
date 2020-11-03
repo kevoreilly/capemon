@@ -282,6 +282,9 @@
     <ClCompile Include="capemon.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hooks.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">
