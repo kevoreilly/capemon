@@ -21,10 +21,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hooks.h"
 #include "pipe.h"
 
+extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern DWORD GetTimeStamp(LPVOID Address);
+
 struct _g_config g_config;
 volatile int dummy_val;
-
-extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
+hook_t* hooks;
+SIZE_T hooks_size, hooks_arraysize;
 
 void disable_tail_call_optimization(void)
 {
@@ -46,7 +50,89 @@ void disable_tail_call_optimization(void)
 #define HOOK_NOTAIL(library, funcname, numargs) {L###library, #funcname, NULL, NULL, \
     &New_##funcname, NULL, NULL, TRUE, FALSE, numargs, TRUE}
 
-hook_t g_hooks[] = {
+#define HOOK_FUNCRVA(library, funcname, timestamp, rva) {L###library, #funcname, NULL, NULL, \
+    &New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
+
+// This hook set is intended to include only hooks which are necessary
+// to follow the execution chain with base functionality
+hook_t min_hooks[] = {
+	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
+	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
+    HOOK_SPECIAL(ntdll, NtCreateUserProcess),
+    HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+
+	HOOK_SPECIAL(ole32, CoCreateInstance),
+	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
+	HOOK_SPECIAL(ole32, CoGetClassObject),
+
+	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
+	HOOK(ntdll, NtCreateProcess),
+    HOOK(ntdll, NtCreateProcessEx),
+    HOOK(ntdll, RtlCreateUserProcess),
+	HOOK(advapi32, CreateProcessWithLogonW),
+	HOOK(advapi32, CreateProcessWithTokenW),
+	HOOK(advapi32, CreateProcessWithLogonW),
+	HOOK(advapi32, CreateProcessWithTokenW),
+    HOOK(shell32, ShellExecuteExW),
+
+    HOOK(ntdll, NtAllocateVirtualMemory),
+    HOOK(ntdll, NtWriteVirtualMemory),
+	HOOK(ntdll, NtWow64WriteVirtualMemory64),
+    HOOK(ntdll, NtMapViewOfSection),
+    HOOK(ntdll, NtUnmapViewOfSection),
+    HOOK(kernel32, WriteProcessMemory),
+
+	HOOK(ntdll, NtQueueApcThread),
+	HOOK(ntdll, NtQueueApcThreadEx),
+	HOOK(ntdll, NtCreateThread),
+	HOOK(ntdll, NtCreateThreadEx),
+    HOOK(ntdll, NtSetContextThread),
+    HOOK(ntdll, NtSuspendThread),
+    HOOK(ntdll, RtlCreateUserThread),
+    HOOK(kernel32, CreateRemoteThread),
+
+	HOOK(user32, SendNotifyMessageA),
+	HOOK(user32, SendNotifyMessageW),
+	HOOK(user32, SetWindowLongA),
+	HOOK(user32, SetWindowLongW),
+	HOOK(user32, SetWindowLongPtrA),
+	HOOK(user32, SetWindowLongPtrW),
+
+	HOOK(user32, SetWindowsHookExA),
+    HOOK(user32, SetWindowsHookExW),
+
+	HOOK(ntdll, NtCreateFile),
+    HOOK(ntdll, NtOpenFile),
+    HOOK(ntdll, NtSetInformationFile),
+    HOOK(kernel32, DeleteFileA),
+    HOOK(kernel32, DeleteFileW),
+    HOOK(ntdll, NtDeleteFile),
+    HOOK(kernel32, CopyFileA),
+    HOOK(kernel32, CopyFileW),
+    HOOK_NOTAIL_ALT(kernel32, CopyFileExW, 6),
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
+	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
+
+    HOOK(ntdll, NtClose),
+    HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, NtResumeProcess),
+    HOOK(ntdll, NtTerminateProcess),
+
+	HOOK(ntdll, NtDuplicateObject),
+
+	HOOK_SPECIAL(kernel32, GetSystemTimeAsFileTime),
+
+    HOOK(advapi32, StartServiceA),
+    HOOK(advapi32, StartServiceW),
+
+	HOOK(urlmon, URLDownloadToFileW),
+    HOOK(urlmon, URLDownloadToCacheFileW),
+};
+
+hook_t full_hooks[] = {
 
     //
     // Special Hooks
@@ -606,22 +692,139 @@ hook_t g_hooks[] = {
 	HOOK(cryptsp, CryptGenRandom),
 	HOOK(cryptsp, CryptImportKey),
 
-	//HOOK(ntdll, RtlDosPathNameToNtPathName_U),
-	//HOOK(ntdll, NtQueryLicenseValue),
-	//HOOK(vbe7, rtcEnvironBstr),
-	//HOOK(shlwapi, StrCmpNICW),
-	//HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK(oleaut32, SysFreeString),
 	HOOK(oleaut32, VarBstrCat),
 	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
-	//HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
     HOOK_NOTAIL(inseng,DownloadFile,3),
+
+#ifndef _WIN64
+	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
+	HOOK(ntdll, NtQueryLicenseValue),
+	HOOK(vbe7, rtcEnvironBstr),
+	HOOK(shlwapi, StrCmpNICW),
+	HOOK(shlwapi, UrlCanonicalizeW),
+	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
+#endif
+};
+
+hook_t test_hooks[] = {
+	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
+	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
+    HOOK_SPECIAL(ntdll, NtCreateUserProcess),
+    HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+
+	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
+	HOOK_NOTAIL(jscript, JsEval, 5),
+	HOOK_SPECIAL(jscript9, JsParseScript),
+	HOOK_NOTAIL(jscript9, JsRunScript, 4),
+	HOOK_SPECIAL(mshtml, CDocument_write),
+
+	// COM object creation hook
+	HOOK_SPECIAL(ole32, CoCreateInstance),
+	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
+	HOOK_SPECIAL(ole32, CoGetClassObject),
+
+	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
+	// lowest variant of MoveFile()
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
+	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
+
+    // File Hooks
+	//HOOK(ntdll, NtQueryAttributesFile),
+	HOOK(ntdll, NtQueryFullAttributesFile),
+	HOOK(ntdll, NtCreateFile),
+    HOOK(ntdll, NtOpenFile),
+    HOOK(ntdll, NtReadFile),
+    HOOK(ntdll, NtWriteFile),
+    HOOK(ntdll, NtDeleteFile),
+    HOOK(ntdll, NtDeviceIoControlFile),
+    HOOK(ntdll, NtQueryDirectoryFile),
+    HOOK(ntdll, NtQueryInformationFile),
+    HOOK(ntdll, NtSetInformationFile),
+    HOOK(ntdll, NtOpenDirectoryObject),
+    HOOK(ntdll, NtCreateDirectoryObject),
+    HOOK(ntdll, NtQueryDirectoryObject),
+
+    HOOK(kernel32, CreateFileTransactedA),
+    HOOK(kernel32, CreateFileTransactedW),
+    // CreateDirectoryExA calls CreateDirectoryExW
+    // CreateDirectoryW does not call CreateDirectoryExW
+    HOOK(kernel32, CreateDirectoryW),
+    HOOK(kernel32, CreateDirectoryExW),
+
+    HOOK(kernel32, RemoveDirectoryA),
+    HOOK(kernel32, RemoveDirectoryW),
+
+	HOOK(kernel32, FindFirstFileExA),
+    HOOK(kernel32, FindFirstFileExW),
+
+	HOOK(kernel32, FindNextFileW),
+
+    // Covered by NtCreateFile() but still grab this information
+    HOOK(kernel32, CopyFileA),
+    HOOK(kernel32, CopyFileW),
+    HOOK_NOTAIL_ALT(kernel32, CopyFileExW, 6),
+
+    // Covered by NtSetInformationFile() but still grab this information
+    HOOK(kernel32, DeleteFileA),
+    HOOK(kernel32, DeleteFileW),
+
+    HOOK(kernel32, GetDiskFreeSpaceExA),
+    HOOK(kernel32, GetDiskFreeSpaceExW),
+    HOOK(kernel32, GetDiskFreeSpaceA),
+    HOOK(kernel32, GetDiskFreeSpaceW),
+
+	HOOK(kernel32, GetVolumeNameForVolumeMountPointW),
+	HOOK(kernel32, GetVolumeInformationByHandleW),
+
+	HOOK(shell32, SHGetFolderPathW),
+	HOOK(shell32, SHGetKnownFolderPath),
+	HOOK(shell32, SHGetFileInfoW),
+
+	HOOK(version, GetFileVersionInfoW),
+	HOOK(version, GetFileVersionInfoSizeW),
+
+	HOOK(kernel32, FindFirstChangeNotificationW),
+
+    // Sleep Hooks
+	HOOK(ntdll, NtQueryPerformanceCounter),
+    HOOK(ntdll, NtDelayExecution),
+	HOOK(ntdll, NtWaitForSingleObject),
+    HOOK_SPECIAL(kernel32, GetLocalTime),
+    HOOK_SPECIAL(kernel32, GetSystemTime),
+	HOOK_SPECIAL(kernel32, GetSystemTimeAsFileTime),
+	HOOK_EMULATE(kernel32, GetTickCount),
+	HOOK_EMULATE(kernel32, GetTickCount64),
+	HOOK_SPECIAL(ntdll, NtQuerySystemTime),
+	HOOK(user32, GetLastInputInfo),
+	HOOK_SPECIAL(winmm, timeGetTime),
+	HOOK(ntdll, NtSetTimer),
+	HOOK(ntdll, NtSetTimerEx),
+	HOOK(user32, MsgWaitForMultipleObjectsEx),
+	HOOK(kernel32, CreateTimerQueueTimer),
+};
+
+hook_t tls_hooks[] = {
+#ifdef _WIN64
+	HOOK_FUNCRVA(ncrypt, PRF, 0x4a5bdfd4, 0x4bc0),
+	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x4a5bdfd4, 0xe100),
+	HOOK_FUNCRVA(ncrypt, PRF, 0x5c2680c4, 0x4be0),
+	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c2680c4, 0xd690),
+#else
+	HOOK_FUNCRVA(ncrypt, PRF, 0x4a5bda79, 0x81d5),
+	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x4a5bda79, 0x255be),
+	HOOK_FUNCRVA(ncrypt, PRF, 0x5c267e35, 0x8099),
+	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c267e35, 0x25efe),
+#endif
 };
 
 BOOL inside_hook(LPVOID Address)
 {
-	for (unsigned int i = 0; i < ARRAYSIZE(g_hooks); i++) {
-        if ((ULONG_PTR)Address >= (ULONG_PTR)g_hooks[i].hookdata && (ULONG_PTR)Address < (ULONG_PTR)(g_hooks[i].hookdata + sizeof(hook_data_t)))
+	for (unsigned int i = 0; i < hooks_arraysize; i++) {
+        if ((ULONG_PTR)Address >= (ULONG_PTR)(hooks+i)->hookdata && (ULONG_PTR)Address < (ULONG_PTR)((hooks+i)->hookdata + sizeof(hook_data_t)))
             return TRUE;
     }
 
@@ -630,25 +833,25 @@ BOOL inside_hook(LPVOID Address)
 
 void set_hooks_dll(const wchar_t *library)
 {
-	for (unsigned int i = 0; i < ARRAYSIZE(g_hooks); i++) {
-        if(!wcsicmp(g_hooks[i].library, library)) {
-			if (hook_api(&g_hooks[i], g_config.hook_type) < 0)
-				pipe("WARNING:Unable to hook %z", g_hooks[i].funcname);
+	for (unsigned int i = 0; i < hooks_arraysize; i++) {
+        if (!wcsicmp((hooks+i)->library, library)) {
+			if (hook_api(hooks+i, g_config.hook_type) < 0)
+				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
         }
     }
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
 {
-	for (unsigned int i = 0; i < ARRAYSIZE(g_hooks); i++) {
-        if(!wcsicmp(g_hooks[i].library, exportdirectory)) {
-			hook_t hook = g_hooks[i];
-            hook.library = library;
-            hook.exportdirectory = exportdirectory;
-            hook.addr = NULL;
-            hook.is_hooked = 0;
-            if (hook_api(&hook, g_config.hook_type) < 0)
-				pipe("WARNING:Unable to hook %z", g_hooks[i].funcname);
+	for (unsigned int i = 0; i < hooks_arraysize; i++) {
+        if (!wcsicmp((hooks+i)->library, exportdirectory)) {
+			hook_t *hook = hooks+i;
+            hook->library = library;
+            hook->exportdirectory = exportdirectory;
+            hook->addr = NULL;
+            hook->is_hooked = 0;
+            if (hook_api(hook, g_config.hook_type) < 0)
+				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
         }
     }
 }
@@ -657,11 +860,11 @@ extern void invalidate_regions_for_hook(const hook_t *hook);
 
 void revalidate_all_hooks(void)
 {
-	for (int i = 0; i < ARRAYSIZE(g_hooks); i++) {
-		if (g_hooks[i].hook_addr && !is_valid_address_range((ULONG_PTR)g_hooks[i].hook_addr, 1)) {
-			g_hooks[i].is_hooked = 0;
-			g_hooks[i].hook_addr = NULL;
-			invalidate_regions_for_hook(&g_hooks[i]);
+	for (unsigned int i = 0; i < hooks_arraysize; i++) {
+		if ((hooks+i)->hook_addr && !is_valid_address_range((ULONG_PTR)(hooks+i)->hook_addr, 1)) {
+			(hooks+i)->is_hooked = 0;
+			(hooks+i)->hook_addr = NULL;
+			invalidate_regions_for_hook(hooks+i);
 		}
 	}
 }
@@ -672,21 +875,36 @@ extern _LdrRegisterDllNotification pLdrRegisterDllNotification;
 
 void set_hooks()
 {
-	// before modifying any DLLs, let's first freeze all other threads in our process
+	// Before modifying any DLLs, let's first freeze all other threads in our process
 	// otherwise our racy modifications can cause the task to crash prematurely
 	// This code itself is racy as additional threads could be created while we're
 	// processing the list, but the risk is at least greatly reduced
-	PHANDLE suspended_threads = (PHANDLE)calloc(4096, sizeof(HANDLE));
-	DWORD num_suspended_threads = 0;
-	DWORD i;
 	HANDLE hSnapShot;
 	THREADENTRY32 threadInfo;
+	DWORD i, old_protect, num_suspended_threads = 0;
+	PHANDLE suspended_threads = (PHANDLE)calloc(4096, sizeof(HANDLE));
 	DWORD our_tid = GetCurrentThreadId();
 	DWORD our_pid = GetCurrentProcessId();
-	// the hooks contain executable code as well, so they have to be RWX
-	DWORD old_protect;
 
-	VirtualProtect(g_hooks, sizeof(g_hooks), PAGE_EXECUTE_READWRITE, &old_protect);
+	// Hook set selection
+	if (g_config.dumptls) {
+		hooks = tls_hooks;
+		hooks_size = sizeof(tls_hooks);
+		hooks_arraysize = ARRAYSIZE(tls_hooks);
+	}
+	else if (g_config.minhook) {
+		hooks = min_hooks;
+		hooks_size = sizeof(min_hooks);
+		hooks_arraysize = ARRAYSIZE(min_hooks);
+	}
+	else {
+		hooks = full_hooks;
+		hooks_size = sizeof(full_hooks);
+		hooks_arraysize = ARRAYSIZE(full_hooks);
+	}
+
+	// The hooks contain executable code as well, so they have to be RWX
+	VirtualProtect(hooks, hooks_size, PAGE_EXECUTE_READWRITE, &old_protect);
 
 	memset(&threadInfo, 0, sizeof(threadInfo));
 	threadInfo.dwSize = sizeof(threadInfo);
@@ -707,11 +925,10 @@ void set_hooks()
 		}
 	} while (Thread32Next(hSnapShot, &threadInfo));
 
-    // now, hook each api :)
-    for (i = 0; i < ARRAYSIZE(g_hooks); i++) {
-		//pipe("INFO:Hooking %z", g_hooks[i].funcname);
-		if (hook_api(&g_hooks[i], g_config.hook_type) < 0)
-			pipe("WARNING:Unable to hook %z", g_hooks[i].funcname);
+    for (i = 0; i < hooks_arraysize; i++) {
+		//DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
+		if (hook_api(hooks+i, g_config.hook_type) < 0)
+			pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
     }
 
 	for (i = 0; i < num_suspended_threads; i++) {

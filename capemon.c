@@ -451,15 +451,9 @@ void init_private_heap(void)
 #endif
 }
 
-BOOLEAN g_dll_main_complete;
-
 extern void ignored_threads_init(void);
-
-extern CRITICAL_SECTION readfile_critsec;
-
-extern CRITICAL_SECTION g_mutex;
-extern CRITICAL_SECTION g_writing_log_buffer_mutex;
-
+extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex;
+BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
@@ -554,7 +548,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
         hkcu_init();
 
         // initialize the log file
-        log_init(g_config.debug || g_config.standalone);
+        if (!g_config.dumptls)
+			log_init(g_config.debug || g_config.standalone);
 
         // initialize the Sleep() skipping stuff
         init_sleep_skip(g_config.first_process);

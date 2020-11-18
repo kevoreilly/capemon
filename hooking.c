@@ -265,7 +265,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
     if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-        if (g_config.api_rate_cap) {
+        if (g_config.api_rate_cap && Old_GetSystemTimeAsFileTime) {
             if (h->hook_disabled)
                 return 0;
 

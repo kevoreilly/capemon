@@ -172,6 +172,12 @@ struct _g_config {
     // Microsoft Office settings
     int office;
 
+    // TLS secret dump mode
+    int dumptls;
+
+    // Minimal hook set
+    int minhook;
+
 	char *break_on_apiname;
 	char *break_on_modname;
     char break_on_return[MAX_PATH];

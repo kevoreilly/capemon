@@ -285,6 +285,9 @@
     <ClCompile Include="hooks.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_tls.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">

@@ -1314,6 +1314,41 @@ DWORD GetEntryPoint(LPVOID Address)
 }
 
 //**************************************************************************************
+DWORD GetTimeStamp(LPVOID Address)
+//**************************************************************************************
+{
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+    if (!Address)
+    {
+        DebugOutput("GetTimeStamp: Error - no address supplied.\n");
+        return 0;
+    }
+
+    if (IsDisguisedPEHeader(Address) <= 0)
+        return 0;
+
+    pDosHeader = (PIMAGE_DOS_HEADER)Address;
+
+    __try
+    {
+        if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DebugOutput("GetTimeStamp: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+        return 0;
+    }
+
+    if (pNtHeader && TestPERequirements(pNtHeader))
+        return pNtHeader->FileHeader.TimeDateStamp;
+
+    return 0;
+}
+
+//**************************************************************************************
 BOOL DumpStackRegion(void)
 //**************************************************************************************
 {

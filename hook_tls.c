@@ -1,0 +1,113 @@
+#include <stdio.h>
+#include "hooking.h"
+#include "log.h"
+#include "pipe.h"
+#include "misc.h"
+#include <Shlwapi.h>
+
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern char* GetResultsPath(char* FolderName);
+CHAR SecretsLine[MAX_PATH];
+HANDLE SecretsLog;
+
+void hexencode(char *dst, const uint8_t *src, uint32_t length)
+{
+    static const char charset[] = "0123456789abcdef";
+    for (; length != 0; src++, length--) {
+        *dst++ = charset[*src >> 4];
+        *dst++ = charset[*src & 15];
+    }
+    *dst = 0;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, PRF,
+    void *unk1,
+    uintptr_t unk2,
+    uint8_t *buf1,
+    uintptr_t buf1_length,
+    const char *type,
+    uint32_t type_length,
+    uint8_t *buf2,
+    uint32_t buf2_length,
+    uint8_t *buf3,
+    uint32_t buf3_length
+) {
+    NTSTATUS ret;
+	char *FullPathName;
+	uintptr_t master_secret_length = 0, random_length = 0;
+    uint8_t *master_secret = NULL, *client_random = NULL;
+    uint8_t *server_random = NULL;
+
+    char client_random_repr[32*2+1] = "";
+    char server_random_repr[32*2+1] = "";
+    char master_secret_repr[48*2+1] = "";
+
+    if (type_length == 13 && strcmp(type, "key expansion") == 0 && buf2_length == 64) {
+		SIZE_T LastWriteLength;
+        master_secret_length = buf1_length;
+        master_secret = buf1;
+
+        random_length = 32;
+        server_random = buf2;
+        client_random = buf2 + random_length;
+
+        hexencode(client_random_repr, client_random, random_length);
+        hexencode(server_random_repr, server_random, random_length);
+        hexencode(master_secret_repr, master_secret, master_secret_length);
+
+		FullPathName = GetResultsPath("dumptls");
+		PathAppend(FullPathName, "secrets.log");
+		if (!SecretsLog)
+			SecretsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (SecretsLog != INVALID_HANDLE_VALUE) {
+			memset(SecretsLine, 0, MAX_PATH*sizeof(CHAR));
+			_snprintf_s(SecretsLine, MAX_PATH, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", client_random_repr, server_random_repr, master_secret_repr);
+			WriteFile(SecretsLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
+		}
+    }
+
+	ret = Old_PRF(unk1, unk2, buf1, buf1_length, type, type_length, buf2, buf2_length, buf3, buf3_length);
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
+    uintptr_t unk1,
+    uint8_t *secret,
+    uintptr_t secret_length,
+    uint8_t *seed,
+    uintptr_t seed_length,
+    void *unk2,
+    uintptr_t unk3
+) {
+    NTSTATUS ret;
+    char *FullPathName;
+	int random_length = 32;
+    uint8_t *client_random = seed;
+    uint8_t *server_random = seed + random_length;
+
+    char client_random_repr[32*2+1] = "";
+    char server_random_repr[32*2+1] = "";
+    char master_secret_repr[48*2+1] = "";
+
+    if (seed_length == 64 && secret_length == 48) {
+		SIZE_T LastWriteLength;
+        hexencode(client_random_repr, client_random, random_length);
+        hexencode(server_random_repr, server_random, random_length);
+        hexencode(master_secret_repr, secret, secret_length);
+
+		FullPathName = GetResultsPath("dumptls");
+		PathAppend(FullPathName, "secrets.log");
+		if (!SecretsLog)
+			SecretsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (SecretsLog != INVALID_HANDLE_VALUE) {
+			memset(SecretsLine, 0, MAX_PATH*sizeof(CHAR));
+			_snprintf_s(SecretsLine, MAX_PATH, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", client_random_repr, server_random_repr, master_secret_repr);
+			WriteFile(SecretsLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
+		}
+    }
+
+    ret = Old_Ssl3GenerateKeyMaterial(unk1, secret, secret_length, seed, seed_length, unk2, unk3);
+
+    return ret;
+}

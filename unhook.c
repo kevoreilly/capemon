@@ -35,7 +35,7 @@ extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
 extern void ProcessTrackedRegions();
 extern void DebuggerShutdown();
-extern HANDLE DebuggerLog;
+extern HANDLE DebuggerLog, SecretsLog;
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
 
@@ -285,6 +285,11 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     else
         DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
+    file_handle_terminate();
+
+    if (g_config.dumptls)
+        CloseHandle(SecretsLog);
+
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {
         SetEvent(g_terminate_event_handle);
@@ -294,7 +299,6 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
     else
         DebugOutput("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
 
-    file_handle_terminate();
     log_flush();
     if (g_config.terminate_processes)
         ExitProcess(0);

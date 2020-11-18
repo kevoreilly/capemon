@@ -718,6 +718,21 @@ int read_config(void)
                 if (g_config.upx)
                     DebugOutput("UPX unpacker enabled.\n");
 			}
+            else if (!stricmp(key, "minhook")) {
+				g_config.minhook = value[0] == '1';
+                if (g_config.minhook)
+                    DebugOutput("Minimal hook set enabled.\n");
+			}
+            else if (!stricmp(key, "dumptls")) {
+				g_config.dumptls = value[0] == '1';
+                if (g_config.dumptls) {
+                    g_config.procdump = 0;
+                    g_config.procmemdump = 0;
+                    g_config.injection = 0;
+                    g_config.caller_dump = 0;
+                    DebugOutput("TLS secret dump mode enabled.\n");
+				}
+			}
             else if (!stricmp(key, "plugx")) {
 				g_config.plugx = value[0] == '1';
                 if (g_config.plugx)

@@ -3176,3 +3176,26 @@ extern HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
     __in        ULONG Length,
     __in        ULONG* DataLength
 );
+
+HOOKDEF(NTSTATUS, WINAPI, PRF,
+    void *unk1,
+    uintptr_t unk2,
+    uint8_t *buf1,
+    uintptr_t buf1_length,
+    const char *type,
+    uint32_t type_length,
+    uint8_t *buf2,
+    uint32_t buf2_length,
+    uint8_t *buf3,
+    uint32_t buf3_length
+);
+
+HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
+    uintptr_t unk1,
+    uint8_t *secret,
+    uintptr_t secret_length,
+    uint8_t *seed,
+    uintptr_t seed_length,
+    void *unk2,
+    uintptr_t unk3
+);

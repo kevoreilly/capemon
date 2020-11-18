@@ -24,6 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include <Windows.h>
 
+extern DWORD GetTimeStamp(LPVOID Address);
+
 enum {
 	UWOP_PUSH_NONVOL = 0,
 	UWOP_ALLOC_LARGE,
@@ -107,6 +109,9 @@ typedef struct _hook_t {
 	unsigned char numargs;
 
 	int notail;
+
+    DWORD timestamp;
+    DWORD rva;
 
 	// this hook has been performed
 	int is_hooked;
