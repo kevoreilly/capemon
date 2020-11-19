@@ -287,7 +287,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     file_handle_terminate();
 
-    if (g_config.dumptls)
+    if (g_config.dumptls && SecretsLog)
         CloseHandle(SecretsLog);
 
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
