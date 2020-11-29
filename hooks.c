@@ -319,27 +319,28 @@ hook_t full_hooks[] = {
     HOOK(ntdll, NtSaveKeyEx),
 
     // Window Hooks
-	HOOK_NOTAIL(user32, CreateWindowExA, 12),
-	HOOK_NOTAIL(user32, CreateWindowExW, 12),
-
 	HOOK(user32, FindWindowA),
     HOOK(user32, FindWindowW),
     HOOK(user32, FindWindowExA),
     HOOK(user32, FindWindowExW),
-	// Disable for now, invokes a user-specified callback that can contain calls to any functions that we
-	// won't end up logging. We need another hook type which logs the hook and then every function
-	// called by that hook (modulo perhaps some blacklisted functions for this specific hook type)
-    //HOOK(user32, EnumWindows),
 	HOOK(user32, PostMessageA),
 	HOOK(user32, PostMessageW),
-	HOOK(user32, SendMessageA),
-	HOOK(user32, SendMessageW),
+//	HOOK(user32, SendMessageA),	// maldoc detonation issues
+//	HOOK(user32, SendMessageW),	//
 	HOOK(user32, SendNotifyMessageA),
 	HOOK(user32, SendNotifyMessageW),
 	HOOK(user32, SetWindowLongA),
 	HOOK(user32, SetWindowLongW),
 	HOOK(user32, SetWindowLongPtrA),
 	HOOK(user32, SetWindowLongPtrW),
+
+//	HOOK_NOTAIL(user32, CreateWindowExA, 12),	// maldoc detonation issues
+//	HOOK_NOTAIL(user32, CreateWindowExW, 12),	//
+
+	// Disable for now, invokes a user-specified callback that can contain calls to any functions that we
+	// won't end up logging. We need another hook type which logs the hook and then every function
+	// called by that hook (modulo perhaps some blacklisted functions for this specific hook type)
+    //HOOK(user32, EnumWindows),
 
     // Sync Hooks
     HOOK(ntdll, NtCreateMutant),
