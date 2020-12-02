@@ -38,7 +38,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern wchar_t *our_process_path_w;
-extern PVOID bp0, bp1, bp2, bp3;
+extern PVOID bp0, bp1, bp2;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2, Type3;
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
@@ -368,12 +368,14 @@ int read_config(void)
                         }
                     }
                     bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+					if (bp0 == (PVOID)(DWORD_PTR)ULONG_MAX)
+						bp0 = (PVOID)_strtoui64(value, NULL, 0);
                     g_config.debugger = 1;
                     if (delta) {
-                        DebugOutput("Config: bp0 was 0x%x.\n", bp0);
+                        DebugOutput("Config: bp0 was 0x%p.\n", bp0);
                         bp0 = (PVOID)(DWORD_PTR)((PUCHAR)bp0 + delta);
                     }
-                    DebugOutput("Config: bp0 set to 0x%x.\n", bp0);
+                    DebugOutput("Config: bp0 set to 0x%p.\n", bp0);
                 }
 			}
             else if (!stricmp(key, "bp1")) {
@@ -398,18 +400,6 @@ int read_config(void)
                     bp2 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
                     g_config.debugger = 1;
                     DebugOutput("Config: bp2 set to 0x%x.\n", bp2);
-                }
-			}
-            else if (!stricmp(key, "bp3")) {
-                if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
-                    DebugOutput("Config: bp3 set to entry point.\n", bp3);
-                    EntryPointRegister = 4;
-                    g_config.debugger = 1;
-                }
-                else {
-                    bp3 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-                    g_config.debugger = 1;
-                    DebugOutput("Config: bp3 set to 0x%x.\n", bp3);
                 }
 			}
             else if (!stricmp(key, "br0")) {
