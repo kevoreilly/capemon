@@ -374,7 +374,7 @@ void loq(int index, const char *category, const char *name,
 		}
 	}
 
-	if(logtbl_explained[index] == 0) {
+	if (logtbl_explained[index] == 0) {
         const char * pname;
         bson b[1];
 
@@ -394,9 +394,9 @@ void loq(int index, const char *category, const char *name,
 
         while (--count != 0 || *fmt != 0) {
             // we have to find the next format specifier
-            if(count == 0) {
+            if (count == 0) {
                 // end of format
-                if(*fmt == 0) break;
+                if (*fmt == 0) break;
 
                 // set the count, possibly with a repeated format specifier
                 count = *fmt >= '2' && *fmt <= '9' ? *fmt++ - '0' : 1;
@@ -432,17 +432,17 @@ void loq(int index, const char *category, const char *name,
             }
 
             //now ignore the values
-            if(key == 's' || key == 'f') {
+            if (key == 's' || key == 'f') {
                 (void) va_arg(args, const char *);
             }
-            else if(key == 'S') {
+            else if (key == 'S') {
                 (void) va_arg(args, int);
                 (void) va_arg(args, const char *);
             }
-            else if(key == 'u' || key == 'F') {
+            else if (key == 'u' || key == 'F') {
                 (void) va_arg(args, const wchar_t *);
             }
-            else if(key == 'U') {
+            else if (key == 'U') {
                 (void) va_arg(args, int);
                 (void) va_arg(args, const wchar_t *);
             }
@@ -462,14 +462,14 @@ void loq(int index, const char *category, const char *name,
                 (void) va_arg(args, size_t);
                 (void) va_arg(args, const char *);
             }
-            else if(key == 'B' || key == 'C') {
+            else if (key == 'B' || key == 'C') {
                 (void) va_arg(args, size_t *);
                 (void) va_arg(args, const char *);
             }
-            else if(key == 'i' || key == 'h') {
+            else if (key == 'i' || key == 'h') {
                 (void) va_arg(args, int);
             }
-            else if(key == 'I' || key == 'H') {
+            else if (key == 'I' || key == 'H') {
                 (void) va_arg(args, int *);
             }
 			else if (key == 'l' || key == 'L') {
@@ -487,18 +487,18 @@ void loq(int index, const char *category, const char *name,
 			else if (key == 'o') {
                 (void) va_arg(args, UNICODE_STRING *);
             }
-            else if(key == 'O' || key == 'K') {
+            else if (key == 'O' || key == 'K') {
                 (void) va_arg(args, OBJECT_ATTRIBUTES *);
             }
-            else if(key == 'a') {
+            else if (key == 'a') {
                 (void) va_arg(args, int);
                 (void) va_arg(args, const char **);
             }
-            else if(key == 'A') {
+            else if (key == 'A') {
                 (void) va_arg(args, int);
                 (void) va_arg(args, const wchar_t **);
             }
-            else if(key == 'r' || key == 'R') {
+            else if (key == 'r' || key == 'R') {
                 (void) va_arg(args, unsigned long);
                 (void) va_arg(args, unsigned long);
                 (void) va_arg(args, unsigned char *);
@@ -545,9 +545,9 @@ void loq(int index, const char *category, const char *name,
     while (--count != 0 || *fmt != 0) {
 
         // we have to find the next format specifier
-        if(count == 0) {
+        if (count == 0) {
             // end of format
-            if(*fmt == 0) break;
+            if (*fmt == 0) break;
 
             // set the count, possibly with a repeated format specifier
             count = *fmt >= '2' && *fmt <= '9' ? *fmt++ - '0' : 1;
@@ -561,9 +561,9 @@ void loq(int index, const char *category, const char *name,
 		argnum++;
 
         // log the value
-        if(key == 's') {
+        if (key == 's') {
             const char *s = va_arg(args, const char *);
-            if(s == NULL) s = "";
+            if (s == NULL) s = "";
             log_string(s, -1);
         }
 		else if (key == 'f') {
@@ -574,15 +574,15 @@ void loq(int index, const char *category, const char *name,
 
 			log_string(absolutepath, -1);
 		}
-        else if(key == 'S') {
+        else if (key == 'S') {
             int len = va_arg(args, int);
             const char *s = va_arg(args, const char *);
-            if(s == NULL) { s = ""; len = 0; }
+            if (s == NULL) { s = ""; len = 0; }
             log_string(s, len);
         }
-        else if(key == 'u') {
+        else if (key == 'u') {
             const wchar_t *s = va_arg(args, const wchar_t *);
-            if(s == NULL) s = L"";
+            if (s == NULL) s = L"";
             log_wstring(s, -1);
         }
 		else if (key == 'F') {
@@ -601,15 +601,15 @@ void loq(int index, const char *category, const char *name,
 		else if (key == 'U') {
             int len = va_arg(args, int);
             const wchar_t *s = va_arg(args, const wchar_t *);
-            if(s == NULL) { s = L""; len = 0; }
+            if (s == NULL) { s = L""; len = 0; }
             log_wstring(s, len);
         }
-        else if(key == 'b') {
+        else if (key == 'b') {
             size_t len = va_arg(args, size_t);
             const char *s = va_arg(args, const char *);
             log_buffer(s, len);
         }
-        else if(key == 'B') {
+        else if (key == 'B') {
             DWORD *len = va_arg(args, DWORD *);
             const char *s = va_arg(args, const char *);
 			log_buffer(s, len == NULL ? 0 : *len);
@@ -628,7 +628,7 @@ void loq(int index, const char *category, const char *name,
 			int value = va_arg(args, int);
             log_int32(value);
         }
-        else if(key == 'I' || key == 'H') {
+        else if (key == 'I' || key == 'H') {
             int *ptr = va_arg(args, int *);
 			int theval = 0;
 			__try {
@@ -731,16 +731,16 @@ void loq(int index, const char *category, const char *name,
 		}
 		else if (key == 'o') {
             UNICODE_STRING *str = va_arg(args, UNICODE_STRING *);
-            if(str == NULL) {
+            if (str == NULL) {
                 log_string("", 0);
             }
             else {
                 log_wstring(str->Buffer, str->Length / sizeof(wchar_t));
             }
         }
-        else if(key == 'O') {
+        else if (key == 'O') {
             OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
-            if(obj == NULL) {
+            if (obj == NULL) {
                 log_string("", 0);
             }
 			else {
@@ -758,17 +758,17 @@ void loq(int index, const char *category, const char *name,
 				}
             }
         }
-        else if(key == 'a') {
+        else if (key == 'a') {
             int argc = va_arg(args, int);
             const char **argv = va_arg(args, const char **);
             log_argv(argc, argv);
         }
-        else if(key == 'A') {
+        else if (key == 'A') {
             int argc = va_arg(args, int);
             const wchar_t **argv = va_arg(args, const wchar_t **);
             log_wargv(argc, argv);
         }
-        else if(key == 'r' || key == 'R') {
+        else if (key == 'r' || key == 'R') {
             unsigned long type = va_arg(args, unsigned long);
             unsigned long size = va_arg(args, unsigned long);
             unsigned char *data = va_arg(args, unsigned char *);
@@ -780,16 +780,16 @@ void loq(int index, const char *category, const char *name,
             // bson_append_int( g_bson, "type", type );
 
             // strncpy(g_istr, "val", 4);
-            if(type == REG_NONE) {
+            if (type == REG_NONE) {
                 log_string("", 0);
             }
-            else if(type == REG_DWORD || type == REG_DWORD_LITTLE_ENDIAN) {
+            else if (type == REG_DWORD || type == REG_DWORD_LITTLE_ENDIAN) {
 				unsigned int value = 0;
 				if (data)
 					value = *(unsigned int *)data;
                 log_int32(value);
             }
-            else if(type == REG_DWORD_BIG_ENDIAN) {
+            else if (type == REG_DWORD_BIG_ENDIAN) {
 				unsigned int value = 0;
 				if (data)
 					value = *(unsigned int *)data;
@@ -1175,7 +1175,7 @@ void log_init(int debug)
 
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
 
-	if(debug != 0) {
+	if (debug != 0) {
         g_sock = DEBUG_SOCKET;
 	}
 	else {
