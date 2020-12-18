@@ -537,27 +537,28 @@ char* GetResultsPath(char* FolderName)
         return 0;
     }
 
-    // We want to dump output to the 'results' directory
     memset(FullPath, 0, MAX_PATH);
-
     strncpy_s(FullPath, MAX_PATH, g_config.results, strlen(g_config.results)+1);
 
-    if (strlen(FullPath) + 1 + strlen(FolderName) >= MAX_PATH)
+    if (FolderName)
     {
-        DebugOutput("GetResultsPath: Error, destination path too long.\n");
-        free(FullPath);
-        return 0;
-    }
+        if (strlen(FullPath) + 1 + strlen(FolderName) >= MAX_PATH)
+        {
+            DebugOutput("GetResultsPath: Error, destination path too long.\n");
+            free(FullPath);
+            return 0;
+        }
 
-    PathAppend(FullPath, FolderName);
+        PathAppend(FullPath, FolderName);
 
-    RetVal = CreateDirectory(FullPath, NULL);
+        RetVal = CreateDirectory(FullPath, NULL);
 
-    if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
-    {
-        ErrorOutput("GetResultsPath: Error creating output directory %s", FullPath);
-        free(FullPath);
-        return 0;
+        if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
+        {
+            ErrorOutput("GetResultsPath: Error creating output directory %s", FullPath);
+            free(FullPath);
+            return 0;
+        }
     }
 
     return FullPath;
