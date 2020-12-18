@@ -903,6 +903,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
             //if (is_in_dll_range((ULONG_PTR)JumpTarget))
             //    ForceStepOver = TRUE;
+            if (inside_hook(JumpTarget))
+                ForceStepOver = TRUE;
         }
         else if (DecodedInstruction.size > 4)
         {
@@ -1165,9 +1167,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     if (is_in_dll_range((ULONG_PTR)CIP) && !g_config.trace_all)
         FilterTrace = TRUE;
 
-    if (g_config.trace_all)
-        FilterTrace = FALSE;
-
+    if (!FilterTrace)
+        StepCount++;
 #ifdef _WIN64
     if (!FilterTrace && LastContext.Rip)
     {
@@ -1599,6 +1600,74 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 //		if (!g_config.trace_all)
 //			TraceDepthCount--;
 //	}
+    else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
+    {
+        PCHAR ExportName;
+#ifdef _WIN64
+        ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+#else
+        ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+#endif
+
+        if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
+        {
+            PVOID JumpTarget;
+            if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
+                JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+            else
+                // begins with DWORD except "DWORD [E"
+                JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+
+            __try
+            {
+                ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DebugOutput("BreakpointCallback: Error dereferencing JumpTarget 0x%p.\n", JumpTarget);
+                ExportName = NULL;
+            }
+
+            if (ExportName)
+            {
+                if (!FilterTrace || g_config.trace_all)
+                    DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
+                if (!g_config.trace_all)
+					ForceStepOver = TRUE;
+            }
+            else if (!FilterTrace || g_config.trace_all)
+                DebuggerOutput("0x%p  %-20s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+
+            //if (is_in_dll_range((ULONG_PTR)JumpTarget))
+            //    ForceStepOver = TRUE;
+            if (inside_hook(JumpTarget))
+                ForceStepOver = TRUE;
+        }
+        else if (DecodedInstruction.size > 4)
+        {
+            PVOID JumpTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+            __try
+            {
+                ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DebugOutput("BreakpointCallback: Error dereferencing JumpTarget 0x%p.", JumpTarget);
+                ExportName = NULL;
+            }
+
+            if (ExportName)
+            {
+                if (!FilterTrace || g_config.trace_all)
+                    DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
+            }
+            else
+                if (!FilterTrace || g_config.trace_all)
+                    DebuggerOutput("0x%p  %-20s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+        }
+        else if (!FilterTrace || g_config.trace_all)
+            DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+    }
 	else if (!FilterTrace)
 #ifdef _WIN64
         DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
@@ -1613,19 +1682,29 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
-    if (ForceStepOver && ReturnAddress)
+    if (StepCount > StepLimit)
     {
-        if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-        {
-            DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
-            LastContext = *ExceptionInfo->ContextRecord;
-            ReturnAddress = NULL;
-        }
-        else
-            DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+        DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
+        memset(&LastContext, 0, sizeof(CONTEXT));
+        StopTrace = TRUE;
+        StepCount = 0;
     }
-    else if (!StopTrace)
-		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+
+    if (!StopTrace)
+    {
+        if (ForceStepOver && ReturnAddress)
+        {
+            if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
+            {
+                DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+                ReturnAddress = NULL;
+            }
+            else
+                DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+        }
+		else
+            DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+    }
 
     return TRUE;
 }
