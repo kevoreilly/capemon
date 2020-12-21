@@ -35,7 +35,7 @@ extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
 extern void ProcessTrackedRegions();
 extern void DebuggerShutdown();
-extern HANDLE DebuggerLog, SecretsLog;
+extern HANDLE DebuggerLog, TlsLog;
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
 
@@ -128,7 +128,6 @@ void invalidate_regions_for_hook(const hook_t *hook)
 			g_addr[idx] = 0;
 		}
 	}
-
 }
 
 void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
@@ -287,8 +286,8 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     file_handle_terminate();
 
-    if (g_config.dumptls && SecretsLog)
-        CloseHandle(SecretsLog);
+    if (g_config.tlsdump && TlsLog)
+        CloseHandle(TlsLog);
 
     g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
     if (g_terminate_event_handle) {

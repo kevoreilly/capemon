@@ -888,7 +888,7 @@ void set_hooks()
 	DWORD our_pid = GetCurrentProcessId();
 
 	// Hook set selection
-	if (g_config.dumptls) {
+	if (g_config.tlsdump) {
 		hooks = tls_hooks;
 		hooks_size = sizeof(tls_hooks);
 		hooks_arraysize = ARRAYSIZE(tls_hooks);

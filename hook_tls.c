@@ -24,8 +24,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char* GetResultsPath(char* FolderName);
-CHAR SecretsLine[MAX_PATH];
-HANDLE SecretsLog;
+#define BUFFER_SIZE 0x1000
+CHAR SecretsLine[BUFFER_SIZE];
+HANDLE TlsLog;
 
 void hexencode(char *dst, const uint8_t *src, uint32_t length)
 {
@@ -72,14 +73,15 @@ HOOKDEF(NTSTATUS, WINAPI, PRF,
         hexencode(server_random_repr, server_random, random_length);
         hexencode(master_secret_repr, master_secret, master_secret_length);
 
-		FullPathName = GetResultsPath("dumptls");
-		PathAppend(FullPathName, "secrets.log");
-		if (!SecretsLog)
-			SecretsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (SecretsLog != INVALID_HANDLE_VALUE) {
-			memset(SecretsLine, 0, MAX_PATH*sizeof(CHAR));
-			_snprintf_s(SecretsLine, MAX_PATH, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", client_random_repr, server_random_repr, master_secret_repr);
-			WriteFile(SecretsLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
+		FullPathName = GetResultsPath("tlsdump");
+		PathAppend(FullPathName, "tlsdump.log");
+        DebugOutput("PRF: Path %s", FullPathName);
+		if (!TlsLog)
+			TlsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (TlsLog != INVALID_HANDLE_VALUE) {
+			memset(SecretsLine, 0, BUFFER_SIZE);
+			_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", client_random_repr, server_random_repr, master_secret_repr);
+			WriteFile(TlsLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
 		}
     }
 
@@ -113,14 +115,15 @@ HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
         hexencode(server_random_repr, server_random, random_length);
         hexencode(master_secret_repr, secret, secret_length);
 
-		FullPathName = GetResultsPath("dumptls");
-		PathAppend(FullPathName, "secrets.log");
-		if (!SecretsLog)
-			SecretsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (SecretsLog != INVALID_HANDLE_VALUE) {
-			memset(SecretsLine, 0, MAX_PATH*sizeof(CHAR));
-			_snprintf_s(SecretsLine, MAX_PATH, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", client_random_repr, server_random_repr, master_secret_repr);
-			WriteFile(SecretsLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
+		FullPathName = GetResultsPath("tlsdump");
+		PathAppend(FullPathName, "tlsdump.log");
+        DebugOutput("Ssl3GenerateKeyMaterial: Path %s", FullPathName);
+		if (!TlsLog)
+			TlsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (TlsLog != INVALID_HANDLE_VALUE) {
+			memset(SecretsLine, 0, BUFFER_SIZE);
+			_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", client_random_repr, server_random_repr, master_secret_repr);
+			WriteFile(TlsLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
 		}
     }
 
