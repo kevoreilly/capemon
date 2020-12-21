@@ -118,6 +118,7 @@ struct _g_config {
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
 	char *base_on_apiname[EXCLUSION_MAX];
  	char *dump_on_apinames[EXCLUSION_MAX];
+ 	wchar_t *coverage_modules[EXCLUSION_MAX];
     int dump_on_api_type;
 
     // behavioural payload extraction options
@@ -173,7 +174,7 @@ struct _g_config {
     int office;
 
     // TLS secret dump mode
-    int dumptls;
+    int tlsdump;
 
     // Minimal hook set
     int minhook;

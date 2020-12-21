@@ -80,6 +80,32 @@ int loader_is_allowed(const char *loader_name)
 	return 0;
 }
 
+int path_is_shared(const wchar_t *path1, const wchar_t *path2)
+{
+    SIZE_T len1, len2, len;
+    wchar_t *slash1, *slash2;
+    if (!path1 || !path2)
+        return 0;
+    __try {
+        slash1 = wcsrchr(path1, L'\\');
+        slash2 = wcsrchr(path2, L'\\');
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
+    }
+    if (!slash1 || !slash2)
+        return 0;
+    len1 = slash1 - path1;
+    len2 = slash2 - path2;
+    if (len1 < len2)
+        len = len1;
+    else
+        len = len2;
+    if (len && !wcsnicmp(path1, path2, len))
+        return 1;
+	return 0;
+}
+
 VOID CALLBACK New_DllLoadNotification(
 	_In_     ULONG                       NotificationReason,
 	_In_     const PLDR_DLL_NOTIFICATION_DATA NotificationData,
@@ -99,7 +125,19 @@ VOID CALLBACK New_DllLoadNotification(
         cmdline++;
 
     if (NotificationReason == 1) {
-		if ((g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) ||
+		BOOL coverage_module = FALSE;
+		for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
+			if (!g_config.coverage_modules[i])
+				break;
+			if (!wcsicmp(dllname, g_config.coverage_modules[i]))
+				coverage_module = TRUE;
+		}
+		if (coverage_module) {
+            DebugOutput("The module loaded at 0x%p has been selected for coverage: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            if (g_config.debugger)
+                SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
+        }
+		else if ((g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) ||
             (path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer)))) {
             if (!base_of_dll_of_interest)
                 set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
@@ -115,6 +153,11 @@ VOID CALLBACK New_DllLoadNotification(
                 BreakpointsHit = FALSE;
                 SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
             }
+        }
+        else if (path_is_shared(our_process_path_w, library.Buffer)) {
+            DebugOutput("Local DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+            if (g_config.debugger)
+                SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
         }
         else {
             SIZE_T numconverted, size;
@@ -548,7 +591,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
         hkcu_init();
 
         // initialize the log file
-        if (!g_config.dumptls)
+        if (!g_config.tlsdump)
 			log_init(g_config.debug || g_config.standalone);
 
         // initialize the Sleep() skipping stuff

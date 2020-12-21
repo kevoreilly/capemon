@@ -308,6 +308,22 @@ int read_config(void)
 					p = p2 + 1;
 				}
 			}
+			else if (!strcmp(key, "coverage-modules")) {
+				unsigned int x = 0;
+				char *p2;
+				p = value;
+				while (p && x < EXCLUSION_MAX) {
+					p2 = strchr(p, ':');
+					if (p2) {
+						*p2 = '\0';
+					}
+					g_config.coverage_modules[x++] = ascii_to_unicode_dup(p);
+                    DebugOutput("Added '%s' to coverage-modules list.\n", p);
+					if (p2 == NULL)
+						break;
+					p = p2 + 1;
+				}
+			}
 			else if (!strcmp(key, "dump-on-api-type")) {
                 g_config.dump_on_api_type = (unsigned int)strtoul(value, NULL, 0);
             }
@@ -713,9 +729,9 @@ int read_config(void)
                 if (g_config.minhook)
                     DebugOutput("Minimal hook set enabled.\n");
 			}
-            else if (!stricmp(key, "dumptls")) {
-				g_config.dumptls = value[0] == '1';
-                if (g_config.dumptls) {
+            else if (!stricmp(key, "tlsdump")) {
+				g_config.tlsdump = value[0] == '1';
+                if (g_config.tlsdump) {
                     g_config.procdump = 0;
                     g_config.procmemdump = 0;
                     g_config.injection = 0;
