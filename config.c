@@ -650,6 +650,7 @@ void parse_config_line(char* line)
                 DebugOutput("Microsoft Office settings enabled.\n");
                 g_config.caller_dump = 0;
                 g_config.injection = 0;
+                g_config.yarascan = 0;
             }
         }
         else if (!stricmp(key, "fake-rdtsc")) {
