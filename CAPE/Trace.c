@@ -28,7 +28,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #define MAX_INSTRUCTIONS 0x10
 #define MAX_DUMP_SIZE 0x1000000
-#define SINGLE_STEP_LIMIT 0x4000  // default unless specified in web ui
 #define CHUNKSIZE 0x10 * MAX_INSTRUCTIONS
 #define RVA_LIMIT 0x200000
 #define DoClearZeroFlag 1
@@ -56,8 +55,8 @@ PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning;
 unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister;
-char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH], *Instruction0, *Instruction1, *Instruction2, *Instruction3;
-char *procname0;
+char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH];
+char *Instruction0, *Instruction1, *Instruction2, *procname0;
 unsigned int Type0, Type1, Type2, Type3;
 int cpuInfo[4], function_id, subfunction_id, StepOverRegister, TraceDepthCount, EntryPointRegister, InstructionCount;
 static CONTEXT LastContext;
@@ -143,8 +142,60 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
     }
     else if (!stricmp(Action, "Skip"))
     {
+        // We want the skipped instruction to appear in the trace
+#ifdef _WIN64
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#endif
         SkipInstruction(ExceptionInfo->ContextRecord);
         DebuggerOutput("ActionDispatcher: %s detected, skipping instruction.\n", DecodedInstruction.mnemonic.p);
+    }
+    else if (!strnicmp(Action, "GoTo:", 5))
+    {
+        // We want the skipped instruction to appear in the trace
+#ifdef _WIN64
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#endif
+        PVOID Target = NULL;
+        char *p = strchr(Action+5, ':');
+        if (p && *(p+1) == ':')
+        {
+            *p = '\0';
+            HANDLE Module = GetModuleHandle(Action+5);
+            *p = ':';
+            if (Module)
+            {
+                Target = GetProcAddress(Module, p+2);
+                CloseHandle(Module);
+            }
+            else
+                DebuggerOutput("ActionDispatcher: Failed to get base for GoTo target module (%s).\n", Action+5);
+            if (Target)
+                DebuggerOutput("ActionDispatcher: GoTo target set to 0x%p (%s).\n", Target, Action+5);
+            else
+            {
+                Target = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+                if (Target)
+                    DebuggerOutput("ActionDispatcher: GoTo target 0x%p (%s).\n", Target, Action+5);
+                else
+                    DebuggerOutput("ActionDispatcher: Failed to get GoTo target: function %s.\n", Action+5);
+            }
+        }
+        else {
+            Target = (PVOID)(DWORD_PTR)strtoul(Action+5, NULL, 0);
+            if (Target == (PVOID)(DWORD_PTR)ULONG_MAX)
+                Target = (PVOID)_strtoui64(Action+5, NULL, 0);
+            DebuggerOutput("ActionDispatcher: GoTo target set to 0x%p.\n", Target);
+        }
+        if (Target)
+#ifdef _WIN64
+            ExceptionInfo->ContextRecord->Rip = (QWORD)Target;
+#else
+            ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
+#endif
     }
     else if (!stricmp(Action, "Stop"))
     {
@@ -328,9 +379,10 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     if (is_in_dll_range((ULONG_PTR)CIP) && !g_config.trace_all)
         FilterTrace = TRUE;
 
-    if (!FilterTrace)
-        StepCount++;
-    else
+    // We need to increase StepCount even if FilterTrace == TRUE
+    StepCount++;
+
+    if (FilterTrace)
     {
         StepOver = TRUE;
         if (ReturnAddress)
@@ -476,9 +528,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     if (!FilterTrace)
         DebuggerOutput("\n");
 
-    if (StepCount > StepLimit)
+    if (!StepLimit || StepCount >= StepLimit)
     {
-        DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
+        DebuggerOutput("\nSingle-step limit reached (%d), releasing.\n", StepLimit);
         ClearSingleStepMode(ExceptionInfo->ContextRecord);
         memset(&LastContext, 0, sizeof(CONTEXT));
         TraceRunning = FALSE;
@@ -594,17 +646,14 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
     ReDisassemble = FALSE;
 
 	// Dispatch any actions
-    if (Instruction0 && !stricmp(DecodedInstruction.mnemonic.p, Instruction0))
+    if (Instruction0 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction0, strlen(Instruction0)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0);
 
-    if (Instruction1 && !stricmp(DecodedInstruction.mnemonic.p, Instruction1))
+    if (Instruction1 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction1, strlen(Instruction1)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action1);
 
-    if (Instruction2 && !stricmp(DecodedInstruction.mnemonic.p, Instruction2))
+    if (Instruction2 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction2, strlen(Instruction2)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
-
-    if (Instruction3 && !stricmp(DecodedInstruction.mnemonic.p, Instruction3))
-        ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
 
     // We disassemble a second time in case of any changes/patches
 	if (ReDisassemble)
@@ -1112,33 +1161,25 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             TraceDepthCount = 0;
             if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr0))
 			{
-#ifdef DEBUG_COMMENTS
-                DebugOutput("BreakpointCallback: Breakpoint 0 hit at 0x%p\n", pBreakpointInfo->Address);
-#endif
+                DebuggerOutput("Breakpoint 0 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 				break;
 			}
 
             if (bp == 1 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr1))
 			{
-#ifdef DEBUG_COMMENTS
-                DebugOutput("BreakpointCallback: Breakpoint 1 hit at 0x%p\n", pBreakpointInfo->Address);
-#endif
+                DebuggerOutput("Breakpoint 1 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 				break;
 			}
 
             if (bp == 2 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr2))
 			{
-#ifdef DEBUG_COMMENTS
-                DebugOutput("BreakpointCallback: Breakpoint 2 hit at 0x%p\n", pBreakpointInfo->Address);
-#endif
+                DebuggerOutput("Breakpoint 2 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 				break;
 			}
 
             if (bp == 3 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr3))
 			{
-#ifdef DEBUG_COMMENTS
-                DebugOutput("BreakpointCallback: Breakpoint 3 hit at 0x%p\n", pBreakpointInfo->Address);
-#endif
+                DebuggerOutput("Breakpoint 3 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 				break;
 			}
         }
@@ -1167,8 +1208,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     if (is_in_dll_range((ULONG_PTR)CIP) && !g_config.trace_all)
         FilterTrace = TRUE;
 
-    if (!FilterTrace)
-        StepCount++;
+    StepCount++;
+
 #ifdef _WIN64
     if (!FilterTrace && LastContext.Rip)
     {
@@ -1336,17 +1377,14 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     ReDisassemble = FALSE;
 
 	// Dispatch any actions
-    if ((Instruction0 && !stricmp(DecodedInstruction.mnemonic.p, Instruction0)) || (!Instruction0 && pBreakpointInfo->Register == 0 && strlen(Action0)))
+    if ((Instruction0 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction0, strlen(Instruction0))) || (!Instruction0 && pBreakpointInfo->Register == 0 && strlen(Action0)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0);
 
-    if ((Instruction1 && !stricmp(DecodedInstruction.mnemonic.p, Instruction1)) || (!Instruction1 && pBreakpointInfo->Register == 1 && strlen(Action1)))
+    if ((Instruction1 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction1, strlen(Instruction1))) || (!Instruction1 && pBreakpointInfo->Register == 1 && strlen(Action1)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action1);
 
-    if ((Instruction2 && !stricmp(DecodedInstruction.mnemonic.p, Instruction2)) || (!Instruction2 && pBreakpointInfo->Register == 2 && strlen(Action2)))
+    if ((Instruction2 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction2, strlen(Instruction2))) || (!Instruction2 && pBreakpointInfo->Register == 2 && strlen(Action2)))
         ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
-
-    if ((Instruction3 && !stricmp(DecodedInstruction.mnemonic.p, Instruction3)) || (!Instruction3 && pBreakpointInfo->Register == 3 && strlen(Action3)))
-        ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
 
     // We disassemble a second time in case of any changes/patches
 	if (ReDisassemble)
@@ -1682,9 +1720,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
-    if (StepCount > StepLimit)
+    if (!StepLimit || StepCount >= StepLimit)
     {
-        DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
+        DebuggerOutput("\nSingle-step limit reached (%d), releasing.\n", StepLimit);
         memset(&LastContext, 0, sizeof(CONTEXT));
         StopTrace = TRUE;
         StepCount = 0;
@@ -1842,12 +1880,6 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
     ModTimestamp = FALSE;
 	function_id = -1;
 	subfunction_id = -1;
-
-    if (!StepLimit)
-        StepLimit = SINGLE_STEP_LIMIT;
-
-    if (TraceDepthLimit == 0xFFFFFFFF)
-        TraceDepthLimit = 1;
 
     if (!ImageBase)
         ImageBase = GetModuleHandle(NULL);

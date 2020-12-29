@@ -132,6 +132,10 @@ hook_t min_hooks[] = {
     HOOK(urlmon, URLDownloadToCacheFileW),
 };
 
+hook_t zero_hooks[] = {
+	HOOK_SPECIAL(ntdll, RtlDispatchException),
+};
+
 hook_t full_hooks[] = {
 
     //
@@ -356,11 +360,16 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtQueryInformationAtom),
 
     // Process Hooks
-	HOOK(kernel32, CreateToolhelp32Snapshot),
-	HOOK(kernel32, Process32FirstW),
-	HOOK(kernel32, Process32NextW),
-	HOOK(kernel32, Module32FirstW),
-	HOOK(kernel32, Module32NextW),
+    HOOK(ntdll, NtAllocateVirtualMemory),
+    HOOK(ntdll, NtReadVirtualMemory),
+    HOOK(kernel32, ReadProcessMemory),
+    HOOK(ntdll, NtWriteVirtualMemory),
+    HOOK(kernel32, WriteProcessMemory),
+	HOOK(ntdll, NtWow64WriteVirtualMemory64),
+	HOOK(ntdll, NtWow64ReadVirtualMemory64),
+	HOOK(ntdll, NtProtectVirtualMemory),
+    HOOK(kernel32, VirtualProtectEx),
+    HOOK(ntdll, NtFreeVirtualMemory),
 	HOOK(ntdll, NtCreateProcess),
     HOOK(ntdll, NtCreateProcessEx),
     HOOK(ntdll, RtlCreateUserProcess),
@@ -373,25 +382,20 @@ hook_t full_hooks[] = {
     HOOK(ntdll, NtMakePermanentObject),
     HOOK(ntdll, NtOpenSection),
     HOOK(ntdll, NtMapViewOfSection),
+    HOOK(ntdll, NtUnmapViewOfSection),
 	HOOK(kernel32, WaitForDebugEvent),
 	HOOK(ntdll, DbgUiWaitStateChange),
 	HOOK(advapi32, CreateProcessWithLogonW),
 	HOOK(advapi32, CreateProcessWithTokenW),
+	HOOK(kernel32, CreateToolhelp32Snapshot),
+	HOOK(kernel32, Process32FirstW),
+	HOOK(kernel32, Process32NextW),
+	HOOK(kernel32, Module32FirstW),
+	HOOK(kernel32, Module32NextW),
 
+    //HOOK(kernel32, VirtualFreeEx),
     // all variants of ShellExecute end up in ShellExecuteExW
     HOOK(shell32, ShellExecuteExW),
-    HOOK(ntdll, NtUnmapViewOfSection),
-    HOOK(ntdll, NtAllocateVirtualMemory),
-    HOOK(ntdll, NtReadVirtualMemory),
-    HOOK(kernel32, ReadProcessMemory),
-    HOOK(ntdll, NtWriteVirtualMemory),
-    HOOK(kernel32, WriteProcessMemory),
-	HOOK(ntdll, NtWow64WriteVirtualMemory64),
-	HOOK(ntdll, NtWow64ReadVirtualMemory64),
-	HOOK(ntdll, NtProtectVirtualMemory),
-    HOOK(kernel32, VirtualProtectEx),
-    HOOK(ntdll, NtFreeVirtualMemory),
-    //HOOK(kernel32, VirtualFreeEx),
 	HOOK(msvcrt, system),
 
     // Thread Hooks
@@ -897,6 +901,11 @@ void set_hooks()
 		hooks = min_hooks;
 		hooks_size = sizeof(min_hooks);
 		hooks_arraysize = ARRAYSIZE(min_hooks);
+	}
+	else if (g_config.zerohook) {
+		hooks = zero_hooks;
+		hooks_size = sizeof(zero_hooks);
+		hooks_arraysize = ARRAYSIZE(zero_hooks);
 	}
 	else {
 		hooks = full_hooks;

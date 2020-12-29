@@ -176,8 +176,14 @@ struct _g_config {
     // TLS secret dump mode
     int tlsdump;
 
+    // YARA scans
+    int yarascan;
+
     // Minimal hook set
     int minhook;
+
+    // Zero hook set
+    int zerohook;
 
 	char *break_on_apiname;
 	char *break_on_modname;

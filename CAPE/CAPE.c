@@ -45,6 +45,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #include "CAPE.h"
 #include "Debugger.h"
+#include "YaraHarness.h"
 #include "..\alloc.h"
 #include "..\pipe.h"
 #include "..\config.h"
@@ -2055,6 +2056,13 @@ void CAPE_post_init()
 
     lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
     lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
+
+    if (g_config.yarascan)
+    {
+        DebugOutput("Initialising Yara...\n");
+        YaraInit();
+        YaraScan(GetModuleHandle(NULL), GetAllocationSize(GetModuleHandle(NULL)));
+    }
 }
 
 void CAPE_init()

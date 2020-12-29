@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\Unpacker.h"
+#include "CAPE\YaraHarness.h"
 
 #ifdef _WIN64
 #define TLS_LAST_WIN32_ERROR 0x68
@@ -90,6 +91,8 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
             char ModulePath[MAX_PATH];
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
+            if (g_config.yarascan)
+                YaraScan(AllocationBase, GetAllocationSize(AllocationBase));
             if (g_config.debugger && g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);
             if (g_config.unpacker) {

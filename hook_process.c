@@ -601,11 +601,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
     NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
         ZeroBits, RegionSize, AllocationType, Protect);
 
-	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
-        AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+        if (g_config.unpacker)
+            AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
 
-	if (NT_SUCCESS(ret) && g_config.base_on_alloc && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
-        DebuggerAllocationHandler(*BaseAddress, *RegionSize, Protect);
+        if (g_config.base_on_alloc)
+            DebuggerAllocationHandler(*BaseAddress, *RegionSize, Protect);
+    }
 
     LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
         "RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
