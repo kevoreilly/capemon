@@ -32,6 +32,7 @@ PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
 SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
+SIZE_T GetAccessibleSize(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
 double GetEntropy(PUCHAR Buffer);

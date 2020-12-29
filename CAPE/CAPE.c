@@ -426,7 +426,54 @@ SIZE_T GetAllocationSize(PVOID Address)
     }
 
     return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
+}
 
+//**************************************************************************************
+SIZE_T GetAccessibleSize(PVOID Address)
+//**************************************************************************************
+{
+    MEMORY_BASIC_INFORMATION MemInfo;
+    PVOID OriginalAllocationBase, AddressOfPage;
+
+    if (!Address)
+        return 0;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        ErrorOutput("GetAccessibleSize: Failed to obtain system page size.\n");
+        return 0;
+    }
+
+    if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+    {
+        ErrorOutput("GetAccessibleSize: unable to query memory address 0x%x", Address);
+        return 0;
+    }
+
+    OriginalAllocationBase = MemInfo.AllocationBase;
+    AddressOfPage = OriginalAllocationBase;
+
+    while (MemInfo.AllocationBase == OriginalAllocationBase)
+    {
+        (PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
+
+        if (!VirtualQuery(AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+        {
+            ErrorOutput("GetAccessibleSize: unable to query memory page 0x%x", AddressOfPage);
+            return 0;
+        }
+
+        if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+            break;
+
+        if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
+            break;
+    }
+
+    return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
 }
 
 //**************************************************************************************
