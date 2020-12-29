@@ -156,6 +156,11 @@ void ScannerError(int Error)
 void YaraScan(PVOID Address, SIZE_T Size)
 {
 	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+
+    if (!Size)
+        return;
+
+    DebugOutput("YaraScan: About to scan 0x%p, size 0x%x\n", Address, Size);
     __try
     {
         if (!ScanForAccess(Address, Size))

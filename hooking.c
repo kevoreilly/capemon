@@ -92,7 +92,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
             if (g_config.yarascan)
-                YaraScan(AllocationBase, GetAllocationSize(AllocationBase));
+                YaraScan(AllocationBase, GetRegionSize(AllocationBase));
             if (g_config.debugger && g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);
             if (g_config.unpacker) {

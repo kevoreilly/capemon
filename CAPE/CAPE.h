@@ -30,6 +30,7 @@ PVOID GetHookCallerBase();
 BOOL InsideMonitor(LPVOID* ReturnAddress, LPVOID Address);
 PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
+SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);

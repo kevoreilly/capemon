@@ -359,6 +359,34 @@ PVOID GetAllocationBase(PVOID Address)
 }
 
 //**************************************************************************************
+SIZE_T GetRegionSize(PVOID Address)
+//**************************************************************************************
+{
+    MEMORY_BASIC_INFORMATION MemInfo;
+
+    if (!Address)
+        return 0;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        ErrorOutput("GetRegionSize: Failed to obtain system page size.\n");
+        return 0;
+    }
+
+    if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+    {
+        ErrorOutput("GetRegionSize: unable to query memory address 0x%x", Address);
+        return 0;
+    }
+
+    return MemInfo.RegionSize;
+
+}
+
+//**************************************************************************************
 SIZE_T GetAllocationSize(PVOID Address)
 //**************************************************************************************
 {
@@ -915,7 +943,11 @@ int ScanForAccess(LPVOID Buffer, SIZE_T Size)
     __try
     {
         for (p=0; p<Size-1; p++)
-            Result = (int)*((char*)Buffer+p);
+        {
+            char c = *((char*)Buffer+p);
+            if (c)
+                Result = (int)c;
+        }
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
