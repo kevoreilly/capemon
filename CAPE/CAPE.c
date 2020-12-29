@@ -900,6 +900,33 @@ int ScanPageForNonZero(LPVOID Address)
 }
 
 //**************************************************************************************
+int ScanForAccess(LPVOID Buffer, SIZE_T Size)
+//**************************************************************************************
+{
+    SIZE_T p;
+    int Result;
+
+    if (!Buffer)
+    {
+        DebugOutput("ScanForAccess: Error - Supplied address zero.\n");
+        return 0;
+    }
+
+    __try
+    {
+        for (p=0; p<Size-1; p++)
+            Result = (int)*((char*)Buffer+p);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
+        return 0;
+    }
+
+    return Result;
+}
+
+//**************************************************************************************
 int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {

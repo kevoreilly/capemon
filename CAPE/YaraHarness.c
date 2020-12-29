@@ -18,12 +18,12 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <windows.h>
 #include "Shlwapi.h"
-#include "crtdbg.h"
 #include "YaraHarness.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern void parse_config_line(char* line);
+extern int ScanForAccess(LPVOID Buffer, SIZE_T Size);
 extern char *our_dll_path;
 YR_RULES* Rules = NULL;
 
@@ -156,7 +156,17 @@ void ScannerError(int Error)
 void YaraScan(PVOID Address, SIZE_T Size)
 {
 	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
-	Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
+    __try
+    {
+        if (!ScanForAccess(Address, Size))
+            return;
+        Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+		DebugOutput("YaraScan: Unable to scan 0x%p\n", Address);
+        return;
+    }
 	if (Result != ERROR_SUCCESS)
 	{
 		DebugOutput("YaraScan: error scanning 0x%p\n", Address);
@@ -179,7 +189,6 @@ BOOL YaraInit()
     sprintf(yara_dir, "%s\\data\\yara", analyzer_path);
     sprintf(compiled_rules, "%s\\capemon.yrc", yara_dir);
 
-    _CrtSetReportMode(_CRT_ASSERT,0);
     yr_initialize();
 
     FILE* rule_file = fopen(compiled_rules, "r");
