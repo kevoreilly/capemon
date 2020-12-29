@@ -18,6 +18,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <windows.h>
 #include "Shlwapi.h"
+#include "crtdbg.h"
 #include "YaraHarness.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -178,6 +179,7 @@ BOOL YaraInit()
     sprintf(yara_dir, "%s\\data\\yara", analyzer_path);
     sprintf(compiled_rules, "%s\\capemon.yrc", yara_dir);
 
+    _CrtSetReportMode(_CRT_ASSERT,0);
     yr_initialize();
 
     FILE* rule_file = fopen(compiled_rules, "r");
