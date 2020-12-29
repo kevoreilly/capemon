@@ -701,6 +701,7 @@ void parse_config_line(char* line)
                 g_config.procmemdump = 0;
                 g_config.injection = 0;
                 g_config.caller_dump = 0;
+                g_config.yarascan = 0;
                 DebugOutput("TLS secret dump mode enabled.\n");
             }
         }
