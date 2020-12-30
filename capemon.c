@@ -154,11 +154,11 @@ VOID CALLBACK New_DllLoadNotification(
                 SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
             }
         }
-        else if (path_is_shared(our_process_path_w, library.Buffer)) {
-            DebugOutput("Local DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
-            if (g_config.debugger)
-                SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
-        }
+        //else if (path_is_shared(our_process_path_w, library.Buffer)) {
+        //    DebugOutput("Local DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
+        //    if (g_config.debugger)
+        //        SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
+        //}
         else {
             SIZE_T numconverted, size;
             WCHAR exportdirectory_w[MAX_PATH];
