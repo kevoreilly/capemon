@@ -89,9 +89,10 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
         if (AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
             char ModulePath[MAX_PATH];
+            BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
-            if (g_config.yarascan)
+            if (g_config.yarascan && !MappedModule)
                 YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
             if (g_config.debugger && g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);
@@ -102,7 +103,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                     ProcessTrackedRegion(TrackedRegion);
                 }
             }
-            else if (g_config.caller_dump && !GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
+            else if (g_config.caller_dump && !MappedModule) {
                 __try {
                     DumpRegion((PVOID)addr);
                 }
