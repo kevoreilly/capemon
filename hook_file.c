@@ -33,9 +33,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // length of a hardcoded unicode string
 #define UNILEN(x) (sizeof(x) / sizeof(wchar_t) - 1)
 
-unsigned int dropped_count;
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL FilesDumped;
 extern HANDLE DebuggerLog;
+
+unsigned int dropped_count;
 
 typedef struct _file_record_t {
     unsigned int attributes;
@@ -869,6 +871,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
         "NewFileName", lpNewFileName, "Flags", dwFlags);
     if (ret != FALSE) {
 		if (lpNewFileName && dropped_count < g_config.dropped_limit) {
+            DebugOutput("MoveFileWithProgressW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
 			pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
             dropped_count++;
         }

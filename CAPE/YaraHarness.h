@@ -6,3 +6,4 @@
 
 BOOL YaraInit();
 void YaraScan(PVOID Address, SIZE_T Size);
+void YaraShutdown();

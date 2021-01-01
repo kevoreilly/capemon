@@ -26,6 +26,7 @@ extern void parse_config_line(char* line);
 extern int ScanForAccess(LPVOID Buffer, SIZE_T Size);
 extern char *our_dll_path;
 YR_RULES* Rules = NULL;
+BOOL YaraActivated;
 
 static char NewLine[MAX_PATH];
 
@@ -155,6 +156,9 @@ void ScannerError(int Error)
 
 void YaraScan(PVOID Address, SIZE_T Size)
 {
+    if (!YaraActivated)
+        return;
+
 	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
 
     if (!Size)
@@ -269,7 +273,9 @@ BOOL YaraInit()
 
     Compiler = NULL;
 
-	return TRUE;
+	YaraActivated = TRUE;
+
+    return TRUE;
 exit:
 	if (Compiler != NULL)
 		yr_compiler_destroy(Compiler);
@@ -280,4 +286,16 @@ exit:
     yr_finalize();
 
 	return FALSE;
+}
+
+void YaraShutdown()
+{
+	YaraActivated = FALSE;
+
+	if (Rules != NULL)
+		yr_rules_destroy(Rules);
+
+    yr_finalize();
+
+	return;
 }

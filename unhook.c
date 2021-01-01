@@ -24,6 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include <Sddl.h>
+#include "CAPE\YaraHarness.h"
 
 #define UNHOOK_MAXCOUNT 2048
 #define UNHOOK_BUFSIZE 32
@@ -263,15 +264,18 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
     CloseHandle(g_terminate_event_handle);
 
-    if (g_config.debugger)
-        DebuggerShutdown();
-
     if (g_config.unpacker) {
         g_config.unpacker = FALSE;
         DebugOutput("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
         ProcessTrackedRegions();
         ClearAllBreakpoints();
     }
+
+    if (g_config.debugger)
+        DebuggerShutdown();
+
+    if (g_config.yarascan)
+        YaraShutdown();
 
     if (g_config.procdump || g_config.procmemdump) {
         if (!ProcessDumped) {

@@ -48,6 +48,7 @@ wchar_t *our_dll_path_w;
 wchar_t *our_commandline;
 BOOL is_64bit_os;
 
+extern PVOID ImageBase;
 extern void CAPE_init();
 extern void CAPE_post_init();
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -141,6 +142,7 @@ VOID CALLBACK New_DllLoadNotification(
             (path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer)))) {
             if (!base_of_dll_of_interest)
                 set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
+            //ImageBase = (PVOID)base_of_dll_of_interest;
             if (g_config.file_of_interest == NULL) {
                 g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
                 wcsncpy(g_config.file_of_interest, library.Buffer, wcslen(library.Buffer));

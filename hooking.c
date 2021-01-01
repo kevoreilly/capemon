@@ -47,7 +47,9 @@ lookup_t g_caller_regions;
 extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointOnReturn(PVOID Address);
+extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsSet;
+extern PVOID ImageBase;
 
 void hook_init()
 {
@@ -92,7 +94,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
             BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
-            if (g_config.yarascan && !MappedModule)
+            if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
                 YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
             if (g_config.debugger && g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);

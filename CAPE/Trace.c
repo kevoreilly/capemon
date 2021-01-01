@@ -174,7 +174,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             else
                 DebuggerOutput("ActionDispatcher: Failed to get base for GoTo target module (%s).\n", Action+5);
             if (Target)
-                DebuggerOutput("ActionDispatcher: GoTo target set to 0x%p (%s).\n", Target, Action+5);
+                DebuggerOutput("ActionDispatcher: GoTo target 0x%p (%s).\n", Target, Action+5);
             else
             {
                 Target = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
@@ -188,7 +188,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             Target = (PVOID)(DWORD_PTR)strtoul(Action+5, NULL, 0);
             if (Target == (PVOID)(DWORD_PTR)ULONG_MAX)
                 Target = (PVOID)_strtoui64(Action+5, NULL, 0);
-            DebuggerOutput("ActionDispatcher: GoTo target set to 0x%p.\n", Target);
+            DebuggerOutput("ActionDispatcher: GoTo target 0x%p.\n", Target);
         }
         if (Target)
 #ifdef _WIN64
