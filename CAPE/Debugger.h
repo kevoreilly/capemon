@@ -1,8 +1,5 @@
 #pragma once
 
-#define DEBUGGER_LAUNCHER 0
-#define DisableThreadSuspend 0
-
 #define BP_EXEC        0x00
 #define BP_WRITE       0x01
 #define BP_RESERVED    0x02

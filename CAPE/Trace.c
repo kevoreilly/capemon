@@ -49,6 +49,7 @@ extern ULONG_PTR g_our_dll_base;
 extern BOOL inside_hook(LPVOID Address);
 extern void loq(int index, const char *category, const char *name,
     int is_success, ULONG_PTR return_value, const char *fmt, ...);
+extern PVOID _KiUserExceptionDispatcher;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress;
@@ -196,6 +197,67 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #else
             ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
 #endif
+    }
+    else if (!stricmp(Action, "Ret"))
+    {
+#ifdef _WIN64
+        ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+#else
+        ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+#endif
+
+        if (ReturnAddress)
+        {
+            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", ReturnAddress);
+#ifdef _WIN64
+            ExceptionInfo->ContextRecord->Rip = (QWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Rsp += sizeof(QWORD);
+#else
+            ExceptionInfo->ContextRecord->Eip = (DWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Esp += sizeof(DWORD);
+#endif
+        }
+    }
+    else if (!stricmp(Action, "Ret2"))
+    {
+#ifdef _WIN64
+        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+sizeof(QWORD));
+#else
+        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+sizeof(DWORD));
+#endif
+
+        if (ReturnAddress)
+        {
+            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", ReturnAddress);
+#ifdef _WIN64
+            ExceptionInfo->ContextRecord->Rip = (QWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Rsp += 2*sizeof(QWORD);
+#else
+            ExceptionInfo->ContextRecord->Eip = (DWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Esp += 2*sizeof(DWORD);
+#endif
+        }
+    }
+    else if (!stricmp(Action, "Ret3"))
+    {
+#ifdef _WIN64
+        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+2*sizeof(QWORD));
+#else
+        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+2*sizeof(DWORD));
+#endif
+
+
+        if (ReturnAddress)
+        {
+            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", ReturnAddress);
+#ifdef _WIN64
+            ExceptionInfo->ContextRecord->Rip = (QWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Rsp += 3*sizeof(QWORD);
+#else
+            ExceptionInfo->ContextRecord->Eip = (DWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Esp += 3*sizeof(DWORD);
+#endif
+        }
     }
     else if (!stricmp(Action, "Stop"))
     {
@@ -544,7 +606,13 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
     if (ModuleName)
     {
-        if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
+        if (CIP == (PVOID)((PCHAR)_KiUserExceptionDispatcher+1))
+        {
+            DebugOutput("Trace: Stepping out of KiUserExceptionDispatcher\n");
+            ForceStepOver = TRUE;
+            FilterTrace = TRUE;
+        }
+        else if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
         {
             __try
             {

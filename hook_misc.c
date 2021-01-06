@@ -144,16 +144,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
     __in_opt    WORD Ordinal,
     __out       PVOID *FunctionAddress
 ) {
-    NTSTATUS ret = Old_LdrGetProcedureAddress(ModuleHandle, FunctionName,
-        Ordinal, FunctionAddress);
+    NTSTATUS ret = Old_LdrGetProcedureAddress(ModuleHandle, FunctionName, Ordinal, FunctionAddress);
 
 	if (FunctionName != NULL && FunctionName->Length == 13 && FunctionName->Buffer != NULL &&
 		(!strncmp(FunctionName->Buffer, "EncodePointer", 13) || !strncmp(FunctionName->Buffer, "DecodePointer", 13)))
 		return ret;
 
     LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
-        "FunctionName", FunctionName != NULL ? FunctionName->Length : 0,
-            FunctionName != NULL ? FunctionName->Buffer : NULL,
+        "FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
         "Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
 	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&

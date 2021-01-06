@@ -65,9 +65,9 @@ void emit_rel(unsigned char *buf, unsigned char *source, unsigned char *target)
 // need to be very careful about what we call in here, as it can be called in the context of any hook
 // including those that hold the loader lock
 
-static int set_caller_info_fallback(void *unused, ULONG_PTR addr)
+static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 {
-	hook_info_t *hookinfo = hook_info();
+	hook_info_t *hookinfo = _hook_info;
 
 	if (addr && !inside_hook((PVOID)addr)) {
         if (!hookinfo->main_caller_retaddr) {
@@ -83,9 +83,9 @@ static int set_caller_info_fallback(void *unused, ULONG_PTR addr)
     return 0;
 }
 
-static int set_caller_info(void *unused, ULONG_PTR addr)
+static int set_caller_info(void *_hook_info, ULONG_PTR addr)
 {
-	hook_info_t *hookinfo = hook_info();
+	hook_info_t *hookinfo = _hook_info;
 
 	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr)) {
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
@@ -93,7 +93,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
             char ModulePath[MAX_PATH];
             BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-            DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
+            DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
             if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
                 YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
             if (g_config.debugger && g_config.base_on_caller)
@@ -301,10 +301,10 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
         hookinfo->main_caller_retaddr = 0;
         hookinfo->parent_caller_retaddr = 0;
 
-        operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info);
+        operate_on_backtrace(sp, ebp_or_rip, hookinfo, set_caller_info);
 
         if (!hookinfo->main_caller_retaddr)
-            operate_on_backtrace(sp, ebp_or_rip, NULL, set_caller_info_fallback);
+            operate_on_backtrace(sp, ebp_or_rip, hookinfo, set_caller_info_fallback);
 
         api_dispatch(h, hookinfo);
 

@@ -121,6 +121,7 @@ struct ThreadBreakpoints *MainThreadBreakpointList;
 SINGLE_STEP_HANDLER SingleStepHandler;
 GUARD_PAGE_HANDLER GuardPageHandler;
 unsigned int TrapIndex, DepthCount;
+PVOID _KiUserExceptionDispatcher;
 HANDLE hCapePipe;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
 
@@ -593,14 +594,17 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (pBreakpointInfo->Callback == NULL)
 			DebugOutput("CAPEExceptionFilter: Can't get callback.\n");
-
-		Handler = (BREAKPOINT_HANDLER)pBreakpointInfo->Callback;
+        else
+        {
+            Handler = (BREAKPOINT_HANDLER)pBreakpointInfo->Callback;
 
 #ifdef DEBUG_COMMENTS
-        DebugOutput("CAPEExceptionFilter: About to call breakpoint handler at: 0x%p\n", Handler);
+            DebugOutput("CAPEExceptionFilter: About to call breakpoint handler at: 0x%p\n", Handler);
 #endif
-		// Invoke the handler
-        Handler(pBreakpointInfo, ExceptionInfo);
+            // Invoke the handler
+            if (Handler)
+                Handler(pBreakpointInfo, ExceptionInfo);
+        }
 
 		return EXCEPTION_CONTINUE_EXECUTION;
     }
@@ -2209,6 +2213,18 @@ BOOL InitialiseDebugger(void)
 		DebugOutput("InitialiseDebugger error: main thread handle not set.\n");
 		return FALSE;
     }
+
+    // Store address of KiUserExceptionDispatcher
+    _KiUserExceptionDispatcher = GetProcAddress(GetModuleHandle("ntdll"), "KiUserExceptionDispatcher");
+
+    if (_KiUserExceptionDispatcher == NULL)
+    {
+		DebugOutput("InitialiseDebugger error: could not resolve ntdll::KiUserExceptionDispatcher.\n");
+		return FALSE;
+    }
+#ifdef DEBUG_COMMENTS
+    else DebugOutput("InitialiseDebugger: ntdll::KiUserExceptionDispatcher = 0x%p\n", _KiUserExceptionDispatcher);
+#endif
 
     // Initialise global variables
     ChildProcessId = 0;
