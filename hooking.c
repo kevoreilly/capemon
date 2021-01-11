@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\Unpacker.h"
+#include "CAPE\YaraHarness.h"
 
 #ifdef _WIN64
 #define TLS_LAST_WIN32_ERROR 0x68
@@ -37,7 +38,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TLS_LAST_WIN32_ERROR 0x34
 #define TLS_LAST_NTSTATUS_ERROR 0xbf4
 #endif
-#define HOOK_TIME_SAMPLE 200
+#define HOOK_TIME_SAMPLE 100
 #define HOOK_RATE_LIMIT 0x100
 
 static lookup_t g_hook_info;
@@ -88,8 +89,11 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
         PVOID AllocationBase = GetAllocationBase((PVOID)addr);
         if (AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
             char ModulePath[MAX_PATH];
+            BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
             lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
             DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname);
+            if (g_config.yarascan && !MappedModule)
+                YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
             if (g_config.debugger && g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);
             if (g_config.unpacker) {
@@ -99,7 +103,7 @@ static int set_caller_info(void *unused, ULONG_PTR addr)
                     ProcessTrackedRegion(TrackedRegion);
                 }
             }
-            else if (g_config.caller_dump && !GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH)) {
+            else if (g_config.caller_dump && !MappedModule) {
                 __try {
                     DumpRegion((PVOID)addr);
                 }
@@ -265,7 +269,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
     if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-        if (g_config.api_rate_cap) {
+        if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && Old_GetSystemTimeAsFileTime) {
             if (h->hook_disabled)
                 return 0;
 

@@ -45,6 +45,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #include "CAPE.h"
 #include "Debugger.h"
+#include "YaraHarness.h"
 #include "..\alloc.h"
 #include "..\pipe.h"
 #include "..\config.h"
@@ -358,6 +359,34 @@ PVOID GetAllocationBase(PVOID Address)
 }
 
 //**************************************************************************************
+SIZE_T GetRegionSize(PVOID Address)
+//**************************************************************************************
+{
+    MEMORY_BASIC_INFORMATION MemInfo;
+
+    if (!Address)
+        return 0;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        ErrorOutput("GetRegionSize: Failed to obtain system page size.\n");
+        return 0;
+    }
+
+    if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+    {
+        ErrorOutput("GetRegionSize: unable to query memory address 0x%x", Address);
+        return 0;
+    }
+
+    return MemInfo.RegionSize;
+
+}
+
+//**************************************************************************************
 SIZE_T GetAllocationSize(PVOID Address)
 //**************************************************************************************
 {
@@ -397,7 +426,54 @@ SIZE_T GetAllocationSize(PVOID Address)
     }
 
     return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
+}
 
+//**************************************************************************************
+SIZE_T GetAccessibleSize(PVOID Address)
+//**************************************************************************************
+{
+    MEMORY_BASIC_INFORMATION MemInfo;
+    PVOID OriginalAllocationBase, AddressOfPage;
+
+    if (!Address)
+        return 0;
+
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        ErrorOutput("GetAccessibleSize: Failed to obtain system page size.\n");
+        return 0;
+    }
+
+    if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+    {
+        ErrorOutput("GetAccessibleSize: unable to query memory address 0x%x", Address);
+        return 0;
+    }
+
+    OriginalAllocationBase = MemInfo.AllocationBase;
+    AddressOfPage = OriginalAllocationBase;
+
+    while (MemInfo.AllocationBase == OriginalAllocationBase)
+    {
+        (PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
+
+        if (!VirtualQuery(AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+        {
+            ErrorOutput("GetAccessibleSize: unable to query memory page 0x%x", AddressOfPage);
+            return 0;
+        }
+
+        if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+            break;
+
+        if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
+            break;
+    }
+
+    return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
 }
 
 //**************************************************************************************
@@ -537,27 +613,28 @@ char* GetResultsPath(char* FolderName)
         return 0;
     }
 
-    // We want to dump output to the 'results' directory
     memset(FullPath, 0, MAX_PATH);
-
     strncpy_s(FullPath, MAX_PATH, g_config.results, strlen(g_config.results)+1);
 
-    if (strlen(FullPath) + 1 + strlen(FolderName) >= MAX_PATH)
+    if (FolderName)
     {
-        DebugOutput("GetResultsPath: Error, destination path too long.\n");
-        free(FullPath);
-        return 0;
-    }
+        if (strlen(FullPath) + 1 + strlen(FolderName) >= MAX_PATH)
+        {
+            DebugOutput("GetResultsPath: Error, destination path too long.\n");
+            free(FullPath);
+            return 0;
+        }
 
-    PathAppend(FullPath, FolderName);
+        PathAppend(FullPath, FolderName);
 
-    RetVal = CreateDirectory(FullPath, NULL);
+        RetVal = CreateDirectory(FullPath, NULL);
 
-    if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
-    {
-        ErrorOutput("GetResultsPath: Error creating output directory %s", FullPath);
-        free(FullPath);
-        return 0;
+        if (RetVal == 0 && GetLastError() != ERROR_ALREADY_EXISTS)
+        {
+            ErrorOutput("GetResultsPath: Error creating output directory %s", FullPath);
+            free(FullPath);
+            return 0;
+        }
     }
 
     return FullPath;
@@ -895,6 +972,37 @@ int ScanPageForNonZero(LPVOID Address)
     }
 
     return 0;
+}
+
+//**************************************************************************************
+int ScanForAccess(LPVOID Buffer, SIZE_T Size)
+//**************************************************************************************
+{
+    SIZE_T p;
+    int Result;
+
+    if (!Buffer)
+    {
+        DebugOutput("ScanForAccess: Error - Supplied address zero.\n");
+        return 0;
+    }
+
+    __try
+    {
+        for (p=0; p<Size-1; p++)
+        {
+            char c = *((char*)Buffer+p);
+            if (c)
+                Result = (int)c;
+        }
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
+        return 0;
+    }
+
+    return Result;
 }
 
 //**************************************************************************************
@@ -1309,6 +1417,41 @@ DWORD GetEntryPoint(LPVOID Address)
 
     if (pNtHeader && TestPERequirements(pNtHeader))
         return pNtHeader->OptionalHeader.AddressOfEntryPoint;
+
+    return 0;
+}
+
+//**************************************************************************************
+DWORD GetTimeStamp(LPVOID Address)
+//**************************************************************************************
+{
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+    if (!Address)
+    {
+        DebugOutput("GetTimeStamp: Error - no address supplied.\n");
+        return 0;
+    }
+
+    if (IsDisguisedPEHeader(Address) <= 0)
+        return 0;
+
+    pDosHeader = (PIMAGE_DOS_HEADER)Address;
+
+    __try
+    {
+        if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+            pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DebugOutput("GetTimeStamp: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+        return 0;
+    }
+
+    if (pNtHeader && TestPERequirements(pNtHeader))
+        return pNtHeader->FileHeader.TimeDateStamp;
 
     return 0;
 }
@@ -2017,8 +2160,13 @@ void CAPE_post_init()
         UPXInitialBreakpoints(GetModuleHandle(NULL));
     }
 
-    lookup_add(&g_caller_regions, (ULONG_PTR)GetModuleHandle(NULL), 0);
     lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
+
+    if (g_config.yarascan)
+    {
+        DebugOutput("Initialising Yara...\n");
+        YaraInit();
+    }
 }
 
 void CAPE_init()

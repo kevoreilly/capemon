@@ -1031,8 +1031,10 @@ BOOL ContextClearAllBreakpoints(PCONTEXT Context)
         ErrorOutput("ContextClearAllBreakpoints: SetThreadContext failed");
         return FALSE;
     }
+#ifdef DEBUG_COMMENTS
     else
         DebugOutput("ContextClearAllBreakpoints: SetThreadContext success.\n");
+#endif
 #endif
 
     return TRUE;
@@ -1166,8 +1168,10 @@ BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
         ErrorOutput("ContextClearBreakpoint: SetThreadContext failed");
         return FALSE;
     }
+#ifdef DEBUG_COMMENTS
     else
         DebugOutput("ContextClearBreakpoint: SetThreadContext success.\n");
+#endif
 #endif
 
 	pBreakpointInfo->Address = 0;
@@ -1265,8 +1269,10 @@ BOOL ContextClearBreakpointsInRange(PCONTEXT Context, PVOID BaseAddress, SIZE_T 
         ErrorOutput("ContextClearBreakpointsInRange: SetThreadContext failed");
         return FALSE;
     }
+#ifdef DEBUG_COMMENTS
     else
         DebugOutput("ContextClearBreakpointsInRange: SetThreadContext success.\n");
+#endif
 #endif
 
     return TRUE;

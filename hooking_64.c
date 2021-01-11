@@ -28,6 +28,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern DWORD GetTimeStamp(LPVOID Address);
+
 // length disassembler engine
 int lde(void *addr)
 {
@@ -939,6 +942,12 @@ int hook_api(hook_t *h, int type)
 			addr = (unsigned char *)get_cdocument_write_addr(hmod);
 		else
 			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+
+		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
+			DWORD timestamp = GetTimeStamp(hmod);
+			if (timestamp == h->timestamp)
+				addr = (unsigned char *)hmod + h->rva;
+        }
 	}
 	if (addr == NULL) {
 		// function doesn't exist in this DLL, not a critical error

@@ -118,6 +118,7 @@ struct _g_config {
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
 	char *base_on_apiname[EXCLUSION_MAX];
  	char *dump_on_apinames[EXCLUSION_MAX];
+ 	wchar_t *coverage_modules[EXCLUSION_MAX];
     int dump_on_api_type;
 
     // behavioural payload extraction options
@@ -171,6 +172,18 @@ struct _g_config {
 
     // Microsoft Office settings
     int office;
+
+    // TLS secret dump mode
+    int tlsdump;
+
+    // YARA scans
+    int yarascan;
+
+    // Minimal hook set
+    int minhook;
+
+    // Zero hook set
+    int zerohook;
 
 	char *break_on_apiname;
 	char *break_on_modname;

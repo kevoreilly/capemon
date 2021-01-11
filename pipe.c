@@ -15,7 +15,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
 #include <stdio.h>
 #include "ntapi.h"
 #include "hooking.h"
@@ -24,6 +23,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include "log.h"
+
+extern char* GetResultsPath(char* FolderName);
 
 static int _pipe_utf8x(char **out, unsigned short x)
 {
@@ -177,20 +178,25 @@ int pipe(const char *fmt, ...)
         char *buf = calloc(1, len + 1);
         _pipe_sprintf(buf, fmt, args);
 
-#ifdef CUCKOODBG_PIPE
-		char filename[64];
-		snprintf(filename, sizeof(filename), "c:\\pipe%u.log", GetCurrentProcessId());
+    if (g_config.standalone) {
+		char pid[8];
+		char* filename = GetResultsPath("pipe");
+		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
+		strcat(filename, "\\");
+		strcat(filename, pid);
+		strcat(filename, ".log");
 		FILE *f = fopen(filename, "ab");
 		if (f) {
 			fwrite(buf, len, 1, f);
 			fclose(f);
 			ret = 0;
 		}
-#else
+    }
+    else {
 		if (CallNamedPipeW(g_config.pipe_name, buf, len, buf, len,
 			(unsigned long *)&len, NMPWAIT_WAIT_FOREVER) != 0)
 			ret = 0;
-#endif
+    }
 		free(buf);
     }
 

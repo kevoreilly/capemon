@@ -282,6 +282,15 @@
     <ClCompile Include="capemon.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hooks.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hook_tls.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CAPE\YaraHarness.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">
@@ -423,6 +432,9 @@
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
     <ClInclude Include="CAPE\Unpacker.h">
+      <Filter>Header Files\CAPE</Filter>
+    </ClInclude>
+    <ClInclude Include="CAPE\YaraHarness.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
   </ItemGroup>

@@ -147,7 +147,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\bson;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <EnablePREfast>false</EnablePREfast>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
@@ -159,8 +159,8 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>bson.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)\Release</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libyara32.lib;bson.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)\Release;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <BaseAddress>0x30000000</BaseAddress>
@@ -178,7 +178,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <EnablePREfast>false</EnablePREfast>
     </ClCompile>
@@ -187,8 +187,8 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>bson.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)x64\Release</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libyara64.lib;bson.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)x64\Release;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <BaseAddress>
@@ -224,6 +224,7 @@
     <ClCompile Include="CAPE\UPX.c" />
     <ClCompile Include="CAPE\w64wow64\w64wow64.c" />
     <ClCompile Include="CAPE\wow64_fix.c" />
+    <ClCompile Include="CAPE\YaraHarness.c" />
     <ClCompile Include="config.c" />
     <ClCompile Include="capemon.c" />
     <ClCompile Include="distorm\src\decoder.c" />
@@ -238,6 +239,7 @@
     <ClCompile Include="hooking.c" />
     <ClCompile Include="hooking_32.c" />
     <ClCompile Include="hooking_64.c" />
+    <ClCompile Include="hooks.c" />
     <ClCompile Include="hook_crypto.c" />
     <ClCompile Include="hook_file.c" />
     <ClCompile Include="hook_misc.c" />
@@ -251,6 +253,7 @@
     <ClCompile Include="hook_special.c" />
     <ClCompile Include="hook_sync.c" />
     <ClCompile Include="hook_thread.c" />
+    <ClCompile Include="hook_tls.c" />
     <ClCompile Include="hook_window.c" />
     <ClCompile Include="ignore.c" />
     <ClCompile Include="log.c" />
@@ -435,6 +438,7 @@
     <ClInclude Include="CAPE\w64wow64\w64wow64.h" />
     <ClInclude Include="CAPE\w64wow64\w64wow64defs.h" />
     <ClInclude Include="CAPE\w64wow64\windef.h" />
+    <ClInclude Include="CAPE\YaraHarness.h" />
     <ClInclude Include="config.h" />
     <ClInclude Include="distorm\include\distorm.h" />
     <ClInclude Include="distorm\include\mnemonics.h" />

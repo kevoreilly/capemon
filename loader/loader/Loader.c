@@ -246,7 +246,11 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 
     if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
     {
-        ErrorOutput("GetProcessInitialThreadId: Failed to read from process");
+#ifdef DEBUG_COMMENTS
+			ErrorOutput("GetProcessInitialThreadId: ReadProcessMemory failed");
+#else
+			DebugOutput("GetProcessInitialThreadId: ReadProcessMemory failed.\n");
+#endif
         return 0;
     }
 
@@ -778,7 +782,7 @@ rebase:
     {
         if (Peb.Ldr)
         {
-            DebugOutput("InjectDllViaIAT: Not a new process, aborting IAT patch\n");
+            DebugOutput("InjectDllViaIAT: Not a new process, falling back to thread injection\n");
             goto out;
         }
 
@@ -1108,19 +1112,25 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 
     if (ThreadId && ThreadHandle)
     {
+#ifdef DEBUG_COMMENTS
         DebugOutput("InjectDll: IAT patching failed, falling back to queued APC injection.\n");
+#endif
         RetVal = InjectDllViaQueuedAPC(ProcessHandle, ThreadHandle, DllPath);
     }
     else
     {
+#ifdef DEBUG_COMMENTS
         DebugOutput("InjectDll: IAT patching failed, falling back to thread injection.\n");
+#endif
         RetVal = InjectDllViaThread(ProcessHandle, DllPath);
     }
 
+#ifdef DEBUG_COMMENTS
     if (RetVal)
         DebugOutput("InjectDll: Successfully injected DLL.\n");
     else
         DebugOutput("InjectDll: DLL injection failed.\n");
+#endif
 
 out:
     if (ProcessHandle)
@@ -1264,6 +1274,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         if (!ReadConfig(ProcessId, DllName))
             DebugOutput("Loader: Failed to load config for process %d.\n", ProcessId);
+#ifdef DEBUG_COMMENTS
+        else
+            DebugOutput("Loader: Loaded config for process %d.\n", ProcessId);
+#endif
 
         DebugOutput("Loader: Injecting process %d (thread %d) with %s.\n", ProcessId, ThreadId, DllName);
 
@@ -1392,7 +1406,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         LARGE_INTEGER InputFileSize;
         BYTE *PayloadBuffer = NULL;
         DWORD dwBytesRead = 0;
-        unsigned int Offset;
+        unsigned int Offset = 0;
 
         PSHELLCODE Payload;
 
@@ -1435,7 +1449,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return 0;
         }
 
-        if (__argv[3])
+        if (__argc > 4)
         {
             if (!_strnicmp(__argv[3], "ep", 2) && GetNtHeaders(PayloadBuffer))
                 Offset = (unsigned int)GetNtHeaders(PayloadBuffer)->OptionalHeader.AddressOfEntryPoint;

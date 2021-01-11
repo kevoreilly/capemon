@@ -27,6 +27,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
+extern DWORD GetTimeStamp(LPVOID Address);
+
 // length disassembler engine
 int lde(void *addr)
 {
@@ -665,7 +667,7 @@ int hook_api(hook_t *h, int type)
 		else if (!strcmp(h->funcname, "JsEval")) {
 			type = HOOK_JMP_DIRECT;
 			addr = (unsigned char *)get_jseval_addr(hmod);
-		} 
+		}
 		else if (!strcmp(h->funcname, "COleScript_ParseScriptText")) {
 			type = HOOK_JMP_DIRECT;
 			addr = (unsigned char *)get_olescript_parsescripttext_addr(hmod);
@@ -676,6 +678,12 @@ int hook_api(hook_t *h, int type)
 		}
 		else
 			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+
+		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
+			DWORD timestamp = GetTimeStamp(hmod);
+			if (timestamp == h->timestamp)
+				addr = (unsigned char *)hmod + h->rva;
+        }
     }
 
     if (addr == NULL || addr == (unsigned char *)0xffbadd11) {
@@ -779,8 +787,7 @@ int hook_api(hook_t *h, int type)
 		type = HOOK_JMP_DIRECT;
 
 	// make the address writable
-	if (VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, PAGE_EXECUTE_READWRITE,
-		&old_protect)) {
+	if (VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, PAGE_EXECUTE_READWRITE, &old_protect)) {
 
 		h->hookdata = alloc_hookdata_near(addr);
 
@@ -819,8 +826,7 @@ int hook_api(hook_t *h, int type)
 		}
 
 		// restore the old protection
-		VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect,
-			&old_protect);
+		VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
 	}
 	else {
 		pipe("WARNING:Unable to change protection for hook on %z", h->funcname);
