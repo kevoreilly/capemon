@@ -39,6 +39,7 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
+extern void log_anomaly(const char *subcategory, const char *msg);
 extern char *CommandLine, *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern DWORD_PTR FileOffsetToVA(DWORD_PTR modBase, DWORD_PTR dwOffset);
@@ -141,6 +142,57 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         FlipSignFlag(ExceptionInfo->ContextRecord);
         DebuggerOutput("ActionDispatcher: %s detected, flipping Sign flag.\n", DecodedInstruction.mnemonic.p);
     }
+    else if (!stricmp(Action, "ClearCarryFlag"))
+    {
+        ClearCarryFlag(ExceptionInfo->ContextRecord);
+        DebuggerOutput("ActionDispatcher: %s detected, clearing Carry flag.\n", DecodedInstruction.mnemonic.p);
+    }
+    else if (!stricmp(Action, "SetCarryFlag"))
+    {
+        SetCarryFlag(ExceptionInfo->ContextRecord);
+        DebuggerOutput("ActionDispatcher: %s detected, setting Carry flag.\n", DecodedInstruction.mnemonic.p);
+    }
+    else if (!stricmp(Action, "FlipCarryFlag"))
+    {
+        FlipCarryFlag(ExceptionInfo->ContextRecord);
+        DebuggerOutput("ActionDispatcher: %s detected, flipping Carry flag.\n", DecodedInstruction.mnemonic.p);
+    }
+    else if (!stricmp(Action, "Jmp"))
+    {
+        if (strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
+            DebuggerOutput("ActionDispatcher: Jmp action only applicable to jump instructions.\n");
+        else
+        {
+            PVOID JumpTarget, CIP;
+#ifdef _WIN64
+            CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+            CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+            if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
+            {
+                if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
+                    JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+                else
+                    JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+            }
+            else if (DecodedInstruction.size > 4)
+                JumpTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+            else if (DecodedInstruction.size == 2)
+                JumpTarget = (PVOID)((PUCHAR)CIP + (int)*((PUCHAR)CIP + 1) + DecodedInstruction.size);
+            if (JumpTarget)
+            {
+#ifdef _WIN64
+                DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+                ExceptionInfo->ContextRecord->Rip = (QWORD)JumpTarget;
+#else
+                DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+                ExceptionInfo->ContextRecord->Eip = (DWORD)JumpTarget;
+#endif
+                DebuggerOutput("ActionDispatcher: %s detected, forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, JumpTarget);
+            }
+        }
+    }
     else if (!stricmp(Action, "Skip"))
     {
         // We want the skipped instruction to appear in the trace
@@ -201,19 +253,21 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
     else if (!stricmp(Action, "Ret"))
     {
 #ifdef _WIN64
-        ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+        PVOID RetAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #else
-        ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+        PVOID RetAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #endif
 
-        if (ReturnAddress)
+        if (RetAddress)
         {
-            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", ReturnAddress);
+            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", RetAddress);
 #ifdef _WIN64
-            ExceptionInfo->ContextRecord->Rip = (QWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Rip = (QWORD)RetAddress;
             ExceptionInfo->ContextRecord->Rsp += sizeof(QWORD);
 #else
-            ExceptionInfo->ContextRecord->Eip = (DWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Eip = (DWORD)RetAddress;
             ExceptionInfo->ContextRecord->Esp += sizeof(DWORD);
 #endif
         }
@@ -221,19 +275,21 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
     else if (!stricmp(Action, "Ret2"))
     {
 #ifdef _WIN64
-        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+sizeof(QWORD));
+        PVOID RetAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+sizeof(QWORD));
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #else
-        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+sizeof(DWORD));
+        PVOID RetAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+sizeof(DWORD));
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #endif
 
-        if (ReturnAddress)
+        if (RetAddress)
         {
-            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", ReturnAddress);
+            DebuggerOutput("ActionDispatcher: Return*2 to 0x%p.\n", RetAddress);
 #ifdef _WIN64
-            ExceptionInfo->ContextRecord->Rip = (QWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Rip = (QWORD)RetAddress;
             ExceptionInfo->ContextRecord->Rsp += 2*sizeof(QWORD);
 #else
-            ExceptionInfo->ContextRecord->Eip = (DWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Eip = (DWORD)RetAddress;
             ExceptionInfo->ContextRecord->Esp += 2*sizeof(DWORD);
 #endif
         }
@@ -241,21 +297,44 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
     else if (!stricmp(Action, "Ret3"))
     {
 #ifdef _WIN64
-        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+2*sizeof(QWORD));
+        PVOID RetAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+2*sizeof(QWORD));
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #else
-        ReturnAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+2*sizeof(DWORD));
+        PVOID RetAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+2*sizeof(DWORD));
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 #endif
 
-
-        if (ReturnAddress)
+        if (RetAddress)
         {
-            DebuggerOutput("ActionDispatcher: Return to 0x%p.\n", ReturnAddress);
+            DebuggerOutput("ActionDispatcher: Return*3 to 0x%p.\n", RetAddress);
 #ifdef _WIN64
-            ExceptionInfo->ContextRecord->Rip = (QWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Rip = (QWORD)RetAddress;
             ExceptionInfo->ContextRecord->Rsp += 3*sizeof(QWORD);
 #else
-            ExceptionInfo->ContextRecord->Eip = (DWORD)ReturnAddress;
+            ExceptionInfo->ContextRecord->Eip = (DWORD)RetAddress;
             ExceptionInfo->ContextRecord->Esp += 3*sizeof(DWORD);
+#endif
+        }
+    }
+    else if (!stricmp(Action, "Ret4"))
+    {
+#ifdef _WIN64
+        PVOID RetAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Rsp+3*sizeof(QWORD));
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+        PVOID RetAddress = *(PVOID*)((BYTE*)ExceptionInfo->ContextRecord->Esp+3*sizeof(DWORD));
+        DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#endif
+
+        if (RetAddress)
+        {
+            DebuggerOutput("ActionDispatcher: Return*4 to 0x%p.\n", RetAddress);
+#ifdef _WIN64
+            ExceptionInfo->ContextRecord->Rip = (QWORD)RetAddress;
+            ExceptionInfo->ContextRecord->Rsp += 4*sizeof(QWORD);
+#else
+            ExceptionInfo->ContextRecord->Eip = (DWORD)RetAddress;
+            ExceptionInfo->ContextRecord->Esp += 4*sizeof(DWORD);
 #endif
         }
     }
@@ -960,7 +1039,12 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                 }
             }
 
-            if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
+            if (!StepLimit || StepCount >= StepLimit)
+            {
+                ForceStepOver = FALSE;
+                StepOver = FALSE;
+            }
+            else if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
             {
                 if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 {
@@ -1255,7 +1339,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     // We can use this to put a marker in behavior log
     // extern void log_anomaly(const char *subcategory, const char *msg);
-    // log_anomaly("Breakpoint hit", NULL);
+    log_anomaly("Breakpoint hit", NULL);
 
 #ifdef _WIN64
     CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
@@ -1671,7 +1755,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             }
         }
 
-        if (ReturnAddress && ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
+        if (!StepLimit || StepCount >= StepLimit)
+        {
+            ReturnAddress= NULL;
+            ForceStepOver = FALSE;
+            StepOver = FALSE;
+        }
+        else if (ReturnAddress && ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
         {
             if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
                 DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
@@ -1818,6 +1908,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
+    unsigned int DllRVA;
 
 	if (pBreakpointInfo == NULL)
 	{
@@ -1841,9 +1932,26 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
     ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
 #endif
 
-    if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
-        DebugOutput("BreakOnReturnCallback: Breakpoint set on return address at 0x%p.\n", ReturnAddress);
-    else
+    ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+
+    if (ModuleName)
+    {
+        PCHAR FunctionName;
+        __try
+        {
+            FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DebugOutput("BreakOnReturnCallback: Error dereferencing instruction pointer 0x%p.\n", CIP);
+        }
+        if (FunctionName)
+            DebuggerOutput("\nBreak at 0x%p in %s::%s (RVA 0x%x, thread %d), releasing until return address 0x%p", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ReturnAddress);
+        else
+            DebuggerOutput("\nBreak at 0x%p in %s (RVA 0x%x, thread %d), releasing until return address 0x%p", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ReturnAddress);
+    }
+
+    if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, BreakpointCallback))
         DebugOutput("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
     ReturnAddress = NULL;

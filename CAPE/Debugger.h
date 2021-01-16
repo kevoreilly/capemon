@@ -91,6 +91,9 @@ BOOL FlipZeroFlag(PCONTEXT Context);
 BOOL SetSignFlag(PCONTEXT Context);
 BOOL ClearSignFlag(PCONTEXT Context);
 BOOL FlipSignFlag(PCONTEXT Context);
+BOOL SetCarryFlag(PCONTEXT Context);
+BOOL ClearCarryFlag(PCONTEXT Context);
+BOOL FlipCarryFlag(PCONTEXT Context);
 PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId);
 
 // Get

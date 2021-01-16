@@ -547,6 +547,34 @@ void parse_config_line(char* line)
                 Type0 = BP_EXEC;
             }
         }
+        else if (!stricmp(key, "type1")) {
+            if (!_strnicmp(value, "w", 1)) {
+                DebugOutput("Config: Breakpoint 1 type set to write (Type1 = BP_WRITE).\n");
+                Type1 = BP_WRITE;
+            }
+            else if (!_strnicmp(value, "r", 1) || !_strnicmp(value, "rw", 2)) {
+                DebugOutput("Config: Breakpoint 1 type set to read/write (Type1 = BP_READWRITE).\n");
+                Type1 = BP_READWRITE;
+            }
+            else if (!_strnicmp(value, "x", 1)) {
+                DebugOutput("Config: Breakpoint 1 type set to execute (Type1 = BP_EXEC).\n");
+                Type1 = BP_EXEC;
+            }
+        }
+        else if (!stricmp(key, "type2")) {
+            if (!_strnicmp(value, "w", 1)) {
+                DebugOutput("Config: Breakpoint 2 type set to write (Type2 = BP_WRITE).\n");
+                Type2 = BP_WRITE;
+            }
+            else if (!_strnicmp(value, "r", 1) || !_strnicmp(value, "rw", 2)) {
+                DebugOutput("Config: Breakpoint 2 type set to read/write (Type2 = BP_READWRITE).\n");
+                Type2 = BP_READWRITE;
+            }
+            else if (!_strnicmp(value, "x", 1)) {
+                DebugOutput("Config: Breakpoint 2 type set to execute (Type2 = BP_EXEC).\n");
+                Type2 = BP_EXEC;
+            }
+        }
         else if (!stricmp(key, "divert-debugger-log")) {
             g_config.divert_debugger_log = value[0];
             if (g_config.divert_debugger_log)
@@ -566,6 +594,11 @@ void parse_config_line(char* line)
             g_config.base_on_caller = value[0] == '1';
             if (g_config.base_on_caller)
                 DebugOutput("Base breakpoints on new calling regions.\n");
+        }
+        else if (!stricmp(key, "fake-rdtsc")) {
+            g_config.fake_rdtsc = value[0] == '1';
+            if (g_config.fake_rdtsc)
+                DebugOutput("Fake RDTSC enabled (Trace)\n");
         }
         else if (!stricmp(key, "procdump")) {
             g_config.procdump = value[0] == '1';
@@ -652,11 +685,6 @@ void parse_config_line(char* line)
                 g_config.injection = 0;
                 g_config.yarascan = 0;
             }
-        }
-        else if (!stricmp(key, "fake-rdtsc")) {
-            g_config.fake_rdtsc = value[0] == '1';
-            if (g_config.fake_rdtsc)
-                DebugOutput("Fake RDTSC enabled (Trace)\n");
         }
         else if (!stricmp(key, "api-rate-cap")) {
             g_config.api_rate_cap = (unsigned int)strtoul(value, NULL, 10);
