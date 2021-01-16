@@ -1339,7 +1339,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
     // We can use this to put a marker in behavior log
     // extern void log_anomaly(const char *subcategory, const char *msg);
-    log_anomaly("Breakpoint hit", NULL);
+    // log_anomaly("Breakpoint hit", NULL);
 
 #ifdef _WIN64
     CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
