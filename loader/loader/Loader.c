@@ -225,6 +225,41 @@ BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
     return FALSE;
 }
 
+DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
+{
+    DWORD ThreadId;
+    _NtQueryInformationProcess pNtQueryInformationProcess;
+	PROCESS_BASIC_INFORMATION ProcessBasicInformation;
+	ULONG ulSize;
+
+    pNtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess");
+
+    memset(&ProcessBasicInformation, 0, sizeof(ProcessBasicInformation));
+
+    if (pNtQueryInformationProcess(ProcessHandle, 0, &ProcessBasicInformation, sizeof(ProcessBasicInformation), &ulSize) < 0 || ulSize != sizeof(ProcessBasicInformation))
+    {
+        DebugOutput("GetProcessInitialThreadId: NtQueryInformationProcess failed.\n");
+        return 0;
+    }
+
+    PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + (DWORD_PTR)NtCurrentTeb() - (DWORD_PTR)get_peb());
+
+    if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
+    {
+#ifdef DEBUG_COMMENTS
+			ErrorOutput("GetProcessInitialThreadId: ReadProcessMemory failed");
+#else
+			DebugOutput("GetProcessInitialThreadId: ReadProcessMemory failed.\n");
+#endif
+        return 0;
+    }
+
+    if (ThreadId)
+        return ThreadId;
+
+    return 0;
+}
+
 static int GrantDebugPrivileges(void)
 {
     HANDLE Token = NULL;
@@ -752,7 +787,6 @@ rebase:
             goto out;
         }
 
-        //AddressOfEntryPoint = (PVOID)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint);
         if (!VirtualQueryEx(ProcessHandle, AddressOfEntryPoint, &MemoryInfo, sizeof(MemoryInfo)))
         {
             DebugOutput("InjectDllViaIAT: Modified EP detected, failed to query target process address 0x%p.\n", AddressOfEntryPoint);
@@ -1007,7 +1041,7 @@ out:
 static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 {
     HANDLE ProcessHandle = NULL, ThreadHandle = NULL;
-    int RetVal = 0;
+    int RetVal = 0, InitialThreadId;
     PEB Peb;
 
     ProcessHandle = NULL;
@@ -1032,16 +1066,30 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
     if (!GetProcessPeb(ProcessHandle, &Peb))
         DebugOutput("InjectDll: GetProcessPeb failure.\n");
 
+    // If no thread id supplied, we fetch the initial thread id from the TEB's CLIENT_ID
     if (!ThreadId)
     {
-        if (Peb.SessionId)
-        {
-            DebugOutput("InjectDll: No thread ID supplied, SessionId=%d.\n", Peb.SessionId);
-            RetVal = 0;
-            goto out;
-        }
+        InitialThreadId = GetProcessInitialThreadId(ProcessHandle);
 
-        DebugOutput("InjectDll: No thread ID supplied, falling back to thread injection.\n");
+        if (!InitialThreadId)
+        {
+            if (Peb.SessionId)
+            {
+                DebugOutput("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed (SessionId=%d).\n", Peb.SessionId);
+                RetVal = 0;
+                goto out;
+            }
+
+            DebugOutput("InjectDll: No thread ID supplied, GetProcessInitialThreadId failed, falling back to thread injection.\n");
+        }
+        else
+        {
+            ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, InitialThreadId);
+            if (ThreadHandle == NULL)
+                DebugOutput("InjectDll: No thread ID supplied, OpenThread on initial thread ID %d failed", InitialThreadId);
+            else
+                DebugOutput("InjectDll: No thread ID supplied, initial thread ID %d, handle 0x%x\n", InitialThreadId, ThreadHandle);
+        }
     }
     else
     {
