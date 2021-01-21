@@ -104,6 +104,7 @@ int YaraCallback(int message, void* message_data, void* user_data)
                                         OptionLine = NewLine;
                                         Reload = TRUE;
                                     }
+                                    break;  // yara bug workaround
                                 }
                             }
                             parse_config_line(OptionLine);
