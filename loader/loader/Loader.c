@@ -232,6 +232,15 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 	PROCESS_BASIC_INFORMATION ProcessBasicInformation;
 	ULONG ulSize;
 
+    if (!SystemInfo.dwPageSize)
+        GetSystemInfo(&SystemInfo);
+
+    if (!SystemInfo.dwPageSize)
+    {
+        ErrorOutput("GetProcessInitialThreadId: Failed to obtain system page size");
+        return 0;
+    }
+
     pNtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess");
 
     memset(&ProcessBasicInformation, 0, sizeof(ProcessBasicInformation));
@@ -242,16 +251,21 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
         return 0;
     }
 
-    PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + (DWORD_PTR)NtCurrentTeb() - (DWORD_PTR)get_peb());
+    PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress + SystemInfo.dwPageSize);
 
     if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
     {
+        PTEB Teb = (PTEB)((PBYTE)ProcessBasicInformation.PebBaseAddress - SystemInfo.dwPageSize);
+
+        if (!ReadProcessMemory(ProcessHandle, &Teb->ClientId.UniqueThread, &ThreadId, sizeof(DWORD), NULL))
+        {
 #ifdef DEBUG_COMMENTS
-			ErrorOutput("GetProcessInitialThreadId: ReadProcessMemory failed");
+			ErrorOutput("GetProcessInitialThreadId: ReadProcessMemory failed (0x%p)", &Teb->ClientId.UniqueThread);
 #else
-			DebugOutput("GetProcessInitialThreadId: ReadProcessMemory failed.\n");
+			DebugOutput("GetProcessInitialThreadId: ReadProcessMemory failed (0x%p).\n", &Teb->ClientId.UniqueThread);
 #endif
-        return 0;
+            return 0;
+        }
     }
 
     if (ThreadId)
