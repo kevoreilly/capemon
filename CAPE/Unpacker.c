@@ -1238,12 +1238,6 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
 
     TrackedRegion->ProtectAddress = Address;
 
-    if (Protect != TrackedRegion->Protect)
-    {
-        DebugOutput("ProtectionHandler: updating protection of tracked region around 0x%p.\n", Address);
-        TrackedRegion->Protect = Protect;
-    }
-
     if (GuardPagesDisabled)
     {
         TrackedRegion->BreakpointsSet = ActivateBreakpoints(TrackedRegion, NULL);
@@ -2634,18 +2628,18 @@ BOOL ShellcodeExecCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
         // In the case where dumped PE file(s) come from inside shellcode, still dump the shellcode
         if (!TrackedRegion->PagesDumped || (TrackedRegion->PagesDumped && !IsDisguisedPEHeader(TrackedRegion->MemInfo.AllocationBase)))
         {
-            SIZE_T DumpSize = (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase;
+            SIZE_T ShellcodeSize = (DWORD_PTR)TrackedRegion->MemInfo.BaseAddress + TrackedRegion->MemInfo.RegionSize - (DWORD_PTR)TrackedRegion->MemInfo.AllocationBase;
 
             SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, TrackedRegion->MemInfo.AllocationBase);
 
             TrackedRegion->Entropy = GetEntropy(TrackedRegion->AllocationBase);
 
-            TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->MemInfo.AllocationBase, DumpSize);
+            TrackedRegion->PagesDumped = DumpMemory(TrackedRegion->MemInfo.AllocationBase, ShellcodeSize);
 
             if (TrackedRegion->PagesDumped)
-                DebugOutput("ShellcodeExecCallback: successfully dumped memory range at 0x%p (size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, DumpSize);
+                DebugOutput("ShellcodeExecCallback: successfully dumped memory range at 0x%p (size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, ShellcodeSize);
             else
-                DebugOutput("ShellcodeExecCallback: failed to dump memory range at 0x%p (size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, DumpSize);
+                DebugOutput("ShellcodeExecCallback: failed to dump memory range at 0x%p (size 0x%x).\n", TrackedRegion->MemInfo.AllocationBase, ShellcodeSize);
         }
 
         return TRUE;
