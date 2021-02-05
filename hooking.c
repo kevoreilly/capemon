@@ -96,7 +96,7 @@ static int set_caller_info(void *_hook_info, ULONG_PTR addr)
             DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
             if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
                 YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-            if (g_config.debugger && g_config.base_on_caller)
+            if (g_config.base_on_caller)
                 SetInitialBreakpoints((PVOID)AllocationBase);
             if (g_config.unpacker) {
                 PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
