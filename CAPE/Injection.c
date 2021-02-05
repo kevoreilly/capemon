@@ -661,10 +661,7 @@ void ResumeThreadHandler(DWORD Pid)
     struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
 
     if (!CurrentInjectionInfo)
-    {
-        DebugOutput("ResumeThreadHandler: CurrentInjectionInfo 0x%x (Pid %d).\n", CurrentInjectionInfo, Pid);
         return;
-    }
 
     if (CurrentInjectionInfo->WriteDetected && CurrentInjectionInfo->ImageBase && !CurrentInjectionInfo->ImageDumped)
     {
@@ -809,8 +806,8 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 
             if (!PathLength)
             {
-                ErrorOutput("OpenProcessHandler: Error obtaining target process name");
-                _snprintf(CapeMetaData->TargetProcess, BufferSize, "Error obtaining target process name");
+                DebugOutput("OpenProcessHandler: Handle insufficient to obtain target process name.\n");
+                _snprintf(CapeMetaData->TargetProcess, BufferSize, "Unable to obtain target process name");
             }
             else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
                 ErrorOutput("OpenProcessHandler: Error translating target process path");
