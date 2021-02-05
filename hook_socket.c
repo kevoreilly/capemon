@@ -226,7 +226,7 @@ HOOKDEF(SOCKET, WSAAPI, accept,
         get_ip_port(&addr_c, ip_c, &port_c);
     }
 
-    LOQ_sockerr("network", "iisisi", "socket", s, "ClientSocket", ret,
+    LOQ_sockerr("network", "ipsisi", "socket", s, "ClientSocket", ret,
         "ip_accept", ip_s, "port_accept", port_s,
         "ip_client", ip_c, "port_client", port_c);
     return ret;
