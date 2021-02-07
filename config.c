@@ -39,7 +39,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern wchar_t *our_process_path_w;
-extern PVOID bp0, bp1, bp2;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2;
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH];
@@ -50,8 +49,8 @@ extern SIZE_T DumpSize;
 
 void parse_config_line(char* line)
 {
-	unsigned int i;
-	unsigned int vallen;
+    unsigned int i;
+    unsigned int vallen;
 
     // split key=value
     char *p = strchr(line, '=');
@@ -284,34 +283,34 @@ void parse_config_line(char* line)
             char *p;
             p = strchr(value, ':');
             if (p && *(p+1) == ':') {
-                bp0 = 0;
+                g_config.bp0 = 0;
                 *p = '\0';
                 *(p+1) = '\0';
                 HANDLE Module = GetModuleHandle(value);
                 g_config.break_on_apiname = strdup(p+2);
                 g_config.break_on_modname = strdup(value);
                 if (Module)
-                    bp0 = GetProcAddress(Module, p+2);
+                    g_config.bp0 = GetProcAddress(Module, p+2);
                 else
                     DebugOutput("Config: Failed to get base for module (%s).\n", g_config.break_on_modname);
-                if (bp0) {
+                if (g_config.bp0) {
                     g_config.break_on_apiname_set = TRUE;
                     g_config.debugger = 1;
-                    DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", bp0, g_config.break_on_modname, g_config.break_on_apiname);
+                    DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", g_config.bp0, g_config.break_on_modname, g_config.break_on_apiname);
                 }
                 else {
-                    bp0 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-                    if (bp0) {
+                    g_config.bp0 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+                    if (g_config.bp0) {
                         g_config.break_on_apiname_set = TRUE;
                         g_config.debugger = 1;
-                        DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", bp0, g_config.break_on_modname, g_config.break_on_apiname);
+                        DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", g_config.bp0, g_config.break_on_modname, g_config.break_on_apiname);
                     }
                     else
                         DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
                 }
             }
             else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
-                DebugOutput("Config: bp0 set to entry point.\n", bp0);
+                DebugOutput("Config: bp0 set to entry point.\n", g_config.bp0);
                 EntryPointRegister = 1;
                 g_config.debugger = 1;
             }
@@ -331,39 +330,39 @@ void parse_config_line(char* line)
                         *p = '\0';
                     }
                 }
-                bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-                if (bp0 == (PVOID)(DWORD_PTR)ULONG_MAX)
-                    bp0 = (PVOID)_strtoui64(value, NULL, 0);
+                g_config.bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                if (g_config.bp0 == (PVOID)(DWORD_PTR)ULONG_MAX)
+                    g_config.bp0 = (PVOID)_strtoui64(value, NULL, 0);
                 g_config.debugger = 1;
                 if (delta) {
-                    DebugOutput("Config: bp0 was 0x%p.\n", bp0);
-                    bp0 = (PVOID)(DWORD_PTR)((PUCHAR)bp0 + delta);
+                    DebugOutput("Config: bp0 was 0x%p.\n", g_config.bp0);
+                    g_config.bp0 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.bp0 + delta);
                 }
-                DebugOutput("Config: bp0 set to 0x%p.\n", bp0);
+                DebugOutput("Config: bp0 set to 0x%p.\n", g_config.bp0);
             }
         }
         else if (!stricmp(key, "bp1")) {
             if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
-                DebugOutput("Config: bp1 set to entry point.\n", bp1);
+                DebugOutput("Config: bp1 set to entry point.\n", g_config.bp1);
                 EntryPointRegister = 2;
                 g_config.debugger = 1;
             }
             else {
-                bp1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                g_config.bp1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
                 g_config.debugger = 1;
-                DebugOutput("Config: bp1 set to 0x%x.\n", bp1);
+                DebugOutput("Config: bp1 set to 0x%x.\n", g_config.bp1);
             }
         }
         else if (!stricmp(key, "bp2")) {
             if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
-                DebugOutput("Config: bp2 set to entry point.\n", bp2);
+                DebugOutput("Config: bp2 set to entry point.\n", g_config.bp2);
                 EntryPointRegister = 3;
                 g_config.debugger = 1;
             }
             else {
-                bp2 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+                g_config.bp2 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
                 g_config.debugger = 1;
-                DebugOutput("Config: bp2 set to 0x%x.\n", bp2);
+                DebugOutput("Config: bp2 set to 0x%x.\n", g_config.bp2);
             }
         }
         else if (!stricmp(key, "br0")) {
@@ -454,19 +453,19 @@ void parse_config_line(char* line)
         }
         else if (!stricmp(key, "step-out")) {
             g_config.debugger = 1;
-            bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-            if (bp0) {
+            g_config.bp0 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+            if (g_config.bp0) {
                 g_config.step_out = '1';
-                DebugOutput("Config: Step-out breakpoint set to 0x%x.\n", bp0);
+                DebugOutput("Config: Step-out breakpoint set to 0x%x.\n", g_config.bp0);
             }
         }
         else if (!stricmp(key, "dumpsize")) {
-            DumpSize = (int)strtoul(value, NULL, 10);
+            DumpSize = (SIZE_T)strtoul(value, NULL, 0);
             if (DumpSize)
                 DebugOutput("Config: DumpSize set to 0x%x", DumpSize);
             else {
                 strncpy(DumpSizeString, value, strlen(value));
-                DebugOutput("Config: DumpSize set to %s.", DumpSizeString);
+                DebugOutput("Config: DumpSize set to string \"%s\".", DumpSizeString);
             }
         }
         else if (!stricmp(key, "action0")) {
@@ -532,6 +531,12 @@ void parse_config_line(char* line)
         }
         else if (!stricmp(key, "dumptype0")) {
             g_config.dumptype0 = (unsigned int)strtoul(value, NULL, 0);
+        }
+        else if (!stricmp(key, "dumptype1")) {
+            g_config.dumptype1 = (unsigned int)strtoul(value, NULL, 0);
+        }
+        else if (!stricmp(key, "dumptype2")) {
+            g_config.dumptype2 = (unsigned int)strtoul(value, NULL, 0);
         }
         else if (!stricmp(key, "type0")) {
             if (!_strnicmp(value, "w", 1)) {
@@ -726,11 +731,6 @@ void parse_config_line(char* line)
         else if (!stricmp(key, "tlsdump")) {
             g_config.tlsdump = value[0] == '1';
             if (g_config.tlsdump) {
-                g_config.procdump = 0;
-                g_config.procmemdump = 0;
-                g_config.injection = 0;
-                g_config.caller_dump = 0;
-                g_config.yarascan = 0;
                 DebugOutput("TLS secret dump mode enabled.\n");
             }
         }
@@ -756,7 +756,7 @@ void parse_config_line(char* line)
 int read_config(void)
 {
     char buf[32768], config_fname[MAX_PATH], analyzer_path[MAX_PATH];
-	FILE *fp;
+    FILE *fp;
 
     // look for the config in monitor directory
     strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
@@ -766,27 +766,27 @@ int read_config(void)
     fp = fopen(config_fname, "r");
 
     // backward compatibility
-	if (fp == NULL) {
+    if (fp == NULL) {
         memset(config_fname, 0, sizeof(config_fname));
         sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
-		fp = fopen(config_fname, "r");
+        fp = fopen(config_fname, "r");
     }
 
     // for debugging purposes
     if (fp == NULL) {
         memset(config_fname, 0, sizeof(config_fname));
         sprintf(config_fname, "%s\\config.ini", analyzer_path);
-		fp = fopen(config_fname, "r");
-		if (fp == NULL)
-			return 0;
-	}
+        fp = fopen(config_fname, "r");
+        if (fp == NULL)
+            return 0;
+    }
 
-	// config defaults
+    // config defaults
     g_config.force_sleepskip = -1;
 #ifdef _WIN64
-	g_config.hook_type = HOOK_JMP_INDIRECT;
+    g_config.hook_type = HOOK_JMP_INDIRECT;
 #else
-	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
+    g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
     g_config.procdump = 1;
     g_config.procmemdump = 0;
@@ -806,9 +806,9 @@ int read_config(void)
     memset(g_config.w_analyzer, 0, sizeof(WCHAR)*MAX_PATH);
     memset(g_config.w_pythonpath, 0, sizeof(WCHAR)*MAX_PATH);
 
-	memset(buf, 0, sizeof(buf));
-	while (fgets(buf, sizeof(buf), fp) != NULL)
-	{
+    memset(buf, 0, sizeof(buf));
+    while (fgets(buf, sizeof(buf), fp) != NULL)
+    {
         // cut off the newline
         char *p = strchr(buf, '\r');
         if (p != NULL) *p = 0;
@@ -818,9 +818,9 @@ int read_config(void)
         parse_config_line(buf);
     }
 
-	/* don't suspend logging if this isn't the first process or if we want all the logs */
-	if (!g_config.first_process || g_config.full_logs)
-		g_config.suspend_logging = FALSE;
+    /* don't suspend logging if this isn't the first process or if we want all the logs */
+    if (!g_config.first_process || g_config.full_logs)
+        g_config.suspend_logging = FALSE;
 
     if (!wcslen(g_config.w_pythonpath)) {
         char* DummyString = "default";
@@ -830,17 +830,36 @@ int read_config(void)
         DebugOutput("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
     }
 
-	/* if no option supplied for dropped limit set a sensible value */
-	if (!g_config.dropped_limit) {
-		g_config.dropped_limit = DROPPED_LIMIT;
+    /* if no option supplied for dropped limit set a sensible value */
+    if (!g_config.dropped_limit) {
+        g_config.dropped_limit = DROPPED_LIMIT;
         DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
+    }
+
+    if (g_config.tlsdump) {
+        g_config.debugger = 0;
+        g_config.procdump = 0;
+        g_config.procmemdump = 0;
+        g_config.dropped_limit = 0;
+        g_config.injection = 0;
+        g_config.compression = 0;
+        g_config.caller_dump = 0;
+        g_config.api_rate_cap = 0;
+        g_config.yarascan = 0;
+        g_config.bp0 = 0;
+        g_config.bp1 = 0;
+        g_config.bp2 = 0;
+        g_config.br0 = 0;
+        g_config.br1 = 0;
+        g_config.br2 = 0;
+        memset(g_config.break_on_return, 0, ARRAYSIZE(g_config.break_on_return));
     }
 
     if (TraceDepthLimit == 0xFFFFFFFF)
         TraceDepthLimit = 1;
 
-	fclose(fp);
+    fclose(fp);
     if (!g_config.standalone)
         DeleteFileA(config_fname);
-	return 1;
+    return 1;
 }

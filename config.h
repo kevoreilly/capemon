@@ -191,9 +191,13 @@ struct _g_config {
     BOOLEAN break_on_return_set;
     BOOLEAN break_on_apiname_set;
 
+    // debugger breakpoints
+    PVOID bp0, bp1, bp2, bp3;
     // break-on-return: brX
     PVOID br0, br1, br2, br3;
     int dumptype0;
+    int dumptype1;
+    int dumptype2;
     int trace_all;
     int step_out;
     int file_offsets;

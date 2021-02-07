@@ -55,11 +55,6 @@ extern "C" {
 
 BOOL DebuggerInitialised;
 
-// Global variables for submission options
-void *CAPE_var1, *CAPE_var2, *CAPE_var3, *CAPE_var4;
-PVOID bp0, bp1, bp2, bp3;
-PVOID bpw0, bpw1, bpw2, bpw3;
-
 LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 PVOID CAPEExceptionFilterHandle;
 PEXCEPTION_ROUTINE SEH_TopLevelHandler;
