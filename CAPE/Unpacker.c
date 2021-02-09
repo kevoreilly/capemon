@@ -1157,9 +1157,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
         NewRegion = TRUE;
     }
     else
-    {
         DebugOutput("ProtectionHandler: Address 0x%p already in tracked region at 0x%p, size 0x%x\n", Address, TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
-    }
 
     if (!TrackedRegion)
     {
@@ -1183,13 +1181,13 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
     if (TrackedRegion->RegionSize < TrackedRegionSize)
     {
         TrackedRegion->RegionSize = TrackedRegionSize;
-        DebugOutput("ProtectionHandler: Increased region size at 0x%p to 0x%x.\n", Address, TrackedRegionSize);
+        DebugOutput("ProtectionHandler: Increased region size at 0x%p to 0x%x.\n", TrackedRegion->AllocationBase, TrackedRegionSize);
     }
 
     if (TrackedRegion->Protect != Protect)
     {
         TrackedRegion->Protect = Protect;
-        DebugOutput("ProtectionHandler: Updated region protection at 0x%p to 0x%x.\n", Address, Protect);
+        DebugOutput("ProtectionHandler: Updated region protection at 0x%p to 0x%x.\n", TrackedRegion->AllocationBase, Protect);
     }
 
     if (TrackedRegion->AllocationBase == ImageBase || TrackedRegion->AllocationBase == GetModuleHandle(NULL))
@@ -1200,7 +1198,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
     }
 
     //if (ScanForNonZero(Address, RegionSize))
-    if ((NewRegion || OldProtect & WRITABLE_FLAGS) && ScanForNonZero(TrackedRegion->AllocationBase, TrackedRegion->RegionSize))
+    if (!TrackedRegion->PagesDumped && (NewRegion || OldProtect & WRITABLE_FLAGS) && ScanForNonZero(Address, RegionSize))
     {
         DebugOutput("ProtectionHandler: New code detected at (0x%p), scanning for PE images.\n", TrackedRegion->AllocationBase);
 
@@ -1230,10 +1228,12 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
             else
                 DebugOutput("ProtectionHandler: Failed to dump range at 0x%p, size 0x%x\n", TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
         }
+        else
+            DebugOutput("ProtectionHandler: Skipped range at 0x%p (size 0x%x) due to protection-write-enabled.\n", TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
     }
 #ifdef DEBUG_COMMENTS
     else
-        DebugOutput("ProtectionHandler: No action taken on empty protected region at 0x%p.\n", TrackedRegion->AllocationBase);
+        DebugOutput("ProtectionHandler: No action taken on empty protected region at 0x%p.\n", Address);
 #endif
 
     TrackedRegion->ProtectAddress = Address;

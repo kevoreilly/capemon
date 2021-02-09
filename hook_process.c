@@ -576,8 +576,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	if (NT_SUCCESS(ret)) {
         if (g_config.injection)
             MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
-        //if (g_config.unpacker)
-        //    ProtectionHandler(*BaseAddress, *ViewSize, Win32Protect, 0);
+        if (g_config.unpacker)
+            AllocationHandler(*BaseAddress, *ViewSize, MEM_COMMIT, Win32Protect);
         if (!g_config.single_process && pid != GetCurrentProcessId()) {
 			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
 			disable_sleep_skip();
