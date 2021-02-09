@@ -1021,7 +1021,15 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
     {
         for (p=0; p<Size-1; p++)
             if (*((char*)Buffer+p) != 0)
-                return (int)p;
+            {
+#ifdef DEBUG_COMMENTS
+                DebugOutput("ScanForNonZero: Non-zero found at 0x%p (0x%x)\n", (char*)Buffer+p, *((char*)Buffer+p));
+#endif
+                if (p)
+                    return (int)p;
+                else
+                    return 1;
+            }
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -1029,6 +1037,9 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
         return 0;
     }
 
+#ifdef DEBUG_COMMENTS
+    DebugOutput("ScanForNonZero: No data found at 0x%p (size 0x%x)\n", Buffer, Size);
+#endif
     return 0;
 }
 
