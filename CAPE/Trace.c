@@ -1232,6 +1232,33 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         ForceStepOver = TRUE;
     }
 #endif
+    else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
+    {
+        if (!FilterTrace)
+#ifdef _WIN64
+            DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+            DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", (unsigned int)CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+
+        if (InsideMonitor(NULL, CIP))
+        {
+            DebuggerOutput("\nInternal POP SS detected.\n");
+        }
+        //else
+        //{
+            if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (PVOID)ExceptionInfo->ContextRecord->Esp, BP_READWRITE, BreakpointCallback))
+            {
+                DebugOutput("Trace: Set stack breakpoint before POP SS at 0x%p\n", CIP);
+                LastContext = *ExceptionInfo->ContextRecord;
+                ClearSingleStepMode(ExceptionInfo->ContextRecord);
+                ReturnAddress = NULL;
+                return TRUE;
+            }
+            else
+                DebugOutput("Trace: Failed to set stack breakpoint on 0x%p\n", ExceptionInfo->ContextRecord->Esp);
+        //}
+#endif
+    }
     else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
     {
         if (g_config.branch_trace)
