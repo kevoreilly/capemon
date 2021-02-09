@@ -1555,7 +1555,7 @@ BOOL PeParser::reBasePEImage(DWORD_PTR NewBase)
     RelocationSize = NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
 	Delta = NewBase - NtHeaders->OptionalHeader.ImageBase;
 #ifdef DEBUG_COMMENTS
-    DebugOutput("reBasePEImage: Relocations set to 0x%p, size 0x%x, Delta 0x%p\n", Relocations, RelocationSize, Delta);
+    DebugOutput("reBasePEImage: Relocations set to 0x%p, size 0x%x, Delta 0x%p, ImageBase 0x%p\n", Relocations, RelocationSize, Delta, NtHeaders->OptionalHeader.ImageBase);
 #endif
 
 	__try
@@ -1574,9 +1574,13 @@ BOOL PeParser::reBasePEImage(DWORD_PTR NewBase)
                 {
                     PUCHAR *RVA = (PUCHAR*)((PBYTE)(DWORD_PTR)Relocations->VirtualAddress + (Reloc[i] & 0x0FFF));
 #ifndef _WIN64
-                    *((PULONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONG)((ULONGLONG)Delta);
+                    PUCHAR VA = (PUCHAR)*((PULONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA)));
+                    if ((unsigned int)VA - NewBase < (unsigned int)NtHeaders->OptionalHeader.SizeOfImage)
+                        *((PULONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONG)((ULONGLONG)Delta);
 #else
-                    *((PULONGLONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONGLONG)Delta;
+                    PULONGLONG VA = (PULONGLONG)*((PULONGLONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA)));
+                    if ((ULONGLONG)VA - NewBase < (ULONGLONG)NtHeaders->OptionalHeader.SizeOfImage)
+                        *((PULONGLONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONGLONG)Delta;
 #endif
                 }
             }
