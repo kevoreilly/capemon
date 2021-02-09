@@ -1,17 +1,30 @@
 /*
 Copyright (c) 2007. Victor M. Alvarez [plusvic@gmail.com].
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <yara/re.h>
@@ -46,20 +59,24 @@ limitations under the License.
 typedef void* yyscan_t;
 #endif
 
-#define YY_EXTRA_TYPE RE*
+#define YY_EXTRA_TYPE RE_AST*
 #define YY_USE_CONST
 
 
 typedef struct _HEX_LEX_ENVIRONMENT
 {
-  int token_count;
   int inside_or;
-  int last_error_code;
+  int last_error;
   char last_error_message[256];
 
 } HEX_LEX_ENVIRONMENT;
 
 
+// The default behavior when a fatal error occurs in the parser is calling
+// exit(YY_EXIT_FAILURE) for terminating the process. This is not acceptable
+// for a library, which should return gracefully to the calling program. For
+// this reason we redefine the YY_FATAL_ERROR macro so that it expands to our
+// own function instead of the one provided by default.
 #define YY_FATAL_ERROR(msg) hex_yyfatal(yyscanner, msg)
 
 #define LEX_ENV  ((HEX_LEX_ENVIRONMENT*) lex_env)
@@ -93,6 +110,5 @@ void yyfatal(
 
 int yr_parse_hex_string(
   const char* hex_string,
-  int flags,
-  RE** re,
+  RE_AST** re_ast,
   RE_ERROR* error);

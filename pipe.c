@@ -29,7 +29,7 @@ extern char* GetResultsPath(char* FolderName);
 static int _pipe_utf8x(char **out, unsigned short x)
 {
     unsigned char buf[3];
-    int len = utf8_encode(x, buf);
+    int len = utf8_do_encode(x, buf);
     if(*out != NULL) {
         memcpy(*out, buf, len);
         *out += len;

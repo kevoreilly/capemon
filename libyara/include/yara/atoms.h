@@ -1,17 +1,30 @@
 /*
 Copyright (c) 2013. The YARA Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifndef YR_ATOMS_H
@@ -24,62 +37,119 @@ limitations under the License.
 #define ATOM_TREE_AND   2
 #define ATOM_TREE_OR    3
 
+typedef struct YR_ATOM YR_ATOM;
+typedef struct YR_ATOM_TREE_NODE YR_ATOM_TREE_NODE;
+typedef struct YR_ATOM_TREE YR_ATOM_TREE;
 
-typedef struct _ATOM_TREE_NODE
+typedef struct YR_ATOM_LIST_ITEM YR_ATOM_LIST_ITEM;
+
+typedef struct YR_ATOM_QUALITY_TABLE_ENTRY YR_ATOM_QUALITY_TABLE_ENTRY;
+typedef struct YR_ATOMS_CONFIG YR_ATOMS_CONFIG;
+
+
+struct YR_ATOM
+{
+  uint8_t length;
+  uint8_t bytes[YR_MAX_ATOM_LENGTH];
+  uint8_t mask[YR_MAX_ATOM_LENGTH];
+};
+
+struct YR_ATOM_TREE_NODE
 {
   uint8_t type;
-  uint8_t atom_length;
-  uint8_t atom[MAX_ATOM_LENGTH];
 
-  uint8_t* forward_code;
-  uint8_t* backward_code;
+  YR_ATOM atom;
 
-  RE_NODE* recent_nodes[MAX_ATOM_LENGTH];
+  // RE nodes that correspond to each byte in the atom.
+  RE_NODE* re_nodes[YR_MAX_ATOM_LENGTH];
 
-  struct _ATOM_TREE_NODE* children_head;
-  struct _ATOM_TREE_NODE* children_tail;
-  struct _ATOM_TREE_NODE* next_sibling;
-
-} ATOM_TREE_NODE;
+  YR_ATOM_TREE_NODE* children_head;
+  YR_ATOM_TREE_NODE* children_tail;
+  YR_ATOM_TREE_NODE* next_sibling;
+};
 
 
-typedef struct _ATOM_TREE
+struct YR_ATOM_TREE
 {
-  ATOM_TREE_NODE* current_leaf;
-  ATOM_TREE_NODE* root_node;
-
-} ATOM_TREE;
+  YR_ATOM_TREE_NODE* root_node;
+};
 
 
-typedef struct _YR_ATOM_LIST_ITEM
+struct YR_ATOM_LIST_ITEM
 {
-  uint8_t atom_length;
-  uint8_t atom[MAX_ATOM_LENGTH];
+  YR_ATOM atom;
 
   uint16_t backtrack;
 
-  uint8_t* forward_code;
-  uint8_t* backward_code;
+  YR_ARENA_REF forward_code_ref;
+  YR_ARENA_REF backward_code_ref;
 
-  struct _YR_ATOM_LIST_ITEM* next;
+  YR_ATOM_LIST_ITEM* next;
+};
 
-} YR_ATOM_LIST_ITEM;
+
+#pragma pack(push)
+#pragma pack(1)
+
+struct YR_ATOM_QUALITY_TABLE_ENTRY
+{
+  const uint8_t atom[YR_MAX_ATOM_LENGTH];
+  const uint8_t quality;
+};
+
+#pragma pack(pop)
+
+
+typedef int (*YR_ATOMS_QUALITY_FUNC)(
+    YR_ATOMS_CONFIG* config,
+    YR_ATOM* atom);
+
+
+struct YR_ATOMS_CONFIG
+{
+  YR_ATOMS_QUALITY_FUNC get_atom_quality;
+  YR_ATOM_QUALITY_TABLE_ENTRY* quality_table;
+
+  int quality_warning_threshold;
+  int quality_table_entries;
+  bool free_quality_table;
+};
 
 
 int yr_atoms_extract_from_re(
-    RE* re,
-    int flags,
-    YR_ATOM_LIST_ITEM** atoms);
+    YR_ATOMS_CONFIG* config,
+    RE_AST* re_ast,
+    YR_MODIFIER modifier,
+    YR_ATOM_LIST_ITEM** atoms,
+    int* min_atom_quality);
 
 
 int yr_atoms_extract_from_string(
+    YR_ATOMS_CONFIG* config,
     uint8_t* string,
     int string_length,
-    int flags,
+    YR_MODIFIER modifier,
+    YR_ATOM_LIST_ITEM** atoms,
+    int* min_atom_quality);
+
+
+int yr_atoms_extract_triplets(
+    RE_NODE* re_node,
     YR_ATOM_LIST_ITEM** atoms);
 
 
+int yr_atoms_heuristic_quality(
+    YR_ATOMS_CONFIG* config,
+    YR_ATOM* atom);
+
+
+int yr_atoms_table_quality(
+    YR_ATOMS_CONFIG* config,
+    YR_ATOM* atom);
+
+
 int yr_atoms_min_quality(
+    YR_ATOMS_CONFIG* config,
     YR_ATOM_LIST_ITEM* atom_list);
 
 

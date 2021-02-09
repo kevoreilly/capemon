@@ -1,23 +1,36 @@
 /*
 Copyright (c) 2013. The YARA Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifndef _ELF_H
 #define _ELF_H
 
-#include <stdint.h>
+#include <yara/integers.h>
 
 
 // 32-bit ELF base types
@@ -39,7 +52,7 @@ typedef uint64_t elf64_xword_t;
 
 #define ELF_ET_NONE     0x0000  // no type
 #define ELF_ET_REL      0x0001  // relocatable
-#define ELF_ET_EXEC     0x0002  // executeable
+#define ELF_ET_EXEC     0x0002  // executable
 #define ELF_ET_DYN      0x0003  // Shared-Object-File
 #define ELF_ET_CORE     0x0004  // Corefile
 #define ELF_ET_LOPROC   0xFF00  // Processor-specific
@@ -87,20 +100,69 @@ typedef uint64_t elf64_xword_t;
 #define ELF_SHF_ALLOC        0x2   // Section is present during execution
 #define ELF_SHF_EXECINSTR    0x4   // Section contains executable instructions
 
+#define ELF_SHN_LORESERVE    0xFF00
+
 #define ELF_PT_NULL          0     // The array element is unused
-#define ELF_PT_LOAD          1     // Loadable segment    
+#define ELF_PT_LOAD          1     // Loadable segment
 #define ELF_PT_DYNAMIC       2     // Segment contains dynamic linking info
 #define ELF_PT_INTERP        3     // Contains interpreter pathname
 #define ELF_PT_NOTE          4     // Location & size of auxiliary info
 #define ELF_PT_SHLIB         5     // Reserved, unspecified semantics
 #define ELF_PT_PHDR          6     // Location and size of program header table
-#define ELF_PT_TLS           7     // Thread-Local Storage 
+#define ELF_PT_TLS           7     // Thread-Local Storage
 #define ELF_PT_GNU_EH_FRAME  0x6474e550
 #define ELF_PT_GNU_STACK     0x6474e551
- 
+
+#define ELF_DT_NULL          0     // End of the dynamic entries
+#define ELF_DT_NEEDED        1     // Name of needed library
+#define ELF_DT_PLTRELSZ      2     // Size in bytes of PLT relocs
+#define ELF_DT_PLTGOT        3     // Processor defined value */
+#define ELF_DT_HASH          4     // Address of symbol hash table
+#define ELF_DT_STRTAB        5     // Address of string table
+#define ELF_DT_SYMTAB        6     // Address of symbol table
+#define ELF_DT_RELA          7     // Address of Rela relocs
+#define ELF_DT_RELASZ        8     // Total size of Rela relocs
+#define ELF_DT_RELAENT       9     // Size of one Rela reloc
+#define ELF_DT_STRSZ         10    // Size of string table
+#define ELF_DT_SYMENT        11    // Size of one symbol table entry
+#define ELF_DT_INIT          12    // Address of init function
+#define ELF_DT_FINI          13    // Address of termination function
+#define ELF_DT_SONAME        14    // Name of shared object
+#define ELF_DT_RPATH         15    // Library search path (deprecated)
+#define ELF_DT_SYMBOLIC      16    // Start symbol search here
+#define ELF_DT_REL           17    // Address of Rel relocs
+#define ELF_DT_RELSZ         18    // Total size of Rel relocs
+#define ELF_DT_RELENT        19    // Size of one Rel reloc
+#define ELF_DT_PLTREL        20    // Type of reloc in PLT
+#define ELF_DT_DEBUG         21    // For debugging; unspecified
+#define ELF_DT_TEXTREL       22    // Reloc might modify .text
+#define ELF_DT_JMPREL        23    // Address of PLT relocs
+#define ELF_DT_BIND_NOW      24    // Process relocations of object
+#define ELF_DT_INIT_ARRAY    25    // Array with addresses of init fct
+#define ELF_DT_FINI_ARRAY    26    // Array with addresses of fini fct
+#define ELF_DT_INIT_ARRAYSZ  27    // Size in bytes of DT_INIT_ARRAY
+#define ELF_DT_FINI_ARRAYSZ  28    // Size in bytes of DT_FINI_ARRAY
+#define ELF_DT_RUNPATH       29    // Library search path
+#define ELF_DT_FLAGS         30    // Flags for the object being loaded
+#define ELF_DT_ENCODING      32    // Start of encoded range
+
+#define ELF_STT_NOTYPE       0     // Symbol type is unspecified
+#define ELF_STT_OBJECT       1     // Symbol is a data object
+#define ELF_STT_FUNC         2     // Symbol is a code object
+#define ELF_STT_SECTION      3     // Symbol associated with a section
+#define ELF_STT_FILE         4     // Symbol's name is file name
+#define ELF_STT_COMMON       5     // Symbol is a common data object
+#define ELF_STT_TLS          6     // Symbol is thread-local data object
+
+#define ELF_STB_LOCAL        0     // Local symbol
+#define ELF_STB_GLOBAL       1     // Global symbol
+#define ELF_STB_WEAK         2     // Weak symbol
+
 #define ELF_PF_X             0x1   // Segment is executable
 #define ELF_PF_W             0x2   // Segment is writable
 #define ELF_PF_R             0x4   // Segment is readable
+
+#define ELF_PN_XNUM          0xffff
 
 #pragma pack(push,1)
 
@@ -214,6 +276,46 @@ typedef struct
   elf64_xword_t   entry_size;
 
 } elf64_section_header_t;
+
+
+typedef struct
+{
+  elf32_word_t    tag;
+  elf32_word_t    val;
+
+} elf32_dyn_t;
+
+
+typedef struct
+{
+  elf64_xword_t   tag;
+  elf64_xword_t   val;
+
+} elf64_dyn_t;
+
+
+typedef struct
+{
+  elf32_word_t    name;
+  elf32_addr_t    value;
+  elf32_word_t    size;
+  unsigned char   info;
+  unsigned char   other;
+  elf32_half_t    shndx;
+
+} elf32_sym_t;
+
+
+typedef struct
+{
+  elf32_word_t    name;
+  unsigned char   info;
+  unsigned char   other;
+  elf32_half_t    shndx;
+  elf64_addr_t    value;
+  elf64_xword_t   size;
+
+} elf64_sym_t;
 
 
 #pragma pack(pop)

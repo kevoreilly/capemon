@@ -21,7 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "alloc.h"
 #include "utf8.h"
 
-int utf8_encode(unsigned short c, unsigned char *out)
+int utf8_do_encode(unsigned short c, unsigned char *out)
 {
     if(c < 0x80) {
         *out = c & 0x7F;
@@ -43,7 +43,7 @@ int utf8_encode(unsigned short c, unsigned char *out)
 int utf8_length(unsigned short x)
 {
     unsigned char buf[3];
-    return utf8_encode(x, buf);
+    return utf8_do_encode(x, buf);
 }
 
 int utf8_strlen_ascii(const char *s, int len)
@@ -86,7 +86,7 @@ char * utf8_string(const char *str, int length)
     *((int *) utf8string) = encoded_length;
 
     while (length-- != 0) {
-        pos += utf8_encode(*str++, (unsigned char *) &utf8string[pos]);
+        pos += utf8_do_encode(*str++, (unsigned char *) &utf8string[pos]);
     }
     return utf8string;
 }
@@ -103,7 +103,7 @@ char * utf8_wstring(const wchar_t *str, int length)
     *((int *) utf8string) = encoded_length;
 
     while (length-- != 0) {
-        pos += utf8_encode(*str++, (unsigned char *) &utf8string[pos]);
+        pos += utf8_do_encode(*str++, (unsigned char *) &utf8string[pos]);
     }
     return utf8string;
 }

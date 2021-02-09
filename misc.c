@@ -144,7 +144,7 @@ int is_stack_pivoted(void)
 	return 1;
 }
 
-PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
+static PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
 {
   if (nlen > hlen)
     return NULL;

@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
 #include <stdio.h>
 #include <windows.h>
 #include "Shlwapi.h"
@@ -64,10 +65,11 @@ BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
     *p = 0;
     memset(NewLine, 0, sizeof(NewLine));
     sprintf(NewLine, "%s=0x%p\0", Key, (PUCHAR)Target+delta);
+    *p = '=';
     return TRUE;
 }
 
-int YaraCallback(int message, void* message_data, void* user_data)
+int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
 {
 	switch(message)
 	{
@@ -75,7 +77,7 @@ int YaraCallback(int message, void* message_data, void* user_data)
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
-            BOOL Reload;
+            BOOL SetBreakpoints;
             YR_MATCH* Match;
             YR_STRING* String;
             YR_META* Meta;
@@ -93,21 +95,32 @@ int YaraCallback(int message, void* message_data, void* user_data)
                     while (OptionLine && OptionLine < Meta->string + length)
                     {
                         char *p = strchr(OptionLine, ',');
-                        if (p != NULL) {
+                        if (p)
                             *p = 0;
-                            yr_rule_strings_foreach(Rule, String)
+                        yr_rule_strings_foreach(Rule, String)
+                        {
+                            yr_string_matches_foreach(context, String, Match)
                             {
-                                yr_string_matches_foreach(String, Match)
+#ifdef DEBUG_COMMENTS
+                                DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
+#endif
+                                if (ParseOptionLine(OptionLine, (char*)String->identifier, (PVOID)Match->offset))
                                 {
-                                    if (ParseOptionLine(OptionLine, (char*)String->identifier, (PVOID)Match->offset))
-                                    {
-                                        OptionLine = NewLine;
-                                        Reload = TRUE;
-                                    }
-                                    break;  // yara bug workaround
+#ifdef DEBUG_COMMENTS
+                                    DebugOutput("YaraScan: NewLine %s", NewLine);
+#endif
+                                    parse_config_line(NewLine);
+                                    SetBreakpoints = TRUE;
                                 }
                             }
-                            parse_config_line(OptionLine);
+                        }
+#ifdef DEBUG_COMMENTS
+                        DebugOutput("YaraScan hit: parse_config_line %s", OptionLine);
+#endif
+                        parse_config_line(OptionLine);
+                        if (p)
+                        {
+                            *p = ',';
                             OptionLine = p+1;
                         }
                         else
@@ -116,7 +129,7 @@ int YaraCallback(int message, void* message_data, void* user_data)
                 }
             }
 
-            if (Reload)
+            if (SetBreakpoints)
                 SetInitialBreakpoints(user_data);
 
             return CALLBACK_CONTINUE;
@@ -132,25 +145,25 @@ void ScannerError(int Error)
 		case ERROR_SUCCESS:
 			break;
 		case ERROR_COULD_NOT_ATTACH_TO_PROCESS:
-			DebugOutput("Yara scan error: can not attach to process (try running as root)\n");
+			DebugOutput("Yara error: 'Cannot attach to process'\n");
 			break;
 		case ERROR_INSUFICIENT_MEMORY:
-			DebugOutput("Yara scan error: not enough memory\n");
+			DebugOutput("Yara error: Not enough memory\n");
 			break;
 		case ERROR_SCAN_TIMEOUT:
-			DebugOutput("Yara scan error: scanning timed out\n");
+			DebugOutput("Yara error: Scanning timed out\n");
 			break;
 		case ERROR_COULD_NOT_OPEN_FILE:
-			DebugOutput("Yara scan error: could not open file\n");
+			DebugOutput("Yara error: Could not open file\n");
 			break;
 		case ERROR_UNSUPPORTED_FILE_VERSION:
-			DebugOutput("Yara scan error: rules were compiled with a newer version of YARA.\n");
+			DebugOutput("Yara error: Rules were compiled with a newer version of YARA.\n");
 			break;
 		case ERROR_CORRUPT_FILE:
-			DebugOutput("Yara scan error: corrupt compiled rules file.\n");
+			DebugOutput("Yara error: Corrupt compiled rules file.\n");
 			break;
 		default:
-			DebugOutput("Yara scan error: internal error: %d\n", Error);
+			DebugOutput("Yara error: Internal error: %d\n", Error);
 			break;
 	}
 }
@@ -178,12 +191,11 @@ void YaraScan(PVOID Address, SIZE_T Size)
         return;
     }
 	if (Result != ERROR_SUCCESS)
-	{
-		DebugOutput("YaraScan: error scanning 0x%p\n", Address);
 		ScannerError(Result);
-	}
+#ifdef DEBUG_COMMENTS
 	else
 		DebugOutput("YaraScan: successfully scanned 0x%p\n", Address);
+#endif
 }
 
 BOOL YaraInit()
@@ -191,13 +203,13 @@ BOOL YaraInit()
     YR_COMPILER* Compiler = NULL;
     char analyzer_path[MAX_PATH], yara_dir[MAX_PATH], file_name[MAX_PATH], compiled_rules[MAX_PATH];
 	BOOL Result = FALSE, RulesCompiled = FALSE;
-	int flags = 0;
+    int flags = 0;
 
     strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
     PathRemoveFileSpec(analyzer_path);
     PathRemoveFileSpec(analyzer_path);
     sprintf(yara_dir, "%s\\data\\yara", analyzer_path);
-    sprintf(compiled_rules, "%s\\capemon.yrc", yara_dir);
+    sprintf(compiled_rules, "%s\\capemon.yac", yara_dir);
 
     yr_initialize();
 
@@ -210,7 +222,7 @@ BOOL YaraInit()
         fclose(rule_file);
 
         if (Result != ERROR_SUCCESS)
-            DebugOutput("YaraInit: yr_rules_load error: %d, file %s\n", Result, compiled_rules);
+            ScannerError(Result);
         else
             DebugOutput("YaraInit: Compiled rules loaded from existing file %s\n", compiled_rules);
     }
@@ -241,7 +253,7 @@ BOOL YaraInit()
                         int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
 
                         if (errors)
-                            DebugOutput("YaraInit: Error compiling rule file %s\n", file_name);
+                            ScannerError(errors);
                         else
                             DebugOutput("YaraInit: Compiled rule file %s\n", file_name);
 
@@ -258,14 +270,14 @@ BOOL YaraInit()
 
         if (Result != ERROR_SUCCESS)
         {
-            DebugOutput("YaraInit: yr_compiler_get_rules error: %d\n", Result);
+            ScannerError(Result);
             goto exit;
         }
 
         Result = yr_rules_save(Rules, compiled_rules);
 
         if (Result != ERROR_SUCCESS)
-            DebugOutput("YaraInit: yr_rules_save error: %d, file %s\n", Result, compiled_rules);
+            ScannerError(Result);
         else
             DebugOutput("YaraInit: Compiled rules saved to file %s\n", compiled_rules);
 
