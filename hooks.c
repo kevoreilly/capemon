@@ -409,13 +409,14 @@ hook_t full_hooks[] = {
     HOOK(ntdll, NtSetContextThread),
     HOOK(ntdll, NtSuspendThread),
     HOOK(ntdll, NtResumeThread),
-    HOOK(kernel32, CreateThread),
-    HOOK(kernel32, CreateRemoteThread),
     HOOK(ntdll, RtlCreateUserThread),
     HOOK(ntdll, NtSetInformationThread),
     HOOK(ntdll, NtQueryInformationThread),
     HOOK(ntdll, NtYieldExecution),
     HOOK(ntdll, NtContinue),
+    HOOK(kernel32, CreateThread),
+    HOOK(kernel32, CreateRemoteThread),
+    HOOK(kernel32, SwitchToThread),
 
     // Memory copy hooks
     //HOOK(ntdll, RtlMoveMemory),

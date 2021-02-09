@@ -607,3 +607,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
     ret = Old_NtContinue(ThreadContext, RaiseAlert);
     return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, SwitchToThread,
+    void
+) {
+    BOOL ret = Old_SwitchToThread();
+    //LOQ_zero("threading", "i", "ReturnValue", ret);
+    //return ret;
+    return TRUE;
+}

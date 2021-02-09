@@ -3199,3 +3199,7 @@ HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
     void *unk2,
     uintptr_t unk3
 );
+
+HOOKDEF(BOOL, WINAPI, SwitchToThread,
+    void
+);
