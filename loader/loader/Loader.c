@@ -949,7 +949,9 @@ rebase:
 
             if (TargetImportTable == NULL)
             {
+#ifdef DEBUG_COMMENTS
                 ErrorOutput("InjectDllViaIAT: Failed to allocate new memory region at 0x%p", AllocationAddress);
+#endif
                 continue;
             }
 
@@ -1080,8 +1082,8 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
     if (!GetProcessPeb(ProcessHandle, &Peb))
         DebugOutput("InjectDll: GetProcessPeb failure.\n");
 
-    // If no thread id supplied, we fetch the initial thread id from the TEB's CLIENT_ID
-    if (!ThreadId)
+    // If no thread id supplied, we fetch the initial thread id from the initial TEB
+    if (!ThreadId && Peb.ImageBaseAddress && !Peb.Ldr)
     {
         InitialThreadId = GetProcessInitialThreadId(ProcessHandle);
 
@@ -1105,7 +1107,7 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
                 DebugOutput("InjectDll: No thread ID supplied, initial thread ID %d, handle 0x%x\n", InitialThreadId, ThreadHandle);
         }
     }
-    else
+    else if (ThreadId)
     {
         ThreadHandle = OpenThread(THREAD_ALL_ACCESS, FALSE, ThreadId);
 
@@ -1118,7 +1120,10 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
     if (!DisableIATPatching && ThreadHandle && Peb.ImageBaseAddress)
     {
         if (InjectDllViaIAT(ProcessHandle, ThreadHandle, DllPath, Peb))
+        {
+            RetVal = 1;
             goto out;
+        }
     }
 
     if (ThreadId && ThreadHandle)
