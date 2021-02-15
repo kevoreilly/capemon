@@ -162,7 +162,7 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 
 	if (fp == NULL)
     {
-        ErrorOutput("ReadConfig: Failed to read config file %s", config_fname);
+        ErrorOutput("Loader: Failed to read config file %s", config_fname);
         return 0;
     }
 
@@ -189,15 +189,15 @@ int ReadConfig(DWORD ProcessId, char *DllName)
             {
 				for (i = 0; i < Length; i++)
                     strncpy(LogPipe, Value, Length);
-                DebugOutput("ReadConfig: Successfully loaded pipe name %s.\n", LogPipe);
+                DebugOutput("Loader: Successfully loaded pipe name %s.\n", LogPipe);
             }
             if (!strcmp(key, "no-iat"))
             {
                 DisableIATPatching = Value[0] == '1';
                 if (DisableIATPatching)
-                    DebugOutput("ReadConfig: IAT patching disabled.\n");
+                    DebugOutput("Loader: IAT patching disabled.\n");
                 else
-                    DebugOutput("ReadConfig: IAT patching enabled.\n");
+                    DebugOutput("Loader: IAT patching enabled.\n");
             }
        }
     }
@@ -312,7 +312,7 @@ PIMAGE_NT_HEADERS GetNtHeaders(PVOID BaseAddress)
             return NULL;
         }
 
-        return (PIMAGE_NT_HEADERS)((BYTE*)BaseAddress + pDosHeader->e_lfanew);
+        return (PIMAGE_NT_HEADERS)((PBYTE)BaseAddress + pDosHeader->e_lfanew);
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -813,9 +813,22 @@ rebase:
         goto rebase;
     }
 
+#ifdef DEBUG_COMMENTS
     DebugOutput("InjectDllViaIAT: IAT patching with dll name %s.\n", DllPath);
+#endif
 
-    SizeOfHeaders = DosHeader.e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + NtHeader.FileHeader.SizeOfOptionalHeader;
+    // In case import descriptors are present but header size is zero
+    if (NtHeader.IMPORT_DIRECTORY.VirtualAddress && !NtHeader.IMPORT_DIRECTORY.Size)
+    {
+        IMAGE_IMPORT_DESCRIPTOR ImageImport, *pImageImport = (IMAGE_IMPORT_DESCRIPTOR*)((PBYTE)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress);
+        while (ReadProcessMemory(ProcessHandle, pImageImport, &ImageImport, sizeof(ImageImport), NULL))
+        {
+            NtHeader.IMPORT_DIRECTORY.Size += sizeof(IMAGE_IMPORT_DESCRIPTOR);
+            if (!ImageImport.Name)
+                break;
+            ++pImageImport;
+        };
+    }
 
     OriginalNumberOfDescriptors = NtHeader.IMPORT_DIRECTORY.Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
 
@@ -843,17 +856,19 @@ rebase:
         goto out;
     }
 
-    // Check which section (if any) contains the import table.
+    SizeOfHeaders = DosHeader.e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + NtHeader.FileHeader.SizeOfOptionalHeader;
+
     memset(&ImportsSection, 0, sizeof(ImportsSection));
 
+    // Check which section (if any) contains the import table.
     for (i = 0; i < NtHeader.FileHeader.NumberOfSections; i++)
     {
         IMAGE_SECTION_HEADER SectionHeader;
         memset(&SectionHeader, 0, sizeof(SectionHeader));
 
-        if (!ReadProcessMemory(ProcessHandle, (BYTE*)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * i, &SectionHeader, sizeof(SectionHeader), &BytesRead) || BytesRead < sizeof(SectionHeader))
+        if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * i, &SectionHeader, sizeof(SectionHeader), &BytesRead) || BytesRead < sizeof(SectionHeader))
         {
-            ErrorOutput("InjectDllViaIAT: Failed to read section header from 0x%p - 0x%p", (BYTE*)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * i, (BYTE*)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * (i + 1));
+            ErrorOutput("InjectDllViaIAT: Failed to read section header from 0x%p - 0x%p", (PBYTE)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * i, (PBYTE)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * (i + 1));
             RetVal = 0;
             goto out;
         }
@@ -870,8 +885,8 @@ rebase:
         ImportsRVA = NtHeader.IMPORT_DIRECTORY.VirtualAddress;
         ImportsSize = NtHeader.IMPORT_DIRECTORY.Size;
 
-        if (!ReadProcessMemory(ProcessHandle, (BYTE*)BaseAddress + ImportsRVA + ImportsSize, &NtSignature, sizeof(DWORD), &BytesRead) || BytesRead < sizeof(DWORD))
-            ErrorOutput("InjectDllViaIAT: Failed to check for PE header after existing import table at 0x%p", (BYTE*)BaseAddress + ImportsRVA + ImportsSize);
+        if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + ImportsRVA + ImportsSize, &NtSignature, sizeof(DWORD), &BytesRead) || BytesRead < sizeof(DWORD))
+            ErrorOutput("InjectDllViaIAT: Failed to check for PE header after existing import table at 0x%p", (PBYTE)BaseAddress + ImportsRVA + ImportsSize);
         else if (NtSignature  == IMAGE_NT_SIGNATURE)
         {
             DebugOutput("InjectDllViaIAT: This image has already been patched.\n");
@@ -885,9 +900,9 @@ rebase:
 
     if (NtHeader.IMPORT_DIRECTORY.VirtualAddress != 0)
     {
-        if (!ReadProcessMemory(ProcessHandle, (BYTE*)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress, pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR), &BytesRead)
+        if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress, pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR), &BytesRead)
             || BytesRead < OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR))
-            DebugOutput("InjectDllViaIAT: Failed to read import descriptors");
+            DebugOutput("InjectDllViaIAT: Failed to read import descriptors.\n");
         else if (!ScanForNonZero(pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR)))
         {
             DebugOutput("InjectDllViaIAT: Blank import descriptor, aborting IAT patch.\n");
@@ -971,7 +986,7 @@ rebase:
         goto out;
     }
 
-    NewImportsRVA = (DWORD)(TargetImportTable - (BYTE*)BaseAddress);
+    NewImportsRVA = (DWORD)(TargetImportTable - (PBYTE)BaseAddress);
 
     if (StringCchCopyA((char*)NewImportDirectory + SizeOfTables, NewImportDirectorySize - SizeOfTables, DllPath))
     {
@@ -1025,14 +1040,14 @@ rebase:
     NtHeader.OptionalHeader.CheckSum = 0;
 
     // Set target image page permissions to allow writing of new headers
-    if (!VirtualProtectEx(ProcessHandle, (BYTE*)BaseAddress, NtHeader.OptionalHeader.SizeOfHeaders, PAGE_EXECUTE_READWRITE, &dwProtect))
+    if (!VirtualProtectEx(ProcessHandle, (PBYTE)BaseAddress, NtHeader.OptionalHeader.SizeOfHeaders, PAGE_EXECUTE_READWRITE, &dwProtect))
     {
         ErrorOutput("InjectDllViaIAT: Failed to modify memory page protection of NtHeader");
         goto out;
     }
 
     // Copy the new NT headers back to the target process
-    if (!WriteProcessMemory(ProcessHandle, (BYTE*)BaseAddress + DosHeader.e_lfanew, &NtHeader, sizeof(NtHeader), NULL))
+    if (!WriteProcessMemory(ProcessHandle, (PBYTE)BaseAddress + DosHeader.e_lfanew, &NtHeader, sizeof(NtHeader), NULL))
     {
         ErrorOutput("InjectDllViaIAT: Failed to write new NtHeader");
         RetVal = 0;
@@ -1040,7 +1055,7 @@ rebase:
     }
 
     // Restore original protection
-    if (!VirtualProtectEx(ProcessHandle, (BYTE*)BaseAddress, NtHeader.OptionalHeader.SizeOfHeaders, dwProtect, &dwProtect))
+    if (!VirtualProtectEx(ProcessHandle, (PBYTE)BaseAddress, NtHeader.OptionalHeader.SizeOfHeaders, dwProtect, &dwProtect))
     {
         ErrorOutput("InjectDllViaIAT: Failed to restore previous memory page protection");
         goto out;
@@ -1449,7 +1464,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return 0;
         }
 
-        PayloadBuffer = (BYTE*)VirtualAlloc(NULL, InputFileSize.LowPart, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        PayloadBuffer = (PBYTE)VirtualAlloc(NULL, InputFileSize.LowPart, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 
         if (PayloadBuffer == NULL)
         {
