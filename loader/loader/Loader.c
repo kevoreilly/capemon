@@ -817,9 +817,10 @@ rebase:
     DebugOutput("InjectDllViaIAT: IAT patching with dll name %s.\n", DllPath);
 #endif
 
-    // In case import descriptors are present but header size is zero
-    if (NtHeader.IMPORT_DIRECTORY.VirtualAddress && !NtHeader.IMPORT_DIRECTORY.Size)
+    // Get the actual import directory size
+    if (NtHeader.IMPORT_DIRECTORY.VirtualAddress)
     {
+        NtHeader.IMPORT_DIRECTORY.Size = 0;
         IMAGE_IMPORT_DESCRIPTOR ImageImport, *pImageImport = (IMAGE_IMPORT_DESCRIPTOR*)((PBYTE)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress);
         while (ReadProcessMemory(ProcessHandle, pImageImport, &ImageImport, sizeof(ImageImport), NULL))
         {
@@ -831,9 +832,7 @@ rebase:
     }
 
     OriginalNumberOfDescriptors = NtHeader.IMPORT_DIRECTORY.Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
-
     NewNumberOfDescriptors = OriginalNumberOfDescriptors + 1;
-
     NewSizeOfImportDescriptors = NewNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR);
     if (NewSizeOfImportDescriptors % sizeof(DWORD_PTR))
         NewSizeOfImportDescriptors += sizeof(DWORD_PTR);
