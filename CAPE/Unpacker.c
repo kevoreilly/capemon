@@ -3051,7 +3051,10 @@ void UnpackerInit()
     CapeMetaData->DumpType = UNPACKED_PE;
     PTRACKEDREGION TrackedRegion = AddTrackedRegion(GetModuleHandle(NULL), 0, 0);
     if (TrackedRegion)
+    {
         DebugOutput("UnpackerInit: Adding main image base to tracked regions.\n");
+        TrackedRegion->PagesDumped = TRUE;
+    }
     else
         DebugOutput("UnpackerInit: Error adding image base to tracked regions.\n");
 }
