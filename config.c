@@ -578,14 +578,17 @@ void parse_config_line(char* line)
             }
         }
         else if (!stricmp(key, "action0")) {
+            memset(Action0, 0, MAX_PATH);
             strncpy(Action0, value, strlen(value));
             DebugOutput("Config: Action0 set to %s.", Action0);
         }
         else if (!stricmp(key, "action1")) {
+            memset(Action1, 0, MAX_PATH);
             strncpy(Action1, value, strlen(value));
             DebugOutput("Config: Action1 set to %s.", Action1);
         }
         else if (!stricmp(key, "action2")) {
+            memset(Action2, 0, MAX_PATH);
             strncpy(Action2, value, strlen(value));
             DebugOutput("Config: Action2 set to %s.", Action2);
         }
