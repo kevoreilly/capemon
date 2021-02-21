@@ -24,7 +24,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern void parse_config_line(char* line);
-extern int ScanForAccess(LPVOID Buffer, SIZE_T Size);
+extern SIZE_T ScanForAccess(LPVOID Buffer, SIZE_T Size);
 extern char *our_dll_path;
 YR_RULES* Rules = NULL;
 BOOL YaraActivated;
@@ -178,12 +178,13 @@ void YaraScan(PVOID Address, SIZE_T Size)
     if (!Size)
         return;
 
-    DebugOutput("YaraScan: About to scan 0x%p, size 0x%x\n", Address, Size);
+    DebugOutput("YaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
     __try
     {
-        if (!ScanForAccess(Address, Size))
+        SIZE_T AccessibleSize = ScanForAccess(Address, Size);
+        if (!AccessibleSize)
             return;
-        Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
+        Result = yr_rules_scan_mem(Rules, Address, AccessibleSize, Flags, YaraCallback, Address, Timeout);
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {

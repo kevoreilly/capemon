@@ -1715,9 +1715,6 @@ BOOL ContextSetThreadBreakpointEx
         return FALSE;
     }
 
-#ifdef DEBUG_COMMENTS
-    DebugOutput("ContextSetThreadBreakpointEx: Calling ContextSetDebugRegisterEx.");
-#endif
     if (!ContextSetDebugRegisterEx(Context, Register, Size, Address, Type, NoSetThreadContext))
 	{
 		DebugOutput("ContextSetThreadBreakpoint: Call to ContextSetDebugRegister failed.\n");

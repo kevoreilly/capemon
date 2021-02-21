@@ -1,13 +1,12 @@
 #include "ProcessAccessHelp.h"
-
-//#include "Scylla.h"
 #include "DeviceNameResolver.h"
 #include <psapi.h>
-
 #include "NativeWinApi.h"
 #include "PeParser.h"
 
 #pragma comment(lib, "Psapi.lib")
+
+//#define DEBUG_COMMENTS
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -31,8 +30,6 @@ _DecodedInst  ProcessAccessHelp::decodedInstructions[MAX_INSTRUCTIONS];
 unsigned int  ProcessAccessHelp::decodedInstructionsCount = 0;
 
 BYTE ProcessAccessHelp::fileHeaderFromDisk[PE_HEADER_BYTES_COUNT];
-
-//#define DEBUG_COMMENTS
 
 bool ProcessAccessHelp::openProcessHandle(DWORD dwPID)
 {

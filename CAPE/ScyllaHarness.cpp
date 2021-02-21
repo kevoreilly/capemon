@@ -638,7 +638,7 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 }
 
 //**************************************************************************************
-extern "C" int IsPeImageVirtual(DWORD_PTR Buffer)
+extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 //**************************************************************************************
 {
 	PeParser * peFile = 0;
@@ -656,16 +656,16 @@ extern "C" int IsPeImageVirtual(DWORD_PTR Buffer)
         NumberOfSections = peFile->getNumberOfSections();
         SectionBasedFileSize = peFile->getSectionHeaderBasedFileSize();
 #ifdef DEBUG_COMMENTS
-        DebugOutput("IsPeImageVirtual: NumberOfSections %d, SectionBasedFileSize 0x%x.\n", NumberOfSections, SectionBasedFileSize);
+        DebugOutput("IsPeImageRaw: NumberOfSections %d, SectionBasedFileSize 0x%x.\n", NumberOfSections, SectionBasedFileSize);
 #endif
         if (NumberOfSections == 0)
         // makes no difference in this case
         {
 #ifdef DEBUG_COMMENTS
-            DebugOutput("IsPeImageVirtual: zero sections, therefore meaningless.\n");
+            DebugOutput("IsPeImageRaw: zero sections, therefore meaningless.\n");
 #endif
             delete peFile;
-            return 1;
+            return 0;
         }
 
         for (unsigned int SectionIndex = 0; SectionIndex < NumberOfSections; SectionIndex++)
@@ -673,7 +673,7 @@ extern "C" int IsPeImageVirtual(DWORD_PTR Buffer)
 #ifdef DEBUG_COMMENTS
             DebugOutput
             (
-                "IsPeImageVirtual: Section %d, PointerToRawData 0x%x, VirtualAddress 0x%x, SizeOfRawData 0x%x, VirtualSize 0x%x.\n",
+                "IsPeImageRaw: Section %d, PointerToRawData 0x%x, VirtualAddress 0x%x, SizeOfRawData 0x%x, VirtualSize 0x%x.\n",
                 SectionIndex+1,
                 peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData,
                 peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress,
@@ -687,7 +687,7 @@ extern "C" int IsPeImageVirtual(DWORD_PTR Buffer)
                 if (SectionBoundary == -1)
                 {
 #ifdef DEBUG_COMMENTS
-                    DebugOutput("IsPeImageVirtual: Error reading section boundary.\n");
+                    DebugOutput("IsPeImageRaw: Error reading section boundary.\n");
 #endif
                     delete peFile;
                     return 0;
@@ -695,16 +695,16 @@ extern "C" int IsPeImageVirtual(DWORD_PTR Buffer)
                 else if (SectionBoundary == 1)
                 {
 #ifdef DEBUG_COMMENTS
-                    DebugOutput("IsPeImageVirtual: Found what looks like a 'raw' section boundary - image looks raw.\n");
+                    DebugOutput("IsPeImageRaw: Found what looks like a 'raw' section boundary - image looks raw.\n");
 #endif
                     delete peFile;
-                    return 0;
+                    return 1;
                 }
                 SectionBoundary = LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress);
                 if (SectionBoundary == -1)
                 {
 #ifdef DEBUG_COMMENTS
-                    DebugOutput("IsPeImageVirtual: Error reading section boundary.\n");
+                    DebugOutput("IsPeImageRaw: Error reading section boundary.\n");
 #endif
                     delete peFile;
                     return 0;
@@ -712,10 +712,10 @@ extern "C" int IsPeImageVirtual(DWORD_PTR Buffer)
                 else if (SectionBoundary == 1)
                 {
 #ifdef DEBUG_COMMENTS
-                    DebugOutput("IsPeImageVirtual: Found what looks like a virtual section boundary - image looks virtual.\n");
+                    DebugOutput("IsPeImageRaw: Found what looks like a virtual section boundary - image looks virtual.\n");
 #endif
                     delete peFile;
-                    return 1;
+                    return 0;
                 }
             }
         }

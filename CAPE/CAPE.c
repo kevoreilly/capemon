@@ -128,7 +128,7 @@ extern void DoOutputFile(_In_ LPCTSTR lpOutputFile);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void CapeOutputFile(LPCTSTR lpOutputFile);
-extern int IsPeImageVirtual(LPVOID Buffer);
+extern int IsPeImageRaw(LPVOID Buffer);
 extern int ScyllaDumpCurrentProcess(DWORD_PTR NewOEP);
 extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR modBase, DWORD_PTR NewOEP);
 extern int ScyllaDumpCurrentProcessFixImports(DWORD_PTR NewOEP);
@@ -975,11 +975,10 @@ int ScanPageForNonZero(LPVOID Address)
 }
 
 //**************************************************************************************
-int ScanForAccess(LPVOID Buffer, SIZE_T Size)
+SIZE_T ScanForAccess(LPVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
     SIZE_T p;
-    int Result;
 
     if (!Buffer)
     {
@@ -989,20 +988,21 @@ int ScanForAccess(LPVOID Buffer, SIZE_T Size)
 
     __try
     {
-        for (p=0; p<Size-1; p++)
+        for (p=0; p<Size; p++)
         {
             char c = *((char*)Buffer+p);
-            if (c)
-                Result = (int)c;
         }
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
         DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
-        return 0;
+        if (p)
+            return p-1;
+        else
+            return 0;
     }
 
-    return Result;
+    return p;
 }
 
 //**************************************************************************************
@@ -1512,21 +1512,10 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
     char *FullPathName = NULL;
     int ret = 0;
 
-    FullPathName = GetName();
-
-    hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-
-    if (hOutputFile == INVALID_HANDLE_VALUE)
+    SIZE_T AccessibleSize = ScanForAccess(Buffer, Size);
+    if (AccessibleSize < Size)
     {
-        if (GetLastError() == ERROR_FILE_EXISTS)
-            DebugOutput("DumpMemory: CAPE output filename exists already: %s", FullPathName);
-        else
-            ErrorOutput("DumpMemory: Could not create CAPE output file");
-        free(FullPathName);
-        return 0;
     }
-
-    dwBytesWritten = 0;
 
     Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
 
@@ -1553,6 +1542,22 @@ int DumpMemory(LPVOID Buffer, SIZE_T Size)
         DebugOutput("DumpMemory: Exception occurred reading memory address 0x%x\n", Buffer);
         goto end;
     }
+
+    FullPathName = GetName();
+
+    hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (hOutputFile == INVALID_HANDLE_VALUE)
+    {
+        if (GetLastError() == ERROR_FILE_EXISTS)
+            DebugOutput("DumpMemory: CAPE output filename exists already: %s", FullPathName);
+        else
+            ErrorOutput("DumpMemory: Could not create CAPE output file");
+        free(FullPathName);
+        return 0;
+    }
+
+    dwBytesWritten = 0;
 
     if (FALSE == WriteFile(hOutputFile, BufferCopy, (DWORD)Size, &dwBytesWritten, NULL))
     {
@@ -1731,9 +1736,9 @@ int DumpImageInCurrentProcess(LPVOID BaseAddress)
         return 0;
     }
 
-    if (IsPeImageVirtual(BaseAddress) == FALSE)
+    if (IsPeImageRaw(BaseAddress))
     {
-        DebugOutput("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image.\n");
+        DebugOutput("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image (process %d)\n", GetCurrentProcessId());
 
         if (!ScyllaDumpPE((DWORD_PTR)BaseAddress))
             DebugOutput("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", BaseAddress);
@@ -1820,7 +1825,7 @@ unsigned int DumpImageToFileHandle(LPVOID BaseAddress, HANDLE FileHandle)
         return 0;
     }
 
-    if (IsPeImageVirtual(BaseAddress) == FALSE)
+    if (IsPeImageRaw(BaseAddress) == FALSE)
     {
         DebugOutput("DumpImageToFileHandle: Attempting to dump 'raw' PE image.\n");
 
@@ -1941,31 +1946,8 @@ int DoProcessDump(PVOID CallerBase)
             NewImageBase = NULL;
     }
 
-    // First: 'main' process dumps
     if (g_config.procdump)
     {
-        if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)))
-        {
-            DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
-
-            CapeMetaData->DumpType = PROCDUMP;
-            __try
-            {
-                if (g_config.import_reconstruction)
-                    ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
-                else
-                    ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
-            }
-            __except(EXCEPTION_EXECUTE_HANDLER)
-            {
-                DebugOutput("DoProcessDump: Failed to dump main process image at 0x%p.\n", MemInfo.BaseAddress);
-                goto out;
-            }
-        }
-#ifdef DEBUG_COMMENTS
-        else
-            DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
-#endif
         if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
         {
             DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
@@ -1988,6 +1970,31 @@ int DoProcessDump(PVOID CallerBase)
         else if (NewImageBase)
             DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
 #endif
+        if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)))
+        {
+            DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
+
+            CapeMetaData->DumpType = PROCDUMP;
+            __try
+            {
+                if (g_config.import_reconstruction)
+                    ProcessDumped = ScyllaDumpProcessFixImports(GetCurrentProcess(), (DWORD_PTR)MemInfo.BaseAddress, 0);
+                else
+                    ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DebugOutput("DoProcessDump: Failed to dump main process image at 0x%p.\n", MemInfo.BaseAddress);
+                goto out;
+            }
+        }
+#ifdef DEBUG_COMMENTS
+        else
+            DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+#endif
+
+        if (!ProcessDumped)
+            ProcessDumped = DumpMemory(MemInfo.BaseAddress, MemInfo.RegionSize);
     }
 
     // For full-memory dumps, create the output file
