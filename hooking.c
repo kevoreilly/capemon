@@ -40,6 +40,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #endif
 #define HOOK_TIME_SAMPLE 100
 #define HOOK_RATE_LIMIT 0x100
+#define HOOK_LIMIT 0x20000
 
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
@@ -115,7 +116,7 @@ static int set_caller_info(void *_hook_info, ULONG_PTR addr)
                 }
             }
             else
-                DebugOutput("set_caller_info: Calling region at 0x%p skipped.\n", AllocationBase);
+                DebugOutput("set_caller_info: Dump of calling region at 0x%p skipped.\n", AllocationBase);
         }
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
@@ -274,12 +275,17 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
         if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && Old_GetSystemTimeAsFileTime) {
             if (h->hook_disabled)
                 return 0;
-
+            h->counter++;
+            if (h->counter > HOOK_LIMIT) {
+                DebugOutput("api-rate-cap: %s hook disabled due to count.\n", h->funcname);
+                h->hook_disabled = 1;
+                return 0;
+            }
             Old_GetSystemTimeAsFileTime(&ft);
             if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
                 h->rate_counter++;
                 if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
-                    DebugOutput("api-rate-cap: %s hook disabled.\n", h->funcname);
+                    DebugOutput("api-rate-cap: %s hook disabled due to rate.\n", h->funcname);
                     h->rate_counter = 0;
                     h->hook_disabled = 1;
                     return 0;

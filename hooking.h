@@ -119,6 +119,7 @@ typedef struct _hook_t {
 	hook_data_t *hookdata;
     const wchar_t *exportdirectory;
     DWORD hook_timer;
+    unsigned int counter;
     unsigned int rate_counter;
     unsigned int hook_disabled;
 } hook_t;
