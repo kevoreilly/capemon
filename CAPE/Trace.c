@@ -1586,6 +1586,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
         {
             PCHAR FunctionName;
+            PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
 
             __try
             {
@@ -1598,9 +1599,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
             if (FilterTrace)
                 DebuggerOutput("\n");
             if (FunctionName)
-                DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
+                DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
             else
-                DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId());
+                DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
             if (PreviousModuleName)
                 free (PreviousModuleName);
             PreviousModuleName = ModuleName;
@@ -2205,7 +2206,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
             if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, BreakpointCallback))
             {
-                DebuggerOutput("Breakpoint %d set on entry point at 0x%p.", Register, EntryPoint);
+                DebuggerOutput("Breakpoint %d set on entry point at 0x%p.\n", Register, EntryPoint);
                 BreakpointsSet = TRUE;
                 g_config.bp0 = EntryPoint;
             }
