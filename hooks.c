@@ -698,7 +698,7 @@ hook_t full_hooks[] = {
     HOOK(cryptsp, CryptGenRandom),
     HOOK(cryptsp, CryptImportKey),
 
-    HOOK(oleaut32, SysFreeString),
+    //HOOK(oleaut32, SysFreeString),    // breaks Guloader e.g. 6141efb6f1598e2205806c5a788e61c489440dfc942984ee1688bb68ad0f18df
     HOOK(oleaut32, VarBstrCat),
     HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
     HOOK_NOTAIL(inseng,DownloadFile,3),
