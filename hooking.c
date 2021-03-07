@@ -84,40 +84,51 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
     return 0;
 }
 
+static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
+{
+    if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException")
+        || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+        return;
+    hook_disable();
+    PVOID AllocationBase = GetAllocationBase((PVOID)addr);
+    if (!hookinfo->main_caller_retaddr && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
+        char ModulePath[MAX_PATH];
+        BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+        lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
+        DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
+        if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
+            YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
+        if (g_config.base_on_caller)
+            SetInitialBreakpoints((PVOID)AllocationBase);
+        if (g_config.unpacker) {
+            PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
+            if (TrackedRegion) {
+                TrackedRegion->CanDump = 1;
+                ProcessTrackedRegion(TrackedRegion);
+            }
+        }
+        else if (g_config.caller_dump && !MappedModule) {
+            __try {
+                DumpRegion((PVOID)addr);
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER) {
+                DebugOutput("caller_dispatch: Failed to dump calling region at 0x%p.\n", AllocationBase);
+                hook_enable();
+                return;
+            }
+        }
+        else
+            DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
+    }
+    hook_enable();
+}
+
 static int set_caller_info(void *_hook_info, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = _hook_info;
 
 	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr)) {
-        PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-        if (AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
-            char ModulePath[MAX_PATH];
-            BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-            lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-            DebugOutput("set_caller_info: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
-            if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
-                YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-            if (g_config.base_on_caller)
-                SetInitialBreakpoints((PVOID)AllocationBase);
-            if (g_config.unpacker) {
-                PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
-                if (TrackedRegion) {
-                    TrackedRegion->CanDump = 1;
-                    ProcessTrackedRegion(TrackedRegion);
-                }
-            }
-            else if (g_config.caller_dump && !MappedModule) {
-                __try {
-                    DumpRegion((PVOID)addr);
-                }
-                __except(EXCEPTION_EXECUTE_HANDLER) {
-                    DebugOutput("set_caller_info: Failed to dumping calling region at 0x%p.\n", AllocationBase);
-                    return 0;
-                }
-            }
-            else
-                DebugOutput("set_caller_info: Dump of calling region at 0x%p skipped.\n", AllocationBase);
-        }
+        caller_dispatch(hookinfo, addr);
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
 		else {
@@ -272,7 +283,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
     if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-        if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && Old_GetSystemTimeAsFileTime) {
+        if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue && Old_GetSystemTimeAsFileTime) {
             if (h->hook_disabled)
                 return 0;
             h->counter++;
