@@ -33,7 +33,7 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
-#define	PE_HEADER_LIMIT 0x200
+#define    PE_HEADER_LIMIT 0x200
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -45,129 +45,135 @@ extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
 extern char CapeOutputPath[MAX_PATH];
 
 //**************************************************************************************
-void ScyllaInitCurrentProcess()
+void ScyllaInit(HANDLE hProcess)
 //**************************************************************************************
 {
-	ProcessAccessHelp::ownModuleList.clear();
+    ProcessAccessHelp::ownModuleList.clear();
 
-	NativeWinApi::initialize();
+    NativeWinApi::initialize();
 
-	ProcessAccessHelp::setCurrentProcessAsTarget();
-
-	ProcessAccessHelp::getProcessModules(GetCurrentProcess(), ProcessAccessHelp::ownModuleList);
+    if (hProcess)
+    {
+        ProcessAccessHelp::hProcess = hProcess;
+        ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
+    }
+    else
+    {
+        ProcessAccessHelp::setCurrentProcessAsTarget();
+        ProcessAccessHelp::getProcessModules(GetCurrentProcess(), ProcessAccessHelp::ownModuleList);
+    }
 }
 
 //**************************************************************************************
-extern "C" DWORD_PTR GetEntryPointVA(DWORD_PTR modBase)
+void ScyllaInitCurrentProcess()
+//**************************************************************************************
+{
+    ScyllaInit(NULL);
+}
+
+//**************************************************************************************
+extern "C" DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase)
 //**************************************************************************************
 {
     DWORD_PTR EntryPointVA;
 
     PeParser * peFile = 0;
 
-	ScyllaInitCurrentProcess();
+    ScyllaInitCurrentProcess();
 
-    peFile = new PeParser((DWORD_PTR)modBase, true);
+    peFile = new PeParser((DWORD_PTR)ModuleBase, true);
 
-    EntryPointVA = peFile->getEntryPoint() + (DWORD_PTR)modBase;
+    EntryPointVA = peFile->getEntryPoint() + (DWORD_PTR)ModuleBase;
 
     delete peFile;
 
-	return EntryPointVA;
+    return EntryPointVA;
 }
 
 //**************************************************************************************
-extern "C" DWORD_PTR FileOffsetToVA(DWORD_PTR modBase, DWORD_PTR dwOffset)
+extern "C" DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset)
 //**************************************************************************************
 {
-    DWORD_PTR Test;
     PeParser * peFile = 0;
 
-	ScyllaInitCurrentProcess();
+    ScyllaInitCurrentProcess();
 
-    peFile = new PeParser(modBase, true);
+    peFile = new PeParser(ModuleBase, true);
 
-    if (peFile->isValidPeFile())
-    {
-        //return peFile->convertOffsetToRVAVector(dwOffset) + modBase;
-        Test = peFile->convertOffsetToRVAVector(dwOffset) + modBase;
+    if (!peFile->isValidPeFile())
+        return NULL;
 
-        DebugOutput("FileOffsetToVA: Debug - VA = 0x%p.\n", Test);
-
-        return Test;
-    }
-    else return NULL;
+    return peFile->convertOffsetToRVAVector(dwOffset) + ModuleBase;
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcess(DWORD_PTR NewOEP)
+DWORD SafeGetDword(PVOID Address)
 //**************************************************************************************
 {
-	DWORD_PTR entrypoint = 0;
-	PeParser * peFile = 0;
-    DWORD_PTR ModuleBase;
+    DWORD RetVal = NULL;
 
-    ModuleBase = (DWORD)(ULONG_PTR)GetModuleHandle(NULL);
-	ScyllaInitCurrentProcess();
-
-    DebugOutput("DumpCurrentProcess: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
-
-    peFile = new PeParser(ModuleBase, TRUE);
-
-    if (peFile->isValidPeFile())
+    __try
     {
-        if (NewOEP)
-            entrypoint = NewOEP;
-        else
-            entrypoint = peFile->getEntryPoint() + ModuleBase;
+        RetVal = *(DWORD*)Address;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DebugOutput("SafeGetDword: Exception occured reading memory address 0x%p\n", Address);
+        return NULL;
+    }
 
-        DebugOutput("DumpCurrentProcess: Module entry point VA is 0x%p.\n", entrypoint);
+    return RetVal;
+}
 
-        if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
-        {
-            DebugOutput("DumpCurrentProcess: Module image dump success.\n");
-        }
-        else
-        {
-            DebugOutput("DumpCurrentProcess: Error - Cannot dump image.\n");
-            delete peFile;
-            return 0;
-        }
+//**************************************************************************************
+bool isIATOutsidePeImage (DWORD_PTR addressIAT)
+//**************************************************************************************
+{
+    DWORD_PTR minAdd = 0, maxAdd = 0;
+
+    if(ProcessAccessHelp::selectedModule)
+    {
+        minAdd = ProcessAccessHelp::selectedModule->modBaseAddr;
+        maxAdd = minAdd + ProcessAccessHelp::selectedModule->modBaseSize;
     }
     else
     {
-        DebugOutput("DumpCurrentProcess: Invalid PE file or invalid PE header.\n");
-        delete peFile;
-        return 0;
+        minAdd = ProcessAccessHelp::targetImageBase;
+        maxAdd = minAdd + ProcessAccessHelp::targetSizeOfImage;
     }
 
-    delete peFile;
-
-    return 1;
+    if (addressIAT > minAdd && addressIAT < maxAdd)
+    {
+        return FALSE; //inside pe image
+    }
+    else
+    {
+        return TRUE; //outside pe image, requires rebasing iat
+    }
 }
 
 //**************************************************************************************
-void ScyllaInit(HANDLE hProcess)
+extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewEP, BOOL FixImports)
 //**************************************************************************************
 {
-	ProcessAccessHelp::ownModuleList.clear();
+    SIZE_T SectionBasedSizeOfImage;
+    PeParser *peFile = 0;
+    DWORD_PTR entrypoint = NULL;
 
-	NativeWinApi::initialize();
+    bool isAfter;
+    DWORD sizeIAT;
+    DWORD_PTR addressIAT;
+    BOOL IAT_Found, AdvancedIATSearch = FALSE;
 
-	ProcessAccessHelp::hProcess = hProcess;
+    IATSearch iatSearch;
+    ApiReader apiReader;
+    IATReferenceScan iatReferenceScan;
+    ImportsHandling importsHandling;
 
-    ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP)
-//**************************************************************************************
-{
-	SIZE_T SectionBasedSizeOfImage;
-	PeParser *peFile = 0;
-	DWORD_PTR entrypoint = NULL;
-
-	ScyllaInit(hProcess);
+    if (hProcess)
+        ScyllaInit(hProcess);
+    else
+        ScyllaInitCurrentProcess();
 
     DebugOutput("DumpProcess: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
 
@@ -175,8 +181,8 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 
     if (peFile->isValidPeFile())
     {
-        if (NewOEP)
-            entrypoint = NewOEP;
+        if (NewEP)
+            entrypoint = NewEP;
         else
             entrypoint = peFile->getEntryPoint();
 
@@ -193,10 +199,16 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
             entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
         }
 
-        if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
-            DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+        if (FixImports)
+            if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
+                DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
+            else
+                DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
         else
-            DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+            if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+                DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+            else
+                DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
     }
     else
     {
@@ -271,8 +283,8 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 
             if (peFile->isValidPeFile())
             {
-                if (NewOEP)
-                    entrypoint = NewOEP;
+                if (NewEP)
+                    entrypoint = NewEP;
                 else
                     entrypoint = peFile->getEntryPoint();
 
@@ -289,15 +301,118 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
                     entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
                 }
 
-                if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
-                    DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+                if (FixImports)
+                    if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
+                        DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
+                    else
+                        DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+                else
+                    if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+                        DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+                    else
+                        DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
             }
-
         }
         else
         {
             DebugOutput("DumpProcess: Invalid PE file or invalid PE header.\n");
             goto fail;
+        }
+    }
+
+    if (FixImports)
+    {
+        //  We'll try the simple search first
+        IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, FALSE);
+
+        //  Let's try the advanced search now
+        if (IAT_Found == FALSE)
+            IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, TRUE);
+
+        if (addressIAT && sizeIAT)
+        {
+            DebugOutput("DumpProcess: Found IAT - 0x%x, size: 0x%x", addressIAT, sizeIAT);
+
+            apiReader.readAndParseIAT(addressIAT, sizeIAT, importsHandling.moduleList);
+            importsHandling.scanAndFixModuleList();
+
+            if (SCAN_DIRECT_IMPORTS)
+            {
+                iatReferenceScan.ScanForDirectImports = true;
+                iatReferenceScan.ScanForNormalImports = false;
+                iatReferenceScan.apiReader = &apiReader;
+                iatReferenceScan.startScan(ProcessAccessHelp::targetImageBase, (DWORD)ProcessAccessHelp::targetSizeOfImage, addressIAT, sizeIAT);
+
+                DebugOutput("DumpProcess: Direct imports - Found %d possible direct imports with %d unique APIs", iatReferenceScan.numberOfFoundDirectImports(), iatReferenceScan.numberOfFoundUniqueDirectImports());
+
+                if (iatReferenceScan.numberOfFoundDirectImports() > 0)
+                {
+                    if (iatReferenceScan.numberOfDirectImportApisNotInIat() > 0)
+                    {
+                        DebugOutput("DumpProcess: Direct imports - Found %d additional api addresses", iatReferenceScan.numberOfDirectImportApisNotInIat());
+                        DWORD sizeIatNew = iatReferenceScan.addAdditionalApisToList();
+                        DebugOutput("DumpProcess: Direct imports - Old IAT size 0x%08x new IAT size 0x%08x.\n", sizeIAT, sizeIatNew);
+                        importsHandling.scanAndFixModuleList();
+                    }
+
+                    iatReferenceScan.printDirectImportLog();
+
+                    // This hasn't yet been tested!
+                    if (FIX_DIRECT_IMPORTS_NORMAL)
+                    {
+                        // From the Scylla source: "Direct Imports found. I can patch only direct imports by JMP/CALL
+                        // (use universal method if you don't like this) but where is the junk byte?\r\n\r\nYES = After Instruction\r\nNO =
+                        // Before the Instruction\r\nCancel = Do nothing", L"Information", MB_YESNOCANCEL|MB_ICONINFORMATION);
+                        isAfter = 1;
+                        iatReferenceScan.patchDirectImportsMemory(isAfter);
+                        DebugOutput("DumpProcess: Direct imports patched.\n");
+                    }
+                }
+            }
+
+            if (isIATOutsidePeImage(addressIAT))
+                DebugOutput("DumpProcess: Warning - IAT is not inside the PE image, requires rebasing.\n");
+
+            ImportRebuilder importRebuild(CapeOutputPath);
+
+            if (OFT_SUPPORT)
+            {
+                // Untested
+                importRebuild.enableOFTSupport();
+                DebugOutput("DumpProcess: importRebuild: OFT support enabled.\n");
+            }
+
+            if (SCAN_DIRECT_IMPORTS && FIX_DIRECT_IMPORTS_UNIVERSAL)
+            {
+                if (iatReferenceScan.numberOfFoundDirectImports() > 0)
+                {
+                    // Untested
+                    importRebuild.iatReferenceScan = &iatReferenceScan;
+                    importRebuild.BuildDirectImportsJumpTable = TRUE;
+                }
+            }
+
+            if (CREATE_NEW_IAT_IN_SECTION)
+            {
+                importRebuild.iatReferenceScan = &iatReferenceScan;
+                importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
+            }
+
+            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
+            {
+                DebugOutput("DumpProcess: Import table rebuild success.\n");
+                delete peFile;
+                return 1;
+            }
+            else
+            {
+                DebugOutput("DumpProcess: Import table rebuild failed, falling back to unfixed dump.\n");
+                peFile->savePeFileToDisk(NULL);
+            }
+        }
+        else
+        {
+            DebugOutput("DumpProcess: Warning: Unable to find IAT in scan.\n");
         }
     }
 
@@ -311,94 +426,44 @@ fail:
 }
 
 //**************************************************************************************
-extern "C" unsigned int ScyllaDumpProcessToFileHandle(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP, HANDLE FileHandle)
+extern "C" int ScyllaDumpCurrentProcess(DWORD_PTR NewEP)
 //**************************************************************************************
 {
-	unsigned int BytesWritten = 0;
-    SIZE_T SectionBasedSizeOfImage;
-	PeParser * peFile = 0;
-	DWORD_PTR entrypoint = NULL;
-
-	ScyllaInit(hProcess);
-
-    DebugOutput("DumpProcessToFileHandle: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
-
-    peFile = new PeParser(ModuleBase, TRUE);
-
-    if (peFile->isValidPeFile())
-    {
-        if (NewOEP)
-            entrypoint = NewOEP;
-        else
-            entrypoint = peFile->getEntryPoint();
-
-        SectionBasedSizeOfImage = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
-
-        if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
-        {
-            DebugOutput("DumpProcessToFileHandle: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
-            entrypoint = NULL;
-        }
-        else
-        {
-            DebugOutput("DumpProcessToFileHandle: Module entry point VA is 0x%p.\n", entrypoint);
-            entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
-        }
-
-        if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
-        {
-            BytesWritten = peFile->dumpSize;
-            DebugOutput("DumpProcessToFileHandle: Module image dump success - dump size 0x%x.\n", BytesWritten);
-        }
-        else
-        {
-            DebugOutput("DumpProcessToFileHandle: Error - Cannot dump image.\n");
-            delete peFile;
-            return 0;
-        }
-    }
-    else
-    {
-        DebugOutput("DumpProcessToFileHandle: Invalid PE file or invalid PE header.\n");
-        delete peFile;
-        return 0;
-    }
-
-    delete peFile;
-
-    return BytesWritten;
+    return ScyllaDumpProcess(NULL, (DWORD_PTR)GetModuleHandle(NULL), NewEP, FALSE);
 }
 
 //**************************************************************************************
-DWORD SafeGetDword(PVOID Address)
+extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewEP)
 //**************************************************************************************
 {
-    DWORD RetVal = NULL;
+    return ScyllaDumpProcess(hProcess, ModuleBase, NewEP, TRUE);
+}
 
-    __try
-    {
-        RetVal = *(DWORD*)Address;
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        DebugOutput("SafeGetDword: Exception occured reading memory address 0x%p\n", Address);
-        return NULL;
-    }
+//**************************************************************************************
+extern "C" int ScyllaDumpImageInCurrentProcessFixImports(DWORD_PTR ModuleBase, DWORD_PTR NewEP)
+//**************************************************************************************
+{
+    return ScyllaDumpProcess(NULL, ModuleBase, NewEP, TRUE);
+}
 
-    return RetVal;
+//**************************************************************************************
+extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD_PTR NewEP)
+//**************************************************************************************
+{
+    return ScyllaDumpProcess(NULL, (DWORD_PTR)GetModuleHandle(NULL), NewEP, TRUE);
 }
 
 //**************************************************************************************
 extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 //**************************************************************************************
 {
-	DWORD_PTR PointerToLastSection, entrypoint = 0;
-	PeParser * peFile = 0;
+    DWORD_PTR PointerToLastSection, entrypoint = 0;
+    PeParser * peFile = 0;
     unsigned int SizeOfLastSection, NumberOfSections = 0;
 
-	NativeWinApi::initialize();
+    NativeWinApi::initialize();
 
-	ProcessAccessHelp::setCurrentProcessAsTarget();
+    ProcessAccessHelp::setCurrentProcessAsTarget();
 
     DebugOutput("DumpPE: Instantiating PeParser with address: 0x%p.\n", Buffer);
 
@@ -461,78 +526,6 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpPEToFileHandle(DWORD_PTR Buffer, HANDLE FileHandle)
-//**************************************************************************************
-{
-	DWORD_PTR PointerToLastSection, entrypoint = 0;
-	PeParser * peFile = 0;
-    unsigned int SizeOfLastSection, NumberOfSections = 0;
-
-	NativeWinApi::initialize();
-
-	ProcessAccessHelp::setCurrentProcessAsTarget();
-
-    DebugOutput("DumpPEToFileHandle: Instantiating PeParser with address: 0x%p.\n", Buffer);
-
-    peFile = new PeParser((DWORD_PTR)Buffer, TRUE);
-
-    if (peFile->isValidPeFile())
-    {
-        NumberOfSections = peFile->getNumberOfSections();
-
-        if (NumberOfSections == 0)
-        {
-            DebugOutput("DumpPEToFileHandle: no sections in PE image, ignoring.\n");
-            return 0;
-        }
-
-        PointerToLastSection = SafeGetDword(&(peFile->listPeSection[NumberOfSections - 1].sectionHeader.PointerToRawData));
-
-        if (!PointerToLastSection)
-        {
-            DebugOutput("DumpPEToFileHandle: failed to obtain pointer to last section.\n");
-            return 0;
-        }
-
-        PointerToLastSection += (DWORD_PTR)Buffer;
-
-        SizeOfLastSection = SafeGetDword(&(peFile->listPeSection[NumberOfSections - 1].sectionHeader.SizeOfRawData));
-
-        if (!SizeOfLastSection)
-        {
-            DebugOutput("DumpPEToFileHandle: failed to obtain size of last section.\n");
-            return 0;
-        }
-
-        if (!ScanForNonZero((LPVOID)PointerToLastSection, SizeOfLastSection))
-            DebugOutput("DumpPEToFileHandle: Empty or inaccessible last section, file image seems incomplete (from 0x%p to 0x%p).\n", PointerToLastSection, (DWORD_PTR)PointerToLastSection + SizeOfLastSection);
-
-        entrypoint = peFile->getEntryPoint();
-
-        if (peFile->saveCompletePeToHandle(FileHandle))
-        {
-            DebugOutput("DumpPEToFileHandle: PE file in memory dumped successfully - dump size 0x%x.\n", peFile->dumpSize);
-        }
-        else
-        {
-            DebugOutput("DumpPEToFileHandle: Error: Cannot dump PE file from memory.\n");
-            delete peFile;
-            return 0;
-        }
-    }
-    else
-    {
-        DebugOutput("DumpPEToFileHandle: Error: Invalid PE file or invalid PE header.\n");
-        delete peFile;
-        return 0;
-    }
-
-    delete peFile;
-
-    return 1;
-}
-
-//**************************************************************************************
 extern "C" int LooksLikeSectionBoundary(DWORD_PTR Buffer)
 //**************************************************************************************
 {
@@ -572,13 +565,13 @@ extern "C" int LooksLikeSectionBoundary(DWORD_PTR Buffer)
 extern "C" SIZE_T GetPESize(PVOID Buffer)
 //**************************************************************************************
 {
-	PeParser * peFile = 0;
+    PeParser * peFile = 0;
     unsigned int NumberOfSections = 0;
     SIZE_T SectionBasedFileSize, SectionBasedImageSize;
 
-	NativeWinApi::initialize();
+    NativeWinApi::initialize();
 
-	ProcessAccessHelp::setCurrentProcessAsTarget();
+    ProcessAccessHelp::setCurrentProcessAsTarget();
 
     peFile = new PeParser((DWORD_PTR)Buffer, TRUE);
 
@@ -641,13 +634,13 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 //**************************************************************************************
 {
-	PeParser * peFile = 0;
+    PeParser * peFile = 0;
     unsigned int NumberOfSections = 0;
     DWORD SectionBasedFileSize;
 
-	NativeWinApi::initialize();
+    NativeWinApi::initialize();
 
-	ProcessAccessHelp::setCurrentProcessAsTarget();
+    ProcessAccessHelp::setCurrentProcessAsTarget();
 
     peFile = new PeParser((DWORD_PTR)Buffer, TRUE);
 
@@ -726,371 +719,10 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 }
 
 //**************************************************************************************
-bool isIATOutsidePeImage (DWORD_PTR addressIAT)
-//**************************************************************************************
-{
-	DWORD_PTR minAdd = 0, maxAdd = 0;
-
-	if(ProcessAccessHelp::selectedModule)
-	{
-		minAdd = ProcessAccessHelp::selectedModule->modBaseAddr;
-		maxAdd = minAdd + ProcessAccessHelp::selectedModule->modBaseSize;
-	}
-	else
-	{
-		minAdd = ProcessAccessHelp::targetImageBase;
-		maxAdd = minAdd + ProcessAccessHelp::targetSizeOfImage;
-	}
-
-    if (addressIAT > minAdd && addressIAT < maxAdd)
-	{
-		return FALSE; //inside pe image
-	}
-	else
-	{
-		return TRUE; //outside pe image, requires rebasing iat
-	}
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpImageInCurrentProcessFixImports(DWORD_PTR modBase, DWORD_PTR NewOEP)
-//**************************************************************************************
-{
-    DWORD addressIAT, sizeIAT;
-    BOOL IAT_Found, AdvancedIATSearch = FALSE;
-    bool isAfter;
-
-    IATSearch iatSearch;
-	ApiReader apiReader;
-	IATReferenceScan iatReferenceScan;
-	ImportsHandling importsHandling;
-
-	DWORD_PTR entrypointRVA = 0;
-	PeParser * peFile = 0;
-
-    //Clear stuff first
-    ProcessAccessHelp::ownModuleList.clear();
-    apiReader.clearAll();
-    importsHandling.clearAllImports();
-
-	NativeWinApi::initialize();
-
-    // Instantiate required objects
-    ProcessAccessHelp::setCurrentProcessAsTarget();
-
-    ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::ownModuleList);
-    ProcessAccessHelp::moduleList = ProcessAccessHelp::ownModuleList;
-    ProcessAccessHelp::targetImageBase = modBase;
-    ProcessAccessHelp::getSizeOfImageCurrentProcess();
-
-    // Enumerate DLLs and imported functions
-    apiReader.readApisFromModuleList();
-
-    DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Instantiating PeParser with address: 0x%p.\n", modBase);
-
-    peFile = new PeParser(modBase, TRUE);
-
-    if (peFile->isValidPeFile())
-    {
-        if (NewOEP)
-            entrypointRVA = NewOEP - modBase;
-        else
-            entrypointRVA = peFile->getEntryPoint();
-
-        DebugOutput(TEXT("ScyllaDumpImageInCurrentProcessFixImports: Module entry point VA is 0x%p"), modBase + entrypointRVA);
-
-        //  Let's dump then fix the dump on disk
-        if (peFile->dumpProcess(modBase, modBase + entrypointRVA, CAPE_OUTPUT_FILE))
-        {
-            DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Module image dump success %s", CapeOutputPath);
-        }
-
-        //  IAT search - we'll try the simple search first
-        IAT_Found = iatSearch.searchImportAddressTableInProcess(modBase + entrypointRVA, (DWORD_PTR*)&addressIAT, &sizeIAT, FALSE);
-
-        //  Let's try the advanced search now
-        if (IAT_Found == FALSE)
-            IAT_Found = iatSearch.searchImportAddressTableInProcess(modBase + entrypointRVA, (DWORD_PTR*)&addressIAT, &sizeIAT, TRUE);
-
-        if (addressIAT && sizeIAT)
-        {
-            DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Found IAT: 0x%x, size: 0x%x", addressIAT, sizeIAT);
-
-            apiReader.readAndParseIAT(addressIAT, sizeIAT, importsHandling.moduleList);
-            importsHandling.scanAndFixModuleList();
-
-    		if (SCAN_DIRECT_IMPORTS)
-    		{
-                iatReferenceScan.ScanForDirectImports = true;
-                iatReferenceScan.ScanForNormalImports = false;
-
-                iatReferenceScan.apiReader = &apiReader;
-                iatReferenceScan.startScan(ProcessAccessHelp::targetImageBase, (DWORD)ProcessAccessHelp::targetSizeOfImage, addressIAT, sizeIAT);
-
-                DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Direct imports - Found %d possible direct imports with %d unique APIs", iatReferenceScan.numberOfFoundDirectImports(), iatReferenceScan.numberOfFoundUniqueDirectImports());
-
-                if (iatReferenceScan.numberOfFoundDirectImports() > 0)
-                {
-                    if (iatReferenceScan.numberOfDirectImportApisNotInIat() > 0)
-                    {
-                        DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Direct imports - Found %d additional api addresses", iatReferenceScan.numberOfDirectImportApisNotInIat());
-                        DWORD sizeIatNew = iatReferenceScan.addAdditionalApisToList();
-                        DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Direct imports - Old IAT size 0x%08x new IAT size 0x%08x.\n", sizeIAT, sizeIatNew);
-                        importsHandling.scanAndFixModuleList();
-                    }
-
-                    iatReferenceScan.printDirectImportLog();
-
-                    if (FIX_DIRECT_IMPORTS_NORMAL)
-                    {
-                        // From the Scylla source:
-                        // "Direct Imports found. I can patch only direct imports by JMP/CALL
-                        // (use universal method if you don't like this)
-                        // but where is the junk byte?\r\n\r\nYES = After Instruction\r\nNO =
-                        // Before the Instruction\r\nCancel = Do nothing", L"Information", MB_YESNOCANCEL|MB_ICONINFORMATION);
-
-                        // This hasn't yet been tested!
-                        isAfter = 1;
-
-                        iatReferenceScan.patchDirectImportsMemory(isAfter);
-                        DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Direct imports patched.\n");
-                    }
-                }
-    		}
-
-            if (isIATOutsidePeImage(addressIAT))
-            {
-                DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Warning - IAT is not inside the PE image, requires rebasing.\n");
-            }
-
-            ImportRebuilder importRebuild(CAPE_OUTPUT_FILE);
-
-            if (OFT_SUPPORT)
-            {
-                // Untested
-                importRebuild.enableOFTSupport();
-                DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: OFT support enabled.\n");
-            }
-
-            if (SCAN_DIRECT_IMPORTS && FIX_DIRECT_IMPORTS_UNIVERSAL)
-            {
-                if (iatReferenceScan.numberOfFoundDirectImports() > 0)
-                {
-                    // Untested
-                    importRebuild.iatReferenceScan = &iatReferenceScan;
-                    importRebuild.BuildDirectImportsJumpTable = TRUE;
-                }
-            }
-
-            if (CREATE_NEW_IAT_IN_SECTION)
-            {
-                importRebuild.iatReferenceScan = &iatReferenceScan;
-                importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
-            }
-
-            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
-            {
-                DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Import table rebuild success.\n");
-                delete peFile;
-                return 1;
-            }
-            else
-            {
-                DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Import table rebuild failed, falling back to unfixed dump.\n");
-                peFile->savePeFileToDisk(NULL);
-            }
-        }
-        else
-        {
-            DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Warning - Unable to find IAT in scan.\n");
-        }
-
-    }
-    else
-    {
-        DebugOutput("ScyllaDumpImageInCurrentProcessFixImports: Error - Invalid PE file or invalid PE header. Try reading PE header from disk/process.\n");
-        delete peFile;
-        return 0;
-    }
-
-    delete peFile;
-
-	return 1;
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD_PTR NewOEP)
-//**************************************************************************************
-{
-    return ScyllaDumpImageInCurrentProcessFixImports((DWORD_PTR)GetModuleHandle(NULL), NewOEP);
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewOEP)
-//**************************************************************************************
-{
-    bool isAfter;
-    DWORD sizeIAT;
-    DWORD_PTR addressIAT;
-    BOOL IAT_Found, AdvancedIATSearch = FALSE;
-
-    IATSearch iatSearch;
-	ApiReader apiReader;
-	IATReferenceScan iatReferenceScan;
-	ImportsHandling importsHandling;
-
-	DWORD_PTR entrypointRVA = 0;
-	PeParser * peFile = 0;
-
-    //Clear stuff first
-    apiReader.clearAll();
-    importsHandling.clearAllImports();
-
-	NativeWinApi::initialize();
-
-	ProcessAccessHelp::ownModuleList.clear();
-	ProcessAccessHelp::hProcess = hProcess;
-    ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
-    ProcessAccessHelp::targetImageBase = ModuleBase;
-
-    apiReader.readApisFromModuleList();
-
-    DebugOutput(TEXT("DumpProcessFixImports: Instantiating PeParser with address: 0x%p"), ModuleBase);
-
-    peFile = new PeParser(ModuleBase, true);
-
-    if (peFile->isValidPeFile())
-    {
-        if (NewOEP)
-            entrypointRVA = NewOEP - ModuleBase;
-        else
-            entrypointRVA = peFile->getEntryPoint();
-
-        DebugOutput(TEXT("DumpProcessFixImports: Module entry point VA is 0x%p"), ModuleBase + entrypointRVA);
-
-        //  Let's dump then fix the dump on disk
-        if (peFile->dumpProcess(ModuleBase, ModuleBase + entrypointRVA, CAPE_OUTPUT_FILE))
-        {
-            DebugOutput("Module image dump success %s", CapeOutputPath);
-        }
-
-        //  We'll try the simple search first
-        IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase + entrypointRVA, &addressIAT, &sizeIAT, FALSE);
-
-        //  Let's try the advanced search now
-        if (IAT_Found == FALSE)
-            IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase + entrypointRVA, &addressIAT, &sizeIAT, TRUE);
-
-        if (addressIAT && sizeIAT)
-        {
-            DebugOutput("DumpProcessFixImports: Found IAT - 0x%x, size: 0x%x", addressIAT, sizeIAT);
-
-            apiReader.readAndParseIAT(addressIAT, sizeIAT, importsHandling.moduleList);
-            importsHandling.scanAndFixModuleList();
-
-    		if (SCAN_DIRECT_IMPORTS)
-    		{
-                iatReferenceScan.ScanForDirectImports = true;
-                iatReferenceScan.ScanForNormalImports = false;
-
-                iatReferenceScan.apiReader = &apiReader;
-                iatReferenceScan.startScan(ProcessAccessHelp::targetImageBase, (DWORD)ProcessAccessHelp::targetSizeOfImage, addressIAT, sizeIAT);
-
-                DebugOutput("Direct imports - Found %d possible direct imports with %d unique APIs", iatReferenceScan.numberOfFoundDirectImports(), iatReferenceScan.numberOfFoundUniqueDirectImports());
-
-                if (iatReferenceScan.numberOfFoundDirectImports() > 0)
-                {
-                    if (iatReferenceScan.numberOfDirectImportApisNotInIat() > 0)
-                    {
-                        DebugOutput("Direct imports - Found %d additional api addresses", iatReferenceScan.numberOfDirectImportApisNotInIat());
-                        DWORD sizeIatNew = iatReferenceScan.addAdditionalApisToList();
-                        DebugOutput("Direct imports - Old IAT size 0x%08x new IAT size 0x%08x.\n", sizeIAT, sizeIatNew);
-                        importsHandling.scanAndFixModuleList();
-                    }
-
-                    iatReferenceScan.printDirectImportLog();
-
-                    if (FIX_DIRECT_IMPORTS_NORMAL)
-                    {
-                        // From the Scylla source:
-                        // "Direct Imports found. I can patch only direct imports by JMP/CALL
-                        // (use universal method if you don't like this)
-                        // but where is the junk byte?\r\n\r\nYES = After Instruction\r\nNO =
-                        // Before the Instruction\r\nCancel = Do nothing", L"Information", MB_YESNOCANCEL|MB_ICONINFORMATION);
-
-                        // This hasn't yet been tested!
-                        isAfter = 1;
-
-                        iatReferenceScan.patchDirectImportsMemory(isAfter);
-                        DebugOutput("Direct imports patched.\n");
-                    }
-                }
-    		}
-
-            if (isIATOutsidePeImage(addressIAT))
-            {
-                DebugOutput("Warning - IAT is not inside the PE image, requires rebasing.\n");
-            }
-
-            ImportRebuilder importRebuild(CapeOutputPath);
-
-            if (OFT_SUPPORT)
-            {
-                // Untested
-                importRebuild.enableOFTSupport();
-                DebugOutput("importRebuild: OFT support enabled.\n");
-            }
-
-            if (SCAN_DIRECT_IMPORTS && FIX_DIRECT_IMPORTS_UNIVERSAL)
-            {
-                if (iatReferenceScan.numberOfFoundDirectImports() > 0)
-                {
-                    // Untested
-                    importRebuild.iatReferenceScan = &iatReferenceScan;
-                    importRebuild.BuildDirectImportsJumpTable = TRUE;
-                }
-            }
-
-            if (CREATE_NEW_IAT_IN_SECTION)
-            {
-                importRebuild.iatReferenceScan = &iatReferenceScan;
-                importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
-            }
-
-            if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
-            {
-                DebugOutput("Import table rebuild success.\n");
-                delete peFile;
-                return 1;
-            }
-            else
-            {
-                DebugOutput("Import table rebuild failed, falling back to unfixed dump.\n");
-                peFile->savePeFileToDisk(NULL);
-            }
-        }
-        else
-        {
-            DebugOutput("Warning: Unable to find IAT in scan.\n");
-        }
-    }
-    else
-    {
-        DebugOutput("Error: Invalid PE file or invalid PE header. Try reading PE header from disk/process.\n");
-        delete peFile;
-        return 0;
-    }
-
-    delete peFile;
-
-	return 1;
-}
-
-//**************************************************************************************
 extern "C" BOOL ScyllaGetSectionByName(PVOID ImageBase, char* Name, PVOID* SectionData, SIZE_T* SectionSize)
 //**************************************************************************************
 {
-	ScyllaInitCurrentProcess();
+    ScyllaInitCurrentProcess();
 
     PeParser *peFile = new PeParser((DWORD_PTR)ImageBase, true);
 
@@ -1131,12 +763,12 @@ extern "C" PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZ
     unsigned int ModuleIndex = 0;
     bool dummy;
 
-	ScyllaInitCurrentProcess();
+    ScyllaInitCurrentProcess();
 
- 	for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
-		if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
-			ModuleIndex = i+1;
-	}
+     for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
+        if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
+            ModuleIndex = i+1;
+    }
 
     if (!ModuleIndex)
     {
@@ -1221,12 +853,12 @@ extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
     ApiReader apiReader;
     unsigned int ModuleIndex = 0;
 
-	ScyllaInitCurrentProcess();
+    ScyllaInitCurrentProcess();
 
     for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
-		if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
-			ModuleIndex = i+1;
-	}
+        if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
+            ModuleIndex = i+1;
+    }
 
     if (!ModuleIndex)
     {
