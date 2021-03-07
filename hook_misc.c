@@ -100,13 +100,28 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
     return res;
 }
 
+PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
+
+LONG WINAPI VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+    if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
+        return EXCEPTION_CONTINUE_SEARCH;
+    else
+        return SampleVectoredHandler(ExceptionInfo);
+}
+
 HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
     __in    ULONG First,
     __out   PVECTORED_EXCEPTION_HANDLER Handler
 ) {
 	PVOID ret = 0;
 
-    ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
+    if (!SampleVectoredHandler) {
+        SampleVectoredHandler = Handler;
+        ret = Old_RtlAddVectoredExceptionHandler(First, VectoredExceptionFilter);
+    }
+    else
+        ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
 
     LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
 
