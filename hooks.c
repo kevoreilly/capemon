@@ -55,6 +55,7 @@ void disable_tail_call_optimization(void)
 
 // This hook set is intended to include only hooks which are necessary
 // to follow the execution chain with base functionality
+
 hook_t min_hooks[] = {
     HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
     HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
@@ -84,6 +85,7 @@ hook_t min_hooks[] = {
     HOOK(ntdll, NtUnmapViewOfSection),
     HOOK(kernel32, WriteProcessMemory),
 
+    HOOK(ntdll, NtContinue),
     HOOK(ntdll, NtQueueApcThread),
     HOOK(ntdll, NtQueueApcThreadEx),
     HOOK(ntdll, NtCreateThread),
@@ -92,7 +94,6 @@ hook_t min_hooks[] = {
     HOOK(ntdll, NtSuspendThread),
     HOOK(ntdll, RtlCreateUserThread),
     HOOK(kernel32, CreateRemoteThread),
-
     HOOK(user32, SendNotifyMessageA),
     HOOK(user32, SendNotifyMessageW),
     HOOK(user32, SetWindowLongA),
@@ -133,7 +134,16 @@ hook_t min_hooks[] = {
 };
 
 hook_t zero_hooks[] = {
+
+    //
+    // 'Zero' Hooks
+    //
+    // What are the abolute minimum hooks necessary to use
+    // the debugger/instruction trace?
+    //
+
     HOOK_SPECIAL(ntdll, RtlDispatchException),
+    HOOK(ntdll, NtContinue),
 };
 
 hook_t full_hooks[] = {
@@ -505,7 +515,7 @@ hook_t full_hooks[] = {
     HOOK(kernel32, EnumTimeFormatsA),
     HOOK(kernel32, EnumTimeFormatsW),
 
-    // transaction functions (for process doppel-ganging)
+    // transaction functions (for process doppelganging)
     HOOK(ntdll, NtCreateTransaction),
     HOOK(ntdll, NtOpenTransaction),
     HOOK(ntdll, NtRollbackTransaction),
@@ -698,7 +708,7 @@ hook_t full_hooks[] = {
     HOOK(cryptsp, CryptGenRandom),
     HOOK(cryptsp, CryptImportKey),
 
-    //HOOK(oleaut32, SysFreeString),    // breaks Guloader e.g. 6141efb6f1598e2205806c5a788e61c489440dfc942984ee1688bb68ad0f18df
+    //HOOK(oleaut32, SysFreeString),    // breaks Guloader e.g. 4f150ed4669f3a26cfbb6cf06c9843de3bf2a619de4807053512502ef983a3b2
     HOOK(oleaut32, VarBstrCat),
     HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
     HOOK_NOTAIL(inseng,DownloadFile,3),
