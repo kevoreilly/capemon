@@ -426,34 +426,6 @@ fail:
 }
 
 //**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcess(DWORD_PTR NewEP)
-//**************************************************************************************
-{
-    return ScyllaDumpProcess(NULL, (DWORD_PTR)GetModuleHandle(NULL), NewEP, FALSE);
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpProcessFixImports(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewEP)
-//**************************************************************************************
-{
-    return ScyllaDumpProcess(hProcess, ModuleBase, NewEP, TRUE);
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpImageInCurrentProcessFixImports(DWORD_PTR ModuleBase, DWORD_PTR NewEP)
-//**************************************************************************************
-{
-    return ScyllaDumpProcess(NULL, ModuleBase, NewEP, TRUE);
-}
-
-//**************************************************************************************
-extern "C" int ScyllaDumpCurrentProcessFixImports(DWORD_PTR NewEP)
-//**************************************************************************************
-{
-    return ScyllaDumpProcess(NULL, (DWORD_PTR)GetModuleHandle(NULL), NewEP, TRUE);
-}
-
-//**************************************************************************************
 extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 //**************************************************************************************
 {
