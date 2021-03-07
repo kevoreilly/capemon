@@ -42,8 +42,8 @@ extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
 extern void log_anomaly(const char *subcategory, const char *msg);
 extern char *CommandLine, *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
-extern DWORD_PTR FileOffsetToVA(DWORD_PTR modBase, DWORD_PTR dwOffset);
-extern DWORD_PTR GetEntryPointVA(DWORD_PTR modBase);
+extern DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset);
+extern DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase);
 extern BOOL ScyllaGetSectionByName(PVOID ImageBase, char* Name, PVOID* SectionData, SIZE_T* SectionSize);
 extern PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName);
 extern ULONG_PTR g_our_dll_base;
@@ -144,7 +144,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #endif
         }
         else {
-            Target = (PVOID)(DWORD_PTR)strtoul(p+1, NULL, 0);
+            HANDLE Module = GetModuleHandle(p+1);
+            if (Module)
+                Target = (PVOID)(DWORD_PTR)Module;
+            else
+                Target = (PVOID)(DWORD_PTR)strtoul(p+1, NULL, 0);
             if (Target == (PVOID)(DWORD_PTR)ULONG_MAX)
                 Target = (PVOID)_strtoui64(p+1, NULL, 0);
 #ifdef DEBUG_COMMENTS
@@ -153,7 +157,63 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         }
     }
 
-    if (!strnicmp(Action, "SetEsi", 6))
+    if (!strnicmp(Action, "SetEax", 6))
+    {
+#ifndef _WIN64
+        if (Target)
+        {
+            ExceptionInfo->ContextRecord->Eax = (DWORD)Target;
+            DebuggerOutput("ActionDispatcher: %s detected, setting EAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Eax);
+        }
+        else
+            DebuggerOutput("ActionDispatcher: Cannot set EAX - target value missing.\n");
+#else
+        DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
+#endif
+    }
+    if (!strnicmp(Action, "SetEbx", 6))
+    {
+#ifndef _WIN64
+        if (Target)
+        {
+            ExceptionInfo->ContextRecord->Ebx = (DWORD)Target;
+            DebuggerOutput("ActionDispatcher: %s detected, setting Ebx to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
+        }
+        else
+            DebuggerOutput("ActionDispatcher: Cannot set EBX - target value missing.\n");
+#else
+        DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
+#endif
+    }
+    if (!strnicmp(Action, "SetEcx", 6))
+    {
+#ifndef _WIN64
+        if (Target)
+        {
+            ExceptionInfo->ContextRecord->Ecx = (DWORD)Target;
+            DebuggerOutput("ActionDispatcher: %s detected, setting Ecx to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
+        }
+        else
+            DebuggerOutput("ActionDispatcher: Cannot set ECX - target value missing.\n");
+#else
+        DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
+#endif
+    }
+    else if (!strnicmp(Action, "SetEdx", 6))
+    {
+#ifndef _WIN64
+        if (Target)
+        {
+            ExceptionInfo->ContextRecord->Edx = (DWORD)Target;
+            DebuggerOutput("ActionDispatcher: %s detected, setting EDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edx);
+        }
+        else
+            DebuggerOutput("ActionDispatcher: Cannot set EDX - target value missing.\n");
+#else
+        DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
+#endif
+    }
+    else if (!strnicmp(Action, "SetEsi", 6))
     {
 #ifndef _WIN64
         if (Target)
@@ -163,6 +223,20 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         }
         else
             DebuggerOutput("ActionDispatcher: Cannot set ESI - target value missing.\n");
+#else
+        DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
+#endif
+    }
+    else if (!strnicmp(Action, "SetEdi", 6))
+    {
+#ifndef _WIN64
+        if (Target)
+        {
+            ExceptionInfo->ContextRecord->Edi = (DWORD)Target;
+            DebuggerOutput("ActionDispatcher: %s detected, setting Edi to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
+        }
+        else
+            DebuggerOutput("ActionDispatcher: Cannot set EDI - target value missing.\n");
 #else
         DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
 #endif
@@ -766,8 +840,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         return TRUE;
     }
 
-    ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
     PCHAR FunctionName;
+    ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
 
     if (ModuleName)
     {
@@ -779,6 +853,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         }
         else if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
         {
+            PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
             __try
             {
                 FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
@@ -798,7 +873,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                     FilterTrace = TRUE;
                 }
                 else
-                    DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId());
+                    DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
 
                 for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
                 {
@@ -807,10 +882,11 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                     if (!stricmp(FunctionName, g_config.trace_into_api[i]))
                         StepOver = FALSE;
                 }
+                PreviousModuleName = ModuleName;
             }
             else if (!g_config.branch_trace)
             {
-                DebuggerOutput("Break in %s (RVA 0x%x, thread %d)\n", ModuleName, DllRVA, GetCurrentThreadId());
+                DebuggerOutput("Break in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
                 PreviousModuleName = ModuleName;
                 FunctionName = NULL;
                 ModuleName = NULL;
@@ -1155,9 +1231,16 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         PCHAR ExportName;
 #ifdef _WIN64
         ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+
+        if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [E", 8))
+        {
+            PVOID JumpTarget;
+            if (!strncmp(DecodedInstruction.operands.p, "QWORD [0x", 9))
+                JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+            else
+                // begins with QWORD except "QWORD [E"
 #else
         ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
-#endif
 
         if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
         {
@@ -1166,6 +1249,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
                 JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
             else
                 // begins with DWORD except "DWORD [E"
+#endif
                 JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
 
             __try
@@ -1224,7 +1308,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
         ForceStepOver = TRUE;
     }
-    else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
+    else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP FAR"))
     {
 		if (!FilterTrace || g_config.trace_all)
 			DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", (unsigned int)CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
@@ -1232,6 +1316,17 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
         ForceStepOver = TRUE;
     }
 #endif
+    else if (!strcmp(DecodedInstruction.mnemonic.p, "INT 3"))
+    {
+        if (!FilterTrace)
+#ifdef _WIN64
+            DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+            DebuggerOutput("0x%p  %-20s %-6s%-4s%-30s", (unsigned int)CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#endif
+        // Better than nothing for now
+        ForceStepOver = TRUE;
+    }
     else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
     {
         if (!FilterTrace)
@@ -1454,10 +1549,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         }
     }
 
-    // We can use this to put a marker in behavior log
-    // extern void log_anomaly(const char *subcategory, const char *msg);
-    // log_anomaly("Breakpoint hit", NULL);
-
 #ifdef _WIN64
     CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
     DecodeType = Decode64Bits;
@@ -1465,6 +1556,12 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
     CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
     DecodeType = Decode32Bits;
 #endif
+
+    // We can use this to put a marker in behavior log
+    // extern void log_anomaly(const char *subcategory, const char *msg);
+    memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+    _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+    // log_anomaly(DebuggerBuffer, NULL);
 
     FilterTrace = FALSE;
 
@@ -1919,9 +2016,16 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
         PCHAR ExportName;
 #ifdef _WIN64
         ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+
+        if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [E", 8))
+        {
+            PVOID JumpTarget;
+            if (!strncmp(DecodedInstruction.operands.p, "QWORD [0x", 9))
+                JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+            else
+                // begins with QWORD except "QWORD [E"
 #else
         ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
-#endif
 
         if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
         {
@@ -1930,6 +2034,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
                 JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
             else
                 // begins with DWORD except "DWORD [E"
+#endif
                 JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
 
             __try
@@ -2252,7 +2357,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type0, Callback))
         {
-            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.bp0, Type0);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, thread %d)\n", Register, BreakpointVA, g_config.bp0, Type0, GetCurrentThreadId());
             BreakpointsSet = TRUE;
         }
         else
@@ -2269,7 +2374,15 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
         PVOID Callback;
 
         if (g_config.file_offsets)
+        {
+            if (!IsDisguisedPEHeader(ImageBase))
+            {
+                DebugOutput("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                BreakpointsSet = FALSE;
+                return FALSE;
+            }
             BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.bp1);
+        }
         else
         {
             if ((SIZE_T)g_config.bp1 > RVA_LIMIT)
@@ -2290,7 +2403,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type1, Callback))
         {
-            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.bp1, Type1);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, thread %d)\n", Register, BreakpointVA, g_config.bp1, Type1, GetCurrentThreadId());
             BreakpointsSet = TRUE;
         }
         else
@@ -2307,7 +2420,15 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
         PVOID Callback;
 
         if (g_config.file_offsets)
+        {
+            if (!IsDisguisedPEHeader(ImageBase))
+            {
+                DebugOutput("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+                BreakpointsSet = FALSE;
+                return FALSE;
+            }
             BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.bp2);
+        }
         else
         {
             if ((SIZE_T)g_config.bp2 > RVA_LIMIT)
@@ -2328,7 +2449,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
         if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type2, Callback))
         {
-            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.bp2, Type2);
+            DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, thread %d)\n", Register, BreakpointVA, g_config.bp2, Type2, GetCurrentThreadId());
             BreakpointsSet = TRUE;
         }
         else
