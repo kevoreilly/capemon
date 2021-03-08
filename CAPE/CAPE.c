@@ -2029,13 +2029,11 @@ void CAPE_post_init()
     }
 
     lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
-    lookup_add(&g_caller_regions, (ULONG_PTR)ImageBase, 0);
 
     if (g_config.yarascan)
     {
         DebugOutput("Initialising Yara...\n");
         YaraInit();
-        YaraScan(ImageBase, GetAllocationSize(ImageBase));
     }
 }
 

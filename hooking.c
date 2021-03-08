@@ -86,8 +86,7 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 
 static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
-    if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException")
-        || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+    if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
         return;
     hook_disable();
     PVOID AllocationBase = GetAllocationBase((PVOID)addr);
@@ -107,16 +106,8 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
                 ProcessTrackedRegion(TrackedRegion);
             }
         }
-        else if (g_config.caller_dump && !MappedModule) {
-            __try {
-                DumpRegion((PVOID)addr);
-            }
-            __except(EXCEPTION_EXECUTE_HANDLER) {
-                DebugOutput("caller_dispatch: Failed to dump calling region at 0x%p.\n", AllocationBase);
-                hook_enable();
-                return;
-            }
-        }
+        else if (g_config.caller_dump && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
+            DumpRegion((PVOID)addr);
         else
             DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
     }
