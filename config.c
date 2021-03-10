@@ -695,27 +695,27 @@ void parse_config_line(char* line)
         else if (!stricmp(key, "divert-debugger-log")) {
             g_config.divert_debugger_log = value[0];
             if (g_config.divert_debugger_log)
-                DebugOutput("Debugger log diverted.\n");
+                DebugOutput("Config: Debugger log diverted.\n");
         }
         else if (!stricmp(key, "disable-logging")) {
             g_config.disable_logging = value[0] == '1';
             if (g_config.disable_logging)
-                DebugOutput("Logging disabled (analysis log).\n");
+                DebugOutput("Config: Logging disabled (analysis log).\n");
         }
         else if (!stricmp(key, "base-on-alloc")) {
             g_config.base_on_alloc = value[0] == '1';
             if (g_config.base_on_alloc)
-                DebugOutput("Base breakpoints on executable memory allocations.\n");
+                DebugOutput("Config: Base breakpoints on executable memory allocations.\n");
         }
         else if (!stricmp(key, "base-on-caller")) {
             g_config.base_on_caller = value[0] == '1';
             if (g_config.base_on_caller)
-                DebugOutput("Base breakpoints on new calling regions.\n");
+                DebugOutput("Config: Base breakpoints on new calling regions.\n");
         }
         else if (!stricmp(key, "fake-rdtsc")) {
             g_config.fake_rdtsc = value[0] == '1';
             if (g_config.fake_rdtsc)
-                DebugOutput("Fake RDTSC enabled (Trace)\n");
+                DebugOutput("Config: Fake RDTSC enabled (Trace)\n");
         }
         else if (!stricmp(key, "procdump")) {
             g_config.procdump = value[0] == '1';
