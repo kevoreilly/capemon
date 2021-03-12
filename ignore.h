@@ -28,4 +28,4 @@ int is_ignored_file_unicode(const wchar_t *fname, unsigned int length);
 int is_ignored_file_objattr(const OBJECT_ATTRIBUTES *obj);
 
 void ignore_file_prepend_stuff(const OBJECT_ATTRIBUTES *obj,
-        wchar_t **str, unsigned int *length);
+		wchar_t **str, unsigned int *length);

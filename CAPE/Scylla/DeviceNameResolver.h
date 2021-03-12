@@ -24,6 +24,6 @@ private:
 	std::vector<HardDisk> deviceNameList;
 
 	void initDeviceNameList();
-    void fixVirtualDevices();
+	void fixVirtualDevices();
 };
 

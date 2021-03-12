@@ -49,7 +49,7 @@ DWORD WINAPI our_GetWindowThreadProcessId(
 typedef DWORD(WINAPI * __GetClassNameA)(
 	_In_  HWND   hWnd,
 	_Out_ LPTSTR lpClassName,
-	_In_  int    nMaxCount
+	_In_  int	nMaxCount
 );
 
 __GetClassNameA _GetClassNameA;
@@ -57,7 +57,7 @@ __GetClassNameA _GetClassNameA;
 DWORD WINAPI our_GetClassNameA(
 	_In_  HWND   hWnd,
 	_Out_ LPSTR lpClassName,
-	_In_  int    nMaxCount
+	_In_  int	nMaxCount
 ) {
 	lasterror_t lasterror;
 	DWORD ret;
@@ -72,72 +72,72 @@ DWORD WINAPI our_GetClassNameA(
 }
 
 HOOKDEF(HWND, WINAPI, FindWindowA,
-    __in_opt  LPCTSTR lpClassName,
-    __in_opt  LPCTSTR lpWindowName
+	__in_opt  LPCTSTR lpClassName,
+	__in_opt  LPCTSTR lpWindowName
 ) {
-    // The atom must be in the low-order word of lpClassName;
-    // the high-order word must be zero (from MSDN documentation.)
-    HWND ret = Old_FindWindowA(lpClassName, lpWindowName);
-    if(((DWORD_PTR) lpClassName & 0xffff) == (DWORD_PTR) lpClassName) {
-        LOQ_nonnull("windows", "is", "ClassName", lpClassName, "WindowName", lpWindowName);
-    }
-    else {
-        LOQ_nonnull("windows", "ss", "ClassName", lpClassName, "WindowName", lpWindowName);
-    }
-    return ret;
+	// The atom must be in the low-order word of lpClassName;
+	// the high-order word must be zero (from MSDN documentation.)
+	HWND ret = Old_FindWindowA(lpClassName, lpWindowName);
+	if(((DWORD_PTR) lpClassName & 0xffff) == (DWORD_PTR) lpClassName) {
+		LOQ_nonnull("windows", "is", "ClassName", lpClassName, "WindowName", lpWindowName);
+	}
+	else {
+		LOQ_nonnull("windows", "ss", "ClassName", lpClassName, "WindowName", lpWindowName);
+	}
+	return ret;
 }
 
 HOOKDEF(HWND, WINAPI, FindWindowW,
-    __in_opt  LPWSTR lpClassName,
-    __in_opt  LPWSTR lpWindowName
+	__in_opt  LPWSTR lpClassName,
+	__in_opt  LPWSTR lpWindowName
 ) {
-    HWND ret = Old_FindWindowW(lpClassName, lpWindowName);
-    if(((DWORD_PTR) lpClassName & 0xffff) == (DWORD_PTR) lpClassName) {
-        LOQ_nonnull("windows", "iu", "ClassName", lpClassName, "WindowName", lpWindowName);
-    }
-    else {
-        LOQ_nonnull("windows", "uu", "ClassName", lpClassName, "WindowName", lpWindowName);
-    }
-    return ret;
+	HWND ret = Old_FindWindowW(lpClassName, lpWindowName);
+	if(((DWORD_PTR) lpClassName & 0xffff) == (DWORD_PTR) lpClassName) {
+		LOQ_nonnull("windows", "iu", "ClassName", lpClassName, "WindowName", lpWindowName);
+	}
+	else {
+		LOQ_nonnull("windows", "uu", "ClassName", lpClassName, "WindowName", lpWindowName);
+	}
+	return ret;
 }
 
 HOOKDEF(HWND, WINAPI, FindWindowExA,
-    __in_opt  HWND hwndParent,
-    __in_opt  HWND hwndChildAfter,
-    __in_opt  LPCTSTR lpszClass,
-    __in_opt  LPCTSTR lpszWindow
+	__in_opt  HWND hwndParent,
+	__in_opt  HWND hwndChildAfter,
+	__in_opt  LPCTSTR lpszClass,
+	__in_opt  LPCTSTR lpszWindow
 ) {
-    HWND ret = Old_FindWindowExA(hwndParent, hwndChildAfter, lpszClass,
-        lpszWindow);
+	HWND ret = Old_FindWindowExA(hwndParent, hwndChildAfter, lpszClass,
+		lpszWindow);
 
-    // lpszClass can be one of the predefined window controls.. which lay in
-    // the 0..ffff range
-    if(((DWORD_PTR) lpszClass & 0xffff) == (DWORD_PTR) lpszClass) {
-        LOQ_nonnull("windows", "is", "ClassName", lpszClass, "WindowName", lpszWindow);
-    }
-    else {
-        LOQ_nonnull("windows", "ss", "ClassName", lpszClass, "WindowName", lpszWindow);
-    }
-    return ret;
+	// lpszClass can be one of the predefined window controls.. which lay in
+	// the 0..ffff range
+	if(((DWORD_PTR) lpszClass & 0xffff) == (DWORD_PTR) lpszClass) {
+		LOQ_nonnull("windows", "is", "ClassName", lpszClass, "WindowName", lpszWindow);
+	}
+	else {
+		LOQ_nonnull("windows", "ss", "ClassName", lpszClass, "WindowName", lpszWindow);
+	}
+	return ret;
 }
 
 HOOKDEF(HWND, WINAPI, FindWindowExW,
-    __in_opt  HWND hwndParent,
-    __in_opt  HWND hwndChildAfter,
-    __in_opt  LPWSTR lpszClass,
-    __in_opt  LPWSTR lpszWindow
+	__in_opt  HWND hwndParent,
+	__in_opt  HWND hwndChildAfter,
+	__in_opt  LPWSTR lpszClass,
+	__in_opt  LPWSTR lpszWindow
 ) {
-    HWND ret = Old_FindWindowExW(hwndParent, hwndChildAfter, lpszClass,
-        lpszWindow);
-    // lpszClass can be one of the predefined window controls.. which lay in
-    // the 0..ffff range
-    if(((DWORD_PTR) lpszClass & 0xffff) == (DWORD_PTR) lpszClass) {
-        LOQ_nonnull("windows", "iu", "ClassName", lpszClass, "WindowName", lpszWindow);
-    }
-    else {
-        LOQ_nonnull("windows", "uu", "ClassName", lpszClass, "WindowName", lpszWindow);
-    }
-    return ret;
+	HWND ret = Old_FindWindowExW(hwndParent, hwndChildAfter, lpszClass,
+		lpszWindow);
+	// lpszClass can be one of the predefined window controls.. which lay in
+	// the 0..ffff range
+	if(((DWORD_PTR) lpszClass & 0xffff) == (DWORD_PTR) lpszClass) {
+		LOQ_nonnull("windows", "iu", "ClassName", lpszClass, "WindowName", lpszWindow);
+	}
+	else {
+		LOQ_nonnull("windows", "uu", "ClassName", lpszClass, "WindowName", lpszWindow);
+	}
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, PostMessageA,
@@ -204,10 +204,10 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 
 	get_lasterrors(&lasterror);
 	if (hWnd) {
-        our_GetWindowThreadProcessId(hWnd, &pid);
-        if (!g_config.single_process && pid != GetCurrentProcessId())
-            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-    }
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (!g_config.single_process && pid != GetCurrentProcessId())
+			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	}
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
 
@@ -228,10 +228,10 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 
 	get_lasterrors(&lasterror);
 	if (hWnd) {
-        our_GetWindowThreadProcessId(hWnd, &pid);
-        if (!g_config.single_process && pid != GetCurrentProcessId())
-            pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-    }
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (!g_config.single_process && pid != GetCurrentProcessId())
+			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+	}
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
 
@@ -252,17 +252,17 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 
 	get_lasterrors(&lasterror);
 	if (hWnd) {
-        our_GetWindowThreadProcessId(hWnd, &pid);
-        if (pid != GetCurrentProcessId()) {
-            char classname[1024];
-            our_GetClassNameA(hWnd, classname, sizeof(classname));
-            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-                if (!g_config.single_process)
-                    pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-                isbad = TRUE;
-            }
-        }
-    }
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (pid != GetCurrentProcessId()) {
+			char classname[1024];
+			our_GetClassNameA(hWnd, classname, sizeof(classname));
+			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+				if (!g_config.single_process)
+					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+				isbad = TRUE;
+			}
+		}
+	}
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongA(hWnd, nIndex, dwNewLong);
@@ -285,17 +285,17 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 
 	get_lasterrors(&lasterror);
 	if (hWnd) {
-        our_GetWindowThreadProcessId(hWnd, &pid);
-        if (pid != GetCurrentProcessId()) {
-            char classname[1024];
-            our_GetClassNameA(hWnd, classname, sizeof(classname));
-            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-                if (!g_config.single_process)
-                    pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-                isbad = TRUE;
-            }
-        }
-    }
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (pid != GetCurrentProcessId()) {
+			char classname[1024];
+			our_GetClassNameA(hWnd, classname, sizeof(classname));
+			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+				if (!g_config.single_process)
+					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+				isbad = TRUE;
+			}
+		}
+	}
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
@@ -318,17 +318,17 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 
 	get_lasterrors(&lasterror);
 	if (hWnd) {
-        our_GetWindowThreadProcessId(hWnd, &pid);
-        if (pid != GetCurrentProcessId()) {
-            char classname[1024];
-            our_GetClassNameA(hWnd, classname, sizeof(classname));
-            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-                if (!g_config.single_process)
-                    pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-                isbad = TRUE;
-            }
-        }
-    }
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (pid != GetCurrentProcessId()) {
+			char classname[1024];
+			our_GetClassNameA(hWnd, classname, sizeof(classname));
+			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+				if (!g_config.single_process)
+					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+				isbad = TRUE;
+			}
+		}
+	}
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongW(hWnd, nIndex, dwNewLong);
@@ -352,17 +352,17 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 
 	get_lasterrors(&lasterror);
 	if (hWnd) {
-        our_GetWindowThreadProcessId(hWnd, &pid);
-        if (pid != GetCurrentProcessId()) {
-            char classname[1024];
-            our_GetClassNameA(hWnd, classname, sizeof(classname));
-            if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-                if (!g_config.single_process)
-                    pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
-                isbad = TRUE;
-            }
-        }
-    }
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (pid != GetCurrentProcessId()) {
+			char classname[1024];
+			our_GetClassNameA(hWnd, classname, sizeof(classname));
+			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
+				if (!g_config.single_process)
+					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+				isbad = TRUE;
+			}
+		}
+	}
 	set_lasterrors(&lasterror);
 
 	ret = Old_SetWindowLongPtrW(hWnd, nIndex, dwNewLong);
@@ -375,13 +375,13 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 }
 
 HOOKDEF(BOOL, WINAPI, EnumWindows,
-    _In_  WNDENUMPROC lpEnumFunc,
-    _In_  LPARAM lParam
+	_In_  WNDENUMPROC lpEnumFunc,
+	_In_  LPARAM lParam
 ) {
 
-    BOOL ret = Old_EnumWindows(lpEnumFunc, lParam);
-    LOQ_bool("windows", "");
-    return ret;
+	BOOL ret = Old_EnumWindows(lpEnumFunc, lParam);
+	LOQ_bool("windows", "");
+	return ret;
 }
 
 HOOKDEF_NOTAIL(WINAPI, CreateWindowExA,

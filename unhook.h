@@ -17,7 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 void unhook_detect_add_region(const hook_t *hook, const uint8_t *addr,
-    const uint8_t *orig, const uint8_t *our, uint32_t length);
+	const uint8_t *orig, const uint8_t *our, uint32_t length);
 int address_already_hooked(uint8_t *addr);
 
 int unhook_init_detection();

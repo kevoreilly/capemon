@@ -48,176 +48,176 @@ BOOL TraceRunning;
 void DisassembleCIP(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
-    _DecodeType DecodeType;
-    _DecodeResult Result;
-    _OffsetType Offset = 0;
-    _DecodedInst DecodedInstruction;
-    unsigned int DecodedInstructionsCount = 0;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
 
 #ifdef _WIN64
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
-    DecodeType = Decode64Bits;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
 #else
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
-    DecodeType = Decode32Bits;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
 #endif
 
-    Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
-    DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s\n", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+	DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s\n", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
 }
 
 BOOL SingleStepToOEP(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-    PVOID CIP;
-    _DecodeType DecodeType;
-    _DecodeResult Result;
-    _OffsetType Offset = 0;
-    _DecodedInst DecodedInstruction;
-    unsigned int DecodedInstructionsCount = 0;
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
 
-    TraceRunning = TRUE;
+	TraceRunning = TRUE;
 #ifdef _WIN64
-    CIP = (PVOID)(DWORD_PTR)ExceptionInfo->ContextRecord->Rip;
-    DecodeType = Decode64Bits;
+	CIP = (PVOID)(DWORD_PTR)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
 #else
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
-    DecodeType = Decode32Bits;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
 #endif
 
-    if (!modinfo.lpBaseOfDll)
-    {
+	if (!modinfo.lpBaseOfDll)
+	{
 		DebuggerOutput("SingleStepToOEP: Module information not present for the target module.\n");
 		return FALSE;
-    }
+	}
 
-    if ((DWORD_PTR)CIP < (DWORD_PTR)modinfo.lpBaseOfDll || (DWORD_PTR)CIP > (DWORD_PTR)modinfo.lpBaseOfDll + modinfo.SizeOfImage)
-    {
+	if ((DWORD_PTR)CIP < (DWORD_PTR)modinfo.lpBaseOfDll || (DWORD_PTR)CIP > (DWORD_PTR)modinfo.lpBaseOfDll + modinfo.SizeOfImage)
+	{
 		DebuggerOutput("SingleStepToOEP: EIP 0x%x is not within the target module (0x%x-0x%x).\n", CIP, modinfo.lpBaseOfDll, (PBYTE)modinfo.lpBaseOfDll + modinfo.SizeOfImage);
 		return FALSE;
-    }
+	}
 
-    if (!LastEIP)
-    {
-        LastEIP = (DWORD_PTR)CIP;
-        StepCount = 0;
-        DebuggerOutput("Entering single-step mode until OEP\n");
-        SetSingleStepMode(ExceptionInfo->ContextRecord, SingleStepToOEP);
-        return TRUE;
-    }
-
-#ifdef _WIN64
-    if (LastContext.Rip)
-    {
-        memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-
-        if (LastContext.Rax != ExceptionInfo->ContextRecord->Rax)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RAX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rax);
-
-        if (LastContext.Rbx != ExceptionInfo->ContextRecord->Rbx)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbx);
-
-        if (LastContext.Rcx != ExceptionInfo->ContextRecord->Rcx)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RCX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rcx);
-
-        if (LastContext.Rdx != ExceptionInfo->ContextRecord->Rdx)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdx);
-
-        if (LastContext.Rsi != ExceptionInfo->ContextRecord->Rsi)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsi);
-
-        if (LastContext.Rdi != ExceptionInfo->ContextRecord->Rdi)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdi);
-
-        if (LastContext.Rsp != ExceptionInfo->ContextRecord->Rsp)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsp);
-
-        if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbp);
-#else
-    if (LastContext.Eip)
-    {
-        memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-
-        if (LastContext.Eax != ExceptionInfo->ContextRecord->Eax)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EAX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Eax);
-
-        if (LastContext.Ebx != ExceptionInfo->ContextRecord->Ebx)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebx);
-
-        if (LastContext.Ecx != ExceptionInfo->ContextRecord->Ecx)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ECX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ecx);
-
-        if (LastContext.Edx != ExceptionInfo->ContextRecord->Edx)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edx);
-
-        if (LastContext.Esi != ExceptionInfo->ContextRecord->Esi)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esi);
-
-        if (LastContext.Edi != ExceptionInfo->ContextRecord->Edi)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edi);
-
-        if (LastContext.Esp != ExceptionInfo->ContextRecord->Esp)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esp);
-
-        if (LastContext.Ebp != ExceptionInfo->ContextRecord->Ebp)
-            _snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebp);
-#endif
-
-        DebuggerOutput(DebuggerBuffer);
-    }
-
-    DebuggerOutput("\n");
-
-    StepCount++;
-
-    if (StepCount > StepLimit)
-    {
-        DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
-        StepCount = 0;
-        return TRUE;
-    }
-
-    Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+	if (!LastEIP)
+	{
+		LastEIP = (DWORD_PTR)CIP;
+		StepCount = 0;
+		DebuggerOutput("Entering single-step mode until OEP\n");
+		SetSingleStepMode(ExceptionInfo->ContextRecord, SingleStepToOEP);
+		return TRUE;
+	}
 
 #ifdef _WIN64
-    DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+	if (LastContext.Rip)
+	{
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+
+		if (LastContext.Rax != ExceptionInfo->ContextRecord->Rax)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RAX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rax);
+
+		if (LastContext.Rbx != ExceptionInfo->ContextRecord->Rbx)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbx);
+
+		if (LastContext.Rcx != ExceptionInfo->ContextRecord->Rcx)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RCX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rcx);
+
+		if (LastContext.Rdx != ExceptionInfo->ContextRecord->Rdx)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdx);
+
+		if (LastContext.Rsi != ExceptionInfo->ContextRecord->Rsi)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsi);
+
+		if (LastContext.Rdi != ExceptionInfo->ContextRecord->Rdi)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdi);
+
+		if (LastContext.Rsp != ExceptionInfo->ContextRecord->Rsp)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsp);
+
+		if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbp);
 #else
-    DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+	if (LastContext.Eip)
+	{
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+
+		if (LastContext.Eax != ExceptionInfo->ContextRecord->Eax)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EAX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Eax);
+
+		if (LastContext.Ebx != ExceptionInfo->ContextRecord->Ebx)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebx);
+
+		if (LastContext.Ecx != ExceptionInfo->ContextRecord->Ecx)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ECX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ecx);
+
+		if (LastContext.Edx != ExceptionInfo->ContextRecord->Edx)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edx);
+
+		if (LastContext.Esi != ExceptionInfo->ContextRecord->Esi)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esi);
+
+		if (LastContext.Edi != ExceptionInfo->ContextRecord->Edi)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edi);
+
+		if (LastContext.Esp != ExceptionInfo->ContextRecord->Esp)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esp);
+
+		if (LastContext.Ebp != ExceptionInfo->ContextRecord->Ebp)
+			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebp);
 #endif
-    CurrentEIP = (DWORD_PTR)CIP;
 
-    if (CurrentEIP > LastEIP)
-        EIPDelta = (unsigned int)(CurrentEIP - LastEIP);
-    else
-        EIPDelta = (unsigned int)(LastEIP - CurrentEIP);
+		DebuggerOutput(DebuggerBuffer);
+	}
 
-    if (EIPDelta > MINIMUM_EIP_DELTA && EIPDelta < modinfo.SizeOfImage)
-    {
-        UPX_OEP = CurrentEIP;
-        DebuggerOutput("\nSingleStepToOEP: Found OEP = 0x%p, dumping unpacked payload.", UPX_OEP);
-        DumpCurrentProcessFixImports((PVOID)UPX_OEP);
-    }
-    else
-    {
-        LastEIP = CurrentEIP;
+	DebuggerOutput("\n");
+
+	StepCount++;
+
+	if (StepCount > StepLimit)
+	{
+		DebuggerOutput("Single-step limit reached (%d), releasing.\n", StepLimit);
+		StepCount = 0;
+		return TRUE;
+	}
+
+	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+#ifdef _WIN64
+	DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#else
+	DebuggerOutput("0x%x (%02d) %-20s %-6s%-4s%-30s", (unsigned int)CIP, DecodedInstruction.size, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+#endif
+	CurrentEIP = (DWORD_PTR)CIP;
+
+	if (CurrentEIP > LastEIP)
+		EIPDelta = (unsigned int)(CurrentEIP - LastEIP);
+	else
+		EIPDelta = (unsigned int)(LastEIP - CurrentEIP);
+
+	if (EIPDelta > MINIMUM_EIP_DELTA && EIPDelta < modinfo.SizeOfImage)
+	{
+		UPX_OEP = CurrentEIP;
+		DebuggerOutput("\nSingleStepToOEP: Found OEP = 0x%p, dumping unpacked payload.", UPX_OEP);
+		DumpCurrentProcessFixImports((PVOID)UPX_OEP);
+	}
+	else
+	{
+		LastEIP = CurrentEIP;
 #ifdef _DEBUG
-        DebuggerOutput("\nSingleStepToOEP: EIPDelta = 0x%x", EIPDelta);
+		DebuggerOutput("\nSingleStepToOEP: EIPDelta = 0x%x", EIPDelta);
 #endif
-        LastContext = *ExceptionInfo->ContextRecord;
-        SetSingleStepMode(ExceptionInfo->ContextRecord, SingleStepToOEP);
-    }
+		LastContext = *ExceptionInfo->ContextRecord;
+		SetSingleStepMode(ExceptionInfo->ContextRecord, SingleStepToOEP);
+	}
 
-    return TRUE;
+	return TRUE;
 }
 
 BOOL StackReadCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-    PVOID CIP;
+	PVOID CIP;
 #ifdef _WIN64
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 #else
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 #endif
 
 	if (pBreakpointInfo == NULL)
@@ -234,37 +234,37 @@ BOOL StackReadCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTE
 
 	DebuggerOutput("StackReadCallback: Breakpoint %i Size=0x%x, Address=0x%x, EIP=0x%x\n", pBreakpointInfo->Register, pBreakpointInfo->Size, pBreakpointInfo->Address, CIP);
 
-    if (!modinfo.lpBaseOfDll)
-    {
+	if (!modinfo.lpBaseOfDll)
+	{
 		DebuggerOutput("StackReadCallback: module information not present for the target module.\n");
 		return FALSE;
-    }
+	}
 
-    if ((DWORD_PTR)CIP < (DWORD_PTR)modinfo.lpBaseOfDll || (DWORD_PTR)CIP > (DWORD_PTR)modinfo.lpBaseOfDll + modinfo.SizeOfImage)
-    {
+	if ((DWORD_PTR)CIP < (DWORD_PTR)modinfo.lpBaseOfDll || (DWORD_PTR)CIP > (DWORD_PTR)modinfo.lpBaseOfDll + modinfo.SizeOfImage)
+	{
 		DebuggerOutput("StackReadCallback: Breakpoint EIP 0x%x is not within the target module (0x%x-0x%x).\n", CIP, modinfo.lpBaseOfDll, (PBYTE)modinfo.lpBaseOfDll + modinfo.SizeOfImage);
 		return FALSE;
-    }
+	}
 
-    ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+	ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
-    // Turn on single-step mode which will dump on OEP
-    SetSingleStepMode(ExceptionInfo->ContextRecord, SingleStepToOEP);
+	// Turn on single-step mode which will dump on OEP
+	SetSingleStepMode(ExceptionInfo->ContextRecord, SingleStepToOEP);
 
-    DisassembleCIP(ExceptionInfo);
+	DisassembleCIP(ExceptionInfo);
 
 	return TRUE;
 }
 
 BOOL StackWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-    PVOID CIP;
+	PVOID CIP;
 #ifdef _WIN64
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 #else
-    CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 #endif
 
 	if (pBreakpointInfo == NULL)
@@ -281,35 +281,35 @@ BOOL StackWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	DebuggerOutput("StackWriteCallback: Breakpoint %i Size=0x%x, Address=0x%x, EIP=0x%x\n", pBreakpointInfo->Register, pBreakpointInfo->Size, pBreakpointInfo->Address, CIP);
 
-    // Let's find out the size of the module in memory, to enable a sanity check for the eip values
-    if (base_of_dll_of_interest == 0)
-        GetModuleInformation(GetCurrentProcess(), GetModuleHandle(NULL), &modinfo, sizeof(MODULEINFO));
-    else
-        GetModuleInformation(GetCurrentProcess(), (HMODULE)base_of_dll_of_interest, &modinfo, sizeof(MODULEINFO));
+	// Let's find out the size of the module in memory, to enable a sanity check for the eip values
+	if (base_of_dll_of_interest == 0)
+		GetModuleInformation(GetCurrentProcess(), GetModuleHandle(NULL), &modinfo, sizeof(MODULEINFO));
+	else
+		GetModuleInformation(GetCurrentProcess(), (HMODULE)base_of_dll_of_interest, &modinfo, sizeof(MODULEINFO));
 
-    if (!modinfo.lpBaseOfDll)
-    {
+	if (!modinfo.lpBaseOfDll)
+	{
 		DebuggerOutput("StackWriteCallback: failed to get module information for the target module.\n");
 		return FALSE;
-    }
-
-    if ((DWORD_PTR)CIP < (DWORD_PTR)modinfo.lpBaseOfDll || (DWORD_PTR)CIP > (DWORD_PTR)modinfo.lpBaseOfDll + modinfo.SizeOfImage)
-    {
-		DebuggerOutput("StackWriteCallback: Breakpoint EIP 0x%x is not within the target module (0x%x-0x%x).\n", CIP, modinfo.lpBaseOfDll, (PBYTE)modinfo.lpBaseOfDll + modinfo.SizeOfImage);
-		return FALSE;
-    }
-
-    if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 1, (BYTE*)pBreakpointInfo->Address, BP_READWRITE, StackReadCallback))
-    {
-        DebuggerOutput("StackWriteCallback: Updated breakpoint to break on read (& write).\n");
-    }
-    else
-	{
-        DebuggerOutput("StackWriteCallback: ContextUpdateCurrentBreakpoint failed.\n");
-        return FALSE;
 	}
 
-    DisassembleCIP(ExceptionInfo);
+	if ((DWORD_PTR)CIP < (DWORD_PTR)modinfo.lpBaseOfDll || (DWORD_PTR)CIP > (DWORD_PTR)modinfo.lpBaseOfDll + modinfo.SizeOfImage)
+	{
+		DebuggerOutput("StackWriteCallback: Breakpoint EIP 0x%x is not within the target module (0x%x-0x%x).\n", CIP, modinfo.lpBaseOfDll, (PBYTE)modinfo.lpBaseOfDll + modinfo.SizeOfImage);
+		return FALSE;
+	}
+
+	if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 1, (BYTE*)pBreakpointInfo->Address, BP_READWRITE, StackReadCallback))
+	{
+		DebuggerOutput("StackWriteCallback: Updated breakpoint to break on read (& write).\n");
+	}
+	else
+	{
+		DebuggerOutput("StackWriteCallback: ContextUpdateCurrentBreakpoint failed.\n");
+		return FALSE;
+	}
+
+	DisassembleCIP(ExceptionInfo);
 
 	DebuggerOutput("StackWriteCallback executed successfully.\n");
 
@@ -320,7 +320,7 @@ BOOL EntryPointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 {
 	PVOID StackPointer;
 
-    if (pBreakpointInfo == NULL)
+	if (pBreakpointInfo == NULL)
 	{
 		DebuggerOutput("EntryPointCallback executed with pBreakpointInfo NULL.\n");
 		return FALSE;
@@ -332,56 +332,56 @@ BOOL EntryPointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		return FALSE;
 	}
 
-    StepCount = 0;
+	StepCount = 0;
 #ifdef _WIN64
-    StackPointer = (PVOID)(ExceptionInfo->ContextRecord->Rsp - 1);
+	StackPointer = (PVOID)(ExceptionInfo->ContextRecord->Rsp - 1);
 #else
-    StackPointer = (PVOID)(ExceptionInfo->ContextRecord->Esp - 1);
+	StackPointer = (PVOID)(ExceptionInfo->ContextRecord->Esp - 1);
 #endif
 
-    if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, 1, (BYTE*)StackPointer, BP_WRITE, StackWriteCallback))
-    {
+	if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, 1, (BYTE*)StackPointer, BP_WRITE, StackWriteCallback))
+	{
 		DebuggerOutput("EntryPointCallback: Failed to set write breakpoint on stack.\n");
-        return FALSE;
-    }
+		return FALSE;
+	}
 
-    DisassembleCIP(ExceptionInfo);
+	DisassembleCIP(ExceptionInfo);
 
-    DebuggerOutput("EntryPointCallback: Write breakpoint set on stack at 0x%p\n", StackPointer);
+	DebuggerOutput("EntryPointCallback: Write breakpoint set on stack at 0x%p\n", StackPointer);
 
-    return TRUE;
+	return TRUE;
 }
 
 BOOL UPXInitialBreakpoints(PVOID ImageBase)
 {
-    DWORD Register;
+	DWORD Register;
 
-    if (!ImageBase)
-    {
-        ImageBase = GetModuleHandle(NULL);
-        DebuggerOutput("ImageBase not set by base-on-api parameter, defaulting to process image base 0x%p.\n", ImageBase);
+	if (!ImageBase)
+	{
+		ImageBase = GetModuleHandle(NULL);
+		DebuggerOutput("ImageBase not set by base-on-api parameter, defaulting to process image base 0x%p.\n", ImageBase);
 		return FALSE;
-    }
-    else
-        DebuggerOutput("ImageBase set to 0x%p.\n", ImageBase);
+	}
+	else
+		DebuggerOutput("ImageBase set to 0x%p.\n", ImageBase);
 
-    PVOID EntryPoint = (PVOID)GetEntryPointVA((DWORD_PTR)ImageBase);
+	PVOID EntryPoint = (PVOID)GetEntryPointVA((DWORD_PTR)ImageBase);
 
-    if (!StepLimit)
-        StepLimit = SINGLE_STEP_LIMIT;
+	if (!StepLimit)
+		StepLimit = SINGLE_STEP_LIMIT;
 
-    if (EntryPoint)
-    {
-        if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, (BYTE*)EntryPoint, BP_EXEC, EntryPointCallback))
-            DebuggerOutput("Breakpoint %d set on entry point at 0x%p.\n", Register, EntryPoint);
-        else
-        {
-            DebuggerOutput("SetBreakpoint on entry point failed.\n");
-            return FALSE;
-        }
-    }
+	if (EntryPoint)
+	{
+		if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, (BYTE*)EntryPoint, BP_EXEC, EntryPointCallback))
+			DebuggerOutput("Breakpoint %d set on entry point at 0x%p.\n", Register, EntryPoint);
+		else
+		{
+			DebuggerOutput("SetBreakpoint on entry point failed.\n");
+			return FALSE;
+		}
+	}
 
-    BreakpointsSet = TRUE;
+	BreakpointsSet = TRUE;
 
-    return TRUE;
+	return TRUE;
 }

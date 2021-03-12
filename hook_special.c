@@ -39,17 +39,17 @@ static int tasksched_sent = 0;
 static int interop_sent = 0;
 
 HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
-    __in_opt    PWCHAR PathToFile,
-    __in_opt    PULONG Flags,
-    __in        PUNICODE_STRING ModuleFileName,
-    __out       PHANDLE ModuleHandle
+	__in_opt	PWCHAR PathToFile,
+	__in_opt	PULONG Flags,
+	__in		PUNICODE_STRING ModuleFileName,
+	__out	   PHANDLE ModuleHandle
 ) {
 
-    //
-    // In the event that loading this dll results in loading another dll as
-    // well, then the unicode string (which is located in the TEB) will be
-    // overwritten, therefore we make a copy of it for our own use.
-    //
+	//
+	// In the event that loading this dll results in loading another dll as
+	// well, then the unicode string (which is located in the TEB) will be
+	// overwritten, therefore we make a copy of it for our own use.
+	//
 	lasterror_t lasterror;
 	NTSTATUS ret = 0;
 
@@ -77,7 +77,7 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 			LOQ_ntstatus("system", "HoP", "Flags", Flags, "FileName", &library,
 			"BaseAddress", ModuleHandle);
 
-        if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
+		if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
 										  !wcsnicmp(library.Buffer, L"c:\\windows\\syswow64\\", 20) ||
 										  !wcsnicmp(library.Buffer, L"c:\\windows\\sysnative\\", 21))) {
 			ret = 1;
@@ -102,10 +102,10 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 }
 
 HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
-	__in_opt    PWCHAR PathToFile,
-	__in_opt    PULONG Flags,
-	__in        PUNICODE_STRING ModuleFileName,
-	__out       PHANDLE ModuleHandle
+	__in_opt	PWCHAR PathToFile,
+	__in_opt	PULONG Flags,
+	__in		PUNICODE_STRING ModuleFileName,
+	__out	   PHANDLE ModuleHandle
 ) {
 	NTSTATUS ret;
 
@@ -126,97 +126,97 @@ extern void revalidate_all_hooks(void);
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 ) {
-    if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest)
-        DoProcessDump(GetHookCallerBase());
+	if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest)
+		DoProcessDump(GetHookCallerBase());
 
-    if (DllImageBase && DllImageBase != LastDllUnload)
-    {
-        DebugOutput("DLL unloaded from 0x%p.\n", DllImageBase);
-        LastDllUnload = DllImageBase;
-    }
+	if (DllImageBase && DllImageBase != LastDllUnload)
+	{
+		DebugOutput("DLL unloaded from 0x%p.\n", DllImageBase);
+		LastDllUnload = DllImageBase;
+	}
 
-    return 0;
+	return 0;
 }
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
-    __in_opt    LPVOID lpUnknown1,
-    __in_opt    LPWSTR lpApplicationName,
-    __inout_opt LPWSTR lpCommandLine,
-    __in_opt    LPSECURITY_ATTRIBUTES lpProcessAttributes,
-    __in_opt    LPSECURITY_ATTRIBUTES lpThreadAttributes,
-    __in        BOOL bInheritHandles,
-    __in        DWORD dwCreationFlags,
-    __in_opt    LPVOID lpEnvironment,
-    __in_opt    LPWSTR lpCurrentDirectory,
-    __in        LPSTARTUPINFOW lpStartupInfo,
-    __out       LPPROCESS_INFORMATION lpProcessInformation,
-    __in_opt    LPVOID lpUnknown2
+	__in_opt	LPVOID lpUnknown1,
+	__in_opt	LPWSTR lpApplicationName,
+	__inout_opt LPWSTR lpCommandLine,
+	__in_opt	LPSECURITY_ATTRIBUTES lpProcessAttributes,
+	__in_opt	LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		BOOL bInheritHandles,
+	__in		DWORD dwCreationFlags,
+	__in_opt	LPVOID lpEnvironment,
+	__in_opt	LPWSTR lpCurrentDirectory,
+	__in		LPSTARTUPINFOW lpStartupInfo,
+	__out	   LPPROCESS_INFORMATION lpProcessInformation,
+	__in_opt	LPVOID lpUnknown2
 ) {
 	BOOL ret;
 	hook_info_t saved_hookinfo;
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_CreateProcessInternalW(lpUnknown1, lpApplicationName,
-        lpCommandLine, lpProcessAttributes, lpThreadAttributes,
-        bInheritHandles, dwCreationFlags | CREATE_SUSPENDED, lpEnvironment,
-        lpCurrentDirectory, lpStartupInfo, lpProcessInformation, lpUnknown2);
+		lpCommandLine, lpProcessAttributes, lpThreadAttributes,
+		bInheritHandles, dwCreationFlags | CREATE_SUSPENDED, lpEnvironment,
+		lpCurrentDirectory, lpStartupInfo, lpProcessInformation, lpUnknown2);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
 
-    if (ret != FALSE) {
+	if (ret != FALSE) {
 		BOOL dont_monitor = FALSE;
 		if (g_config.file_of_interest && g_config.suspend_logging && lpApplicationName && !wcsicmp(lpApplicationName, L"c:\\windows\\splwow64.exe"))
 			dont_monitor = TRUE;
 
 		if (!dont_monitor) {
-            if (g_config.injection)
-                CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
+			if (g_config.injection)
+				CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
 			if (!g_config.single_process)
-                pipe("PROCESS:%d:%d,%d", (dwCreationFlags & CREATE_SUSPENDED) ? 1 : 0, lpProcessInformation->dwProcessId,
-                    lpProcessInformation->dwThreadId);
-        }
+				pipe("PROCESS:%d:%d,%d", (dwCreationFlags & CREATE_SUSPENDED) ? 1 : 0, lpProcessInformation->dwProcessId,
+					lpProcessInformation->dwThreadId);
+		}
 
-        // if the CREATE_SUSPENDED flag was not set, then we have to resume the main thread ourself
-        if ((dwCreationFlags & CREATE_SUSPENDED) == 0) {
-            ResumeThread(lpProcessInformation->hThread);
-        }
+		// if the CREATE_SUSPENDED flag was not set, then we have to resume the main thread ourself
+		if ((dwCreationFlags & CREATE_SUSPENDED) == 0) {
+			ResumeThread(lpProcessInformation->hThread);
+		}
 
-        disable_sleep_skip();
-    }
+		disable_sleep_skip();
+	}
 
-    if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT && lpStartupInfo->cb == sizeof(STARTUPINFOEXW)) {
-        HANDLE ParentHandle = (HANDLE)-1;
-        unsigned int i;
-        LPSTARTUPINFOEXW lpExtStartupInfo = (LPSTARTUPINFOEXW)lpStartupInfo;
-        if (lpExtStartupInfo->lpAttributeList) {
-            for (i = 0; i < lpExtStartupInfo->lpAttributeList->Count; i++)
-                if (lpExtStartupInfo->lpAttributeList->Entries[i].Attribute == PROC_THREAD_ATTRIBUTE_PARENT_PROCESS)
-                    ParentHandle = *(HANDLE *)lpExtStartupInfo->lpAttributeList->Entries[i].lpValue;
-        }
-        LOQ_bool("process", "uuhiippps", "ApplicationName", lpApplicationName,
-            "CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
-            "ProcessId", lpProcessInformation->dwProcessId,
-            "ThreadId", lpProcessInformation->dwThreadId,
-            "ParentHandle", ParentHandle,
-            "ProcessHandle", lpProcessInformation->hProcess,
-            "ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-    }
-    else {
-        LOQ_bool("process", "uuhiipps", "ApplicationName", lpApplicationName,
-            "CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
-            "ProcessId", lpProcessInformation->dwProcessId,
-            "ThreadId", lpProcessInformation->dwThreadId,
-            "ProcessHandle", lpProcessInformation->hProcess,
-            "ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-    }
+	if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT && lpStartupInfo->cb == sizeof(STARTUPINFOEXW)) {
+		HANDLE ParentHandle = (HANDLE)-1;
+		unsigned int i;
+		LPSTARTUPINFOEXW lpExtStartupInfo = (LPSTARTUPINFOEXW)lpStartupInfo;
+		if (lpExtStartupInfo->lpAttributeList) {
+			for (i = 0; i < lpExtStartupInfo->lpAttributeList->Count; i++)
+				if (lpExtStartupInfo->lpAttributeList->Entries[i].Attribute == PROC_THREAD_ATTRIBUTE_PARENT_PROCESS)
+					ParentHandle = *(HANDLE *)lpExtStartupInfo->lpAttributeList->Entries[i].lpValue;
+		}
+		LOQ_bool("process", "uuhiippps", "ApplicationName", lpApplicationName,
+			"CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
+			"ProcessId", lpProcessInformation->dwProcessId,
+			"ThreadId", lpProcessInformation->dwThreadId,
+			"ParentHandle", ParentHandle,
+			"ProcessHandle", lpProcessInformation->hProcess,
+			"ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	}
+	else {
+		LOQ_bool("process", "uuhiipps", "ApplicationName", lpApplicationName,
+			"CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
+			"ProcessId", lpProcessInformation->dwProcessId,
+			"ThreadId", lpProcessInformation->dwThreadId,
+			"ProcessHandle", lpProcessInformation->hProcess,
+			"ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	}
 
-    return ret;
+	return ret;
 }
 
 static _CoTaskMemFree pCoTaskMemFree;
 static _ProgIDFromCLSID pProgIDFromCLSID;
 
 HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
-	__in    REFCLSID rclsid,
+	__in	REFCLSID rclsid,
 	__in	LPUNKNOWN pUnkOuter,
 	__in	DWORD dwClsContext,
 	__in	REFIID riid,
@@ -239,9 +239,9 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-        	memcpy(&id1, rclsid, sizeof(id1));
-    	if (is_valid_address_range((ULONG_PTR)riid, 16))
-        	memcpy(&id2, riid, sizeof(id2));
+			memcpy(&id1, rclsid, sizeof(id1));
+		if (is_valid_address_range((ULONG_PTR)riid, 16))
+			memcpy(&id2, riid, sizeof(id2));
 	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
 		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
 	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
@@ -297,12 +297,12 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 }
 
 HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
-	__in    REFCLSID rclsid,
-	__in    LPUNKNOWN pUnkOuter,
-	__in    DWORD dwClsContext,
-	_In_    COSERVERINFO *pServerInfo,
-	_In_    DWORD        dwCount,
-	_Inout_ MULTI_QI     *pResults
+	__in	REFCLSID rclsid,
+	__in	LPUNKNOWN pUnkOuter,
+	__in	DWORD dwClsContext,
+	_In_	COSERVERINFO *pServerInfo,
+	_In_	DWORD		dwCount,
+	_Inout_ MULTI_QI	 *pResults
 	) {
 	IID id1;
 	char idbuf1[40];
@@ -319,7 +319,7 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-            memcpy(&id1, rclsid, sizeof(id1));
+			memcpy(&id1, rclsid, sizeof(id1));
 	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
 		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
 
@@ -374,11 +374,11 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 }
 
 HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
-	_In_     REFCLSID     rclsid,
-	_In_     DWORD        dwClsContext,
+	_In_	 REFCLSID	 rclsid,
+	_In_	 DWORD		dwClsContext,
 	_In_opt_ COSERVERINFO *pServerInfo,
-	_In_     REFIID       riid,
-	_Out_    LPVOID       *ppv
+	_In_	 REFIID	   riid,
+	_Out_	LPVOID	   *ppv
 ) {
 	HRESULT ret;
 	lasterror_t lasterror;
@@ -398,9 +398,9 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-            memcpy(&id1, rclsid, sizeof(id1));
-        if (is_valid_address_range((ULONG_PTR)riid, 16))
-	    memcpy(&id2, riid, sizeof(id2));
+			memcpy(&id1, rclsid, sizeof(id1));
+		if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id2, riid, sizeof(id2));
 	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
 		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
 	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,

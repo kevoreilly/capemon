@@ -70,32 +70,32 @@ typedef LONG NTSTATUS;
 #define STATUS_IMAGE_NOT_AT_BASE ((NTSTATUS) 0x40000003)
 
 typedef struct _STRING {
-    USHORT Length;
-    USHORT MaximumLength;
-    PCHAR  Buffer;
+	USHORT Length;
+	USHORT MaximumLength;
+	PCHAR  Buffer;
 } ANSI_STRING, *PANSI_STRING;
 
 typedef struct _LSA_UNICODE_STRING {
-    USHORT Length;
-    USHORT MaximumLength;
-    PWSTR  Buffer;
+	USHORT Length;
+	USHORT MaximumLength;
+	PWSTR  Buffer;
 } LSA_UNICODE_STRING, *PLSA_UNICODE_STRING, UNICODE_STRING, *PUNICODE_STRING;
 
 typedef struct _IO_STATUS_BLOCK {
-    union {
-        NTSTATUS Status;
-        PVOID    Pointer;
-    };
-    ULONG_PTR Information;
+	union {
+		NTSTATUS Status;
+		PVOID	Pointer;
+	};
+	ULONG_PTR Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
 typedef struct _OBJECT_ATTRIBUTES {
-    ULONG           Length;
-    HANDLE          RootDirectory;
-    PUNICODE_STRING ObjectName;
-    ULONG           Attributes;
-    PVOID           SecurityDescriptor;
-    PVOID           SecurityQualityOfService;
+	ULONG		   Length;
+	HANDLE		  RootDirectory;
+	PUNICODE_STRING ObjectName;
+	ULONG		   Attributes;
+	PVOID		   SecurityDescriptor;
+	PVOID		   SecurityQualityOfService;
 } OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
 
 // for now..
@@ -109,47 +109,47 @@ typedef void *PIO_APC_ROUTINE;
 typedef void *HINTERNET;
 
 typedef struct addrinfo {
-  int             ai_flags;
-  int             ai_family;
-  int             ai_socktype;
-  int             ai_protocol;
-  size_t          ai_addrlen;
-  char            *ai_canonname;
+  int			 ai_flags;
+  int			 ai_family;
+  int			 ai_socktype;
+  int			 ai_protocol;
+  size_t		  ai_addrlen;
+  char			*ai_canonname;
   struct sockaddr  *ai_addr;
   struct addrinfo  *ai_next;
 } ADDRINFOA, *PADDRINFOA;
 
 typedef struct addrinfoW {
-  int              ai_flags;
-  int              ai_family;
-  int              ai_socktype;
-  int              ai_protocol;
-  size_t           ai_addrlen;
-  PWSTR            ai_canonname;
+  int			  ai_flags;
+  int			  ai_family;
+  int			  ai_socktype;
+  int			  ai_protocol;
+  size_t		   ai_addrlen;
+  PWSTR			ai_canonname;
   struct sockaddr  *ai_addr;
   struct addrinfoW  *ai_next;
 } ADDRINFOW, *PADDRINFOW;
 #endif
 
 typedef enum _KEY_INFORMATION_CLASS {
-  KeyBasicInformation            = 0,
-  KeyNodeInformation             = 1,
-  KeyFullInformation             = 2,
-  KeyNameInformation             = 3,
-  KeyCachedInformation           = 4,
-  KeyFlagsInformation            = 5,
+  KeyBasicInformation			= 0,
+  KeyNodeInformation			 = 1,
+  KeyFullInformation			 = 2,
+  KeyNameInformation			 = 3,
+  KeyCachedInformation		   = 4,
+  KeyFlagsInformation			= 5,
   KeyVirtualizationInformation   = 6,
-  KeyHandleTagsInformation       = 7,
-  MaxKeyInfoClass                = 8
+  KeyHandleTagsInformation	   = 7,
+  MaxKeyInfoClass				= 8
 } KEY_INFORMATION_CLASS;
 
 typedef enum _KEY_VALUE_INFORMATION_CLASS {
-  KeyValueBasicInformation            = 0,
-  KeyValueFullInformation             = 1,
-  KeyValuePartialInformation          = 2,
-  KeyValueFullInformationAlign64      = 3,
+  KeyValueBasicInformation			= 0,
+  KeyValueFullInformation			 = 1,
+  KeyValuePartialInformation		  = 2,
+  KeyValueFullInformationAlign64	  = 3,
   KeyValuePartialInformationAlign64   = 4,
-  MaxKeyValueInfoClass                = 5
+  MaxKeyValueInfoClass				= 5
 } KEY_VALUE_INFORMATION_CLASS;
 
 typedef struct _KEY_VALUE_BASIC_INFORMATION {
@@ -176,68 +176,68 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
 } KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
 
 typedef struct _KEY_VALUE_ENTRY {
-    PUNICODE_STRING    ValueName;
-    ULONG        DataLength;
-    ULONG        DataOffset;
-    ULONG        Type;
+	PUNICODE_STRING	ValueName;
+	ULONG		DataLength;
+	ULONG		DataOffset;
+	ULONG		Type;
 } KEY_VALUE_ENTRY, *PKEY_VALUE_ENTRY;
 
 typedef struct _PROCESS_BASIC_INFORMATION {
-    PVOID Reserved1;
-    PVOID PebBaseAddress;
-    PVOID Reserved2[2];
-    ULONG_PTR UniqueProcessId;
+	PVOID Reserved1;
+	PVOID PebBaseAddress;
+	PVOID Reserved2[2];
+	ULONG_PTR UniqueProcessId;
 	ULONG_PTR ParentProcessId;
 } PROCESS_BASIC_INFORMATION;
 
 typedef PVOID HDEVINFO; 
 typedef struct _SP_DEVINFO_DATA {
-	DWORD     cbSize;
-	GUID      ClassGuid;
-	DWORD     DevInst;
+	DWORD	 cbSize;
+	GUID	  ClassGuid;
+	DWORD	 DevInst;
 	ULONG_PTR Reserved;
 } SP_DEVINFO_DATA, *PSP_DEVINFO_DATA;
 
 typedef struct _CLIENT_ID {
-    PVOID UniqueProcess;
-    PVOID UniqueThread;
+	PVOID UniqueProcess;
+	PVOID UniqueThread;
 } CLIENT_ID, *PCLIENT_ID;
 
 typedef ULONG_PTR KAFFINITY;
 typedef LONG KPRIORITY;
 
 typedef struct _THREAD_BASIC_INFORMATION {
-    NTSTATUS ExitStatus;
-    PVOID TebBaseAddress;
-    CLIENT_ID ClientId;
-    KAFFINITY AffinityMask;
-    KPRIORITY Priority;
-    KPRIORITY BasePriority;
+	NTSTATUS ExitStatus;
+	PVOID TebBaseAddress;
+	CLIENT_ID ClientId;
+	KAFFINITY AffinityMask;
+	KPRIORITY Priority;
+	KPRIORITY BasePriority;
 } THREAD_BASIC_INFORMATION, *PTHREAD_BASIC_INFORMATION;
 
 typedef struct _SYSTEM_THREAD {
-	LARGE_INTEGER           KernelTime;
-	LARGE_INTEGER           UserTime;
-	LARGE_INTEGER           CreateTime;
-	ULONG                   WaitTime;
-	PVOID                   StartAddress;
-	CLIENT_ID               ClientId;
-	KPRIORITY               Priority;
-	LONG                    BasePriority;
-	ULONG                   ContextSwitchCount;
-	ULONG                   State;
-	ULONG                   WaitReason;
+	LARGE_INTEGER		   KernelTime;
+	LARGE_INTEGER		   UserTime;
+	LARGE_INTEGER		   CreateTime;
+	ULONG				   WaitTime;
+	PVOID				   StartAddress;
+	CLIENT_ID			   ClientId;
+	KPRIORITY			   Priority;
+	LONG					BasePriority;
+	ULONG				   ContextSwitchCount;
+	ULONG				   State;
+	ULONG				   WaitReason;
 } SYSTEM_THREAD, *PSYSTEM_THREAD;
 
 typedef struct _SYSTEM_PROCESS_INFORMATION {
-	ULONG                   NextEntryOffset;
-	ULONG                   NumberOfThreads;
-	LARGE_INTEGER           Reserved[3];
-	LARGE_INTEGER           CreateTime;
-	LARGE_INTEGER           UserTime;
-	LARGE_INTEGER           KernelTime;
-	UNICODE_STRING          ImageName;
-	KPRIORITY               BasePriority;
+	ULONG				   NextEntryOffset;
+	ULONG				   NumberOfThreads;
+	LARGE_INTEGER		   Reserved[3];
+	LARGE_INTEGER		   CreateTime;
+	LARGE_INTEGER		   UserTime;
+	LARGE_INTEGER		   KernelTime;
+	UNICODE_STRING		  ImageName;
+	KPRIORITY			   BasePriority;
 	HANDLE					UniqueProcessId;
 	HANDLE					InheritedFromProcessId;
 	ULONG					HandleCount;
@@ -367,11 +367,11 @@ typedef enum _FILE_INFORMATION_CLASS {
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
 typedef struct _FILE_BASIC_INFORMATION {
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    ULONG FileAttributes;
+	LARGE_INTEGER CreationTime;
+	LARGE_INTEGER LastAccessTime;
+	LARGE_INTEGER LastWriteTime;
+	LARGE_INTEGER ChangeTime;
+	ULONG FileAttributes;
 } FILE_BASIC_INFORMATION, *PFILE_BASIC_INFORMATION;
 
 typedef struct _FILE_RENAME_INFORMATION {
@@ -388,46 +388,46 @@ typedef struct _FILE_NETWORK_OPEN_INFORMATION {
 	LARGE_INTEGER ChangeTime;
 	LARGE_INTEGER AllocationSize;
 	LARGE_INTEGER EndOfFile;
-	ULONG         FileAttributes;
+	ULONG		 FileAttributes;
 } FILE_NETWORK_OPEN_INFORMATION, *PFILE_NETWORK_OPEN_INFORMATION;
 
 typedef struct _RTL_DRIVE_LETTER_CURDIR {
-    USHORT Flags;
-    USHORT Length;
-    ULONG TimeStamp;
-    UNICODE_STRING DosPath;
+	USHORT Flags;
+	USHORT Length;
+	ULONG TimeStamp;
+	UNICODE_STRING DosPath;
 } RTL_DRIVE_LETTER_CURDIR, *PRTL_DRIVE_LETTER_CURDIR;
 
 typedef struct _RTL_USER_PROCESS_PARAMETERS {
-    ULONG                   MaximumLength;
-    ULONG                   Length;
-    ULONG                   Flags;
-    ULONG                   DebugFlags;
-    PVOID                   ConsoleHandle;
-    ULONG                   ConsoleFlags;
-    HANDLE                  StdInputHandle;
-    HANDLE                  StdOutputHandle;
-    HANDLE                  StdErrorHandle;
-    UNICODE_STRING          CurrentDirectoryPath;
-    HANDLE                  CurrentDirectoryHandle;
-    UNICODE_STRING          DllPath;
-    UNICODE_STRING          ImagePathName;
-    UNICODE_STRING          CommandLine;
-    PVOID                   Environment;
-    ULONG                   StartingPositionLeft;
-    ULONG                   StartingPositionTop;
-    ULONG                   Width;
-    ULONG                   Height;
-    ULONG                   CharWidth;
-    ULONG                   CharHeight;
-    ULONG                   ConsoleTextAttributes;
-    ULONG                   WindowFlags;
-    ULONG                   ShowWindowFlags;
-    UNICODE_STRING          WindowTitle;
-    UNICODE_STRING          DesktopName;
-    UNICODE_STRING          ShellInfo;
-    UNICODE_STRING          RuntimeData;
-    RTL_DRIVE_LETTER_CURDIR DLCurrentDirectory[0x20];
+	ULONG				   MaximumLength;
+	ULONG				   Length;
+	ULONG				   Flags;
+	ULONG				   DebugFlags;
+	PVOID				   ConsoleHandle;
+	ULONG				   ConsoleFlags;
+	HANDLE				  StdInputHandle;
+	HANDLE				  StdOutputHandle;
+	HANDLE				  StdErrorHandle;
+	UNICODE_STRING		  CurrentDirectoryPath;
+	HANDLE				  CurrentDirectoryHandle;
+	UNICODE_STRING		  DllPath;
+	UNICODE_STRING		  ImagePathName;
+	UNICODE_STRING		  CommandLine;
+	PVOID				   Environment;
+	ULONG				   StartingPositionLeft;
+	ULONG				   StartingPositionTop;
+	ULONG				   Width;
+	ULONG				   Height;
+	ULONG				   CharWidth;
+	ULONG				   CharHeight;
+	ULONG				   ConsoleTextAttributes;
+	ULONG				   WindowFlags;
+	ULONG				   ShowWindowFlags;
+	UNICODE_STRING		  WindowTitle;
+	UNICODE_STRING		  DesktopName;
+	UNICODE_STRING		  ShellInfo;
+	UNICODE_STRING		  RuntimeData;
+	RTL_DRIVE_LETTER_CURDIR DLCurrentDirectory[0x20];
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
 typedef void *PPS_CREATE_INFO, *PPS_ATTRIBUTE_LIST;
@@ -452,38 +452,38 @@ typedef struct _PROC_THREAD_ATTRIBUTE_LIST
 typedef void *PVOID, **PPVOID;
 
 typedef struct _PEB_LDR_DATA {
-    ULONG Length;
-    BOOLEAN Initialized;
-    PVOID SsHandle;
-    LIST_ENTRY InLoadOrderModuleList;
-    LIST_ENTRY InMemoryOrderModuleList;
-    LIST_ENTRY InInitializationOrderModuleList;
+	ULONG Length;
+	BOOLEAN Initialized;
+	PVOID SsHandle;
+	LIST_ENTRY InLoadOrderModuleList;
+	LIST_ENTRY InMemoryOrderModuleList;
+	LIST_ENTRY InInitializationOrderModuleList;
 } PEB_LDR_DATA, *PPEB_LDR_DATA;
 
 typedef struct _LDR_MODULE {
-    LIST_ENTRY InLoadOrderModuleList;
-    LIST_ENTRY InMemoryOrderModuleList;
-    LIST_ENTRY InInitializationOrderModuleList;
-    PVOID BaseAddress;
-    PVOID EntryPoint;
-    ULONG SizeOfImage;
-    UNICODE_STRING FullDllName;
-    UNICODE_STRING BaseDllName;
-    ULONG Flags;
-    SHORT LoadCount;
-    SHORT TlsIndex;
-    LIST_ENTRY HashTableEntry;
-    ULONG TimeDateStamp;
+	LIST_ENTRY InLoadOrderModuleList;
+	LIST_ENTRY InMemoryOrderModuleList;
+	LIST_ENTRY InInitializationOrderModuleList;
+	PVOID BaseAddress;
+	PVOID EntryPoint;
+	ULONG SizeOfImage;
+	UNICODE_STRING FullDllName;
+	UNICODE_STRING BaseDllName;
+	ULONG Flags;
+	SHORT LoadCount;
+	SHORT TlsIndex;
+	LIST_ENTRY HashTableEntry;
+	ULONG TimeDateStamp;
 } LDR_MODULE, *PLDR_MODULE;
 
 #ifdef _WIN64
 typedef struct _PEB {
-    BOOLEAN InheritedAddressSpace;
-    BOOLEAN ReadImageFileExecOptions;
-    BOOLEAN BeingDebugged;
-    BOOLEAN Spare;
-    HANDLE  Mutant;
-    PVOID   ImageBaseAddress;
+	BOOLEAN InheritedAddressSpace;
+	BOOLEAN ReadImageFileExecOptions;
+	BOOLEAN BeingDebugged;
+	BOOLEAN Spare;
+	HANDLE  Mutant;
+	PVOID   ImageBaseAddress;
 	PPEB_LDR_DATA LoaderData;
 	PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
 	BYTE Reserved3[520];
@@ -493,60 +493,60 @@ typedef struct _PEB {
 } PEB;
 #else
 typedef struct _PEB {
-    BOOLEAN InheritedAddressSpace;
-    BOOLEAN ReadImageFileExecOptions;
-    BOOLEAN BeingDebugged;
-    BOOLEAN Spare;
-    HANDLE  Mutant;
-    PVOID   ImageBaseAddress;
-    PPEB_LDR_DATA LoaderData;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
-    PVOID   SubSystemData;
-    PVOID   ProcessHeap;
-    PVOID   FastPebLock;
-    void   *FastPebLockRoutine;
-    void   *FastPebUnlockRoutine;
-    ULONG   EnvironmentUpdateCount;
-    PPVOID  KernelCallbackTable;
-    PVOID   EventLogSection;
-    PVOID   EventLog;
-    void   *FreeList;
-    ULONG   TlsExpansionCounter;
-    PVOID   TlsBitmap;
-    ULONG   TlsBitmapBits[0x2];
-    PVOID   ReadOnlySharedMemoryBase;
-    PVOID   ReadOnlySharedMemoryHeap;
-    PPVOID  ReadOnlyStaticServerData;
-    PVOID   AnsiCodePageData;
-    PVOID   OemCodePageData;
-    PVOID   UnicodeCaseTableData;
-    ULONG   NumberOfProcessors;
-    ULONG   NtGlobalFlag;
-    BYTE    Spare2[0x4];
-    LARGE_INTEGER CriticalSectionTimeout;
-    ULONG   HeapSegmentReserve;
-    ULONG   HeapSegmentCommit;
-    ULONG   HeapDeCommitTotalFreeThreshold;
-    ULONG   HeapDeCommitFreeBlockThreshold;
-    ULONG   NumberOfHeaps;
-    ULONG   MaximumNumberOfHeaps;
-    PPVOID *ProcessHeaps;
-    PVOID   GdiSharedHandleTable;
-    PVOID   ProcessStarterHelper;
-    PVOID   GdiDCAttributeList;
-    PVOID   LoaderLock;
-    ULONG   OSMajorVersion;
-    ULONG   OSMinorVersion;
-    ULONG   OSBuildNumber;
-    ULONG   OSPlatformId;
-    ULONG   ImageSubSystem;
-    ULONG   ImageSubSystemMajorVersion;
-    ULONG   ImageSubSystemMinorVersion;
-    ULONG   GdiHandleBuffer[0x22];
-    ULONG   PostProcessInitRoutine;
-    ULONG   TlsExpansionBitmap;
-    BYTE    TlsExpansionBitmapBits[0x80];
-    ULONG   SessionId;
+	BOOLEAN InheritedAddressSpace;
+	BOOLEAN ReadImageFileExecOptions;
+	BOOLEAN BeingDebugged;
+	BOOLEAN Spare;
+	HANDLE  Mutant;
+	PVOID   ImageBaseAddress;
+	PPEB_LDR_DATA LoaderData;
+	PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+	PVOID   SubSystemData;
+	PVOID   ProcessHeap;
+	PVOID   FastPebLock;
+	void   *FastPebLockRoutine;
+	void   *FastPebUnlockRoutine;
+	ULONG   EnvironmentUpdateCount;
+	PPVOID  KernelCallbackTable;
+	PVOID   EventLogSection;
+	PVOID   EventLog;
+	void   *FreeList;
+	ULONG   TlsExpansionCounter;
+	PVOID   TlsBitmap;
+	ULONG   TlsBitmapBits[0x2];
+	PVOID   ReadOnlySharedMemoryBase;
+	PVOID   ReadOnlySharedMemoryHeap;
+	PPVOID  ReadOnlyStaticServerData;
+	PVOID   AnsiCodePageData;
+	PVOID   OemCodePageData;
+	PVOID   UnicodeCaseTableData;
+	ULONG   NumberOfProcessors;
+	ULONG   NtGlobalFlag;
+	BYTE	Spare2[0x4];
+	LARGE_INTEGER CriticalSectionTimeout;
+	ULONG   HeapSegmentReserve;
+	ULONG   HeapSegmentCommit;
+	ULONG   HeapDeCommitTotalFreeThreshold;
+	ULONG   HeapDeCommitFreeBlockThreshold;
+	ULONG   NumberOfHeaps;
+	ULONG   MaximumNumberOfHeaps;
+	PPVOID *ProcessHeaps;
+	PVOID   GdiSharedHandleTable;
+	PVOID   ProcessStarterHelper;
+	PVOID   GdiDCAttributeList;
+	PVOID   LoaderLock;
+	ULONG   OSMajorVersion;
+	ULONG   OSMinorVersion;
+	ULONG   OSBuildNumber;
+	ULONG   OSPlatformId;
+	ULONG   ImageSubSystem;
+	ULONG   ImageSubSystemMajorVersion;
+	ULONG   ImageSubSystemMinorVersion;
+	ULONG   GdiHandleBuffer[0x22];
+	ULONG   PostProcessInitRoutine;
+	ULONG   TlsExpansionBitmap;
+	BYTE	TlsExpansionBitmapBits[0x80];
+	ULONG   SessionId;
 } PEB, *PPEB;
 #endif
 
@@ -651,14 +651,14 @@ typedef struct _STARTUPINFOEXW {
 #if 0
 static inline unsigned int __readfsdword(unsigned int index)
 {
-    unsigned int ret;
-    __asm__("movl %%fs:(%1), %0" : "=r" (ret) : "r" (index));
-    return ret;
+	unsigned int ret;
+	__asm__("movl %%fs:(%1), %0" : "=r" (ret) : "r" (index));
+	return ret;
 }
 
 static inline void __writefsdword(unsigned int index, unsigned int value)
 {
-    __asm__("movl %0, %%fs:(%1)" :: "r" (value), "r" (index));
+	__asm__("movl %0, %%fs:(%1)" :: "r" (value), "r" (index));
 }
 #endif
 
@@ -669,70 +669,70 @@ static inline void __writefsdword(unsigned int index, unsigned int value)
 typedef unsigned short RTL_ATOM, *PRTL_ATOM;
 
 typedef enum _ATOM_INFORMATION_CLASS {
-    AtomBasicInformation,
-    AtomTableInformation
+	AtomBasicInformation,
+	AtomTableInformation
 } ATOM_INFORMATION_CLASS;
 
 typedef struct _ATOM_BASIC_INFORMATION {
-    USHORT UsageCount;
-    USHORT Flags;
-    USHORT NameLength;
-    WCHAR Name[ 1 ];
+	USHORT UsageCount;
+	USHORT Flags;
+	USHORT NameLength;
+	WCHAR Name[ 1 ];
 } ATOM_BASIC_INFORMATION, *PATOM_BASIC_INFORMATION;
 
 typedef struct _ATOM_TABLE_INFORMATION {
-    ULONG NumberOfAtoms;
-    RTL_ATOM Atoms[ 1 ];
+	ULONG NumberOfAtoms;
+	RTL_ATOM Atoms[ 1 ];
 } ATOM_TABLE_INFORMATION, *PATOM_TABLE_INFORMATION;
 
 typedef struct _SECTION_IMAGE_INFORMATION {
-    VOID*               TransferAddress;
-    uint32_t            ZeroBits;
-    uint8_t             _PADDING0_[0x4];
-    uint64_t            MaximumStackSize;
-    uint64_t            CommittedStackSize;
-    uint32_t            SubSystemType;
-    union {
-        struct {
-            uint16_t    SubSystemMinorVersion;
-            uint16_t    SubSystemMajorVersion;
-        } _;
-        uint32_t        SubSystemVersion;
-    } _;
-    uint32_t            GpValue;
-    uint16_t            ImageCharacteristics;
-    uint16_t            DllCharacteristics;
-    uint16_t            Machine;
-    uint8_t             ImageContainsCode;
-    union {
-        uint8_t         ImageFlags;
-        struct {
-            uint8_t     ComPlusNativeReady : 1;
-            uint8_t     ComPlusILOnly : 1;
-            uint8_t     ImageDynamicallyRelocated : 1;
-            uint8_t     ImageMappedFlat : 1;
-            uint8_t     Reserved : 4;
-        } _;
-    } __;
-    uint32_t            LoaderFlags;
-    uint32_t            ImageFileSize;
-    uint32_t            CheckSum;
+	VOID*			   TransferAddress;
+	uint32_t			ZeroBits;
+	uint8_t			 _PADDING0_[0x4];
+	uint64_t			MaximumStackSize;
+	uint64_t			CommittedStackSize;
+	uint32_t			SubSystemType;
+	union {
+		struct {
+			uint16_t	SubSystemMinorVersion;
+			uint16_t	SubSystemMajorVersion;
+		} _;
+		uint32_t		SubSystemVersion;
+	} _;
+	uint32_t			GpValue;
+	uint16_t			ImageCharacteristics;
+	uint16_t			DllCharacteristics;
+	uint16_t			Machine;
+	uint8_t			 ImageContainsCode;
+	union {
+		uint8_t		 ImageFlags;
+		struct {
+			uint8_t	 ComPlusNativeReady : 1;
+			uint8_t	 ComPlusILOnly : 1;
+			uint8_t	 ImageDynamicallyRelocated : 1;
+			uint8_t	 ImageMappedFlat : 1;
+			uint8_t	 Reserved : 4;
+		} _;
+	} __;
+	uint32_t			LoaderFlags;
+	uint32_t			ImageFileSize;
+	uint32_t			CheckSum;
 } SECTION_IMAGE_INFORMATION, *PSECTION_IMAGE_INFORMATION;
 
 typedef struct _RTL_USER_PROCESS_INFORMATION {
-    ULONG Size;
-    HANDLE ProcessHandle;
-    HANDLE ThreadHandle;
-    CLIENT_ID ClientId;
-    SECTION_IMAGE_INFORMATION ImageInformation;
+	ULONG Size;
+	HANDLE ProcessHandle;
+	HANDLE ThreadHandle;
+	CLIENT_ID ClientId;
+	SECTION_IMAGE_INFORMATION ImageInformation;
 } RTL_USER_PROCESS_INFORMATION, *PRTL_USER_PROCESS_INFORMATION;
 
 #define FILE_NAME_INFORMATION_REQUIRED_SIZE \
-    sizeof(FILE_NAME_INFORMATION) + sizeof(wchar_t) * 32768
+	sizeof(FILE_NAME_INFORMATION) + sizeof(wchar_t) * 32768
 
 typedef struct _FILE_NAME_INFORMATION {
-    ULONG FileNameLength;
-    WCHAR FileName[1];
+	ULONG FileNameLength;
+	WCHAR FileName[1];
 } FILE_NAME_INFORMATION, *PFILE_NAME_INFORMATION;
 
 typedef struct _KEY_NAME_INFORMATION {
@@ -746,7 +746,7 @@ typedef struct _OBJECT_NAME_INFORMATION {
 } OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
 #define OBJECT_NAME_INFORMATION_REQUIRED_SIZE \
-    sizeof(OBJECT_NAME_INFORMATION) + sizeof(wchar_t) * 32768
+	sizeof(OBJECT_NAME_INFORMATION) + sizeof(wchar_t) * 32768
 
 typedef enum {
 	ObjectBasicInformation,
@@ -757,126 +757,126 @@ typedef enum {
 } OBJECT_INFORMATION_CLASS;
 
 typedef enum  {
-    FileFsVolumeInformation       = 1,
-    FileFsLabelInformation        = 2,
-    FileFsSizeInformation         = 3,
-    FileFsDeviceInformation       = 4,
-    FileFsAttributeInformation    = 5,
-    FileFsControlInformation      = 6,
-    FileFsFullSizeInformation     = 7,
-    FileFsObjectIdInformation     = 8,
-    FileFsDriverPathInformation   = 9,
-    FileFsVolumeFlagsInformation  = 10,
-    FileFsSectorSizeInformation   = 11
+	FileFsVolumeInformation	   = 1,
+	FileFsLabelInformation		= 2,
+	FileFsSizeInformation		 = 3,
+	FileFsDeviceInformation	   = 4,
+	FileFsAttributeInformation	= 5,
+	FileFsControlInformation	  = 6,
+	FileFsFullSizeInformation	 = 7,
+	FileFsObjectIdInformation	 = 8,
+	FileFsDriverPathInformation   = 9,
+	FileFsVolumeFlagsInformation  = 10,
+	FileFsSectorSizeInformation   = 11
 } FS_INFORMATION_CLASS;
 
 typedef enum _PROCESSINFOCLASS {
-    ProcessBasicInformation,
-    ProcessQuotaLimits,
-    ProcessIoCounters,
-    ProcessVmCounters,
-    ProcessTimes,
-    ProcessBasePriority,
-    ProcessRaisePriority,
-    ProcessDebugPort,
-    ProcessExceptionPort,
-    ProcessAccessToken,
-    ProcessLdtInformation,
-    ProcessLdtSize,
-    ProcessDefaultHardErrorMode,
-    ProcessIoPortHandlers,          // Note: this is kernel mode only
-    ProcessPooledUsageAndLimits,
-    ProcessWorkingSetWatch,
-    ProcessUserModeIOPL,
-    ProcessEnableAlignmentFaultFixup,
-    ProcessPriorityClass,
-    ProcessWx86Information,
-    ProcessHandleCount,
-    ProcessAffinityMask,
-    ProcessPriorityBoost,
-    ProcessDeviceMap,
-    ProcessSessionInformation,
-    ProcessForegroundInformation,
-    ProcessWow64Information,
-    ProcessImageFileName,
-    ProcessLUIDDeviceMapsEnabled,
-    ProcessBreakOnTermination,
-    ProcessDebugObjectHandle,
-    ProcessDebugFlags,
-    ProcessHandleTracing,
-    ProcessIoPriority,
-    ProcessExecuteFlags,
-    ProcessTlsInformation,
-    ProcessCookie,
-    ProcessImageInformation,
-    ProcessCycleTime,
-    ProcessPagePriority,
-    ProcessInstrumentationCallback,
-    ProcessThreadStackAllocation,
-    ProcessWorkingSetWatchEx,
-    ProcessImageFileNameWin32,
-    ProcessImageFileMapping,
-    ProcessAffinityUpdateMode,
-    ProcessMemoryAllocationMode,
-    ProcessGroupInformation,
-    ProcessTokenVirtualizationEnabled,
-    ProcessConsoleHostProcess,
-    ProcessWindowInformation,
-    ProcessHandleInformation,
-    ProcessMitigationPolicy,
-    ProcessDynamicFunctionTableInformation,
-    ProcessHandleCheckingMode,
-    ProcessKeepAliveCount,
-    ProcessRevokeFileHandles,
-    ProcessWorkingSetControl,
-    MaxProcessInfoClass             // MaxProcessInfoClass should always be the last enum
+	ProcessBasicInformation,
+	ProcessQuotaLimits,
+	ProcessIoCounters,
+	ProcessVmCounters,
+	ProcessTimes,
+	ProcessBasePriority,
+	ProcessRaisePriority,
+	ProcessDebugPort,
+	ProcessExceptionPort,
+	ProcessAccessToken,
+	ProcessLdtInformation,
+	ProcessLdtSize,
+	ProcessDefaultHardErrorMode,
+	ProcessIoPortHandlers,		  // Note: this is kernel mode only
+	ProcessPooledUsageAndLimits,
+	ProcessWorkingSetWatch,
+	ProcessUserModeIOPL,
+	ProcessEnableAlignmentFaultFixup,
+	ProcessPriorityClass,
+	ProcessWx86Information,
+	ProcessHandleCount,
+	ProcessAffinityMask,
+	ProcessPriorityBoost,
+	ProcessDeviceMap,
+	ProcessSessionInformation,
+	ProcessForegroundInformation,
+	ProcessWow64Information,
+	ProcessImageFileName,
+	ProcessLUIDDeviceMapsEnabled,
+	ProcessBreakOnTermination,
+	ProcessDebugObjectHandle,
+	ProcessDebugFlags,
+	ProcessHandleTracing,
+	ProcessIoPriority,
+	ProcessExecuteFlags,
+	ProcessTlsInformation,
+	ProcessCookie,
+	ProcessImageInformation,
+	ProcessCycleTime,
+	ProcessPagePriority,
+	ProcessInstrumentationCallback,
+	ProcessThreadStackAllocation,
+	ProcessWorkingSetWatchEx,
+	ProcessImageFileNameWin32,
+	ProcessImageFileMapping,
+	ProcessAffinityUpdateMode,
+	ProcessMemoryAllocationMode,
+	ProcessGroupInformation,
+	ProcessTokenVirtualizationEnabled,
+	ProcessConsoleHostProcess,
+	ProcessWindowInformation,
+	ProcessHandleInformation,
+	ProcessMitigationPolicy,
+	ProcessDynamicFunctionTableInformation,
+	ProcessHandleCheckingMode,
+	ProcessKeepAliveCount,
+	ProcessRevokeFileHandles,
+	ProcessWorkingSetControl,
+	MaxProcessInfoClass			 // MaxProcessInfoClass should always be the last enum
 } PROCESSINFOCLASS;
 
 typedef enum _THREADINFOCLASS {
-    ThreadBasicInformation,
-    ThreadTimes,
-    ThreadPriority,
-    ThreadBasePriority,
-    ThreadAffinityMask,
-    ThreadImpersonationToken,
-    ThreadDescriptorTableEntry,
-    ThreadEnableAlignmentFaultFixup,
-    ThreadEventPair_Reusable,
-    ThreadQuerySetWin32StartAddress,
-    ThreadZeroTlsCell,
-    ThreadPerformanceCount,
-    ThreadAmILastThread,
-    ThreadIdealProcessor,
-    ThreadPriorityBoost,
-    ThreadSetTlsArrayAddress,   // Obsolete
-    ThreadIsIoPending,
-    ThreadHideFromDebugger,
-    ThreadBreakOnTermination,
-    ThreadSwitchLegacyState,
-    ThreadIsTerminated,
-    ThreadLastSystemCall,
-    ThreadIoPriority,
-    ThreadCycleTime,
-    ThreadPagePriority,
-    ThreadActualBasePriority,
-    ThreadTebInformation,
-    ThreadCSwitchMon,          // Obsolete
-    ThreadCSwitchPmu,
-    ThreadWow64Context,
-    ThreadGroupInformation,
-    ThreadUmsInformation,      // UMS
-    ThreadCounterProfiling,
-    ThreadIdealProcessorEx,
-    ThreadCpuAccountingInformation,
-    MaxThreadInfoClass
+	ThreadBasicInformation,
+	ThreadTimes,
+	ThreadPriority,
+	ThreadBasePriority,
+	ThreadAffinityMask,
+	ThreadImpersonationToken,
+	ThreadDescriptorTableEntry,
+	ThreadEnableAlignmentFaultFixup,
+	ThreadEventPair_Reusable,
+	ThreadQuerySetWin32StartAddress,
+	ThreadZeroTlsCell,
+	ThreadPerformanceCount,
+	ThreadAmILastThread,
+	ThreadIdealProcessor,
+	ThreadPriorityBoost,
+	ThreadSetTlsArrayAddress,   // Obsolete
+	ThreadIsIoPending,
+	ThreadHideFromDebugger,
+	ThreadBreakOnTermination,
+	ThreadSwitchLegacyState,
+	ThreadIsTerminated,
+	ThreadLastSystemCall,
+	ThreadIoPriority,
+	ThreadCycleTime,
+	ThreadPagePriority,
+	ThreadActualBasePriority,
+	ThreadTebInformation,
+	ThreadCSwitchMon,		  // Obsolete
+	ThreadCSwitchPmu,
+	ThreadWow64Context,
+	ThreadGroupInformation,
+	ThreadUmsInformation,	  // UMS
+	ThreadCounterProfiling,
+	ThreadIdealProcessorEx,
+	ThreadCpuAccountingInformation,
+	MaxThreadInfoClass
 } THREADINFOCLASS;
 
 typedef struct _FILE_FS_VOLUME_INFORMATION {
-    LARGE_INTEGER VolumeCreationTime;
-    ULONG         VolumeSerialNumber;
-    ULONG         VolumeLabelLength;
-    BOOLEAN       SupportsObjects;
-    WCHAR         VolumeLabel[1];
+	LARGE_INTEGER VolumeCreationTime;
+	ULONG		 VolumeSerialNumber;
+	ULONG		 VolumeLabelLength;
+	BOOLEAN	   SupportsObjects;
+	WCHAR		 VolumeLabel[1];
 } FILE_FS_VOLUME_INFORMATION, *PFILE_FS_VOLUME_INFORMATION;
 
 typedef struct _TIMER_SET_COALESCABLE_TIMER_INFO {
@@ -893,7 +893,7 @@ typedef BOOL(WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
 
 static __inline UNICODE_STRING *unistr_from_objattr(OBJECT_ATTRIBUTES *obj)
 {
-    return obj != NULL ? obj->ObjectName : NULL;
+	return obj != NULL ? obj->ObjectName : NULL;
 }
 
 static __inline HANDLE handle_from_objattr(OBJECT_ATTRIBUTES *obj)

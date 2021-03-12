@@ -4,7 +4,7 @@
 
 DeviceNameResolver::DeviceNameResolver()
 {
-    NativeWinApi::initialize();
+	NativeWinApi::initialize();
 	initDeviceNameList();
 }
 
@@ -40,7 +40,7 @@ void DeviceNameResolver::initDeviceNameList()
 		}
 	}
 
-    fixVirtualDevices();
+	fixVirtualDevices();
 }
 
 bool DeviceNameResolver::resolveDeviceLongNameToShort(const WCHAR * sourcePath, WCHAR * targetPath)
@@ -60,44 +60,44 @@ bool DeviceNameResolver::resolveDeviceLongNameToShort(const WCHAR * sourcePath, 
 
 void DeviceNameResolver::fixVirtualDevices()
 {
-    const USHORT BufferSize = MAX_PATH * 2 * sizeof(WCHAR);
-    WCHAR longCopy[MAX_PATH] = {0};
-    OBJECT_ATTRIBUTES oa = {0};
-    UNICODE_STRING unicodeInput = {0};
-    UNICODE_STRING unicodeOutput = {0};
-    HANDLE hFile = 0;
-    ULONG retLen = 0;
-    HardDisk hardDisk;
+	const USHORT BufferSize = MAX_PATH * 2 * sizeof(WCHAR);
+	WCHAR longCopy[MAX_PATH] = {0};
+	OBJECT_ATTRIBUTES oa = {0};
+	UNICODE_STRING unicodeInput = {0};
+	UNICODE_STRING unicodeOutput = {0};
+	HANDLE hFile = 0;
+	ULONG retLen = 0;
+	HardDisk hardDisk;
 
-    unicodeOutput.Buffer = (PWSTR)malloc(BufferSize);
-    if (!unicodeOutput.Buffer)
-        return;
+	unicodeOutput.Buffer = (PWSTR)malloc(BufferSize);
+	if (!unicodeOutput.Buffer)
+		return;
 
-    for (unsigned int i = 0; i < deviceNameList.size(); i++)
-    {
-        wcscpy_s(longCopy, deviceNameList[i].longName);
+	for (unsigned int i = 0; i < deviceNameList.size(); i++)
+	{
+		wcscpy_s(longCopy, deviceNameList[i].longName);
 
-        NativeWinApi::RtlInitUnicodeString(&unicodeInput, longCopy);
-        InitializeObjectAttributes(&oa, &unicodeInput, 0, 0, 0);
+		NativeWinApi::RtlInitUnicodeString(&unicodeInput, longCopy);
+		InitializeObjectAttributes(&oa, &unicodeInput, 0, 0, 0);
 
-        if(NT_SUCCESS(NativeWinApi::NtOpenSymbolicLinkObject(&hFile, SYMBOLIC_LINK_QUERY, &oa)))
-        {
-            unicodeOutput.Length = BufferSize;
-            unicodeOutput.MaximumLength = unicodeOutput.Length;
-            ZeroMemory(unicodeOutput.Buffer, unicodeOutput.Length);
+		if(NT_SUCCESS(NativeWinApi::NtOpenSymbolicLinkObject(&hFile, SYMBOLIC_LINK_QUERY, &oa)))
+		{
+			unicodeOutput.Length = BufferSize;
+			unicodeOutput.MaximumLength = unicodeOutput.Length;
+			ZeroMemory(unicodeOutput.Buffer, unicodeOutput.Length);
 
-            if (NT_SUCCESS(NativeWinApi::NtQuerySymbolicLinkObject(hFile, &unicodeOutput, &retLen)))
-            {
-                hardDisk.longNameLength = wcslen(unicodeOutput.Buffer);
-                wcscpy_s(hardDisk.shortName, deviceNameList[i].shortName);
-                wcscpy_s(hardDisk.longName, unicodeOutput.Buffer);
-                deviceNameList.push_back(hardDisk);
-            }  
+			if (NT_SUCCESS(NativeWinApi::NtQuerySymbolicLinkObject(hFile, &unicodeOutput, &retLen)))
+			{
+				hardDisk.longNameLength = wcslen(unicodeOutput.Buffer);
+				wcscpy_s(hardDisk.shortName, deviceNameList[i].shortName);
+				wcscpy_s(hardDisk.longName, unicodeOutput.Buffer);
+				deviceNameList.push_back(hardDisk);
+			}  
 
-            NativeWinApi::NtClose(hFile);
-        }
-    }
+			NativeWinApi::NtClose(hFile);
+		}
+	}
 
-    free(unicodeOutput.Buffer);
+	free(unicodeOutput.Buffer);
 }
 

@@ -36,102 +36,102 @@ FUNCTIONPTRS sFunctions = { 0 };
 */
 extern unsigned __int64 X64Call(DWORD64 func, int argC, ...)
 {
-    va_list args;
-    va_start(args, argC);
-    union reg64 _rcx = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
-    union reg64 _rdx = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
-    union reg64 _r8 = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
-    union reg64 _r9 = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
-    union reg64 _rax = { 0 };
+	va_list args;
+	va_start(args, argC);
+	union reg64 _rcx = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
+	union reg64 _rdx = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
+	union reg64 _r8 = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
+	union reg64 _r9 = { (argC > 0) ? argC--, va_arg(args, DWORD64) : 0 };
+	union reg64 _rax = { 0 };
 
-    union reg64 restArgs = { (DWORD64)&va_arg(args, DWORD64) };
-    
-    // conversion to QWORD for easier use in inline assembly
-    union reg64 _argC = { (DWORD64)argC };
-    DWORD back_esp = 0;
+	union reg64 restArgs = { (DWORD64)&va_arg(args, DWORD64) };
+	
+	// conversion to QWORD for easier use in inline assembly
+	union reg64 _argC = { (DWORD64)argC };
+	DWORD back_esp = 0;
 	WORD back_fs = 0;
 
-    __asm
-    {
-        ;// reset FS segment, to properly handle RFG
-        mov    back_fs, fs
-        mov    eax, 0x2B
-        mov    fs, ax
+	__asm
+	{
+		;// reset FS segment, to properly handle RFG
+		mov	back_fs, fs
+		mov	eax, 0x2B
+		mov	fs, ax
 
-        ;// keep original esp in back_esp variable
-        mov    back_esp, esp
-        
-        ;// align esp to 0x10, without aligned stack some syscalls may return errors !
-        ;// (actually, for syscalls it is sufficient to align to 8, but SSE opcodes 
-        ;// requires 0x10 alignment), it will be further adjusted according to the
-        ;// number of arguments above 4
-        and    esp, 0xFFFFFFF0
+		;// keep original esp in back_esp variable
+		mov	back_esp, esp
+		
+		;// align esp to 0x10, without aligned stack some syscalls may return errors !
+		;// (actually, for syscalls it is sufficient to align to 8, but SSE opcodes 
+		;// requires 0x10 alignment), it will be further adjusted according to the
+		;// number of arguments above 4
+		and	esp, 0xFFFFFFF0
 
-        X64_Start();
+		X64_Start();
 
-        ;// below code is compiled as x86 inline asm, but it is executed as x64 code
-        ;// that's why it need sometimes REX_W() macro, right column contains detailed
-        ;// transcription how it will be interpreted by CPU
+		;// below code is compiled as x86 inline asm, but it is executed as x64 code
+		;// that's why it need sometimes REX_W() macro, right column contains detailed
+		;// transcription how it will be interpreted by CPU
 
-        ;// fill first four arguments
-  REX_W mov    ecx, _rcx.dw[0]                          ;// mov     rcx, qword ptr [_rcx]
-  REX_W mov    edx, _rdx.dw[0]                          ;// mov     rdx, qword ptr [_rdx]
-        push   _r8.v                                    ;// push    qword ptr [_r8]
-        X64_Pop(_R8);                                   ;// pop     r8
-        push   _r9.v                                    ;// push    qword ptr [_r9]
-        X64_Pop(_R9);                                   ;// pop     r9
-                                                        ;//
-  REX_W mov    eax, _argC.dw[0]                         ;// mov     rax, qword ptr [_argC]
-                                                        ;// 
-        ;// final stack adjustment, according to the    ;//
-        ;// number of arguments above 4                 ;// 
-        test   al, 1                                    ;// test    al, 1
-        jnz    _no_adjust                               ;// jnz     _no_adjust
-        sub    esp, 8                                   ;// sub     rsp, 8
-_no_adjust:                                             ;//
-                                                        ;// 
-        push   edi                                      ;// push    rdi
-  REX_W mov    edi, restArgs.dw[0]                      ;// mov     rdi, qword ptr [restArgs]
-                                                        ;// 
-        ;// put rest of arguments on the stack          ;// 
-  REX_W test   eax, eax                                 ;// test    rax, rax
-        jz     _ls_e                                    ;// je      _ls_e
-  REX_W lea    edi, dword ptr [edi + 8*eax - 8]         ;// lea     rdi, [rdi + rax*8 - 8]
-                                                        ;// 
-_ls:                                                    ;// 
-  REX_W test   eax, eax                                 ;// test    rax, rax
-        jz     _ls_e                                    ;// je      _ls_e
-        push   dword ptr [edi]                          ;// push    qword ptr [rdi]
-  REX_W sub    edi, 8                                   ;// sub     rdi, 8
-  REX_W sub    eax, 1                                   ;// sub     rax, 1
-        jmp    _ls                                      ;// jmp     _ls
-_ls_e:                                                  ;// 
-                                                        ;// 
-        ;// create stack space for spilling registers   ;// 
-  REX_W sub    esp, 0x20                                ;// sub     rsp, 20h
-                                                        ;// 
-        call   func                                     ;// call    qword ptr [func]
-                                                        ;// 
-        ;// cleanup stack                               ;// 
-  REX_W mov    ecx, _argC.dw[0]                         ;// mov     rcx, qword ptr [_argC]
-  REX_W lea    esp, dword ptr [esp + 8*ecx + 0x20]      ;// lea     rsp, [rsp + rcx*8 + 20h]
-                                                        ;// 
-        pop    edi                                      ;// pop     rdi
-                                                        ;// 
-        // set return value                             ;// 
-  REX_W mov    _rax.dw[0], eax                          ;// mov     qword ptr [_rax], rax
+		;// fill first four arguments
+  REX_W mov	ecx, _rcx.dw[0]						  ;// mov	 rcx, qword ptr [_rcx]
+  REX_W mov	edx, _rdx.dw[0]						  ;// mov	 rdx, qword ptr [_rdx]
+		push   _r8.v									;// push	qword ptr [_r8]
+		X64_Pop(_R8);								   ;// pop	 r8
+		push   _r9.v									;// push	qword ptr [_r9]
+		X64_Pop(_R9);								   ;// pop	 r9
+														;//
+  REX_W mov	eax, _argC.dw[0]						 ;// mov	 rax, qword ptr [_argC]
+														;// 
+		;// final stack adjustment, according to the	;//
+		;// number of arguments above 4				 ;// 
+		test   al, 1									;// test	al, 1
+		jnz	_no_adjust							   ;// jnz	 _no_adjust
+		sub	esp, 8								   ;// sub	 rsp, 8
+_no_adjust:											 ;//
+														;// 
+		push   edi									  ;// push	rdi
+  REX_W mov	edi, restArgs.dw[0]					  ;// mov	 rdi, qword ptr [restArgs]
+														;// 
+		;// put rest of arguments on the stack		  ;// 
+  REX_W test   eax, eax								 ;// test	rax, rax
+		jz	 _ls_e									;// je	  _ls_e
+  REX_W lea	edi, dword ptr [edi + 8*eax - 8]		 ;// lea	 rdi, [rdi + rax*8 - 8]
+														;// 
+_ls:													;// 
+  REX_W test   eax, eax								 ;// test	rax, rax
+		jz	 _ls_e									;// je	  _ls_e
+		push   dword ptr [edi]						  ;// push	qword ptr [rdi]
+  REX_W sub	edi, 8								   ;// sub	 rdi, 8
+  REX_W sub	eax, 1								   ;// sub	 rax, 1
+		jmp	_ls									  ;// jmp	 _ls
+_ls_e:												  ;// 
+														;// 
+		;// create stack space for spilling registers   ;// 
+  REX_W sub	esp, 0x20								;// sub	 rsp, 20h
+														;// 
+		call   func									 ;// call	qword ptr [func]
+														;// 
+		;// cleanup stack							   ;// 
+  REX_W mov	ecx, _argC.dw[0]						 ;// mov	 rcx, qword ptr [_argC]
+  REX_W lea	esp, dword ptr [esp + 8*ecx + 0x20]	  ;// lea	 rsp, [rsp + rcx*8 + 20h]
+														;// 
+		pop	edi									  ;// pop	 rdi
+														;// 
+		// set return value							 ;// 
+  REX_W mov	_rax.dw[0], eax						  ;// mov	 qword ptr [_rax], rax
 
-        X64_End();
+		X64_End();
 
-        mov    ax, ds
-        mov    ss, ax
-        mov    esp, back_esp
+		mov	ax, ds
+		mov	ss, ax
+		mov	esp, back_esp
 
-        ;// restore FS segment
-        mov    ax, back_fs
-        mov    fs, ax
-    }
-    return _rax.v;
+		;// restore FS segment
+		mov	ax, back_fs
+		mov	fs, ax
+	}
+	return _rax.v;
 }
 #pragma warning(pop)
 
@@ -203,70 +203,70 @@ extern SIZE_T VirtualQueryEx64(HANDLE hProcess, DWORD64 lpAddress, MEMORY_BASIC_
 extern DWORD64 VirtualAllocEx64(HANDLE hProcess, DWORD64 lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)
 {
 	DWORD64 lvpNtdll = GetModuleBase64( L"ntdll.dll" );
-    static DWORD64 ntavm = 0;
-    if (0 == ntavm)
-    {
-        ntavm = GetProcAddress64(lvpNtdll, "NtAllocateVirtualMemory");
-        if (0 == ntavm)
-            return 0;
-    }
+	static DWORD64 ntavm = 0;
+	if (0 == ntavm)
+	{
+		ntavm = GetProcAddress64(lvpNtdll, "NtAllocateVirtualMemory");
+		if (0 == ntavm)
+			return 0;
+	}
 
-    DWORD64 tmpAddr = lpAddress;
-    DWORD64 tmpSize = dwSize;
-    DWORD64 ret = X64Call(ntavm, 6, (DWORD64)hProcess, (DWORD64)&tmpAddr, (DWORD64)0, (DWORD64)&tmpSize, (DWORD64)flAllocationType, (DWORD64)flProtect);
+	DWORD64 tmpAddr = lpAddress;
+	DWORD64 tmpSize = dwSize;
+	DWORD64 ret = X64Call(ntavm, 6, (DWORD64)hProcess, (DWORD64)&tmpAddr, (DWORD64)0, (DWORD64)&tmpSize, (DWORD64)flAllocationType, (DWORD64)flProtect);
 	if (STATUS_SUCCESS != ret)
 	{
 		SetLastErrorFromX64Call(ret);
 		return FALSE;
 	}
-    else
-        return tmpAddr;
+	else
+		return tmpAddr;
 }
 
 extern BOOL VirtualFreeEx64(HANDLE hProcess, DWORD64 lpAddress, SIZE_T dwSize, DWORD dwFreeType)
 {
 	DWORD64 lvpNtdll = GetModuleBase64( L"ntdll.dll" );
-    static DWORD64 ntfvm = 0;
-    if (0 == ntfvm)
-    {
-        ntfvm = GetProcAddress64(lvpNtdll, "NtFreeVirtualMemory");
-        if (0 == ntfvm)
-            return 0;
-    }
+	static DWORD64 ntfvm = 0;
+	if (0 == ntfvm)
+	{
+		ntfvm = GetProcAddress64(lvpNtdll, "NtFreeVirtualMemory");
+		if (0 == ntfvm)
+			return 0;
+	}
 
-    DWORD64 tmpAddr = lpAddress;
-    DWORD64 tmpSize = dwSize;
-    DWORD64 ret = X64Call(ntfvm, 4, (DWORD64)hProcess, (DWORD64)&tmpAddr, (DWORD64)&tmpSize, (DWORD64)dwFreeType);
+	DWORD64 tmpAddr = lpAddress;
+	DWORD64 tmpSize = dwSize;
+	DWORD64 ret = X64Call(ntfvm, 4, (DWORD64)hProcess, (DWORD64)&tmpAddr, (DWORD64)&tmpSize, (DWORD64)dwFreeType);
 	if (STATUS_SUCCESS != ret)
 	{
 		SetLastErrorFromX64Call(ret);
 		return FALSE;
 	}
-    else
-        return TRUE;
+	else
+		return TRUE;
 }
 
 extern BOOL VirtualProtectEx64(HANDLE hProcess, DWORD64 lpAddress, SIZE_T dwSize, DWORD flNewProtect, DWORD* lpflOldProtect)
 {
 	DWORD64 lvpNtdll = GetModuleBase64( L"ntdll.dll" );
-    static DWORD64 ntpvm = 0;
-    if (0 == ntpvm)
-    {
-        ntpvm = GetProcAddress64(lvpNtdll, "NtProtectVirtualMemory");
-        if (0 == ntpvm)
-            return 0;
-    }
+	static DWORD64 ntpvm = 0;
+	if (0 == ntpvm)
+	{
+		ntpvm = GetProcAddress64(lvpNtdll, "NtProtectVirtualMemory");
+		if (0 == ntpvm)
+			return 0;
+	}
 
-    DWORD64 tmpAddr = lpAddress;
-    DWORD64 tmpSize = dwSize;
-    DWORD64 ret = X64Call(ntpvm, 5, (DWORD64)hProcess, (DWORD64)&tmpAddr, (DWORD64)&tmpSize, (DWORD64)flNewProtect, (DWORD64)lpflOldProtect);
+	DWORD64 tmpAddr = lpAddress;
+	DWORD64 tmpSize = dwSize;
+	DWORD64 ret = X64Call(ntpvm, 5, (DWORD64)hProcess, (DWORD64)&tmpAddr, (DWORD64)&tmpSize, (DWORD64)flNewProtect, (DWORD64)lpflOldProtect);
 	if (STATUS_SUCCESS != ret)
 	{
 		SetLastErrorFromX64Call(ret);
 		return FALSE;
 	}
-    else
-        return TRUE;
+	else
+		return TRUE;
 }
 #pragma warning(pop)
 

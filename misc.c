@@ -147,12 +147,12 @@ int is_stack_pivoted(void)
 static PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
 {
   if (nlen > hlen)
-    return NULL;
+	return NULL;
 
   ULONG i;
   for (i = 0; i < hlen - nlen + 1; i++) {
-    if (!memcmp(haystack + i, needle, nlen))
-      return haystack + i;
+	if (!memcmp(haystack + i, needle, nlen))
+	  return haystack + i;
   }
 
   return NULL;
@@ -160,7 +160,7 @@ static PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
 
 BOOL is_bytes_in_buf(PCHAR buf, ULONG len, PCHAR memstr, ULONG memlen, ULONG maxsearchbytes)
 {
-    return memmem(buf, min(maxsearchbytes, len), memstr, memlen) ? TRUE : FALSE;
+	return memmem(buf, min(maxsearchbytes, len), memstr, memlen) ? TRUE : FALSE;
 }
 
 void replace_string_in_buf(PCHAR buf, ULONG len, PCHAR findstr, PCHAR repstr)
@@ -234,20 +234,20 @@ void replace_ci_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR rep
 
 // https://stackoverflow.com/questions/27303062/strstr-function-like-that-ignores-upper-or-lower-case
 char* stristr(char* haystack, char* needle) {
-    int c = tolower(*needle);
-    if (c == '\0')
-        return haystack;
-    for (; *haystack; haystack++) {
-        if (tolower(*haystack) == c) {
-            for (size_t i = 0;;) {
-                if (needle[++i] == '\0')
-                    return haystack;
-                if (tolower(haystack[i]) != tolower(needle[i]))
-                    break;
-            }
-        }
-    }
-    return NULL;
+	int c = tolower(*needle);
+	if (c == '\0')
+		return haystack;
+	for (; *haystack; haystack++) {
+		if (tolower(*haystack) == c) {
+			for (size_t i = 0;;) {
+				if (needle[++i] == '\0')
+					return haystack;
+				if (tolower(haystack[i]) != tolower(needle[i]))
+					break;
+			}
+		}
+	}
+	return NULL;
 }
 
 void perform_device_fakery(PVOID OutputBuffer, ULONG OutputBufferLength, ULONG IoControlCode)
@@ -293,7 +293,7 @@ void perform_device_fakery(PVOID OutputBuffer, ULONG OutputBufferLength, ULONG I
 		replace_string_in_buf(OutputBuffer, OutputBufferLength, "Red Hat", "Lenovo ");
 		replace_string_in_buf(OutputBuffer, OutputBufferLength, "Virtual", "Compute");
 		replace_string_in_buf(OutputBuffer, OutputBufferLength, "innotek GmbH", "ASUS Systems");
-		replace_string_in_buf(OutputBuffer, OutputBufferLength, "MS_VM_CERT/SHA1", "Dell System    ");
+		replace_string_in_buf(OutputBuffer, OutputBufferLength, "MS_VM_CERT/SHA1", "Dell System	");
 	}
 }
 
@@ -385,7 +385,7 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 		replace_string_in_buf(Data, DataLength, "QEMU", "DELL");
 
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\IDE\\") ||
-        !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
+		!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
 		replace_string_in_buf(Data, DataLength, "VMware", "Lenovo");
 		replace_string_in_buf(Data, DataLength, "VMWar", "Lenov");
 		replace_string_in_buf(Data, DataLength, "VBOX", "DELL");
@@ -398,20 +398,20 @@ void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength
 	}
 
 	// Zloader macro checks using reg.exe to check macros are not enabled
-    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings"))
-        && stricmp(our_process_name, "excel.exe")) {
+	if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings"))
+		&& stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)4;   // The most secure setting
 			DebugOutput("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
 		}
 	}
 
-    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM"))
-        && stricmp(our_process_name, "excel.exe")) {
+	if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM"))
+		&& stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)0;
 			DebugOutput("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
@@ -486,7 +486,7 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"QEMU", L"DELL");
 
 	if (!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\IDE\\") ||
-        !wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
+		!wcsicmp(keypath, L"HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Enum\\SCSI\\")) {
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMware", L"Lenovo");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VMWar", L"Lenov");
 		replace_wstring_in_buf(Data, DataLength / sizeof(wchar_t), L"VBOX", L"DELL");
@@ -499,20 +499,20 @@ void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLeng
 	}
 
 	// Zloader macro checks using reg.exe to check macros are not enabled
-    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings"))
-        && stricmp(our_process_name, "excel.exe")) {
+	if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\VBAWarnings")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\VBAWarnings")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\VBAWarnings"))
+		&& stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)4;   // The most secure setting
 			DebugOutput("VBAWarnings reg check detected! Patching data: 0x%x, (%s) %d", *(DWORD*)Data, our_process_name, stricmp(our_process_name, "excel.exe"));
 		}
 	}
 
-    if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM")
-        || !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM"))
-        && stricmp(our_process_name, "excel.exe")) {
+	if ((!wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\14.0\\Excel\\Security\\AccessVBOM")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\15.0\\Excel\\Security\\AccessVBOM")
+		|| !wcsicmp(keypath, L"HKEY_CURRENT_USER\\Software\\Microsoft\\Office\\16.0\\Excel\\Security\\AccessVBOM"))
+		&& stricmp(our_process_name, "excel.exe")) {
 		if (*(DWORD*)Data == 1) {
 			*(DWORD*)Data = (DWORD)0;
 			DebugOutput("AccessVBOM reg check detected! Patching data: 0x%x", *(DWORD*)Data);
@@ -549,10 +549,10 @@ BOOLEAN is_valid_address_range(ULONG_PTR start, DWORD len)
 DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 {
 	PROCESS_BASIC_INFORMATION pbi;
-    ULONG ulSize = 0;
+	ULONG ulSize = 0;
 
-    if (pNtQueryInformationProcess(GetCurrentProcess(), ProcessBasicInformation, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
-        return (DWORD)pbi.ParentProcessId;
+	if (pNtQueryInformationProcess(GetCurrentProcess(), ProcessBasicInformation, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+		return (DWORD)pbi.ParentProcessId;
 
 	return 0;
 }
@@ -577,8 +577,8 @@ DWORD pid_from_process_handle(HANDLE process_handle)
 
 	duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
 
-    if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
-        PID = (DWORD)pbi.UniqueProcessId;
+	if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+		PID = (DWORD)pbi.UniqueProcessId;
 
 	if (duped)
 		CloseHandle(dup_handle);
@@ -607,7 +607,7 @@ static BOOL cid_from_thread_handle(HANDLE thread_handle, PCLIENT_ID cid)
 	if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
 		memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
 		ret = TRUE;
-    }
+	}
 
 	if (duped)
 		CloseHandle(dup_handle);
@@ -654,12 +654,12 @@ DWORD our_getprocessid(HANDLE Process)
 
 DWORD random()
 {
-    DWORD ret, realret;
+	DWORD ret, realret;
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
 
-    realret = pRtlGenRandom(&ret, sizeof(ret)) ? ret : rand();
+	realret = pRtlGenRandom(&ret, sizeof(ret)) ? ret : rand();
 
 	set_lasterrors(&lasterror);
 
@@ -668,16 +668,16 @@ DWORD random()
 
 DWORD randint(DWORD min, DWORD max)
 {
-    return min + (random() % (max - min + 1));
+	return min + (random() % (max - min + 1));
 }
 
 BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj)
 {
-    FILE_BASIC_INFORMATION basic_information;
-    if (NT_SUCCESS(pNtQueryAttributesFile(obj, &basic_information))) {
-        return basic_information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-    }
-    return FALSE;
+	FILE_BASIC_INFORMATION basic_information;
+	if (NT_SUCCESS(pNtQueryAttributesFile(obj, &basic_information))) {
+		return basic_information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+	}
+	return FALSE;
 }
 
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
@@ -744,7 +744,7 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
 	{
 		char our_dll_name[] = "capemon.dll";
-        char *buf = calloc(1, strlen(our_dll_name) + 1);
+		char *buf = calloc(1, strlen(our_dll_name) + 1);
 		if (buf == NULL)
 			return NULL;
 		strcpy(buf, our_dll_name);
@@ -775,30 +775,30 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 // http://www.openrce.org/blog/view/844/How_to_hide_dll
 
 #define CUT_LIST(item) \
-    item.Blink->Flink = item.Flink; \
-    item.Flink->Blink = item.Blink
+	item.Blink->Flink = item.Flink; \
+	item.Flink->Blink = item.Blink
 
 void hide_module_from_peb(HMODULE module_handle)
 {
-    LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
+	LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
 
-    for (mod = (LDR_MODULE *) peb->LoaderData->InLoadOrderModuleList.Flink;
-         mod->BaseAddress != NULL;
-         mod = (LDR_MODULE *) mod->InLoadOrderModuleList.Flink) {
+	for (mod = (LDR_MODULE *) peb->LoaderData->InLoadOrderModuleList.Flink;
+		 mod->BaseAddress != NULL;
+		 mod = (LDR_MODULE *) mod->InLoadOrderModuleList.Flink) {
 
-        if (mod->BaseAddress == module_handle) {
-            CUT_LIST(mod->InLoadOrderModuleList);
-            CUT_LIST(mod->InInitializationOrderModuleList);
-            CUT_LIST(mod->InMemoryOrderModuleList);
+		if (mod->BaseAddress == module_handle) {
+			CUT_LIST(mod->InLoadOrderModuleList);
+			CUT_LIST(mod->InInitializationOrderModuleList);
+			CUT_LIST(mod->InMemoryOrderModuleList);
 
-            // TODO test whether this list is really used as a linked list
-            // like InLoadOrderModuleList etc
-            CUT_LIST(mod->HashTableEntry);
+			// TODO test whether this list is really used as a linked list
+			// like InLoadOrderModuleList etc
+			CUT_LIST(mod->HashTableEntry);
 
 			memset(mod, 0, sizeof(LDR_MODULE));
-            break;
-        }
-    }
+			break;
+		}
+	}
 }
 
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle)
@@ -817,7 +817,7 @@ PUNICODE_STRING get_basename_of_module(HMODULE module_handle)
 }
 
 uint32_t path_from_handle(HANDLE handle,
-    wchar_t *path, uint32_t path_buffer_len)
+	wchar_t *path, uint32_t path_buffer_len)
 {
 	POBJECT_NAME_INFORMATION resolvedName;
 	ULONG returnLength;
@@ -849,26 +849,26 @@ uint32_t path_from_handle(HANDLE handle,
 }
 
 uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
-    wchar_t *path, uint32_t buffer_length)
+	wchar_t *path, uint32_t buffer_length)
 {
 	uint32_t copylen, obj_length, length;
 
-    if (obj->ObjectName == NULL || obj->ObjectName->Buffer == NULL) {
+	if (obj->ObjectName == NULL || obj->ObjectName->Buffer == NULL) {
 		return path_from_handle(obj->RootDirectory, path, buffer_length);;
-    }
+	}
 
-    // ObjectName->Length is actually the size in bytes.
-    obj_length = obj->ObjectName->Length / sizeof(wchar_t);
+	// ObjectName->Length is actually the size in bytes.
+	obj_length = obj->ObjectName->Length / sizeof(wchar_t);
 
 	copylen = min(obj_length, buffer_length - 1);
 
-    if (obj->RootDirectory == NULL) {
-        memcpy(path, obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
+	if (obj->RootDirectory == NULL) {
+		memcpy(path, obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
 		path[copylen] = L'\0';
-        return copylen;
-    }
+		return copylen;
+	}
 
-    length = path_from_handle(obj->RootDirectory, path, buffer_length);
+	length = path_from_handle(obj->RootDirectory, path, buffer_length);
 
 	path[length++] = L'\\';
 	if (length >= (buffer_length - 1))
@@ -878,7 +878,7 @@ uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
 	copylen = min(copylen, obj_length);
 	memcpy(&path[length], obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
 	path[length + copylen] = L'\0';
-    return length + copylen;
+	return length + copylen;
 }
 
 static char *system32dir_a;
@@ -1371,15 +1371,15 @@ int is_shutting_down()
 	get_lasterrors(&lasterror);
 
 	mutex_handle = OpenMutex(SYNCHRONIZE, FALSE, g_config.shutdown_mutex);
-    if (mutex_handle != NULL) {
+	if (mutex_handle != NULL) {
 		log_flush();
-        CloseHandle(mutex_handle);
-        ret = 1;
-    }
+		CloseHandle(mutex_handle);
+		ret = 1;
+	}
 
 	set_lasterrors(&lasterror);
 
-    return ret;
+	return ret;
 }
 
 static char *g_specialnames_a[27];
@@ -1902,9 +1902,9 @@ void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify)
 
 unsigned int address_is_in_stack(PVOID address)
 {
-    if (((ULONG_PTR)address < get_stack_bottom()) && ((ULONG_PTR)address > get_stack_top()))
-        return 1;
-    return 0;
+	if (((ULONG_PTR)address < get_stack_bottom()) && ((ULONG_PTR)address > get_stack_top()))
+		return 1;
+	return 0;
 }
 
 PVOID get_process_image_base(HANDLE process_handle)
@@ -1914,29 +1914,29 @@ PVOID get_process_image_base(HANDLE process_handle)
 	HANDLE dup_handle = process_handle;
 	PVOID pPEB = 0, ImageBase = 0;
 	PEB Peb;
-    SIZE_T dwBytesRead;
+	SIZE_T dwBytesRead;
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
 
 	if (process_handle == GetCurrentProcess())
-    {
+	{
 		ImageBase = GetModuleHandle(NULL);
-        goto out;
+		goto out;
 	}
 
 	memset(&pbi, 0, sizeof(pbi));
 
-    if (pNtQueryInformationProcess(process_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
-    {
-        pPEB = pbi.PebBaseAddress;
+	if (pNtQueryInformationProcess(process_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+	{
+		pPEB = pbi.PebBaseAddress;
 
-        if (ReadProcessMemory(process_handle, pPEB, &Peb, sizeof(Peb), &dwBytesRead))
-        {
-            ImageBase = Peb.ImageBaseAddress;
-        }
-        else return NULL;
-    }
+		if (ReadProcessMemory(process_handle, pPEB, &Peb, sizeof(Peb), &dwBytesRead))
+		{
+			ImageBase = Peb.ImageBaseAddress;
+		}
+		else return NULL;
+	}
 
 out:
 	set_lasterrors(&lasterror);

@@ -237,39 +237,39 @@ bool IATSearch::isIATPointerValid(DWORD_PTR iatPointer, bool checkRedirects)
 	else
 	{
 
-        if (checkRedirects)
-        {
-            //maybe redirected import?
-            //if the address is 2 times inside a memory region it is possible a redirected api
-            if (apiAddress > memoryAddress && apiAddress < (memoryAddress+memorySize))
-            {
-                return true;
-            }
-            else
-            {
-                getMemoryRegionFromAddress(apiAddress, &memoryAddress, &memorySize);
-            }
-        } 
+		if (checkRedirects)
+		{
+			//maybe redirected import?
+			//if the address is 2 times inside a memory region it is possible a redirected api
+			if (apiAddress > memoryAddress && apiAddress < (memoryAddress+memorySize))
+			{
+				return true;
+			}
+			else
+			{
+				getMemoryRegionFromAddress(apiAddress, &memoryAddress, &memorySize);
+			}
+		} 
 	}
 
-    return false;
+	return false;
 }
 
 bool IATSearch::findIATStartAndSize(DWORD_PTR address, DWORD_PTR * addressIAT, DWORD * sizeIAT)
 {
 	BYTE *dataBuffer = 0;
-    DWORD_PTR baseAddress = 0;
-    DWORD baseSize = 0;
+	DWORD_PTR baseAddress = 0;
+	DWORD baseSize = 0;
 
-    getMemoryBaseAndSizeForIat(address, &baseAddress, &baseSize);
+	getMemoryBaseAndSizeForIat(address, &baseAddress, &baseSize);
 
-    if (!baseAddress)
-        return false;
+	if (!baseAddress)
+		return false;
 
 	dataBuffer = new BYTE[baseSize * (sizeof(DWORD_PTR)*3)];
 
-    if (!dataBuffer)
-        return false;
+	if (!dataBuffer)
+		return false;
 
 	ZeroMemory(dataBuffer, baseSize * (sizeof(DWORD_PTR)*3));
 
@@ -303,19 +303,19 @@ DWORD_PTR IATSearch::findIATStartAddress(DWORD_PTR baseAddress, DWORD_PTR startA
 	{
 		if (isInvalidMemoryForIat(*pIATAddress))
 		{
-            if ((DWORD_PTR)(pIATAddress - 1) >= (DWORD_PTR)dataBuffer)
-            {
-                if (isInvalidMemoryForIat(*(pIATAddress - 1)))
-                {
-                    if ((DWORD_PTR)(pIATAddress - 2) >= (DWORD_PTR)dataBuffer)
-                    {
-                        if (!isApiAddressValid(*(pIATAddress - 2)))
-                        {
-                            return (((DWORD_PTR)pIATAddress - (DWORD_PTR)dataBuffer) + baseAddress);
-                        }
-                    }
-                }
-            }
+			if ((DWORD_PTR)(pIATAddress - 1) >= (DWORD_PTR)dataBuffer)
+			{
+				if (isInvalidMemoryForIat(*(pIATAddress - 1)))
+				{
+					if ((DWORD_PTR)(pIATAddress - 2) >= (DWORD_PTR)dataBuffer)
+					{
+						if (!isApiAddressValid(*(pIATAddress - 2)))
+						{
+							return (((DWORD_PTR)pIATAddress - (DWORD_PTR)dataBuffer) + baseAddress);
+						}
+					}
+				}
+			}
 		}
 
 		pIATAddress--;
@@ -462,15 +462,15 @@ void IATSearch::filterIATPointersList( std::set<DWORD_PTR> & iatPointers )
 	{
 		if ((*iter - lastPointer) > 0x100) //check difference
 		{
-            if (isIATPointerValid(lastPointer, false) == false || isIATPointerValid(*iter, false) == false)
-            {
-                iatPointers.erase(iter, iatPointers.end());
-                break;
-            }
-            else
-            {
-                lastPointer = *iter;
-            }
+			if (isIATPointerValid(lastPointer, false) == false || isIATPointerValid(*iter, false) == false)
+			{
+				iatPointers.erase(iter, iatPointers.end());
+				break;
+			}
+			else
+			{
+				lastPointer = *iter;
+			}
 		}
 		else
 		{
@@ -501,22 +501,22 @@ void IATSearch::filterIATPointersList( std::set<DWORD_PTR> & iatPointers )
 			{
 				bool isLastValid = isIATPointerValid(lastPointer, false);
 				bool isCurrentValid = isIATPointerValid(*iter, false);
-                if (isLastValid == false || isCurrentValid == false)
-                {
+				if (isLastValid == false || isCurrentValid == false)
+				{
 					if (isLastValid == false)
 					{
 						iter--;
 					}
-                    
-                    iatPointers.erase(iter);
-                    erased = true;
-                    break;
-                }
-                else
-                {
-                    erased = false;
-                    lastPointer = *iter;
-                }
+					
+					iatPointers.erase(iter);
+					erased = true;
+					break;
+				}
+				else
+				{
+					erased = false;
+					lastPointer = *iter;
+				}
 			}
 			else
 			{
@@ -544,27 +544,27 @@ bool isSectionSizeTooBig(SIZE_T sectionSize) {
 
 void IATSearch::getMemoryBaseAndSizeForIat( DWORD_PTR address, DWORD_PTR* baseAddress, DWORD* baseSize )
 {
-    MEMORY_BASIC_INFORMATION memBasic1 = {0};
-    MEMORY_BASIC_INFORMATION memBasic2 = {0};
-    MEMORY_BASIC_INFORMATION memBasic3 = {0};
+	MEMORY_BASIC_INFORMATION memBasic1 = {0};
+	MEMORY_BASIC_INFORMATION memBasic2 = {0};
+	MEMORY_BASIC_INFORMATION memBasic3 = {0};
 
-    DWORD_PTR start = 0, end = 0;
-    *baseAddress = 0;
-    *baseSize = 0;
+	DWORD_PTR start = 0, end = 0;
+	*baseAddress = 0;
+	*baseSize = 0;
 
-    if (!VirtualQueryEx(hProcess,(LPCVOID)address, &memBasic2, sizeof(MEMORY_BASIC_INFORMATION)))
-    {
-        return;
-    }
+	if (!VirtualQueryEx(hProcess,(LPCVOID)address, &memBasic2, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+		return;
+	}
 
-    *baseAddress = (DWORD_PTR)memBasic2.BaseAddress;
-    *baseSize = (DWORD)memBasic2.RegionSize;
+	*baseAddress = (DWORD_PTR)memBasic2.BaseAddress;
+	*baseSize = (DWORD)memBasic2.RegionSize;
 
 	adjustSizeForBigSections(baseSize);
 
-    //Get the neighbours
-    if (VirtualQueryEx(hProcess,(LPCVOID)((DWORD_PTR)memBasic2.BaseAddress - 1), &memBasic1, sizeof(MEMORY_BASIC_INFORMATION)))
-    {
+	//Get the neighbours
+	if (VirtualQueryEx(hProcess,(LPCVOID)((DWORD_PTR)memBasic2.BaseAddress - 1), &memBasic1, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
 		if (VirtualQueryEx(hProcess,(LPCVOID)((DWORD_PTR)memBasic2.BaseAddress + (DWORD_PTR)memBasic2.RegionSize), &memBasic3, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
 			if (memBasic3.State != MEM_COMMIT || 
@@ -589,5 +589,5 @@ void IATSearch::getMemoryBaseAndSizeForIat( DWORD_PTR address, DWORD_PTR* baseAd
 				*baseSize = (DWORD)(end - start);
 			}
 		}
-    }
+	}
 }

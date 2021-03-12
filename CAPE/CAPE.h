@@ -19,8 +19,8 @@ extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
-#define PE_MAX_SIZE     ((ULONG)0x77000000)
-#define PE_MIN_SIZE     ((ULONG)0x1000)
+#define PE_MAX_SIZE	 ((ULONG)0x77000000)
+#define PE_MIN_SIZE	 ((ULONG)0x1000)
 #define PE_MAX_SECTIONS 0xFFFF
 
 void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -68,7 +68,7 @@ PVOID CallingModule;
 //
 //  STATUS_SUCCESS
 //
-#define STATUS_SUCCESS                   ((NTSTATUS)0x00000000L)
+#define STATUS_SUCCESS				   ((NTSTATUS)0x00000000L)
 
 //
 // MessageId: STATUS_BAD_COMPRESSION_BUFFER
@@ -77,7 +77,7 @@ PVOID CallingModule;
 //
 // The specified buffer contains ill-formed data.
 //
-#define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
+#define STATUS_BAD_COMPRESSION_BUFFER	((NTSTATUS)0xC0000242L)
 
 #define	PE_HEADER_LIMIT		0x200	// Range to look for PE header within candidate buffer
 
@@ -87,7 +87,7 @@ PVOID CallingModule;
 
 #define	DATA				0
 #define	EXECUTABLE			1
-#define	DLL			        2
+#define	DLL					2
 
 #define PLUGX_SIGNATURE		0x5658	// 'XV'
 
@@ -95,12 +95,12 @@ typedef struct CapeMetadata
 {
 	char*	ProcessPath;
 	char*	ModulePath;
-    DWORD   Pid;
-    DWORD   DumpType;
-    char*	TargetProcess;  // For injection
-    DWORD	TargetPid;      // "
-    PVOID   Address;        // For shellcode/modules
-	SIZE_T  Size;           // "
+	DWORD   Pid;
+	DWORD   DumpType;
+	char*	TargetProcess;  // For injection
+	DWORD	TargetPid;	  // "
+	PVOID   Address;		// For shellcode/modules
+	SIZE_T  Size;		   // "
 } CAPEMETADATA, *PCAPEMETADATA;
 
 struct CapeMetadata *CapeMetaData;
@@ -108,42 +108,42 @@ struct CapeMetadata *CapeMetaData;
 BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
 enum {
-    PROCDUMP                = 0,
+	PROCDUMP				= 0,
 
-    COMPRESSION             = 1,
+	COMPRESSION			 = 1,
 
-    INJECTION_PE            = 3,
-    INJECTION_SHELLCODE     = 4,
-    //INJECTION_RUNPE         = 5,
+	INJECTION_PE			= 3,
+	INJECTION_SHELLCODE	 = 4,
+	//INJECTION_RUNPE		 = 5,
 
-    UNPACKED_PE           = 8,
-    UNPACKED_SHELLCODE    = 9,
+	UNPACKED_PE		   = 8,
+	UNPACKED_SHELLCODE	= 9,
 
-    PLUGX_PAYLOAD           = 0x10,
-    PLUGX_CONFIG            = 0x11,
+	PLUGX_PAYLOAD		   = 0x10,
+	PLUGX_CONFIG			= 0x11,
 
-    EVILGRAB_PAYLOAD        = 0x14,
-    EVILGRAB_DATA           = 0x15,
+	EVILGRAB_PAYLOAD		= 0x14,
+	EVILGRAB_DATA		   = 0x15,
 
-    SEDRECO_DATA            = 0x20,
+	SEDRECO_DATA			= 0x20,
 
-    URSNIF_CONFIG           = 0x24,
-    URSNIF_PAYLOAD          = 0x25,
+	URSNIF_CONFIG		   = 0x24,
+	URSNIF_PAYLOAD		  = 0x25,
 
-    CERBER_CONFIG           = 0x30,
-    CERBER_PAYLOAD          = 0x31,
+	CERBER_CONFIG		   = 0x30,
+	CERBER_PAYLOAD		  = 0x31,
 
-    HANCITOR_CONFIG         = 0x34,
-    HANCITOR_PAYLOAD        = 0x35,
+	HANCITOR_CONFIG		 = 0x34,
+	HANCITOR_PAYLOAD		= 0x35,
 
-    QAKBOT_CONFIG           = 0x38,
-    QAKBOT_PAYLOAD          = 0x39,
+	QAKBOT_CONFIG		   = 0x38,
+	QAKBOT_PAYLOAD		  = 0x39,
 
-    DATADUMP                = 0x66,
+	DATADUMP				= 0x66,
 
-    STACK_REGION            = 0x6c,
+	STACK_REGION			= 0x6c,
 
-    UPX                     = 0x1000
+	UPX					 = 0x1000
 };
 
 HANDLE EvilGrabRegHandle;

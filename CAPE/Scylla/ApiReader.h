@@ -28,10 +28,10 @@ public:
 	void readAndParseIAT(DWORD_PTR addressIAT, DWORD sizeIAT, std::map<DWORD_PTR, ImportModuleThunk> &moduleListNew );
 	void addFoundApiToModuleList(DWORD_PTR iatAddress, ApiInfo * apiFound, bool isNewModule, bool isSuspect);
 	void clearAll();
-    bool isInvalidMemoryForIat( DWORD_PTR address );
+	bool isInvalidMemoryForIat( DWORD_PTR address );
 	void parseModuleWithOwnProcess( ModuleInfo * module );
 private:
-    bool readExportTableAlwaysFromDisk;
+	bool readExportTableAlwaysFromDisk;
 	void parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size);
 
 	void addApi(char *functionName, WORD hint, WORD ordinal, DWORD_PTR va, DWORD_PTR rva, bool isForwarded, ModuleInfo *moduleInfo);

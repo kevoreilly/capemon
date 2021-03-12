@@ -482,7 +482,7 @@ bool ProcessAccessHelp::writeMemoryToFile(HANDLE hFile, LONG offset, DWORD size,
 			else
 			{
 #ifdef DEBUG_COMMENTS
-                ErrorOutput("writeMemoryToFile :: WriteFile failed - size %d", size);
+				ErrorOutput("writeMemoryToFile :: WriteFile failed - size %d", size);
 #endif
 				return false;
 			}
@@ -658,68 +658,68 @@ DWORD ProcessAccessHelp::getProcessByName(const CHAR * processName)
 
 bool ProcessAccessHelp::getProcessModules(HANDLE hProcess, std::vector<ModuleInfo> &moduleList)
 {
-    ModuleInfo module;
-    WCHAR filename[MAX_PATH*2] = {0}, fullPath[MAX_PATH*2] = {0};
-    DWORD cbNeeded = 0;
-    bool retVal = false;
-    DeviceNameResolver deviceNameResolver;
+	ModuleInfo module;
+	WCHAR filename[MAX_PATH*2] = {0}, fullPath[MAX_PATH*2] = {0};
+	DWORD cbNeeded = 0;
+	bool retVal = false;
+	DeviceNameResolver deviceNameResolver;
 
-    moduleList.reserve(20);
+	moduleList.reserve(20);
 
-    EnumProcessModules(hProcess, 0, 0, &cbNeeded);
+	EnumProcessModules(hProcess, 0, 0, &cbNeeded);
 
-    HMODULE* hMods=(HMODULE*)malloc(cbNeeded*sizeof(HMODULE));
+	HMODULE* hMods=(HMODULE*)malloc(cbNeeded*sizeof(HMODULE));
 
-    if (hMods)
-    {
-        if(EnumProcessModules(hProcess, hMods, cbNeeded, &cbNeeded))
-        {
-            for(unsigned int i = 1; i < (cbNeeded/sizeof(HMODULE)); i++) //skip first module!
-            {
-                module.modBaseAddr = (DWORD_PTR)hMods[i];
-                module.modBaseSize = (DWORD)getSizeOfImageProcess(hProcess, module.modBaseAddr);
-                module.isAlreadyParsed = false;
-                module.parsing = false;
+	if (hMods)
+	{
+		if(EnumProcessModules(hProcess, hMods, cbNeeded, &cbNeeded))
+		{
+			for(unsigned int i = 1; i < (cbNeeded/sizeof(HMODULE)); i++) //skip first module!
+			{
+				module.modBaseAddr = (DWORD_PTR)hMods[i];
+				module.modBaseSize = (DWORD)getSizeOfImageProcess(hProcess, module.modBaseAddr);
+				module.isAlreadyParsed = false;
+				module.parsing = false;
 
-                filename[0] = 0;
-                module.fullPath[0] = 0;
+				filename[0] = 0;
+				module.fullPath[0] = 0;
 
-                if (GetMappedFileNameW(hProcess, (LPVOID)module.modBaseAddr, filename, _countof(filename)) > 0)
-                {
-                    if (!deviceNameResolver.resolveDeviceLongNameToShort(filename, fullPath))
-                    {
-                        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)fullPath, MAX_PATH, module.fullPath, MAX_PATH, NULL, NULL);
+				if (GetMappedFileNameW(hProcess, (LPVOID)module.modBaseAddr, filename, _countof(filename)) > 0)
+				{
+					if (!deviceNameResolver.resolveDeviceLongNameToShort(filename, fullPath))
+					{
+						WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)fullPath, MAX_PATH, module.fullPath, MAX_PATH, NULL, NULL);
 						
-                        if (!GetModuleFileNameEx(hProcess, (HMODULE)module.modBaseAddr, module.fullPath, _countof(module.fullPath)))
-                        {
+						if (!GetModuleFileNameEx(hProcess, (HMODULE)module.modBaseAddr, module.fullPath, _countof(module.fullPath)))
+						{
 							WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)filename, MAX_PATH, module.fullPath, MAX_PATH, NULL, NULL);
-                        }
+						}
 #ifdef DEBUG_COMMENTS
-                        else
-                            DebugOutput("ProcessAccessHelp::getProcessModules: GetModuleFileNameEx failed");
+						else
+							DebugOutput("ProcessAccessHelp::getProcessModules: GetModuleFileNameEx failed");
 #endif
-                    }
-                    else
-                    {
-                        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)filename, MAX_PATH, module.fullPath, MAX_PATH, NULL, NULL);
+					}
+					else
+					{
+						WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)filename, MAX_PATH, module.fullPath, MAX_PATH, NULL, NULL);
 #ifdef DEBUG_COMMENTS
-                        DebugOutput("ProcessAccessHelp::getProcessModules: deviceNameResolver.resolveDeviceLongNameToShort success, module.fullPath: %ws", module.fullPath);
+						DebugOutput("ProcessAccessHelp::getProcessModules: deviceNameResolver.resolveDeviceLongNameToShort success, module.fullPath: %ws", module.fullPath);
 #endif
-                    }
-                }
-                else
-                {
-                    GetModuleFileNameEx(hProcess, (HMODULE)module.modBaseAddr, module.fullPath, _countof(module.fullPath));
-                }
+					}
+				}
+				else
+				{
+					GetModuleFileNameEx(hProcess, (HMODULE)module.modBaseAddr, module.fullPath, _countof(module.fullPath));
+				}
 
-                moduleList.push_back(module);
-            }
+				moduleList.push_back(module);
+			}
 
-            retVal = true;
-        }
+			retVal = true;
+		}
 
-        free(hMods);
-    }
+		free(hMods);
+	}
 
 	return retVal;
 }
@@ -763,17 +763,17 @@ SIZE_T ProcessAccessHelp::getSizeOfImageProcess(HANDLE processHandle, DWORD_PTR 
 	SIZE_T sizeOfImage = 0, sizeOfImageNative = 0;
 	MEMORY_BASIC_INFORMATION lpBuffer = {0};
 
-    sizeOfImageNative = getSizeOfImageProcessNative(processHandle, moduleBase);
+	sizeOfImageNative = getSizeOfImageProcessNative(processHandle, moduleBase);
 
-    if (sizeOfImageNative)
-    {
-        return sizeOfImageNative;
-    }
+	if (sizeOfImageNative)
+	{
+		return sizeOfImageNative;
+	}
 
-    CHAR filenameOriginal[MAX_PATH*2] = {0};
-    CHAR filenameTest[MAX_PATH*2] = {0};
+	CHAR filenameOriginal[MAX_PATH*2] = {0};
+	CHAR filenameTest[MAX_PATH*2] = {0};
 
-    GetMappedFileName(processHandle, (LPVOID)moduleBase, filenameOriginal, _countof(filenameOriginal));
+	GetMappedFileName(processHandle, (LPVOID)moduleBase, filenameOriginal, _countof(filenameOriginal));
 
 	do
 	{
@@ -790,22 +790,22 @@ SIZE_T ProcessAccessHelp::getSizeOfImageProcess(HANDLE processHandle, DWORD_PTR 
 			sizeOfImage = 0;
 		}
 
-        GetMappedFileName(processHandle, (LPVOID)moduleBase, filenameTest, _countof(filenameTest));
+		GetMappedFileName(processHandle, (LPVOID)moduleBase, filenameTest, _countof(filenameTest));
 
-        if (_stricmp(filenameOriginal,filenameTest) != 0)//problem: 2 modules without free space
-        {
-            break; 
-        }
+		if (_stricmp(filenameOriginal,filenameTest) != 0)//problem: 2 modules without free space
+		{
+			break; 
+		}
 
 	} while (lpBuffer.Type == MEM_IMAGE);
 
 
-    //if (sizeOfImage != sizeOfImageNative)
-    //{
-    //    CHAR temp[1000] = {0};
-    //    wsprintfW(temp, L"0x%X sizeofimage\n0x%X sizeOfImageNative", sizeOfImage, sizeOfImageNative);
-    //    MessageBoxW(0, temp, L"Test", 0);
-    //}
+	//if (sizeOfImage != sizeOfImageNative)
+	//{
+	//	CHAR temp[1000] = {0};
+	//	wsprintfW(temp, L"0x%X sizeofimage\n0x%X sizeOfImageNative", sizeOfImage, sizeOfImageNative);
+	//	MessageBoxW(0, temp, L"Test", 0);
+	//}
 
 	return sizeOfImage;
 }
@@ -936,42 +936,42 @@ bool ProcessAccessHelp::isPageAccessable( DWORD Protect )
 
 bool ProcessAccessHelp::isPageExecutable( DWORD Protect )
 {
-    if (Protect & PAGE_NOCACHE) Protect ^= PAGE_NOCACHE;
-    if (Protect & PAGE_GUARD) Protect ^= PAGE_GUARD;
-    if (Protect & PAGE_WRITECOMBINE) Protect ^= PAGE_WRITECOMBINE;
+	if (Protect & PAGE_NOCACHE) Protect ^= PAGE_NOCACHE;
+	if (Protect & PAGE_GUARD) Protect ^= PAGE_GUARD;
+	if (Protect & PAGE_WRITECOMBINE) Protect ^= PAGE_WRITECOMBINE;
 
-    switch(Protect)
-    {
-    case PAGE_EXECUTE:
-        {
-            return true;
-        }
-    case PAGE_EXECUTE_READ:
-        {
-            return true;
-        }
-    case PAGE_EXECUTE_READWRITE:
-        {
-            return true;
-        }
-    case PAGE_EXECUTE_WRITECOPY:
-        {
-            return true;
-        }
-    default:
-        return false;
-    }
+	switch(Protect)
+	{
+	case PAGE_EXECUTE:
+		{
+			return true;
+		}
+	case PAGE_EXECUTE_READ:
+		{
+			return true;
+		}
+	case PAGE_EXECUTE_READWRITE:
+		{
+			return true;
+		}
+	case PAGE_EXECUTE_WRITECOPY:
+		{
+			return true;
+		}
+	default:
+		return false;
+	}
 
 }
 
 SIZE_T ProcessAccessHelp::getSizeOfImageProcessNative( HANDLE processHandle, DWORD_PTR moduleBase )
 {
-    MEMORY_REGION_INFORMATION memRegion = {0};
-    SIZE_T retLen = 0;
-    if (NativeWinApi::NtQueryVirtualMemory(processHandle, (PVOID)moduleBase, MemoryRegionInformation, &memRegion, sizeof(MEMORY_REGION_INFORMATION), &retLen) == STATUS_SUCCESS)
-    {
-        return memRegion.RegionSize;
-    }
+	MEMORY_REGION_INFORMATION memRegion = {0};
+	SIZE_T retLen = 0;
+	if (NativeWinApi::NtQueryVirtualMemory(processHandle, (PVOID)moduleBase, MemoryRegionInformation, &memRegion, sizeof(MEMORY_REGION_INFORMATION), &retLen) == STATUS_SUCCESS)
+	{
+		return memRegion.RegionSize;
+	}
 
-    return 0;
+	return 0;
 }

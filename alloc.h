@@ -4,23 +4,23 @@
 #include <assert.h>
 
 typedef NTSTATUS(WINAPI * _NtAllocateVirtualMemory)(
-	_In_     HANDLE ProcessHandle,
+	_In_	 HANDLE ProcessHandle,
 	_Inout_  PVOID *BaseAddress,
-	_In_     ULONG_PTR ZeroBits,
+	_In_	 ULONG_PTR ZeroBits,
 	_Inout_  PSIZE_T RegionSize,
-	_In_     ULONG AllocationType,
-	_In_     ULONG Protect);
+	_In_	 ULONG AllocationType,
+	_In_	 ULONG Protect);
 typedef NTSTATUS(WINAPI * _NtProtectVirtualMemory)(
-	_In_     HANDLE ProcessHandle,
+	_In_	 HANDLE ProcessHandle,
 	_Inout_  PVOID *BaseAddress,
 	_Inout_  PSIZE_T NumberOfBytesToProtect,
-	_In_     ULONG NewAccessProtection,
-	_In_     PULONG OldAccessProtection);
+	_In_	 ULONG NewAccessProtection,
+	_In_	 PULONG OldAccessProtection);
 typedef NTSTATUS(WINAPI * _NtFreeVirtualMemory)(
-	_In_     HANDLE ProcessHandle,
+	_In_	 HANDLE ProcessHandle,
 	_Inout_  PVOID *BaseAddress,
 	_Inout_  PSIZE_T RegionSize,
-	_In_     ULONG FreeType);
+	_In_	 ULONG FreeType);
 
 extern _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
 extern _NtProtectVirtualMemory pNtProtectVirtualMemory;

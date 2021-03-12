@@ -28,11 +28,11 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 	{
 		if (filename && readPeSectionsFromFile())
 		{
-            setDefaultFileAlignment();
+			setDefaultFileAlignment();
 
 			retValue = buildNewImportTable(copyModule);
 
-            if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
+			if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
 
 			if (retValue)
 			{
@@ -41,29 +41,29 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 
 				if (newIatInSection)
 				{
-                    DebugOutput("About to call patchFileForNewIatLocation..\n");
+					DebugOutput("About to call patchFileForNewIatLocation..\n");
 					patchFileForNewIatLocation();
 				}
 
 				if (BuildDirectImportsJumpTable)
 				{
-                    DebugOutput("About to call patchFileForDirectImportJumpTable..\n");
+					DebugOutput("About to call patchFileForDirectImportJumpTable..\n");
 					patchFileForDirectImportJumpTable();
 				}
 
 				DebugOutput("Successfully built new import table, saving fixed file to disk.\n");
-                retValue = savePeFileToDisk(newFilePath);
+				retValue = savePeFileToDisk(newFilePath);
 			}
 		}
-        else if (moduleBaseAddress && readPeSectionsFromProcess())
+		else if (moduleBaseAddress && readPeSectionsFromProcess())
 		{
 			setDefaultFileAlignment();
 
 			retValue = buildNewImportTable(copyModule);
 
-            if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
+			if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
 			
-            if (retValue)
+			if (retValue)
 			{
 				alignAllSectionHeaders();
 				fixPeHeader();
@@ -79,22 +79,22 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 				}
 
 				if (readPeSectionsFromProcess())
-                {
-                    setDefaultFileAlignment();
+				{
+					setDefaultFileAlignment();
 
-                    getFileOverlay();
+					getFileOverlay();
 
-                    retValue = savePeFileToDisk(newFilePath);
-                }
-               
-                if (!retValue) DebugOutput("dumpProcess() failed.\n");
+					retValue = savePeFileToDisk(newFilePath);
+				}
+			   
+				if (!retValue) DebugOutput("dumpProcess() failed.\n");
 			}
 		}
-        else DebugOutput("readPeSectionsFromProcess() failed.\n");
+		else DebugOutput("readPeSectionsFromProcess() failed.\n");
 	}
-    else DebugOutput("Invalid PE file: import table rebuild failed.\n");
-    
-    return retValue;
+	else DebugOutput("Invalid PE file: import table rebuild failed.\n");
+	
+	return retValue;
 }
 
 bool ImportRebuilder::buildNewImportTable(std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
@@ -125,7 +125,7 @@ bool ImportRebuilder::buildNewImportTable(std::map<DWORD_PTR, ImportModuleThunk>
 
 	if (!dwSize)
 	{
-        DebugOutput("fillImportSection() failed.\n");
+		DebugOutput("fillImportSection() failed.\n");
 		return false;
 	}
 
@@ -250,7 +250,7 @@ DWORD ImportRebuilder::fillImportSection(std::map<DWORD_PTR, ImportModuleThunk> 
 		stringLength = addImportDescriptor(importModuleThunk, offset, offsetOFTArray);
 
 #ifdef DEBUG_COMMENTS		
-        //DebugOutput("fillImportSection :: importDesc.Name %s", pImportDescriptor->Name);
+		//DebugOutput("fillImportSection :: importDesc.Name %s", pImportDescriptor->Name);
 #endif
 
 		offset += (DWORD)stringLength; //stringLength has null termination char
@@ -324,25 +324,25 @@ size_t ImportRebuilder::addImportDescriptor(ImportModuleThunk * pImportModule, D
 	*/
 
 #ifdef DEBUG_COMMENTS		
-    DebugOutput("ImportRebuilder: dllName: %s, length %d", dllName, stringLength);
+	DebugOutput("ImportRebuilder: dllName: %s, length %d", dllName, stringLength);
 #endif
-    
-    memcpy((listPeSection[importSectionIndex].data + sectionOffset), dllName, stringLength); //copy module name to section
+	
+	memcpy((listPeSection[importSectionIndex].data + sectionOffset), dllName, stringLength); //copy module name to section
 
 	pImportDescriptor->FirstThunk = (DWORD)pImportModule->firstThunk;
 	DWORD Name = (DWORD)convertOffsetToRVAVector(listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffset);
 	pImportDescriptor->Name = (DWORD)convertOffsetToRVAVector(listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffset);
 #ifdef DEBUG_COMMENTS		
-    DebugOutput("pImportDescriptor->Name: 0x%x, @0x%x\n", pImportDescriptor->Name, &pImportDescriptor->Name);
+	DebugOutput("pImportDescriptor->Name: 0x%x, @0x%x\n", pImportDescriptor->Name, &pImportDescriptor->Name);
 #endif
 	   
 	if (useOFT)
 	{
 		pImportDescriptor->OriginalFirstThunk = (DWORD)convertOffsetToRVAVector(listPeSection[importSectionIndex].sectionHeader.PointerToRawData + sectionOffsetOFTArray);
 #ifdef DEBUG_COMMENTS		
-        DebugOutput("pImportDescriptor->OriginalFirstThunk set to: 0x%x\n", pImportDescriptor->OriginalFirstThunk);
+		DebugOutput("pImportDescriptor->OriginalFirstThunk set to: 0x%x\n", pImportDescriptor->OriginalFirstThunk);
 #endif
-        
+		
 	}
 
 	return stringLength;
@@ -478,7 +478,7 @@ BYTE * ImportRebuilder::getMemoryPointerFromRVA(DWORD_PTR dwRVA)
 		listPeSection[peSectionIndex].sectionHeader.SizeOfRawData = listPeSection[peSectionIndex].dataSize;
 	}
 
-    return (BYTE *)((DWORD_PTR)listPeSection[peSectionIndex].data + rvaPointer);
+	return (BYTE *)((DWORD_PTR)listPeSection[peSectionIndex].data + rvaPointer);
 }
 
 void ImportRebuilder::enableOFTSupport()

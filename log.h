@@ -42,7 +42,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // A  -> (int, wchar_t **) -> array of unicode strings
 // r  -> (Type, int, char *) type as defined for Registry operations
 // R  -> (Type, int, wchar_t *) type as defined for Registry operations
-//       type r is for ascii functions, R for unicode (Nt* are unicode)
+//	   type r is for ascii functions, R for unicode (Nt* are unicode)
 // e  -> (HKEY, char *) -> key/ascii key/value pair (to be normalized)
 // E  -> (HKEY, wchar_t *) -> key/unicode key/value pair (to be normalized)
 // k  -> (HKEY, UNICODE_STRING *) -> unicode string for registry values (to be normalized)
@@ -65,12 +65,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hooking.h"
 
 void loq(int index, const char *category, const char *name,
-    int is_success, ULONG_PTR return_value, const char *fmt, ...);
+	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 void log_new_process();
 void log_new_thread();
 void log_anomaly(const char *subcategory, const char *msg);
 void log_hook_anomaly(const char *subcategory, int success,
-    const hook_t *h, const char *msg);
+	const hook_t *h, const char *msg);
 void log_hook_modification(const hook_t *h, const char *origbytes, const char *newbytes, unsigned int len);
 void log_hook_removal(const hook_t *h);
 void log_hook_restoration(const hook_t *h);
@@ -105,7 +105,7 @@ extern size_t large_buffer_log_max;
 #define _LOQ(eval, cat, fmt, ...) \
 do { \
 	static volatile LONG _index; \
-    if (_index == 0) \
+	if (_index == 0) \
 		InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
 	loq(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
 } while (0)
@@ -124,32 +124,32 @@ do { \
 #define LOQ_msgwait(cat, fmt, ...) _LOQ(ret != WAIT_FAILED, cat, fmt, ##__VA_ARGS__)
 
 #define ENSURE_LARGE_INTEGER(param) \
-    LARGE_INTEGER _##param; _##param.QuadPart = 0; if(param == NULL) param = &_##param
+	LARGE_INTEGER _##param; _##param.QuadPart = 0; if(param == NULL) param = &_##param
 
 #define ENSURE_RTL_ATOM(param) \
-    RTL_ATOM _##param = 0; if(param == NULL) param = &_##param
+	RTL_ATOM _##param = 0; if(param == NULL) param = &_##param
 
 #define ENSURE_DWORD(param) \
-    DWORD _##param = 0; if(param == NULL) param = &_##param
+	DWORD _##param = 0; if(param == NULL) param = &_##param
 
 #define ENSURE_ULONG(param) \
-    ULONG _##param = 0; if(param == NULL) param = &_##param
+	ULONG _##param = 0; if(param == NULL) param = &_##param
 #define ENSURE_ULONG_ZERO(param) \
-    ENSURE_ULONG(param); else *param = 0
+	ENSURE_ULONG(param); else *param = 0
 
 #define ENSURE_SIZET(param) \
-    ULONG_PTR _##param = 0; if(param == NULL) param = &_##param
+	ULONG_PTR _##param = 0; if(param == NULL) param = &_##param
 #define ENSURE_SIZET_ZERO(param) \
-    ENSURE_SIZET(param); else *param = 0
+	ENSURE_SIZET(param); else *param = 0
 
 #define ENSURE_CLIENT_ID(param) \
-    CLIENT_ID _##param; memset(&_##param, 0, sizeof(_##param)); if (param == NULL) param = &_##param
+	CLIENT_ID _##param; memset(&_##param, 0, sizeof(_##param)); if (param == NULL) param = &_##param
 
 #define ENSURE_HANDLE(param) \
-    HANDLE _##param; memset(&_##param, 0, sizeof(_##param)); if (param == NULL) param = &_##param
+	HANDLE _##param; memset(&_##param, 0, sizeof(_##param)); if (param == NULL) param = &_##param
 
 #define ENSURE_STRUCT(param, type) \
-    type _##param; memset(&_##param, 0, sizeof(_##param)); if(param == NULL) param = &_##param
+	type _##param; memset(&_##param, 0, sizeof(_##param)); if(param == NULL) param = &_##param
 
 typedef struct _lastlog_t {
 	unsigned char *buf;

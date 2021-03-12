@@ -20,10 +20,10 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // Based upon ReWolf's wow64ext library:
 // https://github.com/rwfpl/rewolf-wow64ext
 
-#define DR7_MASK_RWE0 0xFFFDFFFF    // 11111111111111011111111111111111
-#define DR7_MASK_RWE1 0xFFDFFFFF    // 11111111110111111111111111111111
-#define DR7_MASK_RWE2 0xFDFFFFFF    // 11111101111111111111111111111111
-#define DR7_MASK_RWE3 0xDFFFFFFF    // 11011111111111111111111111111111
+#define DR7_MASK_RWE0 0xFFFDFFFF	// 11111111111111011111111111111111
+#define DR7_MASK_RWE1 0xFFDFFFFF	// 11111111110111111111111111111111
+#define DR7_MASK_RWE2 0xFDFFFFFF	// 11111101111111111111111111111111
+#define DR7_MASK_RWE3 0xDFFFFFFF	// 11011111111111111111111111111111
 
 const int PAGE_SIZE = 0x1000;
 
@@ -43,60 +43,60 @@ DWORD64 pfnWow64PrepareForException;
 extern BOOL WoW64PatchBreakpoint(unsigned int Register)
 //**************************************************************************************
 {
-    if (WoW64HookInstalled == FALSE)
-        return FALSE;
+	if (WoW64HookInstalled == FALSE)
+		return FALSE;
 
-    DebugOutput("WoW64PatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+	DebugOutput("WoW64PatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
-    switch(Register)
+	switch(Register)
 	{
-      case 0:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE0);
-        break;
-      case 1:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE1);
-        break;
-      case 2:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE2);
-        break;
-      case 3:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE3);
-        break;
-    }
+	  case 0:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE0);
+		break;
+	  case 1:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE1);
+		break;
+	  case 2:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE2);
+		break;
+	  case 3:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) & DR7_MASK_RWE3);
+		break;
+	}
 
-    DebugOutput("WoW64PatchBreakpoint: patched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+	DebugOutput("WoW64PatchBreakpoint: patched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
-    return TRUE;
+	return TRUE;
 }
 
 //**************************************************************************************
 extern BOOL WoW64UnpatchBreakpoint(unsigned int Register)
 //**************************************************************************************
 {
-    if (WoW64HookInstalled == FALSE)
-        return FALSE;
+	if (WoW64HookInstalled == FALSE)
+		return FALSE;
 
-    DebugOutput("WoW64UnpatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+	DebugOutput("WoW64UnpatchBreakpoint entry, debug register: %d, current DR7 mask = 0x%x\n", Register, *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
-    switch(Register)
+	switch(Register)
 	{
-      case 0:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE0);
-        break;
-      case 1:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE1);
-        break;
-      case 2:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE2);
-        break;
-      case 3:
-        *(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE3);
-        break;
-    }
+	  case 0:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE0);
+		break;
+	  case 1:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE1);
+		break;
+	  case 2:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE2);
+		break;
+	  case 3:
+		*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) = (*(DWORD*)(((PBYTE)lpNewJumpLocation)+37) | ~DR7_MASK_RWE3);
+		break;
+	}
 
-    DebugOutput("WoW64UnpatchBreakpoint: unpatched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
+	DebugOutput("WoW64UnpatchBreakpoint: unpatched DR7 mask = 0x%x\n", *(DWORD*)(((PBYTE)lpNewJumpLocation)+37));
 
-    return TRUE;
+	return TRUE;
 }
 
 //**************************************************************************************
@@ -104,122 +104,122 @@ const DWORD64 CreateHook(const DWORD_PTR pKiUserExceptionDispatcher, const DWORD
 //**************************************************************************************
 // credit to Omega Red http://pastebin.ca/raw/475547
 {
-    unsigned char HookBytes[] =
-    {
-        0x81, 0xBC, 0x24, 0xF0, 0x04, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x40,   //cmp 	dword [rsp+0x4f0], 0x4000001e	; wow64 single step?    0
-        0x75, 0x37,                                                         //jne 	hook_end                                                11
+	unsigned char HookBytes[] =
+	{
+		0x81, 0xBC, 0x24, 0xF0, 0x04, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x40,   //cmp 	dword [rsp+0x4f0], 0x4000001e	; wow64 single step?	0
+		0x75, 0x37,														 //jne 	hook_end												11
 
-        0x49, 0x89, 0xCC,                                                   //mov     r12, rcx                                              13
-        0x49, 0x89, 0xD5,                                                   //mov     r13, rdx                                              16
-        0x4D, 0x89, 0xC6,                                                   //mov     r14, r8                                               19
-        0x4D, 0x89, 0xCF,                                                   //mov     r15, r9                                               22
-        0xC7, 0x44, 0x24, 0x30, 0x10, 0x00, 0x10, 0x00,                     //mov     dword ptr [rsp+30h], 100010h                          25
-        0x81, 0x64, 0x24, 0x70, 0xFF, 0xFF, 0xFF, 0xFF,                     //and     dword ptr [rsp+70h], 0xFFFFFFFF                       33
-        0x48, 0xC7, 0xC1, 0xFE, 0xFF, 0xFF, 0xFF,                           //mov     rcx, 0FFFFFFFFFFFFFFFEh                               41
-        0x48, 0x89, 0xE2,                                                   //mov     rdx, rsp                                              48
-        0xE8, 0xBE, 0x07, 0xAF, 0x77,                                       //call    near ptr Xh                                           51
-        0x4C, 0x89, 0xE1,                                                   //mov     rcx, r12                                              56
-        0x4C, 0x89, 0xEA,                                                   //mov     rdx, r13                                              59
-        0x4D, 0x89, 0xF0,                                                   //mov     r8, r14                                               62
-        0x4D, 0x89, 0xF9,                                                   //mov     r9, r15                                               65
+		0x49, 0x89, 0xCC,												   //mov	 r12, rcx											  13
+		0x49, 0x89, 0xD5,												   //mov	 r13, rdx											  16
+		0x4D, 0x89, 0xC6,												   //mov	 r14, r8											   19
+		0x4D, 0x89, 0xCF,												   //mov	 r15, r9											   22
+		0xC7, 0x44, 0x24, 0x30, 0x10, 0x00, 0x10, 0x00,					 //mov	 dword ptr [rsp+30h], 100010h						  25
+		0x81, 0x64, 0x24, 0x70, 0xFF, 0xFF, 0xFF, 0xFF,					 //and	 dword ptr [rsp+70h], 0xFFFFFFFF					   33
+		0x48, 0xC7, 0xC1, 0xFE, 0xFF, 0xFF, 0xFF,						   //mov	 rcx, 0FFFFFFFFFFFFFFFEh							   41
+		0x48, 0x89, 0xE2,												   //mov	 rdx, rsp											  48
+		0xE8, 0xBE, 0x07, 0xAF, 0x77,									   //call	near ptr Xh										   51
+		0x4C, 0x89, 0xE1,												   //mov	 rcx, r12											  56
+		0x4C, 0x89, 0xEA,												   //mov	 rdx, r13											  59
+		0x4D, 0x89, 0xF0,												   //mov	 r8, r14											   62
+		0x4D, 0x89, 0xF9,												   //mov	 r9, r15											   65
 //hook_end
-        0xFC,                                                               //cld  - first two instructions from KiUserExceptionDispatcher  68
-        0x48, 0xB8, 0xDD, 0xCC, 0xBB, 0xAA, 0x00, 0x00, 0x00, 0x00,         //mov     rax, 0AABBCCDDh                                       69
-        0x50,                                                               //push    rax - jump back to KiUserExceptionDispatcher+8        79
-        0x48, 0xB8, 0xDD, 0xCC, 0xBB, 0xAA, 0x00, 0x00, 0x00, 0x00,         //mov     rax, 0AABBCCDDh                                       80
-        0x48, 0x87, 0x04, 0x24,                                             //xchg    rax, [rsp]                                            90
-        0xC3                                                                //ret                                                           94
-    };                                                                      //                                                              86
+		0xFC,															   //cld  - first two instructions from KiUserExceptionDispatcher  68
+		0x48, 0xB8, 0xDD, 0xCC, 0xBB, 0xAA, 0x00, 0x00, 0x00, 0x00,		 //mov	 rax, 0AABBCCDDh									   69
+		0x50,															   //push	rax - jump back to KiUserExceptionDispatcher+8		79
+		0x48, 0xB8, 0xDD, 0xCC, 0xBB, 0xAA, 0x00, 0x00, 0x00, 0x00,		 //mov	 rax, 0AABBCCDDh									   80
+		0x48, 0x87, 0x04, 0x24,											 //xchg	rax, [rsp]											90
+		0xC3																//ret														   94
+	};																	  //															  86
 
-    lpHookCode = VirtualAllocEx64((HANDLE) -1, (DWORD64)NULL, PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	lpHookCode = VirtualAllocEx64((HANDLE) -1, (DWORD64)NULL, PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 
-    //insert relative address of NtSetContextThread64 from instruction after call
-    DWORD RelativeOffset = pNtSetContextThread64 - ((DWORD)lpHookCode + 56);
-    memcpy(&HookBytes[52], &RelativeOffset, sizeof(DWORD_PTR));
+	//insert relative address of NtSetContextThread64 from instruction after call
+	DWORD RelativeOffset = pNtSetContextThread64 - ((DWORD)lpHookCode + 56);
+	memcpy(&HookBytes[52], &RelativeOffset, sizeof(DWORD_PTR));
 
-    //insert VA of Wow64PrepareForException
-    memcpy(&HookBytes[71], &pWow64PrepareForException, sizeof(DWORD_PTR));
+	//insert VA of Wow64PrepareForException
+	memcpy(&HookBytes[71], &pWow64PrepareForException, sizeof(DWORD_PTR));
 
-    //insert address to return to from hook code at 8 bytes into KiUserExceptionDispatcher
-    DWORD ReturnAddress = pKiUserExceptionDispatcher + 8;
-    memcpy(&HookBytes[82], &ReturnAddress, sizeof(DWORD_PTR)); //(8 is address of third instruction)
+	//insert address to return to from hook code at 8 bytes into KiUserExceptionDispatcher
+	DWORD ReturnAddress = pKiUserExceptionDispatcher + 8;
+	memcpy(&HookBytes[82], &ReturnAddress, sizeof(DWORD_PTR)); //(8 is address of third instruction)
 
-    //copy it to newly created page
-    memcpy((LPVOID)lpHookCode, (const void *)HookBytes, sizeof(HookBytes));
+	//copy it to newly created page
+	memcpy((LPVOID)lpHookCode, (const void *)HookBytes, sizeof(HookBytes));
 
-    return lpHookCode;
+	return lpHookCode;
 }
 
 //**************************************************************************************
 const void EnableWow64Hook()
 //**************************************************************************************
 {
-    unsigned char trampolineBytes[] =
-    {
-        0xE9, 0xDD, 0xCC, 0xBB, 0xAA,                              // jmp +0xAABBCCDDEE+5
-        0xCC, 0xCC, 0xCC                                           //
-    };
-    DWORD pNew = (DWORD)lpNewJumpLocation;
+	unsigned char trampolineBytes[] =
+	{
+		0xE9, 0xDD, 0xCC, 0xBB, 0xAA,							  // jmp +0xAABBCCDDEE+5
+		0xCC, 0xCC, 0xCC										   //
+	};
+	DWORD pNew = (DWORD)lpNewJumpLocation;
 	DWORD pOrig = (DWORD)pfnKiUserExceptionDispatcher + 5;
-    DWORD RelativeOffset = pNew - pOrig;
-    memcpy(&trampolineBytes[1], (PVOID)&RelativeOffset, sizeof(DWORD_PTR));
+	DWORD RelativeOffset = pNew - pOrig;
+	memcpy(&trampolineBytes[1], (PVOID)&RelativeOffset, sizeof(DWORD_PTR));
 
-    DWORD dwOldProtect = 0;
-    if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, PAGE_EXECUTE_READWRITE, &dwOldProtect))
-    {
-        ErrorOutput("VirtualProtectEx64 failed to set PAGE_EXECUTE_READWRITE");
-        return;
-    }
+	DWORD dwOldProtect = 0;
+	if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+	{
+		ErrorOutput("VirtualProtectEx64 failed to set PAGE_EXECUTE_READWRITE");
+		return;
+	}
 
-    memcpy((PVOID)pfnKiUserExceptionDispatcher, &trampolineBytes, sizeof(trampolineBytes));
+	memcpy((PVOID)pfnKiUserExceptionDispatcher, &trampolineBytes, sizeof(trampolineBytes));
 
-    if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, dwOldProtect, &dwOldProtect))
-    {
-        ErrorOutput("VirtualProtect failed to restore dwOldProtect");
-        return;
-    }
+	if (!VirtualProtectEx64((HANDLE)-1, (DWORD64)pfnKiUserExceptionDispatcher, PAGE_SIZE, dwOldProtect, &dwOldProtect))
+	{
+		ErrorOutput("VirtualProtect failed to restore dwOldProtect");
+		return;
+	}
 }
 
 //**************************************************************************************
 extern BOOL WoW64fix(void)
 //**************************************************************************************
 {
-    OSVERSIONINFO OSVersion;
-    OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+	OSVERSIONINFO OSVersion;
+	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
-    if (!GetVersionEx(&OSVersion))
-    {
-        ErrorOutput("WoW64fix: Failed to get OS version");
-        return FALSE;
-    }
+	if (!GetVersionEx(&OSVersion))
+	{
+		ErrorOutput("WoW64fix: Failed to get OS version");
+		return FALSE;
+	}
 
-    if (OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1)
-    {
-        DebugOutput("WoW64fix: Windows version %d.%d not supported.\n", OSVersion.dwMajorVersion, OSVersion.dwMinorVersion);
-        return FALSE;
-    }
+	if (OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1)
+	{
+		DebugOutput("WoW64fix: Windows version %d.%d not supported.\n", OSVersion.dwMajorVersion, OSVersion.dwMinorVersion);
+		return FALSE;
+	}
 
-    IsWow64Process(GetCurrentProcess(), &WoW64HookInstalled);
-    if (WoW64HookInstalled == FALSE)
-    {
-        DebugOutput("WoW64 not detected.\n");
-        return FALSE;
-    }
+	IsWow64Process(GetCurrentProcess(), &WoW64HookInstalled);
+	if (WoW64HookInstalled == FALSE)
+	{
+		DebugOutput("WoW64 not detected.\n");
+		return FALSE;
+	}
 
-    DWORD64 ntdll64 = GetModuleBase64(L"ntdll.dll");
-    DWORD64 wow64dll = GetModuleBase64(L"wow64.dll");
-    DWORD64 pfnWow64PrepareForException = GetProcAddress64(wow64dll, "Wow64PrepareForException");
-    pfnKiUserExceptionDispatcher = GetProcAddress64(ntdll64, "KiUserExceptionDispatcher");
-    pfnNtSetContextThread = GetProcAddress64(ntdll64, "NtSetContextThread");
+	DWORD64 ntdll64 = GetModuleBase64(L"ntdll.dll");
+	DWORD64 wow64dll = GetModuleBase64(L"wow64.dll");
+	DWORD64 pfnWow64PrepareForException = GetProcAddress64(wow64dll, "Wow64PrepareForException");
+	pfnKiUserExceptionDispatcher = GetProcAddress64(ntdll64, "KiUserExceptionDispatcher");
+	pfnNtSetContextThread = GetProcAddress64(ntdll64, "NtSetContextThread");
 
-    DebugOutput("WoW64 detected: 64-bit ntdll base: 0x%x, KiUserExceptionDispatcher: 0x%x, NtSetContextThread: 0x%x, Wow64PrepareForException: 0x%x\n", ntdll64, pfnKiUserExceptionDispatcher, pfnNtSetContextThread, pfnWow64PrepareForException);
+	DebugOutput("WoW64 detected: 64-bit ntdll base: 0x%x, KiUserExceptionDispatcher: 0x%x, NtSetContextThread: 0x%x, Wow64PrepareForException: 0x%x\n", ntdll64, pfnKiUserExceptionDispatcher, pfnNtSetContextThread, pfnWow64PrepareForException);
 
-    lpNewJumpLocation = CreateHook((DWORD_PTR)pfnKiUserExceptionDispatcher, (DWORD_PTR)pfnNtSetContextThread, (DWORD_PTR)pfnWow64PrepareForException);
+	lpNewJumpLocation = CreateHook((DWORD_PTR)pfnKiUserExceptionDispatcher, (DWORD_PTR)pfnNtSetContextThread, (DWORD_PTR)pfnWow64PrepareForException);
 
-    EnableWow64Hook();
+	EnableWow64Hook();
 
-    DebugOutput("WoW64 workaround: KiUserExceptionDispatcher hook installed at: 0x%x\n", lpNewJumpLocation);
+	DebugOutput("WoW64 workaround: KiUserExceptionDispatcher hook installed at: 0x%x\n", lpNewJumpLocation);
 
-    return TRUE;
+	return TRUE;
 }
 #endif

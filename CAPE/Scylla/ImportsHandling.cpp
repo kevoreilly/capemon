@@ -135,14 +135,14 @@ void ImportsHandling::scanAndFixModuleList()
 			if (importThunk.moduleName[0] == 0 || importThunk.moduleName[0] == L'?')
 			{
 				DebugOutput("API not found - added to module list.");
-                addNotFoundApiToModuleList(&importThunk);
+				addNotFoundApiToModuleList(&importThunk);
 			}
 			else 
 			{
 				
 				if (_stricmp(importThunk.moduleName, prevModuleName))
 				{
-                    DebugOutput("Adding module to module list: %s", importThunk.moduleName);
+					DebugOutput("Adding module to module list: %s", importThunk.moduleName);
 					addModuleToModuleList(importThunk.moduleName, importThunk.rva);
 				}
 				
@@ -265,7 +265,7 @@ bool ImportsHandling::addNotFoundApiToModuleList(const ImportThunk * apiNotFound
 	if (!module)
 	{
 #ifdef DEBUG_COMMENTS		
-        DebugOutput("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, rva);
+		DebugOutput("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, rva);
 #endif
 		return false;
 	}
@@ -331,7 +331,7 @@ bool ImportsHandling::addFunctionToModuleList(const ImportThunk * apiFound)
 	if (!module)
 	{
 #ifdef DEBUG_COMMENTS		
-        DebugOutput("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, apiFound->rva);
+		DebugOutput("ImportsHandling::addFunction module not found rva " PRINTF_DWORD_PTR_FULL, apiFound->rva);
 #endif
 		return false;
 	}

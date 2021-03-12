@@ -54,8 +54,8 @@ extern PVOID ImageBase;
 
 void hook_init()
 {
-    lookup_init_no_cs(&g_hook_info);
-    lookup_init(&g_caller_regions);
+	lookup_init_no_cs(&g_hook_info);
+	lookup_init(&g_caller_regions);
 }
 
 void emit_rel(unsigned char *buf, unsigned char *source, unsigned char *target)
@@ -71,47 +71,47 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 	hook_info_t *hookinfo = _hook_info;
 
 	if (addr && !inside_hook((PVOID)addr)) {
-        if (!hookinfo->main_caller_retaddr) {
-            hookinfo->main_caller_retaddr = addr;
-            return 0;
-        }
-        else if (!hookinfo->parent_caller_retaddr) {
-            hookinfo->parent_caller_retaddr = addr;
-            return 1;
-        }
-    }
+		if (!hookinfo->main_caller_retaddr) {
+			hookinfo->main_caller_retaddr = addr;
+			return 0;
+		}
+		else if (!hookinfo->parent_caller_retaddr) {
+			hookinfo->parent_caller_retaddr = addr;
+			return 1;
+		}
+	}
 
-    return 0;
+	return 0;
 }
 
 static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
-    if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
-        return;
-    hook_disable();
-    PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-    if (!hookinfo->main_caller_retaddr && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
-        char ModulePath[MAX_PATH];
-        BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-        lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-        DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
-        if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
-            YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-        if (g_config.base_on_caller)
-            SetInitialBreakpoints((PVOID)AllocationBase);
-        if (g_config.unpacker) {
-            PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
-            if (TrackedRegion) {
-                TrackedRegion->CanDump = 1;
-                ProcessTrackedRegion(TrackedRegion);
-            }
-        }
-        else if (g_config.caller_dump && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
-            DumpRegion((PVOID)addr);
-        else
-            DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
-    }
-    hook_enable();
+	if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+		return;
+	hook_disable();
+	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
+	if (!hookinfo->main_caller_retaddr && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
+		char ModulePath[MAX_PATH];
+		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
+		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
+		if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
+			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
+		if (g_config.base_on_caller)
+			SetInitialBreakpoints((PVOID)AllocationBase);
+		if (g_config.unpacker) {
+			PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
+			if (TrackedRegion) {
+				TrackedRegion->CanDump = 1;
+				ProcessTrackedRegion(TrackedRegion);
+			}
+		}
+		else if (g_config.caller_dump && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
+			DumpRegion((PVOID)addr);
+		else
+			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
+	}
+	hook_enable();
 }
 
 static int set_caller_info(void *_hook_info, ULONG_PTR addr)
@@ -119,7 +119,7 @@ static int set_caller_info(void *_hook_info, ULONG_PTR addr)
 	hook_info_t *hookinfo = _hook_info;
 
 	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr)) {
-        caller_dispatch(hookinfo, addr);
+		caller_dispatch(hookinfo, addr);
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
 		else {
@@ -173,73 +173,73 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 {
 	unsigned int i;
 	ULONG_PTR main_caller_retaddr, parent_caller_retaddr;
-    PVOID AllocationBase = NULL;
+	PVOID AllocationBase = NULL;
 
 	main_caller_retaddr = hookinfo->main_caller_retaddr;
 	parent_caller_retaddr = hookinfo->parent_caller_retaddr;
 
-    if (g_config.debugger)
-    {
-        for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
-            if (!g_config.base_on_apiname[i])
-                break;
-            if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
-                DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
-                AllocationBase = GetHookCallerBase(hookinfo);
-                if (AllocationBase) {
-                    BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
-                    if (BreakpointsSet)
-                        DebugOutput("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
-                    else
-                        DebugOutput("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
-                }
-                else
-                    DebugOutput("Base-on-API: GetHookCallerBase fail.\n");
-                break;
-            }
-        }
-    }
+	if (g_config.debugger)
+	{
+		for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
+			if (!g_config.base_on_apiname[i])
+				break;
+			if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
+				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+				AllocationBase = GetHookCallerBase(hookinfo);
+				if (AllocationBase) {
+					BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
+					if (BreakpointsSet)
+						DebugOutput("Base-on-API: GetHookCallerBase success 0x%p - Breakpoints set.\n", AllocationBase);
+					else
+						DebugOutput("Base-on-API: Failed to set breakpoints on 0x%p.\n", AllocationBase);
+				}
+				else
+					DebugOutput("Base-on-API: GetHookCallerBase fail.\n");
+				break;
+			}
+		}
+	}
 
 	for (i = 0; i < ARRAYSIZE(g_config.dump_on_apinames); i++) {
 		if (!g_config.dump_on_apinames[i])
 			break;
 		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
-            DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
-            if (main_caller_retaddr) {
-                if (!AllocationBase)
-                    AllocationBase = GetHookCallerBase(hookinfo);
-                if (AllocationBase) {
-                    if (g_config.dump_on_api_type)
-                        CapeMetaData->DumpType = g_config.dump_on_api_type;
-                    if (DumpImageInCurrentProcess(AllocationBase)) {
-                        ModuleDumped = TRUE;
-                        DebugOutput("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-                    }
-                    else if (DumpRegion(AllocationBase)) {
-                        ModuleDumped = TRUE;
-                        DebugOutput("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-                    }
-                    else {
-                        DebugOutput("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-                    }
-                }
-                else
-                    DebugOutput("Dump-on-API: Failed to obtain current module base address.\n");
-            }
-            break;
-        }
-    }
+			DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+			if (main_caller_retaddr) {
+				if (!AllocationBase)
+					AllocationBase = GetHookCallerBase(hookinfo);
+				if (AllocationBase) {
+					if (g_config.dump_on_api_type)
+						CapeMetaData->DumpType = g_config.dump_on_api_type;
+					if (DumpImageInCurrentProcess(AllocationBase)) {
+						ModuleDumped = TRUE;
+						DebugOutput("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+					}
+					else if (DumpRegion(AllocationBase)) {
+						ModuleDumped = TRUE;
+						DebugOutput("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+					}
+					else {
+						DebugOutput("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
+					}
+				}
+				else
+					DebugOutput("Dump-on-API: Failed to obtain current module base address.\n");
+			}
+			break;
+		}
+	}
 
 
-    if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
-        DebugOutput("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
-        if (main_caller_retaddr)
-            BreakpointOnReturn((PVOID)main_caller_retaddr);
-        else if (parent_caller_retaddr)
-            BreakpointOnReturn((PVOID)parent_caller_retaddr);
-        else
-            BreakpointOnReturn((PVOID)hookinfo->return_address);
-    }
+	if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
+		DebugOutput("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
+		if (main_caller_retaddr)
+			BreakpointOnReturn((PVOID)main_caller_retaddr);
+		else if (parent_caller_retaddr)
+			BreakpointOnReturn((PVOID)parent_caller_retaddr);
+		else
+			BreakpointOnReturn((PVOID)hookinfo->return_address);
+	}
 }
 
 extern BOOLEAN is_ignored_thread(DWORD tid);
@@ -272,54 +272,54 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	hookinfo = hook_info();
 
-    if ((!hookinfo->disable_count || h->new_func == &New_RtlDispatchException) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
+	if ((!hookinfo->disable_count || h->new_func == &New_RtlDispatchException) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-        if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue && Old_GetSystemTimeAsFileTime) {
-            if (h->hook_disabled)
-                return 0;
-            h->counter++;
-            if (h->counter > HOOK_LIMIT) {
-                DebugOutput("api-rate-cap: %s hook disabled due to count.\n", h->funcname);
-                h->hook_disabled = 1;
-                return 0;
-            }
-            Old_GetSystemTimeAsFileTime(&ft);
-            if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
-                h->rate_counter++;
-                if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
-                    DebugOutput("api-rate-cap: %s hook disabled due to rate.\n", h->funcname);
-                    h->rate_counter = 0;
-                    h->hook_disabled = 1;
-                    return 0;
-                }
-            }
-            else {
-                h->rate_counter = 0;
-                h->hook_timer = ft.dwLowDateTime;
-            }
-        }
+		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue && Old_GetSystemTimeAsFileTime) {
+			if (h->hook_disabled)
+				return 0;
+			h->counter++;
+			if (h->counter > HOOK_LIMIT) {
+				DebugOutput("api-rate-cap: %s hook disabled due to count.\n", h->funcname);
+				h->hook_disabled = 1;
+				return 0;
+			}
+			Old_GetSystemTimeAsFileTime(&ft);
+			if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
+				h->rate_counter++;
+				if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
+					DebugOutput("api-rate-cap: %s hook disabled due to rate.\n", h->funcname);
+					h->rate_counter = 0;
+					h->hook_disabled = 1;
+					return 0;
+				}
+			}
+			else {
+				h->rate_counter = 0;
+				h->hook_timer = ft.dwLowDateTime;
+			}
+		}
 
-        hookinfo->last_hook = hookinfo->current_hook;
-        hookinfo->current_hook = h;
-        hookinfo->stack_pointer = sp;
-        hookinfo->return_address = *(ULONG_PTR *)sp;
-        hookinfo->frame_pointer = ebp_or_rip;
+		hookinfo->last_hook = hookinfo->current_hook;
+		hookinfo->current_hook = h;
+		hookinfo->stack_pointer = sp;
+		hookinfo->return_address = *(ULONG_PTR *)sp;
+		hookinfo->frame_pointer = ebp_or_rip;
 
-        /* set caller information */
-        hookinfo->main_caller_retaddr = 0;
-        hookinfo->parent_caller_retaddr = 0;
+		/* set caller information */
+		hookinfo->main_caller_retaddr = 0;
+		hookinfo->parent_caller_retaddr = 0;
 
-        operate_on_backtrace(sp, ebp_or_rip, hookinfo, set_caller_info);
+		operate_on_backtrace(sp, ebp_or_rip, hookinfo, set_caller_info);
 
-        if (!hookinfo->main_caller_retaddr)
-            operate_on_backtrace(sp, ebp_or_rip, hookinfo, set_caller_info_fallback);
+		if (!hookinfo->main_caller_retaddr)
+			operate_on_backtrace(sp, ebp_or_rip, hookinfo, set_caller_info_fallback);
 
-        api_dispatch(h, hookinfo);
+		api_dispatch(h, hookinfo);
 
-        return 1;
-    }
+		return 1;
+	}
 
-    return 0;
+	return 0;
 }
 
 hook_info_t *hook_info()
@@ -348,9 +348,9 @@ void get_lasterrors(lasterror_t *errors)
 {
 	char *teb;
 
-    errors->Eflags = (DWORD)__readeflags();
+	errors->Eflags = (DWORD)__readeflags();
 
-    teb = (char *)NtCurrentTeb();
+	teb = (char *)NtCurrentTeb();
 
 	errors->Win32Error = *(DWORD *)(teb + TLS_LAST_WIN32_ERROR);
 	errors->NtstatusError = *(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR);
@@ -364,16 +364,16 @@ void set_lasterrors(lasterror_t *errors)
 	*(DWORD *)(teb + TLS_LAST_WIN32_ERROR) = errors->Win32Error;
 	*(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR) = errors->NtstatusError;
 
-    if ((errors->Eflags))
-        __writeeflags(errors->Eflags);
+	if ((errors->Eflags))
+		__writeeflags(errors->Eflags);
 }
 
 void hook_enable()
 {
-    hook_info()->disable_count = 0;
+	hook_info()->disable_count = 0;
 }
 
 void hook_disable()
 {
-    hook_info()->disable_count = 1;
+	hook_info()->disable_count = 1;
 }
