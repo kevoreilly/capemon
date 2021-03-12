@@ -113,7 +113,7 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL TraceRunning, BreakpointsSet, StopTrace;
+extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace;
 extern HANDLE DebuggerLog;
 
 DWORD MainThreadId;
@@ -2319,19 +2319,20 @@ void NtContinueHandler(PCONTEXT ThreadContext)
 
 void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect)
 {
-    if (!DebuggerInitialised)
-        return;
-
     if (!BaseAddress || !RegionSize)
     {
         DebugOutput("DebuggerAllocationHandler: Error, BaseAddress or RegionSize zero: 0x%p, 0x%p.\n", BaseAddress, RegionSize);
         return;
     }
+#ifdef DEBUG_COMMENTS
+    else
+        DebugOutput("DebuggerAllocationHandler: BaseAddress 0x%p, RegionSize 0x%p.\n", BaseAddress, RegionSize);
+#endif
 
     if (!(Protect & EXECUTABLE_FLAGS))
         return;
 
-    if (RegionSize <= 0x1000)
+    if (BreakpointsHit)
         return;
 
     if (SetInitialBreakpoints(BaseAddress))
