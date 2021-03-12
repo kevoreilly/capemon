@@ -33,7 +33,7 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
-#define    PE_HEADER_LIMIT 0x200
+#define PE_HEADER_LIMIT 0x200
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -65,13 +65,6 @@ void ScyllaInit(HANDLE hProcess)
 }
 
 //**************************************************************************************
-void ScyllaInitCurrentProcess()
-//**************************************************************************************
-{
-    ScyllaInit(NULL);
-}
-
-//**************************************************************************************
 extern "C" DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase)
 //**************************************************************************************
 {
@@ -79,7 +72,7 @@ extern "C" DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase)
 
     PeParser * peFile = 0;
 
-    ScyllaInitCurrentProcess();
+    ScyllaInit(NULL);
 
     peFile = new PeParser((DWORD_PTR)ModuleBase, true);
 
@@ -96,7 +89,7 @@ extern "C" DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset)
 {
     PeParser * peFile = 0;
 
-    ScyllaInitCurrentProcess();
+    ScyllaInit(NULL);
 
     peFile = new PeParser(ModuleBase, true);
 
@@ -170,10 +163,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
     IATReferenceScan iatReferenceScan;
     ImportsHandling importsHandling;
 
-    if (hProcess)
-        ScyllaInit(hProcess);
-    else
-        ScyllaInitCurrentProcess();
+    ScyllaInit(hProcess);
 
     DebugOutput("DumpProcess: Instantiating PeParser with address: 0x%p.\n", ModuleBase);
 
@@ -694,7 +684,7 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 extern "C" BOOL ScyllaGetSectionByName(PVOID ImageBase, char* Name, PVOID* SectionData, SIZE_T* SectionSize)
 //**************************************************************************************
 {
-    ScyllaInitCurrentProcess();
+    ScyllaInit(NULL);
 
     PeParser *peFile = new PeParser((DWORD_PTR)ImageBase, true);
 
@@ -735,7 +725,7 @@ extern "C" PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZ
     unsigned int ModuleIndex = 0;
     bool dummy;
 
-    ScyllaInitCurrentProcess();
+    ScyllaInit(NULL);
 
      for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
         if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
@@ -825,7 +815,7 @@ extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
     ApiReader apiReader;
     unsigned int ModuleIndex = 0;
 
-    ScyllaInitCurrentProcess();
+    ScyllaInit(NULL);
 
     for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
         if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
