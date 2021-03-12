@@ -286,13 +286,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         FlipCarryFlag(ExceptionInfo->ContextRecord);
         DebuggerOutput("ActionDispatcher: %s detected, flipping Carry flag.\n", DecodedInstruction.mnemonic.p);
     }
-    else if (!stricmp(Action, "Jmp"))
+    else if (!strnicmp(Action, "Jmp", 3))
     {
-        if (strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
-            DebuggerOutput("ActionDispatcher: Jmp action only applicable to jump instructions.\n");
-        else
+        if (!Target && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1))    // force an existing (conditional) jump
         {
-            PVOID JumpTarget, CIP;
+            PVOID CIP;
 #ifdef _WIN64
             CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 #else
@@ -301,25 +299,40 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
             {
                 if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
-                    JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+                    Target = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
                 else
-                    JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+                    Target = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
             }
             else if (DecodedInstruction.size > 4)
-                JumpTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+                Target = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
             else if (DecodedInstruction.size == 2)
-                JumpTarget = (PVOID)((PUCHAR)CIP + (int)*((PUCHAR)CIP + 1) + DecodedInstruction.size);
-            if (JumpTarget)
+                Target = (PVOID)((PUCHAR)CIP + (int)*((PUCHAR)CIP + 1) + DecodedInstruction.size);
+        }
+        else if (Target)
+        {
+            if ((unsigned int)Target < 0x10000)
             {
 #ifdef _WIN64
-                DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-                ExceptionInfo->ContextRecord->Rip = (QWORD)JumpTarget;
+                Target = (PUCHAR)Target + ExceptionInfo->ContextRecord->Rip;
 #else
-                DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
-                ExceptionInfo->ContextRecord->Eip = (DWORD)JumpTarget;
+                Target = (PUCHAR)Target + ExceptionInfo->ContextRecord->Eip;
 #endif
-                DebuggerOutput("ActionDispatcher: %s detected, forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, JumpTarget);
             }
+
+        }
+        else
+            DebuggerOutput("ActionDispatcher: No target specified for jmp action.\n");
+
+        if (Target)
+        {
+#ifdef _WIN64
+            DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s\n", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+            ExceptionInfo->ContextRecord->Rip = (QWORD)Target;
+#else
+            DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s\n", (unsigned int)ExceptionInfo->ContextRecord->Eip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
+            ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
+#endif
+            DebuggerOutput("ActionDispatcher: %s detected, forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, Target);
         }
     }
     else if (!stricmp(Action, "Skip"))
@@ -442,6 +455,19 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
             ExceptionInfo->ContextRecord->Eip = (DWORD)RetAddress;
             ExceptionInfo->ContextRecord->Esp += 4*sizeof(DWORD);
 #endif
+        }
+    }
+    else if (!strnicmp(Action, "hooks:", 6))
+    {
+        if (*(Action + 6) == '1')
+        {
+            DebuggerOutput("ActionDispatcher: Enabling hooks.\n");
+            hook_enable();
+        }
+        else if (*(Action + 6) == '0')
+        {
+            DebuggerOutput("ActionDispatcher: Disabling hooks.\n");
+            hook_disable();
         }
     }
     else if (!stricmp(Action, "Stop"))
