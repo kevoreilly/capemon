@@ -272,7 +272,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	hookinfo = hook_info();
 
-    if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
+    if ((!hookinfo->disable_count || h->new_func == &New_RtlDispatchException) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
         if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue && Old_GetSystemTimeAsFileTime) {
             if (h->hook_disabled)
@@ -370,10 +370,10 @@ void set_lasterrors(lasterror_t *errors)
 
 void hook_enable()
 {
-    hook_info()->disable_count--;
+    hook_info()->disable_count = 0;
 }
 
 void hook_disable()
 {
-    hook_info()->disable_count++;
+    hook_info()->disable_count = 1;
 }

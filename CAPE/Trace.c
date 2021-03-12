@@ -310,7 +310,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
         }
         else if (Target)
         {
-            if ((unsigned int)Target < 0x10000)
+            if ((unsigned int)(DWORD_PTR)Target < 0x10000)
             {
 #ifdef _WIN64
                 Target = (PUCHAR)Target + ExceptionInfo->ContextRecord->Rip;
