@@ -1113,7 +1113,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 }
 
 //**************************************************************************************
-void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect)
+void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, PULONG OldProtect)
 //**************************************************************************************
 {
     //DWORD EntryPoint;
@@ -1157,7 +1157,11 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
         NewRegion = TRUE;
     }
     else
+    {
         DebugOutput("ProtectionHandler: Address 0x%p already in tracked region at 0x%p, size 0x%x\n", Address, TrackedRegion->AllocationBase, TrackedRegion->RegionSize);
+        if (TrackedRegion->Guarded)
+            *OldProtect &= (~PAGE_GUARD);
+    }
 
     if (!TrackedRegion)
     {
@@ -1198,7 +1202,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG Ol
     }
 
     //if (ScanForNonZero(Address, RegionSize))
-    if (!TrackedRegion->PagesDumped && (NewRegion || OldProtect & WRITABLE_FLAGS) && ScanForNonZero(Address, RegionSize))
+    if (!TrackedRegion->PagesDumped && (NewRegion || *OldProtect & WRITABLE_FLAGS) && ScanForNonZero(Address, RegionSize))
     {
         DebugOutput("ProtectionHandler: New code detected at (0x%p), scanning for PE images.\n", TrackedRegion->AllocationBase);
 

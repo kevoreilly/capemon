@@ -48,6 +48,6 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 //void MapSectionViewHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect);
 void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
-void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
+void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, PULONG OldProtect);
 void FreeHandler(PVOID BaseAddress);
 void ProcessTrackedRegions();

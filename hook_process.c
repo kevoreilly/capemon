@@ -42,11 +42,12 @@ extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
-extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
+extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, PULONG OldProtect);
 extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
 extern void DebuggerShutdown();
 
+extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
 extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 extern void file_handle_terminate();
@@ -778,7 +779,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 ) {
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
-    PTRACKEDREGION TrackedRegion;
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect && *NumberOfBytesToProtect >= 0x2000 &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
@@ -807,12 +807,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		set_lasterrors(&lasterrors);
 	}
 
-	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
     {
-        ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, *OldAccessProtection);
-
-        if ((TrackedRegion = GetTrackedRegion(*BaseAddress)) && TrackedRegion->Guarded)
-            *OldAccessProtection &= (~PAGE_GUARD);
+        PVOID AllocationBase = GetAllocationBase(*BaseAddress);
+        if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+        {
+            DebugOutput("NtProtectVirtualMemory: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
+            lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+        }
+        if (g_config.unpacker)
+            ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
     }
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
@@ -842,7 +846,6 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 ) {
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
-    PTRACKEDREGION TrackedRegion;
 
 	if (flNewProtect == PAGE_EXECUTE_READ && GetCurrentProcessId() == our_getprocessid(hProcess) &&
 		is_in_dll_range((ULONG_PTR)lpAddress))
@@ -859,12 +862,16 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		set_lasterrors(&lasterrors);
 	}
 
-	if (NT_SUCCESS(ret) && g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
     {
-        ProtectionHandler(lpAddress, dwSize, flNewProtect, *lpflOldProtect);
-
-        if ((TrackedRegion = GetTrackedRegion(lpAddress)) && TrackedRegion->Guarded)
-            *lpflOldProtect &= (~PAGE_GUARD);
+        PVOID AllocationBase = GetAllocationBase(lpAddress);
+        if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+        {
+            DebugOutput("VirtualProtectEx: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
+            lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+        }
+        if (g_config.unpacker)
+            ProtectionHandler(lpAddress, dwSize, flNewProtect, lpflOldProtect);
     }
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && GetCurrentProcessId() == our_getprocessid(hProcess) &&
