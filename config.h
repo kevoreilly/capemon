@@ -176,6 +176,9 @@ struct _g_config {
 	// TLS secret dump mode
 	int tlsdump;
 
+	// Registry API dump mode
+	int regdump;
+
 	// YARA scans
 	int yarascan;
 

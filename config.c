@@ -846,6 +846,12 @@ void parse_config_line(char* line)
 				DebugOutput("TLS secret dump mode enabled.\n");
 			}
 		}
+		else if (!stricmp(key, "regdump")) {
+			g_config.regdump = value[0] == '1';
+			if (g_config.regdump) {
+				DebugOutput("Registry dump mode enabled.\n");
+			}
+		}
 		else if (!stricmp(key, "plugx")) {
 			g_config.plugx = value[0] == '1';
 			if (g_config.plugx)

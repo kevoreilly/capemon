@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "log.h"
 #include "config.h"
+#include "CAPE\CAPE.h"
 
 HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 	__in		HKEY hKey,
@@ -458,6 +459,11 @@ HOOKDEF(LONG, WINAPI, RegSetValueExA,
 	LONG ret = Old_RegSetValueExA(hKey, lpValueName, Reserved, dwType, lpData,
 		cbData);
 	if (ret == ERROR_SUCCESS) {
+		if (g_config.regdump && cbData > REGISTRY_VALUE_SIZE_MIN) {
+			CapeMetaData->DumpType = REGDUMP;
+			DumpMemory((PVOID)lpData, cbData);
+			DebugOutput("RegSetValueExA hook: Dumped registry value %s.\n", lpValueName);
+		}
 		LOQ_zero("registry", "psiriv", "Handle", hKey, "ValueName", lpValueName, "Type", dwType,
 			"Buffer", dwType, cbData, lpData, "BufferLength", cbData,
 			"FullName", hKey, lpValueName);
@@ -480,6 +486,11 @@ HOOKDEF(LONG, WINAPI, RegSetValueExW,
 	LONG ret = Old_RegSetValueExW(hKey, lpValueName, Reserved, dwType, lpData,
 		cbData);
 	if (ret == ERROR_SUCCESS) {
+		if (g_config.regdump && cbData > REGISTRY_VALUE_SIZE_MIN) {
+			CapeMetaData->DumpType = REGDUMP;
+			DumpMemory((PVOID)lpData, cbData);
+			DebugOutput("RegSetValueExW hook: Dumped registry value %s.\n", lpValueName);
+		}
 		LOQ_zero("registry", "puiRiV", "Handle", hKey, "ValueName", lpValueName, "Type", dwType,
 			"Buffer", dwType, cbData, lpData, "BufferLength", cbData,
 			"FullName", hKey, lpValueName);
