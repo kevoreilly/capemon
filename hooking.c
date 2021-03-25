@@ -51,6 +51,7 @@ extern BOOL BreakpointOnReturn(PVOID Address);
 extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsSet;
 extern PVOID ImageBase;
+extern BOOLEAN g_dll_main_complete;
 
 void hook_init()
 {
@@ -90,7 +91,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		return;
 	hook_disable();
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-	if (!hookinfo->main_caller_retaddr && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
+	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
 		char ModulePath[MAX_PATH];
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
