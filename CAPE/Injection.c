@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
 #include <stdio.h>
 #include "..\ntapi.h"
 #include <psapi.h>
@@ -353,11 +354,16 @@ void DumpSectionViewsForPid(DWORD Pid)
 	LPVOID PEPointer = NULL;
 	BOOL Dumped = FALSE;
 
+	if (Pid == GetCurrentProcessId())
+		return;
+
 	CurrentInjectionInfo = GetInjectionInfo(Pid);
 
 	if (CurrentInjectionInfo == NULL)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("DumpSectionViewsForPid: No injection info for pid %d.\n", Pid);
+#endif
 		return;
 	}
 
@@ -365,7 +371,7 @@ void DumpSectionViewsForPid(DWORD Pid)
 
 	while (CurrentSectionView)
 	{
-		if (CurrentInjectionInfo->WriteDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
+		if (CurrentInjectionInfo->MapDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
 		{
 			DebugOutput("DumpSectionViewsForPid: Shared section view found with pid %d, local address 0x%p.\n", Pid, CurrentSectionView->LocalView);
 
@@ -567,75 +573,56 @@ void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context)
 
 void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
 {
-	MEMORY_BASIC_INFORMATION MemoryInfo;
-	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
-	{
-		struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
-#ifdef _WIN64
-		if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)Context->Rcx, &MemoryInfo, sizeof(MemoryInfo)))
-			CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
-		else
-		{
-			ErrorOutput("SetThreadContextHandler: Failed to query target process memory at address 0x%p", Context->Rcx);
-			return;
-		}
-
-		if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
-			return;
-
-		CurrentInjectionInfo->EntryPoint = Context->Rcx - CurrentInjectionInfo->ImageBase;  // rcx holds ep on 64-bit
-
-		if (Context->Rip == (DWORD_PTR)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
-			DebugOutput("SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
-		else
-			DebugOutput("SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
-#else
-		if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)Context->Eax, &MemoryInfo, sizeof(MemoryInfo)))
-			CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
-		else
-		{
-			ErrorOutput("SetThreadContextHandler: Failed to query target process memory at address 0x%x", Context->Eax);
-			return;
-		}
-
-		if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
-			return;
-
-		CurrentInjectionInfo->EntryPoint = Context->Eax - CurrentInjectionInfo->ImageBase;  // eax holds ep on 32-bit
-
-		if (Context->Eip == (DWORD)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
-			DebugOutput("SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
-		else
-			DebugOutput("SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
-#endif
-	}
-}
-
-void ResumeThreadHandler(DWORD Pid)
-{
-	if (Pid == GetCurrentProcessId())
+	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
 		return;
 
+	MEMORY_BASIC_INFORMATION MemoryInfo;
 	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
 
 	if (!CurrentInjectionInfo)
 		return;
 
-	if (CurrentInjectionInfo->WriteDetected && CurrentInjectionInfo->ImageBase && !CurrentInjectionInfo->ImageDumped)
+#ifdef _WIN64
+	if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)Context->Rcx, &MemoryInfo, sizeof(MemoryInfo)))
+		CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
+	else
 	{
-		CapeMetaData->DumpType = INJECTION_PE;
-		CapeMetaData->TargetPid = Pid;
-
-		CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint, FALSE);
-
-		if (CurrentInjectionInfo->ImageDumped)
-			DebugOutput("ResumeThreadHandler: Dumped PE image from buffer.\n");
-		else
-			DebugOutput("ResumeThreadHandler: Failed to dump PE image from buffer.\n");
+		ErrorOutput("SetThreadContextHandler: Failed to query target process memory at address 0x%p", Context->Rcx);
+		return;
 	}
 
-	DebugOutput("ResumeThreadHandler: Dumping section view for process %d.\n", Pid);
+	if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
+		return;
 
+	CurrentInjectionInfo->EntryPoint = Context->Rcx - CurrentInjectionInfo->ImageBase;  // rcx holds ep on 64-bit
+
+	if (Context->Rip == (DWORD_PTR)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
+		DebugOutput("SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
+	else
+		DebugOutput("SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
+#else
+	if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)Context->Eax, &MemoryInfo, sizeof(MemoryInfo)))
+		CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
+	else
+	{
+		ErrorOutput("SetThreadContextHandler: Failed to query target process memory at address 0x%x", Context->Eax);
+		return;
+	}
+
+	if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
+		return;
+
+	CurrentInjectionInfo->EntryPoint = Context->Eax - CurrentInjectionInfo->ImageBase;  // eax holds ep on 32-bit
+
+	if (Context->Eip == (DWORD)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
+		DebugOutput("SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
+	else
+		DebugOutput("SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
+#endif
+}
+
+void ResumeThreadHandler(DWORD Pid)
+{
 	DumpSectionViewsForPid(Pid);
 }
 
@@ -684,31 +671,6 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 
 void CreateRemoteThreadHandler(DWORD Pid)
 {
-	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
-
-	if (!CurrentInjectionInfo)
-	{
-		DebugOutput("CreateRemoteThreadHandler: CurrentInjectionInfo 0x%x (Pid %d).\n", CurrentInjectionInfo, Pid);
-		return;
-	}
-
-	if (!CurrentInjectionInfo->ImageDumped)
-	{
-		CapeMetaData->DumpType = INJECTION_PE;
-		CapeMetaData->TargetPid = Pid;
-
-		DebugOutput("CreateRemoteThreadHandler: Dumping hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
-
-		CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint, FALSE);
-
-		if (CurrentInjectionInfo->ImageDumped)
-		{
-			DebugOutput("CreateRemoteThreadHandler: Dumped PE image from buffer.\n");
-		}
-		else
-			DebugOutput("CreateRemoteThreadHandler: Failed to dump PE image from buffer.\n");
-	}
-
 	DumpSectionViewsForPid(Pid);
 }
 
@@ -768,28 +730,7 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 
 void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 {
-	struct InjectionInfo *CurrentInjectionInfo;
-
-	CurrentInjectionInfo = GetInjectionInfo(Pid);
-
-	if (CurrentInjectionInfo)
-	{
-		if (CurrentInjectionInfo->WriteDetected && CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->ImageDumped == FALSE)
-		{
-			SetCapeMetaData(INJECTION_PE, Pid, ProcessHandle, NULL);
-
-			DebugOutput("ResumeProcessHandler: Dumping hollowed process %d, image base 0x%p.\n", Pid, CurrentInjectionInfo->ImageBase);
-
-			CurrentInjectionInfo->ImageDumped = DumpProcess(ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint, FALSE);
-
-			if (CurrentInjectionInfo->ImageDumped)
-				DebugOutput("ResumeProcessHandler: Dumped PE image from buffer.\n");
-			else
-				DebugOutput("ResumeProcessHandler: Failed to dump PE image from buffer.\n");
-		}
-
-		DumpSectionViewsForPid(Pid);
-	}
+	DumpSectionViewsForPid(Pid);
 }
 
 void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize)
@@ -835,7 +776,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 	}
 	else if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
 	{
-		CurrentInjectionInfo->WriteDetected = TRUE;
+		CurrentInjectionInfo->MapDetected = TRUE;
 		CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
 
 		if (CurrentSectionView)
@@ -850,7 +791,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 	}
 	else if (!CurrentInjectionInfo && Pid != GetCurrentProcessId())
 	{
-		CurrentInjectionInfo->WriteDetected = TRUE;
+		CurrentInjectionInfo->MapDetected = TRUE;
 		CurrentInjectionInfo = CreateInjectionInfo(Pid);
 
 		if (CurrentInjectionInfo == NULL)
@@ -965,8 +906,6 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 	if (CurrentInjectionInfo->ProcessId != Pid)
 		return;
 
-	CurrentInjectionInfo->WriteDetected = TRUE;
-
 	// Check if we have a valid DOS and PE header at the beginning of Buffer
 	if (IsDisguisedPEHeader((PVOID)Buffer))
 	{
@@ -1022,7 +961,10 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 				CapeMetaData->DumpType = INJECTION_SHELLCODE;
 				CapeMetaData->TargetPid = Pid;
 				if (DumpMemory((LPVOID)Buffer, NumberOfBytesWritten))
+				{
+
 					DebugOutput("WriteMemoryHandler: Dumped injected code/data from buffer.");
+				}
 				else
 					DebugOutput("WriteMemoryHandler: Failed to dump injected code/data from buffer.");
 			}
@@ -1121,7 +1063,7 @@ void TerminateHandler()
 
 	while (CurrentInjectionInfo && CurrentInjectionInfo->ProcessHandle && CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->ProcessId)
 	{
-		if (CurrentInjectionInfo->WriteDetected && !CurrentInjectionInfo->ImageDumped)
+		if (CurrentInjectionInfo->MapDetected && !CurrentInjectionInfo->ImageDumped)
 		{
 			CapeMetaData->DumpType = INJECTION_PE;
 			CapeMetaData->TargetPid = CurrentInjectionInfo->ProcessId;
@@ -1131,9 +1073,9 @@ void TerminateHandler()
 			CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint, FALSE);
 
 			if (CurrentInjectionInfo->ImageDumped)
-				DebugOutput("TerminateHandler: Dumped PE image from buffer.\n");
+				DebugOutput("TerminateHandler: Dumped PE image.\n");
 			else
-				DebugOutput("TerminateHandler: Failed to dump PE image from buffer.\n");
+				DebugOutput("TerminateHandler: Failed to dump PE image.\n");
 		}
 
 		CurrentInjectionInfo = CurrentInjectionInfo->NextInjectionInfo;

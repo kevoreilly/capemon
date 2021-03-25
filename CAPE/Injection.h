@@ -47,7 +47,7 @@ typedef struct InjectionInfo
 	HANDLE						ProcessHandle;
 	DWORD_PTR				   ImageBase;
 	DWORD_PTR				   EntryPoint;
-	BOOL						WriteDetected;
+	BOOL						MapDetected;
 	BOOL						ImageDumped;
 	LPVOID					  BufferBase;
 	LPVOID					  StackPointer;
