@@ -501,7 +501,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("CAPEExceptionFilter: Anomaly detected: Trap index set on non-single-step: %d\n", TrapIndex);
 
 #ifndef DEBUG_COMMENTS
-		if (!TraceRunning && !g_config.divert_debugger_log)
+		if (!TraceRunning && !g_config.no_logs)
 #endif
 			DebugOutput("CAPEExceptionFilter: breakpoint %d hit by instruction at 0x%p (thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
 

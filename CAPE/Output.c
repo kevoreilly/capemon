@@ -361,9 +361,9 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
 	va_start(args, lpOutputString);
 
-	if (g_config.divert_debugger_log > 1)
+	if (g_config.no_logs > 1)
 		return;
-	else if (g_config.divert_debugger_log)
+	else if (g_config.no_logs)
 	{
 		OutputString(lpOutputString, args);
 		va_end(args);

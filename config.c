@@ -692,9 +692,9 @@ void parse_config_line(char* line)
 				Type2 = BP_EXEC;
 			}
 		}
-		else if (!stricmp(key, "divert-debugger-log")) {
-			g_config.divert_debugger_log = value[0];
-			if (g_config.divert_debugger_log)
+		else if (!stricmp(key, "no-logs")) {
+			g_config.no_logs = value[0];
+			if (g_config.no_logs)
 				DebugOutput("Config: Debugger log diverted.\n");
 		}
 		else if (!stricmp(key, "disable-logging")) {

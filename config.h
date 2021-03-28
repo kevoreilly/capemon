@@ -204,7 +204,7 @@ struct _g_config {
 	int trace_all;
 	int step_out;
 	int file_offsets;
-	int divert_debugger_log;
+	int no_logs;
 	int disable_logging;
 	int base_on_alloc;
 	int base_on_caller;
