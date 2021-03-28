@@ -780,18 +780,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 
-	if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect && *NumberOfBytesToProtect >= 0x2000 &&
-		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
-		unsigned int offset;
-		char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &offset);
-		if (dllname && !strcmp(dllname, "ntdll.dll")) {
-			// don't allow writes, this will cause memory access violations
-			// that we are going to handle in the RtlDispatchException hook
-			NewAccessProtection = PAGE_EXECUTE_READ;
-		}
-		if (dllname) free(dllname);
-	}
-
 	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
@@ -981,20 +969,6 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	__in PCONTEXT Context)
 {
 	BOOL RetVal;
-#ifndef _WIN64
-	if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
-		ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
-		unsigned int offset;
-		char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
-		if (dllname && !strcmp(dllname, "ntdll.dll")) {
-			free(dllname);
-			// if trying to write to ntdll.dll, then just skip the instruction
-			Context->Eip += lde((void *)Context->Eip);
-			return TRUE;
-		}
-		if (dllname) free(dllname);
-	}
-#endif
 
 	if (ExceptionRecord && (ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) {
 		if (!(g_config.debugger && ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)) {
