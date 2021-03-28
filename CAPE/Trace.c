@@ -304,7 +304,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 					Target = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
 			}
 			else if (DecodedInstruction.size > 4)
-				Target = (PVOID)((PUCHAR)CIP + (signed char)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+				Target = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
 			else if (DecodedInstruction.size == 2)
 				Target = (PVOID)((PUCHAR)CIP + (signed char)*((PUCHAR)CIP + 1) + DecodedInstruction.size);
 		}
