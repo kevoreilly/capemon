@@ -41,8 +41,8 @@ extern char *our_dll_path;
 extern wchar_t *our_process_path_w;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2;
-extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH];
-extern char *Instruction0, *Instruction1, *Instruction2;
+extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
+extern char *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char *procname0;
 extern char DumpSizeString[MAX_PATH];
 extern SIZE_T DumpSize;
@@ -474,6 +474,71 @@ void parse_config_line(char* line)
 				}
 			}
 		}
+		else if (!stricmp(key, "bp3")) {
+			char *p;
+			p = strchr(value, ':');
+			if (p && *(p+1) == ':') {
+				g_config.bp3 = 0;
+				*p = '\0';
+				*(p+1) = '\0';
+				HANDLE Module = GetModuleHandle(value);
+				g_config.break_on_apiname = strdup(p+2);
+				g_config.break_on_modname = strdup(value);
+				if (Module)
+					g_config.bp3 = GetProcAddress(Module, p+2);
+				else
+					DebugOutput("Config: Failed to get base for module (%s).\n", g_config.break_on_modname);
+				if (g_config.bp3) {
+					g_config.break_on_apiname_set = TRUE;
+					g_config.debugger = 1;
+					DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
+				}
+				else {
+					g_config.bp3 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+					if (g_config.bp3) {
+						g_config.break_on_apiname_set = TRUE;
+						g_config.debugger = 1;
+						DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
+					}
+					else
+						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+				}
+			}
+			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
+				DebugOutput("Config: bp3 set to entry point.\n", g_config.bp3);
+				EntryPointRegister = 1;
+				g_config.debugger = 1;
+			}
+			else {
+				int delta=0;
+				p = strchr(value, '+');
+				if (p) {
+					delta = strtoul(p+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p = '\0';
+				}
+				else {
+					p = strchr(value, '-');
+					if (p) {
+						delta = - (int)strtoul(p+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p = '\0';
+					}
+				}
+				PVOID bp = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp3) {
+					g_config.bp3 = bp;
+					g_config.debugger = 1;
+					if (g_config.bp3 == (PVOID)(DWORD_PTR)ULONG_MAX)
+						g_config.bp3 = (PVOID)_strtoui64(value, NULL, 0);
+					if (delta) {
+						DebugOutput("Config: bp3 was 0x%p.\n", g_config.bp3);
+						g_config.bp3 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.bp3 + delta);
+					}
+					DebugOutput("Config: bp3 set to 0x%p.\n", g_config.bp3);
+				}
+			}
+		}
 		else if (!stricmp(key, "br0")) {
 			int delta=0;
 			p = strchr(value, '+');
@@ -592,6 +657,11 @@ void parse_config_line(char* line)
 			strncpy(Action2, value, strlen(value));
 			DebugOutput("Config: Action2 set to %s.", Action2);
 		}
+		else if (!stricmp(key, "action3")) {
+			memset(Action3, 0, MAX_PATH);
+			strncpy(Action3, value, strlen(value));
+			DebugOutput("Config: Action3 set to %s.", Action3);
+		}
 		else if (!stricmp(key, "instruction0") || !stricmp(key, "instr0")) {
 			Instruction0 = calloc(1, MAX_PATH);
 			strncpy(Instruction0, value, strlen(value));
@@ -606,6 +676,11 @@ void parse_config_line(char* line)
 			Instruction1 = calloc(1, MAX_PATH);
 			strncpy(Instruction2, value, strlen(value));
 			DebugOutput("Config: Instruction2 set to %s.", value);
+		}
+		else if (!stricmp(key, "instruction3") || !stricmp(key, "instr3")) {
+			Instruction1 = calloc(1, MAX_PATH);
+			strncpy(Instruction3, value, strlen(value));
+			DebugOutput("Config: Instruction3 set to %s.", value);
 		}
 		else if (!stricmp(key, "procname0")) {
 			procname0 = calloc(1, MAX_PATH);

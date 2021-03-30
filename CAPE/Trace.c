@@ -57,8 +57,8 @@ PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning;
 unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister;
-char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH];
-char *Instruction0, *Instruction1, *Instruction2, *procname0;
+char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
+char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
 unsigned int Type0, Type1, Type2, Type3;
 int cpuInfo[4], function_id, subfunction_id, StepOverRegister, TraceDepthCount, EntryPointRegister, InstructionCount;
 static CONTEXT LastContext;
@@ -334,6 +334,17 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("ActionDispatcher: %s detected, forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, Target);
 		}
 	}
+	else if (!strnicmp(Action, "Count", 5))
+	{
+		if (Target)
+		{
+            TraceDepthCount = 0;
+			StepLimit = (unsigned int)(DWORD_PTR)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting count to 0x%x.\n", DecodedInstruction.mnemonic.p, StepLimit);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set count - target value missing.\n");
+    }
 	else if (!stricmp(Action, "Skip"))
 	{
 		// We want the skipped instruction to appear in the trace
@@ -552,23 +563,20 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DumpSize = ExceptionInfo->ContextRecord->Eax;
 			DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Ebx;
 #endif
-			if (g_config.dumptype0)
-				CapeMetaData->DumpType = g_config.dumptype0;
-			else if (g_config.dumptype1)
-				CapeMetaData->DumpType = g_config.dumptype1;
-			else if (g_config.dumptype2)
-				CapeMetaData->DumpType = g_config.dumptype2;
-			else
-				CapeMetaData->DumpType = UNPACKED_PE;
-
-			if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
-			{
-				DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
-				return;
-			}
-			else
-				DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p.\n", DumpAddress);
 		}
+		if (g_config.dumptype0)
+			CapeMetaData->DumpType = g_config.dumptype0;
+		else if (g_config.dumptype1)
+			CapeMetaData->DumpType = g_config.dumptype1;
+		else if (g_config.dumptype2)
+			CapeMetaData->DumpType = g_config.dumptype2;
+		else
+			CapeMetaData->DumpType = DATADUMP;
+
+		if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
+			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+		else
+			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
 	}
 	else if (!stricmp(Action, "dumpecx"))
 	{
@@ -583,20 +591,20 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DumpSize = ExceptionInfo->ContextRecord->Eax;
 			DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Ecx;
 #endif
-			if (g_config.dumptype0)
-				CapeMetaData->DumpType = g_config.dumptype0;
-			else if (g_config.dumptype1)
-				CapeMetaData->DumpType = g_config.dumptype1;
-			else if (g_config.dumptype2)
-				CapeMetaData->DumpType = g_config.dumptype2;
-			else
-				CapeMetaData->DumpType = UNPACKED_PE;
-
-			if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
-				DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
-			else
-				DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p.\n", DumpAddress);
 		}
+		if (g_config.dumptype0)
+			CapeMetaData->DumpType = g_config.dumptype0;
+		else if (g_config.dumptype1)
+			CapeMetaData->DumpType = g_config.dumptype1;
+		else if (g_config.dumptype2)
+			CapeMetaData->DumpType = g_config.dumptype2;
+		else
+			CapeMetaData->DumpType = DATADUMP;
+
+		if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
+			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+		else
+			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
 	}
 	else if (!stricmp(Action, "dumpedx"))
 	{
@@ -611,20 +619,20 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DumpSize = ExceptionInfo->ContextRecord->Ecx;
 			DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Edx;
 #endif
-			if (g_config.dumptype0)
-				CapeMetaData->DumpType = g_config.dumptype0;
-			else if (g_config.dumptype1)
-				CapeMetaData->DumpType = g_config.dumptype1;
-			else if (g_config.dumptype2)
-				CapeMetaData->DumpType = g_config.dumptype2;
-			else
-				CapeMetaData->DumpType = UNPACKED_PE;
-
-			if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
-				DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
-			else
-				DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p.\n", DumpAddress);
 		}
+		if (g_config.dumptype0)
+			CapeMetaData->DumpType = g_config.dumptype0;
+		else if (g_config.dumptype1)
+			CapeMetaData->DumpType = g_config.dumptype1;
+		else if (g_config.dumptype2)
+			CapeMetaData->DumpType = g_config.dumptype2;
+		else
+			CapeMetaData->DumpType = DATADUMP;
+
+		if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
+			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+		else
+			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
 	}
 	else if (!stricmp(Action, "dumpesi"))
 	{
@@ -656,13 +664,36 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		else if (g_config.dumptype2)
 			CapeMetaData->DumpType = g_config.dumptype2;
 		else
-			CapeMetaData->DumpType = UNPACKED_PE;
+			CapeMetaData->DumpType = DATADUMP;
 
 		if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
 			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
 		else
 			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
 	}
+#ifdef _WIN64
+	else if (!stricmp(Action, "dumpr8"))
+	{
+		DumpAddress = (PVOID)ExceptionInfo->ContextRecord->R8;
+
+		if (!stricmp(DumpSizeString, "eax"))
+			DumpSize = ExceptionInfo->ContextRecord->Rax;
+
+		if (g_config.dumptype0)
+			CapeMetaData->DumpType = g_config.dumptype0;
+		else if (g_config.dumptype1)
+			CapeMetaData->DumpType = g_config.dumptype1;
+		else if (g_config.dumptype2)
+			CapeMetaData->DumpType = g_config.dumptype2;
+		else
+			CapeMetaData->DumpType = DATADUMP;
+
+		if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
+			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+		else
+			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+	}
+#endif
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
 
@@ -989,6 +1020,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (Instruction2 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction2, strlen(Instruction2)))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
 
+	if (Instruction3 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction3, strlen(Instruction3)))
+		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
+
 	// We disassemble a second time in case of any changes/patches
 	if (ReDisassemble)
 	{
@@ -1063,12 +1097,12 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ExportName = NULL;
 			}
 
-			if (ExportName)
+			if (!FilterTrace && ExportName)
 			{
 				DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
 				StepOver = TRUE;
 			}
-			else
+			else if (!FilterTrace)
 				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", CallTarget);
 
 			if (CallTarget == &loq)
@@ -1547,28 +1581,35 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	{
 		if (pBreakpointInfo->Register == bp)
 		{
-			TraceDepthCount = 0;
 			if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr0))
 			{
 				DebuggerOutput("Breakpoint 0 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+                TraceDepthCount = 0;
+                StepCount = 0;
 				break;
 			}
 
 			if (bp == 1 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr1))
 			{
 				DebuggerOutput("Breakpoint 1 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+                TraceDepthCount = 0;
+                StepCount = 0;
 				break;
 			}
 
 			if (bp == 2 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr2))
 			{
 				DebuggerOutput("Breakpoint 2 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+                TraceDepthCount = 0;
+                StepCount = 0;
 				break;
 			}
 
 			if (bp == 3 && ((DWORD_PTR)pBreakpointInfo->Address == ExceptionInfo->ContextRecord->Dr3))
 			{
 				DebuggerOutput("Breakpoint 3 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+                TraceDepthCount = 0;
+                StepCount = 0;
 				break;
 			}
 		}
@@ -1584,9 +1625,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	// We can use this to put a marker in behavior log
 	// extern void log_anomaly(const char *subcategory, const char *msg);
-	memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-	_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
-	// log_anomaly(DebuggerBuffer, NULL);
+	//memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+	//_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+	//log_anomaly(DebuggerBuffer, NULL);
 
 	FilterTrace = FALSE;
 
@@ -1777,6 +1818,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	if ((Instruction2 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction2, strlen(Instruction2))) || (!Instruction2 && pBreakpointInfo->Register == 2 && strlen(Action2)))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
+
+	if ((Instruction3 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction3, strlen(Instruction3))) || (!Instruction3 && pBreakpointInfo->Register == 3 && strlen(Action3)))
+		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
 
 	// We disassemble a second time in case of any changes/patches
 	if (ReDisassemble)
@@ -2464,7 +2508,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
 		if (!Type2)
 		{
-			Type1 = BP_EXEC;
+			Type2 = BP_EXEC;
 			Callback = BreakpointCallback;
 		}
 		else if (Type2 == BP_WRITE)
@@ -2475,6 +2519,52 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type2, Callback))
 		{
 			DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, thread %d)\n", Register, BreakpointVA, g_config.bp2, Type2, GetCurrentThreadId());
+			BreakpointsSet = TRUE;
+		}
+		else
+		{
+			DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
+			BreakpointsSet = FALSE;
+			return FALSE;
+		}
+	}
+
+	if (g_config.bp3)
+	{
+		Register = 3;
+		PVOID Callback;
+
+		if (g_config.file_offsets)
+		{
+			if (!IsDisguisedPEHeader(ImageBase))
+			{
+				DebugOutput("SetInitialBreakpoints: File offsets cannot be applied to non-PE image at 0x%p.\n", ImageBase);
+				BreakpointsSet = FALSE;
+				return FALSE;
+			}
+			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.bp3);
+		}
+		else
+		{
+			if ((SIZE_T)g_config.bp3 > RVA_LIMIT)
+				BreakpointVA = (DWORD_PTR)g_config.bp3;
+			else
+				BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp3;
+		}
+
+		if (!Type3)
+		{
+			Type3 = BP_EXEC;
+			Callback = BreakpointCallback;
+		}
+		else if (Type3 == BP_WRITE)
+			Callback = WriteCallback;
+		else if (Type3 == BP_READWRITE)
+			Callback = WriteCallback;
+
+		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type3, Callback))
+		{
+			DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, thread %d)\n", Register, BreakpointVA, g_config.bp3, Type3, GetCurrentThreadId());
 			BreakpointsSet = TRUE;
 		}
 		else
