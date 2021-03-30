@@ -604,13 +604,14 @@ static BOOL cid_from_thread_handle(HANDLE thread_handle, PCLIENT_ID cid)
 
 	duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
 
-	if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
-		memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
-		ret = TRUE;
-	}
+	if (duped) {
+        if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
+            memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
+            ret = TRUE;
+        }
 
-	if (duped)
 		CloseHandle(dup_handle);
+    }
 
 	set_lasterrors(&lasterror);
 
@@ -814,6 +815,12 @@ PUNICODE_STRING get_basename_of_module(HMODULE module_handle)
 	}
 
 	return NULL;
+}
+
+BOOL loader_lock_held()
+{
+	PEB *peb = (PEB*)get_peb();
+	return (HANDLE)(DWORD_PTR)GetCurrentThreadId() == peb->LoaderLock->OwningThread;
 }
 
 uint32_t path_from_handle(HANDLE handle,

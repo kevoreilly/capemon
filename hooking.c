@@ -89,17 +89,22 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
 	if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
 		return;
-	hook_disable();
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
+    if (!AllocationBase)
+        return;
 	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
-		char ModulePath[MAX_PATH];
-		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
-		if (g_config.yarascan && AllocationBase && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
-			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
+		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 		if (g_config.base_on_caller)
 			SetInitialBreakpoints((PVOID)AllocationBase);
+        if (loader_lock_held()) {
+            DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p skipped as loader lock held.\n", AllocationBase);
+            return;
+        }
+		char ModulePath[MAX_PATH];
+		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+		if (g_config.yarascan && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
+			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
 		if (g_config.unpacker) {
 			PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
 			if (TrackedRegion) {
@@ -112,7 +117,6 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		else
 			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
 	}
-	hook_enable();
 }
 
 static int set_caller_info(void *_hook_info, ULONG_PTR addr)

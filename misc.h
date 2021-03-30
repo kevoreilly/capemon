@@ -199,18 +199,14 @@ void replace_ci_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR rep
 void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength);
 void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength);
 void perform_device_fakery(PVOID OutputBuffer, ULONG OutputBufferLength, ULONG IoControlCode);
-
 char* stristr(char* haystack, char* needle);
 unsigned short our_htons(unsigned short num);
 unsigned int our_htonl(unsigned int num);
 void addr_to_string(const IN_ADDR addr, char *string);
-
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle);
-
+BOOL loader_lock_held();
 void perform_create_time_fakery(FILETIME *createtime);
-
 wchar_t *ascii_to_unicode_dup(char *str);
-
 int is_stack_pivoted(void);
 
 LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
