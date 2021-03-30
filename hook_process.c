@@ -996,7 +996,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 #ifdef _WIN64
                 if (!stricmp("mov", ide((void *)Context->Rip))) {
                     if (!ntdll_protect_logged) {
-                        //ntdll_protect_logged = TRUE;
+                        ntdll_protect_logged = TRUE;
                         DebugOutput("RtlDispatchException: skipped %s instruction at 0x%p writing to ntdll.\n", ide((void *)Context->Rip), Context->Rip);
                     }
                     Context->Rip += lde((void *)Context->Rip);
@@ -1004,7 +1004,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 #else
                 if (!stricmp("mov", ide((void *)Context->Eip))) {
                     if (!ntdll_protect_logged) {
-                        //ntdll_protect_logged = TRUE;
+                        ntdll_protect_logged = TRUE;
                         DebugOutput("RtlDispatchException: skipped %s instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", ide((void *)Context->Eip), Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
                     }
                     Context->Eip += lde((void *)Context->Eip);
