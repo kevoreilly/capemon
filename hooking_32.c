@@ -43,6 +43,15 @@ int lde(void *addr)
 	return ret == DECRES_SUCCESS ? instructions[0].size : 0;
 }
 
+// instruction disassembler engine
+unsigned char* ide(void *addr)
+{
+	unsigned int used_instruction_count; _DecodedInst instructions[16];
+	_DecodeResult ret = distorm_decode(0, addr, 16, Decode32Bits, instructions, 1, &used_instruction_count);
+
+	return instructions[0].mnemonic.p;
+}
+
 // create a trampoline at the given address, that is, we are going to replace
 // the original instructions at this particular address. So, in order to
 // call the original function from our hook, we have to execute the original

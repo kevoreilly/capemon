@@ -45,6 +45,15 @@ int lde(void *addr)
 	return ret == DECRES_SUCCESS ? instructions[0].size : 0;
 }
 
+// instruction disassembler engine
+unsigned char* ide(void *addr)
+{
+	unsigned int used_instruction_count; _DecodedInst instructions[16];
+	_DecodeResult ret = distorm_decode(0, addr, 16, Decode64Bits, instructions, 1, &used_instruction_count);
+
+	return instructions[0].mnemonic.p;
+}
+
 static _DInst *get_insn(void *addr)
 {
 	unsigned int used_instruction_count; _DInst instructions[16];

@@ -144,6 +144,8 @@ typedef struct _lasterror_t {
 
 int lde(void *addr);
 
+unsigned char* ide(void *addr);
+
 hook_data_t *alloc_hookdata_near(void *addr);
 
 int hook_api(hook_t *h, int type);

@@ -33,7 +33,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-
 extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
@@ -55,6 +54,8 @@ extern int DoProcessDump(PVOID CallerBase);
 extern PVOID GetHookCallerBase();
 extern BOOL ProcessDumped;
 extern HANDLE DebuggerLog;
+
+static BOOL ntdll_protect_logged;
 
 HOOKDEF(HANDLE, WINAPI, CreateToolhelp32Snapshot,
 	__in DWORD dwFlags,
@@ -780,6 +781,20 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 
+    if (g_config.ntdll_protect) {
+        if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
+            GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
+            unsigned int offset;
+            char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &offset);
+            if (dllname && !strcmp(dllname, "ntdll.dll")) {
+                // don't allow writes, this will cause memory access violations
+                // that we are going to handle in the RtlDispatchException hook
+                NewAccessProtection = PAGE_EXECUTE_READ;
+            }
+            if (dllname) free(dllname);
+        }
+    }
+
 	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
@@ -969,6 +984,37 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	__in PCONTEXT Context)
 {
 	BOOL RetVal;
+
+    if (g_config.ntdll_protect) {
+        if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
+            ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
+            unsigned int offset;
+            char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
+            if (dllname && !strcmp(dllname, "ntdll.dll")) {
+                free(dllname);
+                // if trying to write to ntdll.dll, then just skip the instruction
+#ifdef _WIN64
+                if (!stricmp("mov", ide((void *)Context->Rip))) {
+                    if (!ntdll_protect_logged) {
+                        //ntdll_protect_logged = TRUE;
+                        DebugOutput("RtlDispatchException: skipped %s instruction at 0x%p writing to ntdll.\n", ide((void *)Context->Rip), Context->Rip);
+                    }
+                    Context->Rip += lde((void *)Context->Rip);
+                }
+#else
+                if (!stricmp("mov", ide((void *)Context->Eip))) {
+                    if (!ntdll_protect_logged) {
+                        //ntdll_protect_logged = TRUE;
+                        DebugOutput("RtlDispatchException: skipped %s instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", ide((void *)Context->Eip), Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
+                    }
+                    Context->Eip += lde((void *)Context->Eip);
+                }
+#endif
+                return TRUE;
+            }
+            if (dllname) free(dllname);
+        }
+    }
 
 	if (ExceptionRecord && (ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) {
 		if (!(g_config.debugger && ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)) {

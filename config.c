@@ -190,6 +190,13 @@ void parse_config_line(char* line)
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Dropped file limit set to %d.\n", g_config.dropped_limit);
 		}
+		else if (!strcmp(key, "ntdll-protect")) {
+			g_config.ntdll_protect = (unsigned int)strtoul(value, NULL, 10);
+            if (g_config.ntdll_protect)
+                DebugOutput("Config: ntdll write protection enabled.");
+            else
+                DebugOutput("Config: ntdll write protection disabled.");
+		}
 		else if (!strcmp(key, "standalone")) {
 			g_config.standalone = value[0] == '1';
 		}
@@ -980,6 +987,7 @@ int read_config(void)
 	g_config.hook_type = HOOK_JMP_INDIRECT;
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
+	g_config.ntdll_protect = 1;
 #endif
 	g_config.procdump = 1;
 	g_config.procmemdump = 0;

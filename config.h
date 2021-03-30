@@ -109,6 +109,9 @@ struct _g_config {
 	//unsigned int host_ip;
 	//unsigned short host_port;
 
+	// ntdll write protection
+	unsigned int ntdll_protect;
+
 	// Dropped files limit
 	unsigned int dropped_limit;
 
