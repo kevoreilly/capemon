@@ -90,17 +90,17 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
 		return;
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-    if (!AllocationBase)
-        return;
+	if (!AllocationBase)
+		return;
 	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
 		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
 		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 		if (g_config.base_on_caller)
 			SetInitialBreakpoints((PVOID)AllocationBase);
-        if (loader_lock_held()) {
-            DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p skipped as loader lock held.\n", AllocationBase);
-            return;
-        }
+		if (loader_lock_held()) {
+			DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p skipped as loader lock held.\n", AllocationBase);
+			return;
+		}
 		char ModulePath[MAX_PATH];
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 		if (g_config.yarascan && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
@@ -277,7 +277,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	hookinfo = hook_info();
 
-	if ((!hookinfo->disable_count || h->new_func == &New_RtlDispatchException) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
+	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
 		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue && Old_GetSystemTimeAsFileTime) {
 			if (h->hook_disabled)
