@@ -193,7 +193,7 @@ extern BOOL WoW64fix(void)
 		return FALSE;
 	}
 
-	if (OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1)
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
 	{
 		DebugOutput("WoW64fix: Windows version %d.%d not supported.\n", OSVersion.dwMajorVersion, OSVersion.dwMinorVersion);
 		return FALSE;
