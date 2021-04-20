@@ -144,6 +144,8 @@ void ScannerError(int Error)
 	{
 		case ERROR_SUCCESS:
 			break;
+		case ERROR_COULD_NOT_MAP_FILE:  // exception scanning region
+			break;
 		case ERROR_COULD_NOT_ATTACH_TO_PROCESS:
 			DebugOutput("Yara error: 'Cannot attach to process'\n");
 			break;
