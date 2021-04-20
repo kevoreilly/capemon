@@ -27,6 +27,7 @@ extern char* GetResultsPath(char* FolderName);
 #define BUFFER_SIZE 0x1000
 CHAR SecretsLine[BUFFER_SIZE];
 HANDLE TlsLog;
+static BOOL Logged;
 
 void hexencode(char *dst, const uint8_t *src, uint32_t length)
 {
@@ -75,7 +76,10 @@ HOOKDEF(NTSTATUS, WINAPI, PRF,
 
 		FullPathName = GetResultsPath("tlsdump");
 		PathAppend(FullPathName, "tlsdump.log");
-		DebugOutput("PRF: Path %s", FullPathName);
+		if (!Logged) {
+			Logged = TRUE;
+			DebugOutput("TLS secrets (PRF) logged to: %s", FullPathName);
+		}
 		if (!TlsLog)
 			TlsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (TlsLog != INVALID_HANDLE_VALUE) {
@@ -117,7 +121,10 @@ HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
 
 		FullPathName = GetResultsPath("tlsdump");
 		PathAppend(FullPathName, "tlsdump.log");
-		DebugOutput("Ssl3GenerateKeyMaterial: Path %s", FullPathName);
+		if (!Logged) {
+			Logged = TRUE;
+			DebugOutput("TLS secrets (Ssl3GenerateKeyMaterial) logged to: %s", FullPathName);
+		}
 		if (!TlsLog)
 			TlsLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (TlsLog != INVALID_HANDLE_VALUE) {
