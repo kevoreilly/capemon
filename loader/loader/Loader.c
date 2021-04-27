@@ -25,7 +25,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #pragma warning(push )
 #pragma warning(disable : 4996)
 
-#define MAX_ADDRESS 0x70000000
+#define MAX_ADDRESS	0x70000000
+#define MAX_RANGE	0x10000000
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
@@ -420,7 +421,8 @@ static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
 	SIZE_T BytesWritten;
 	HANDLE RemoteThreadHandle;
 	DWORD ExitCode;
-	_RtlCreateUserThread pRtlCreateUserThread;
+	_RtlCreateUserThread RtlCreateUserThread;
+	_RtlNtStatusToDosError RtlNtStatusToDosError;
 	int RetVal = 0;
 
 	if (!SystemInfo.dwPageSize)
@@ -519,9 +521,9 @@ static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
 	}
 	else
 	{
-		pRtlCreateUserThread = (_RtlCreateUserThread)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlCreateUserThread");
+		RtlCreateUserThread = (_RtlCreateUserThread)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlCreateUserThread");
 
-		RetVal = pRtlCreateUserThread(ProcessHandle, NULL, 0, 0, 0, 0, (PTHREAD_START_ROUTINE)RemoteFuncAddress, PointersAddress, &RemoteThreadHandle, NULL);
+		RetVal = RtlCreateUserThread(ProcessHandle, NULL, 0, 0, 0, 0, (PTHREAD_START_ROUTINE)RemoteFuncAddress, PointersAddress, &RemoteThreadHandle, NULL);
 
 		if (!NT_SUCCESS(RetVal))
 		{
@@ -536,9 +538,10 @@ static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
 			CloseHandle(RemoteThreadHandle);
 			VirtualFreeEx(ProcessHandle, Pointers.DllPath, SystemInfo.dwPageSize, MEM_RELEASE);
 
-			if (ExitCode)
+			if (!ExitCode)
 			{
-				SetLastError(ExitCode);
+				RtlNtStatusToDosError = (_RtlNtStatusToDosError)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlNtStatusToDosError");
+				SetLastError(RtlNtStatusToDosError(ExitCode));
 				ErrorOutput("InjectDllViaThread: RtlCreateUserThread injection failed");
 				return 0;
 			}
@@ -558,7 +561,8 @@ static int ReflectiveInjectDllViaThread(HANDLE ProcessHandle, const char *DllPat
 	SIZE_T BytesWritten;
 	HANDLE hFile, RemoteThreadHandle;
 	DWORD ExitCode;
-	_RtlCreateUserThread pRtlCreateUserThread;
+	_RtlCreateUserThread RtlCreateUserThread;
+	_RtlNtStatusToDosError RtlNtStatusToDosError;
 	int RetVal = 0;
 
 	if (!SystemInfo.dwPageSize)
@@ -654,9 +658,9 @@ static int ReflectiveInjectDllViaThread(HANDLE ProcessHandle, const char *DllPat
 	}
 	else
 	{
-		pRtlCreateUserThread = (_RtlCreateUserThread)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlCreateUserThread");
+		RtlCreateUserThread = (_RtlCreateUserThread)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlCreateUserThread");
 
-		RetVal = pRtlCreateUserThread(ProcessHandle, NULL, 0, 0, 0, 0, (PTHREAD_START_ROUTINE)RemoteEntryPoint, NULL, &RemoteThreadHandle, NULL);
+		RetVal = RtlCreateUserThread(ProcessHandle, NULL, 0, 0, 0, 0, (PTHREAD_START_ROUTINE)RemoteEntryPoint, NULL, &RemoteThreadHandle, NULL);
 
 		if (!NT_SUCCESS(RetVal))
 		{
@@ -671,9 +675,10 @@ static int ReflectiveInjectDllViaThread(HANDLE ProcessHandle, const char *DllPat
 			CloseHandle(RemoteThreadHandle);
 			VirtualFreeEx(ProcessHandle, RemoteBuffer, SystemInfo.dwPageSize, MEM_RELEASE);
 
-			if (ExitCode)
+			if (!ExitCode)
 			{
-				SetLastError(ExitCode);
+				RtlNtStatusToDosError = (_RtlNtStatusToDosError)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlNtStatusToDosError");
+				SetLastError(RtlNtStatusToDosError(ExitCode));
 				ErrorOutput("ReflectiveInjectDllViaThread: RtlCreateUserThread injection failed");
 				return 0;
 			}
@@ -947,14 +952,17 @@ rebase:
 #endif
 			continue;
 		}
-#endif
 		if ((SIZE_T)((PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize) > MAX_ADDRESS)
 			StartAddress = (PBYTE)MAX_ADDRESS - SystemInfo.dwPageSize;
 		else
+#endif
 			StartAddress = (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize - SystemInfo.dwPageSize;
 
+		if (StartAddress - BaseAddress > MAX_RANGE)
+			StartAddress = BaseAddress + MAX_RANGE;
+
 #ifdef DEBUG_COMMENTS
-		DebugOutput("InjectDllViaIAT: Found a free region from 0x%p - 0x%p, starting reverse scan from 0x%x\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize, StartAddress);
+		DebugOutput("InjectDllViaIAT: Found a free region from 0x%p - 0x%p, starting reverse scan from 0x%p\n", MemoryInfo.BaseAddress, (PBYTE)MemoryInfo.BaseAddress + MemoryInfo.RegionSize, StartAddress);
 #endif
 
 		for (AllocationAddress = StartAddress; AllocationAddress > (PBYTE)(((DWORD_PTR)MemoryInfo.BaseAddress + 0xFFFF) & ~(DWORD_PTR)0xFFFF); AllocationAddress -= SystemInfo.dwPageSize)
@@ -1150,7 +1158,10 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("InjectDll: IAT patching failed, falling back to thread injection.\n");
+		if (!DisableIATPatching)
+			DebugOutput("InjectDll: IAT patching failed, falling back to thread injection.\n");
+		else
+			DebugOutput("InjectDll: IAT patching disabled, falling back to thread injection.\n");
 #endif
 		RetVal = InjectDllViaThread(ProcessHandle, DllPath);
 	}

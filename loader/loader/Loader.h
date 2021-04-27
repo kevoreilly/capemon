@@ -40,7 +40,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define PIMAGE_THUNK_DATAXX PIMAGE_THUNK_DATA64
 #endif
 
-typedef struct _LSA_UNICODE_STRING 
+typedef struct _LSA_UNICODE_STRING
 {
 	USHORT Length;
 	USHORT MaximumLength;
@@ -53,7 +53,7 @@ typedef struct _CLIENT_ID {
 } CLIENT_ID;
 typedef CLIENT_ID *PCLIENT_ID;
 
-typedef struct _PROCESS_BASIC_INFORMATION 
+typedef struct _PROCESS_BASIC_INFORMATION
 {
 	PVOID Reserved1;
 	PVOID PebBaseAddress;
@@ -62,7 +62,7 @@ typedef struct _PROCESS_BASIC_INFORMATION
 	ULONG_PTR ParentProcessId;
 } PROCESS_BASIC_INFORMATION;
 
-typedef struct _PEB_LDR_DATA 
+typedef struct _PEB_LDR_DATA
 {
 	ULONG Length;
 	BOOLEAN Initialized;
@@ -72,7 +72,7 @@ typedef struct _PEB_LDR_DATA
 	LIST_ENTRY InInitializationOrderModuleList;
 } PEB_LDR_DATA, *PPEB_LDR_DATA;
 
-typedef struct _RTL_USER_PROCESS_PARAMETERS 
+typedef struct _RTL_USER_PROCESS_PARAMETERS
 {
 	BYTE Reserved1[16];
 	PVOID Reserved2[10];
@@ -80,12 +80,12 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS
 	UNICODE_STRING CommandLine;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
-typedef void (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE) 
+typedef void (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE)
 (
 	void
 );
 
-typedef struct _PEB 
+typedef struct _PEB
 {
 	BYTE Reserved1[2];
 	BYTE BeingDebugged;
@@ -102,7 +102,7 @@ typedef struct _PEB
 	ULONG SessionId;
 } PEB, *PPEB;
 
-typedef struct _TEB 
+typedef struct _TEB
 {
 	NT_TIB NtTib;
 	PVOID EnvironmentPointer;
@@ -132,22 +132,32 @@ typedef NTSTATUS(WINAPI * _NtResumeProcess)
 	__in  HANDLE ProcessHandle
 );
 
-typedef LONG(WINAPI *_NtQueryInformationProcess)(HANDLE ProcessHandle,
-	ULONG ProcessInformationClass, PVOID ProcessInformation,
-	ULONG ProcessInformationLength, PULONG ReturnLength);
-
-typedef NTSTATUS (NTAPI *_RtlCreateUserThread)
+typedef LONG(WINAPI *_NtQueryInformationProcess)
 (
-	HANDLE, 
-	PSECURITY_DESCRIPTOR, 
-	BOOLEAN, 
-	ULONG, 
-	PULONG, 
-	PULONG, 
-	PVOID, 
-	PVOID, 
-	PHANDLE, 
+	HANDLE ProcessHandle,
+	ULONG ProcessInformationClass,
+	PVOID ProcessInformation,
+	ULONG ProcessInformationLength,
+	PULONG ReturnLength
+);
+
+typedef NTSTATUS(NTAPI *_RtlCreateUserThread)
+(
+	HANDLE,
+	PSECURITY_DESCRIPTOR,
+	BOOLEAN,
+	ULONG,
+	PULONG,
+	PULONG,
+	PVOID,
+	PVOID,
+	PHANDLE,
 	PVOID
+);
+
+typedef ULONG(WINAPI * _RtlNtStatusToDosError)
+(
+	__in  NTSTATUS Status
 );
 
 typedef HRESULT (WINAPI *PDLLREGRSRV)(void);
