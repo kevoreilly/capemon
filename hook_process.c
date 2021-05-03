@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
@@ -45,6 +46,7 @@ extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protec
 extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
 extern void DebuggerShutdown();
+extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 
 extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
@@ -149,7 +151,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
 	LOQ_ntstatus("process", "PphOl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
 		"FileName", ObjectAttributes, "ProcessId", pid);
 	if (!g_config.single_process && NT_SUCCESS(ret)) {
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+		ProcessMessage(pid, 0);
 		disable_sleep_skip();
 	}
 	return ret;
@@ -174,7 +176,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 		"FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
 	if (!g_config.single_process && NT_SUCCESS(ret)) {
 		DWORD pid = pid_from_process_handle(*ProcessHandle);
-		pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+		ProcessMessage(pid, 0);
 		disable_sleep_skip();
 	}
 	return ret;
@@ -217,8 +219,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 		"ProcessId", pid);
 	if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(*ThreadHandle);
-		if (!g_config.single_process)
-			pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+		if (!g_config.single_process) {
+			PROCESS_INFORMATION ProcessInformation;
+			ProcessInformation.dwProcessId = pid;
+			ProcessInformation.dwThreadId = tid;
+			ProcessInformation.hProcess = (*ProcessHandle);
+			ProcessInformation.hThread = (*ThreadHandle);
+			CreateProcessHandler(NULL, NULL, &ProcessInformation);
+			ProcessMessage(pid, tid);
+		}
 		if (!(ThreadFlags & 1))
 			ResumeThread(*ThreadHandle);
 		disable_sleep_skip();
@@ -247,8 +256,15 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
 		"ParentHandle", ParentProcess, "ProcessId", pid);
 	if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(ProcessInformation->ThreadHandle);
-		if (!g_config.single_process)
-			pipe("PROCESS:%d:%d,%d", is_suspended(pid, tid), pid, tid);
+		if (!g_config.single_process) {
+			PROCESS_INFORMATION WinProcessInformation;
+			WinProcessInformation.dwProcessId = (DWORD)ProcessInformation->ClientId.UniqueProcess;
+			WinProcessInformation.dwThreadId = (DWORD)ProcessInformation->ClientId.UniqueThread;
+			WinProcessInformation.hProcess = ProcessInformation->ProcessHandle;
+			WinProcessInformation.hThread = ProcessInformation->ThreadHandle;
+			CreateProcessHandler(NULL, NULL, &WinProcessInformation);
+			ProcessMessage(pid, tid);
+		}
 		disable_sleep_skip();
 	}
 	return ret;
@@ -294,8 +310,10 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithLogonW,
 		free(origcommandline);
 
 	if (ret) {
-		if (!g_config.single_process)
-			pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
+		if (!g_config.single_process) {
+			CreateProcessHandler((LPWSTR)lpApplicationName, lpCommandLine, lpProcessInfo);
+			ProcessMessage(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
+		}
 		if (!(dwCreationFlags & CREATE_SUSPENDED) && is_valid_address_range((ULONG_PTR)lpProcessInfo, (DWORD)sizeof(PROCESS_INFORMATION)))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
@@ -351,8 +369,10 @@ HOOKDEF(BOOL, WINAPI, CreateProcessWithTokenW,
 		free(origcommandline);
 
 	if (ret && lpProcessInfo) {
-		if (!g_config.single_process)
-			pipe("PROCESS:%d:%d,%d", is_suspended(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId), lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
+		if (!g_config.single_process) {
+			CreateProcessHandler((LPWSTR)lpApplicationName, lpCommandLine, lpProcessInfo);
+			ProcessMessage(lpProcessInfo->dwProcessId, lpProcessInfo->dwThreadId);
+		}
 		if (!(dwCreationFlags & CREATE_SUSPENDED))
 			ResumeThread(lpProcessInfo->hThread);
 		disable_sleep_skip();
@@ -581,7 +601,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 		//if (g_config.unpacker)
 		//	AllocationHandler(*BaseAddress, *ViewSize, MEM_COMMIT, Win32Protect);
 		if (!g_config.single_process && pid != GetCurrentProcessId()) {
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
 		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
@@ -679,7 +699,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 			if (g_config.injection)
 				WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
 			if (!g_config.single_process)
-				pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+				ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
 	}
@@ -710,7 +730,7 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 			if (g_config.injection)
 				WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
 			if (!g_config.single_process)
-				pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+				ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
 	}
@@ -759,7 +779,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
 
 	if (pid != GetCurrentProcessId()) {
 		if (!g_config.single_process && ret) {
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
 	}

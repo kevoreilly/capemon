@@ -43,18 +43,19 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView);
 
 typedef struct InjectionInfo
 {
-	int						 ProcessId;
-	HANDLE						ProcessHandle;
-	DWORD_PTR				   ImageBase;
-	DWORD_PTR				   EntryPoint;
-	BOOL						MapDetected;
-	BOOL						ImageDumped;
-	LPVOID					  BufferBase;
-	LPVOID					  StackPointer;
-	unsigned int				BufferSizeOfImage;
-	HANDLE					  SectionHandle;
+	DWORD					ProcessId;
+	HANDLE					ProcessHandle;
+	DWORD					InitialThreadId;
+	DWORD_PTR				ImageBase;
+	DWORD_PTR				EntryPoint;
+	BOOL					MapDetected;
+	BOOL					ImageDumped;
+	LPVOID					BufferBase;
+	LPVOID					StackPointer;
+	unsigned int			BufferSizeOfImage;
+	HANDLE					SectionHandle;
 //	struct InjectionSectionView *SectionViewList;
-	struct InjectionInfo		*NextInjectionInfo;
+	struct InjectionInfo	*NextInjectionInfo;
 } INJECTIONINFO, *PINJECTIONINFO;
 
 struct InjectionInfo *InjectionInfoList;

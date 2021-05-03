@@ -23,6 +23,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "log.h"
 
+extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+
 typedef DWORD (WINAPI * __GetWindowThreadProcessId)(
 	__in HWND hWnd,
 	__out_opt LPDWORD lpdwProcessId
@@ -206,7 +208,7 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	if (hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (!g_config.single_process && pid != GetCurrentProcessId())
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+			ProcessMessage(pid, 0);
 	}
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
@@ -230,7 +232,7 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 	if (hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (!g_config.single_process && pid != GetCurrentProcessId())
-			pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+			ProcessMessage(pid, 0);
 	}
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
@@ -258,7 +260,7 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 			our_GetClassNameA(hWnd, classname, sizeof(classname));
 			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
 				if (!g_config.single_process)
-					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+					ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
@@ -291,7 +293,7 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 			our_GetClassNameA(hWnd, classname, sizeof(classname));
 			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
 				if (!g_config.single_process)
-					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+					ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
@@ -324,7 +326,7 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 			our_GetClassNameA(hWnd, classname, sizeof(classname));
 			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
 				if (!g_config.single_process)
-					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+					ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
@@ -358,7 +360,7 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 			our_GetClassNameA(hWnd, classname, sizeof(classname));
 			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
 				if (!g_config.single_process)
-					pipe("PROCESS:%d:%d", is_suspended(pid, 0), pid);
+					ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}

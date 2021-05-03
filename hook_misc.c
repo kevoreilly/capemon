@@ -32,6 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern BOOL PlugXConfigDumped;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
@@ -46,7 +47,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
 		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
-			pipe("PROCESS:%d:%d,%d", is_suspended(pid, dwThreadId), pid, dwThreadId);
+			ProcessMessage(pid, dwThreadId);
 	}
 
 	ret = Old_SetWindowsHookExA(idHook, lpfn, hMod, dwThreadId);
@@ -67,7 +68,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
 		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
-			pipe("PROCESS:%d:%d,%d", is_suspended(pid, dwThreadId), pid, dwThreadId);
+			ProcessMessage(pid, dwThreadId);
 	}
 
 	ret = Old_SetWindowsHookExW(idHook, lpfn, hMod, dwThreadId);

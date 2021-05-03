@@ -23,6 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\misc.h"
 #include "..\hooking.h"
 #include "..\log.h"
+#include "..\pipe.h"
 #include "Debugger.h"
 #include "CAPE.h"
 #include "Injection.h"
@@ -621,17 +622,14 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
 #endif
 }
 
-void ResumeThreadHandler(DWORD Pid)
-{
-	DumpSectionViewsForPid(Pid);
-}
-
 void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation)
 {
 	WCHAR TargetProcess[MAX_PATH];
 	struct InjectionInfo *CurrentInjectionInfo;
 
-	// Create 'injection info' struct for the newly created process
+	if (GetInjectionInfo(lpProcessInformation->dwProcessId))
+		return;
+
 	CurrentInjectionInfo = CreateInjectionInfo(lpProcessInformation->dwProcessId);
 
 	if (CurrentInjectionInfo == NULL)
@@ -641,6 +639,7 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 	}
 
 	CurrentInjectionInfo->ProcessHandle = lpProcessInformation->hProcess;
+	CurrentInjectionInfo->InitialThreadId = lpProcessInformation->dwThreadId;
 	CurrentInjectionInfo->ImageBase = (DWORD_PTR)get_process_image_base(lpProcessInformation->hProcess);
 	CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 	CurrentInjectionInfo->ImageDumped = FALSE;
@@ -664,14 +663,10 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 		}
 	}
 
-	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
+	if (lpApplicationName || lpCommandLine)
+		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
 
 	DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
-}
-
-void CreateRemoteThreadHandler(DWORD Pid)
-{
-	DumpSectionViewsForPid(Pid);
 }
 
 void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
@@ -726,11 +721,6 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 		if (CurrentInjectionInfo->ImageBase)
 			DebugOutput("OpenProcessHandler: Image base for process %d (handle 0x%x): 0x%p.\n", Pid, ProcessHandle, CurrentInjectionInfo->ImageBase);
 	}
-}
-
-void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid)
-{
-	DumpSectionViewsForPid(Pid);
 }
 
 void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize)
@@ -1057,6 +1047,21 @@ void DuplicationHandler(HANDLE SourceHandle, HANDLE TargetHandle)
 	}
 }
 
+void CreateRemoteThreadHandler(DWORD Pid)
+{
+	DumpSectionViewsForPid(Pid);
+}
+
+void ResumeThreadHandler(DWORD Pid)
+{
+	DumpSectionViewsForPid(Pid);
+}
+
+void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid)
+{
+	DumpSectionViewsForPid(Pid);
+}
+
 void TerminateHandler()
 {
 	PINJECTIONINFO CurrentInjectionInfo = InjectionInfoList;
@@ -1080,4 +1085,16 @@ void TerminateHandler()
 
 		CurrentInjectionInfo = CurrentInjectionInfo->NextInjectionInfo;
 	}
+}
+
+void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
+{
+	if (!ThreadId)
+	{
+		PINJECTIONINFO CurrentInjectionInfo = GetInjectionInfo(ProcessId);
+		if (CurrentInjectionInfo)
+			ThreadId = CurrentInjectionInfo->InitialThreadId;
+	}
+
+	pipe("PROCESS:0:%d,%d", ProcessId, ThreadId);
 }
