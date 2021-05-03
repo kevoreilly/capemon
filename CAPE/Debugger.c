@@ -442,7 +442,7 @@ BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context
 {
 	if (!g_config.debugger)
 		return FALSE;
-	struct _EXCEPTION_POINTERS ExceptionInfo;
+	EXCEPTION_POINTERS ExceptionInfo;
 	ExceptionInfo.ExceptionRecord = ExceptionRecord;
 	ExceptionInfo.ContextRecord = Context;
 	return (CAPEExceptionFilter(&ExceptionInfo) == EXCEPTION_CONTINUE_EXECUTION);

@@ -1052,7 +1052,7 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 	}
 
 	if (CAPEExceptionDispatcher(ExceptionRecord, Context))
-		return 1;
+		return TRUE;
 	else
 		RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
 
@@ -1069,6 +1069,10 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 		else {
 			DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, %d parameters: 0x%x, 0x%x & ...\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->NumberParameters, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
 		}
+		EXCEPTION_POINTERS ExceptionInfo;
+		ExceptionInfo.ExceptionRecord = ExceptionRecord;
+		ExceptionInfo.ContextRecord = Context;
+		capemon_exception_handler(&ExceptionInfo);
 	}
 
 	return RetVal;

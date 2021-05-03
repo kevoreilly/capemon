@@ -1986,7 +1986,7 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 			// is this a loaded module?
 			HMODULE address = GetModuleHandleW(absolutepath);
 			if (address != NULL) {
-				pipe("INFO:Sample attempted to remap module '%Z' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
+				DebugOutput("Sample attempted to remap module '%ws' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
 				pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
 				*BaseAddress = (LPVOID)address;
 			}
