@@ -55,12 +55,6 @@ int ide(_DecodedInst* instruction, void *addr)
 
 	return ret;
 }
-// instruction disassembler engine
-unsigned char* ide(void *addr)
-{
-
-	return instructions[0].mnemonic.p;
-}
 
 static _DInst *get_insn(void *addr)
 {
