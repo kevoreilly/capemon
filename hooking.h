@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef __HOOKING_H
 #define __HOOKING_H
 
+#include <distorm.h>
 #include "ntapi.h"
 #include "lookup.h"
 #include "config.h"
@@ -144,7 +145,7 @@ typedef struct _lasterror_t {
 
 int lde(void *addr);
 
-unsigned char* ide(void *addr);
+int ide(_DecodedInst* instruction, void *addr);
 
 hook_data_t *alloc_hookdata_near(void *addr);
 

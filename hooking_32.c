@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 
 extern DWORD GetTimeStamp(LPVOID Address);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 // length disassembler engine
 int lde(void *addr)
@@ -44,12 +45,14 @@ int lde(void *addr)
 }
 
 // instruction disassembler engine
-unsigned char* ide(void *addr)
+int ide(_DecodedInst* instruction, void *addr)
 {
 	unsigned int used_instruction_count; _DecodedInst instructions[16];
 	_DecodeResult ret = distorm_decode(0, addr, 16, Decode32Bits, instructions, 1, &used_instruction_count);
+	if (ret)
+		*instruction = instructions[0];
 
-	return instructions[0].mnemonic.p;
+	return ret;
 }
 
 // create a trampoline at the given address, that is, we are going to replace
