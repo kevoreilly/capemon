@@ -985,6 +985,7 @@ int read_config(void)
 	g_config.force_sleepskip = -1;
 #ifdef _WIN64
 	g_config.hook_type = HOOK_JMP_INDIRECT;
+	g_config.ntdll_protect = 1;
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 	g_config.ntdll_protect = 1;
