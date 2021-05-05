@@ -191,6 +191,12 @@ struct _g_config {
 	// Zero hook set
 	int zerohook;
 
+	// Mozilla Firefox hook set
+	int firefox;
+
+	// Internet Explorer hook set
+	int iexplore;
+
 	char *break_on_apiname;
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];

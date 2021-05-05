@@ -73,10 +73,18 @@ int path_is_system(const wchar_t *path_w)
 	return 0;
 }
 
+int path_is_program_files(const wchar_t *path_w)
+{
+	if (((!wcsnicmp(path_w, L"c:\\program files\\", 17) ||
+		!wcsnicmp(path_w, L"c:\\program files (x86)\\", 23))))
+		return 1;
+	return 0;
+}
+
 int loader_is_allowed(const char *loader_name)
 {
-	if (!stricmp(loader_name, "rundll32.exe") ||
-		!stricmp(loader_name, "regsvr32.exe"))
+	if (!_stricmp(loader_name, "rundll32.exe") ||
+		!_stricmp(loader_name, "regsvr32.exe"))
 		return 1;
 	return 0;
 }
@@ -187,7 +195,7 @@ VOID CALLBACK New_DllLoadNotification(
 			//	if (g_config.break_on_apiname && g_config.break_on_modname) {
 			//		dllname = (char*)malloc(MAX_PATH);
 			//		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)dllname_w, (int)wcslen(dllname_w)+1, dllname, MAX_PATH, NULL, NULL);
-			//		if (!stricmp(dllname, g_config.break_on_modname)) {
+			//		if (!_stricmp(dllname, g_config.break_on_modname)) {
 			//			BreakpointsHit = FALSE;
 			//			SetInitialBreakpoints(NotificationData->Loaded.DllBase);
 			//		}
