@@ -1,23 +1,46 @@
 /*
 Copyright (c) 2013. The YARA Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+
+#ifndef YR_PE_H
+#define YR_PE_H
+
+#include <yara/endian.h>
+#include <yara/types.h>
 
 #pragma pack(push, 1)
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 #include <windows.h>
+
+// PKCS7_SIGNER_INFO is defined by wincrypt.h, but it conflicts with a type
+// defined in openssl/pkcs7.h which is used in pe.c. Let's undefine the macro.
+#undef PKCS7_SIGNER_INFO
 
 // These definitions are not present in older Windows headers.
 
@@ -29,10 +52,13 @@ limitations under the License.
 #define IMAGE_FILE_MACHINE_ARM64             0xaa64
 #endif
 
+
+
 #else
 
-#include <stdint.h>
 #include <stdlib.h>
+
+#include <yara/integers.h>
 
 typedef uint8_t   BYTE;
 typedef uint16_t  WORD;
@@ -109,10 +135,10 @@ typedef struct _IMAGE_FILE_HEADER {
 
 
 #define IMAGE_FILE_RELOCS_STRIPPED           0x0001  // Relocation info stripped from file.
-#define IMAGE_FILE_EXECUTABLE_IMAGE          0x0002  // File is executable  (i.e. no unresolved externel references).
-#define IMAGE_FILE_LINE_NUMS_STRIPPED        0x0004  // Line nunbers stripped from file.
+#define IMAGE_FILE_EXECUTABLE_IMAGE          0x0002  // File is executable  (i.e. no unresolved external references).
+#define IMAGE_FILE_LINE_NUMS_STRIPPED        0x0004  // Line numbers stripped from file.
 #define IMAGE_FILE_LOCAL_SYMS_STRIPPED       0x0008  // Local symbols stripped from file.
-#define IMAGE_FILE_AGGRESIVE_WS_TRIM         0x0010  // Agressively trim working set
+#define IMAGE_FILE_AGGRESIVE_WS_TRIM         0x0010  // Aggressively trim working set
 #define IMAGE_FILE_LARGE_ADDRESS_AWARE       0x0020  // App can handle >2gb addresses
 #define IMAGE_FILE_BYTES_REVERSED_LO         0x0080  // Bytes of machine word are reversed.
 #define IMAGE_FILE_32BIT_MACHINE             0x0100  // 32 bit word machine.
@@ -287,25 +313,42 @@ typedef struct _IMAGE_NT_HEADERS64 {
 
 } IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
 
-
 // IMAGE_FIRST_SECTION doesn't need 32/64 versions since the file header is
 // the same either way.
 
 #define IMAGE_FIRST_SECTION( ntheader ) ((PIMAGE_SECTION_HEADER) \
     ((BYTE*)ntheader + \
      FIELD_OFFSET( IMAGE_NT_HEADERS32, OptionalHeader ) + \
-     ((PIMAGE_NT_HEADERS32)(ntheader))->FileHeader.SizeOfOptionalHeader \
+     yr_le16toh(((PIMAGE_NT_HEADERS32)(ntheader))->FileHeader.SizeOfOptionalHeader) \
     ))
 
 // Subsystem Values
 
-#define IMAGE_SUBSYSTEM_UNKNOWN              0   // Unknown subsystem.
-#define IMAGE_SUBSYSTEM_NATIVE               1   // Image doesn't require a subsystem.
-#define IMAGE_SUBSYSTEM_WINDOWS_GUI          2   // Image runs in the Windows GUI subsystem.
-#define IMAGE_SUBSYSTEM_WINDOWS_CUI          3   // Image runs in the Windows character subsystem.
-#define IMAGE_SUBSYSTEM_OS2_CUI              5   // image runs in the OS/2 character subsystem.
-#define IMAGE_SUBSYSTEM_POSIX_CUI            7   // image runs in the Posix character subsystem.
-#define IMAGE_SUBSYSTEM_NATIVE_WINDOWS       8   // image is a native Win9x driver.
+#define IMAGE_SUBSYSTEM_UNKNOWN                          0
+#define IMAGE_SUBSYSTEM_NATIVE                           1
+#define IMAGE_SUBSYSTEM_WINDOWS_GUI                      2
+#define IMAGE_SUBSYSTEM_WINDOWS_CUI                      3
+#define IMAGE_SUBSYSTEM_OS2_CUI                          5
+#define IMAGE_SUBSYSTEM_POSIX_CUI                        7
+#define IMAGE_SUBSYSTEM_NATIVE_WINDOWS                   8
+#define IMAGE_SUBSYSTEM_WINDOWS_CE_GUI                   9
+#define IMAGE_SUBSYSTEM_EFI_APPLICATION                 10
+#define IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER         11
+#define IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER              12
+#define IMAGE_SUBSYSTEM_EFI_ROM_IMAGE                   13
+#define IMAGE_SUBSYSTEM_XBOX                            14
+#define IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION        16
+
+// DllCharacteristics values
+
+#define IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE           0x0040
+#define IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY        0x0080
+#define IMAGE_DLLCHARACTERISTICS_NX_COMPAT              0x0100
+#define IMAGE_DLLCHARACTERISTICS_NO_ISOLATION           0x0200
+#define IMAGE_DLLCHARACTERISTICS_NO_SEH                 0x0400
+#define IMAGE_DLLCHARACTERISTICS_NO_BIND                0x0800
+#define IMAGE_DLLCHARACTERISTICS_WDM_DRIVER             0x2000
+#define IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE  0x8000
 
 //
 // Section header format.
@@ -415,9 +458,51 @@ typedef struct _IMAGE_RESOURCE_DIRECTORY {
     WORD  NumberOfIdEntries;
 } IMAGE_RESOURCE_DIRECTORY, *PIMAGE_RESOURCE_DIRECTORY;
 
+#define IMAGE_DEBUG_TYPE_UNKNOWN                         0
+#define IMAGE_DEBUG_TYPE_COFF                            1
+#define IMAGE_DEBUG_TYPE_CODEVIEW                        2
+#define IMAGE_DEBUG_TYPE_FPO                             3
+#define IMAGE_DEBUG_TYPE_MISC                            4
+#define IMAGE_DEBUG_TYPE_EXCEPTION                       5
+#define IMAGE_DEBUG_TYPE_FIXUP                           6
+#define IMAGE_DEBUG_TYPE_BORLAND                         9
+
+typedef struct _IMAGE_DEBUG_DIRECTORY {
+    DWORD Characteristics;
+    DWORD TimeDateStamp;
+    WORD  MajorVersion;
+    WORD  MinorVersion;
+    DWORD Type;
+    DWORD SizeOfData;
+    DWORD AddressOfRawData;
+    DWORD PointerToRawData;
+} IMAGE_DEBUG_DIRECTORY, *PIMAGE_DEBUG_DIRECTORY;
+
 #pragma pack(pop)
 
 #endif  // _WIN32
+
+#define CVINFO_PDB70_CVSIGNATURE                0x53445352 // "RSDS"
+#define CVINFO_PDB20_CVSIGNATURE                0x3031424e // "NB10"
+
+typedef struct _CV_HEADER {
+    DWORD dwSignature;
+    DWORD dwOffset;
+} CV_HEADER, *PCV_HEADER;
+
+typedef struct _CV_INFO_PDB20 {
+    CV_HEADER CvHeader;
+    DWORD dwSignature;
+    DWORD dwAge;
+    BYTE PdbFileName[1];
+} CV_INFO_PDB20, *PCV_INFO_PDB20;
+
+typedef struct _CV_INFO_PDB70 {
+    DWORD CvSignature;
+    DWORD Signature[4];
+    DWORD Age;
+    BYTE  PdbFileName[1];
+} CV_INFO_PDB70, *PCV_INFO_PDB70;
 
 typedef struct _VERSION_INFO {
     WORD   Length;
@@ -427,6 +512,8 @@ typedef struct _VERSION_INFO {
 } VERSION_INFO, *PVERSION_INFO;
 
 
+#define MAX_PE_CERTS 16
+
 #define WIN_CERT_REVISION_1_0 0x0100
 #define WIN_CERT_REVISION_2_0 0x0200
 
@@ -435,12 +522,16 @@ typedef struct _VERSION_INFO {
 #define WIN_CERT_TYPE_RESERVED_1       0x0003
 #define WIN_CERT_TYPE_TS_STACK_SIGNED  0x0004
 
+#define WIN_CERTIFICATE_HEADER_SIZE    8
+
 typedef struct _WIN_CERTIFICATE {
     DWORD Length;
     WORD  Revision;
     WORD  CertificateType;
-    BYTE  Certificate[1];
+    BYTE  Certificate[0];
 } WIN_CERTIFICATE, *PWIN_CERTIFICATE;
+
+#define SPC_NESTED_SIGNATURE_OBJID  "1.3.6.1.4.1.311.2.4.1"
 
 
 //
@@ -448,20 +539,25 @@ typedef struct _WIN_CERTIFICATE {
 // http://www.ntcore.com/files/richsign.htm
 //
 
+#define RICH_VERSION_ID(id_version) (id_version >> 16)
+#define RICH_VERSION_VERSION(id_version) (id_version & 0xFFFF)
+
+typedef struct _RICH_VERSION_INFO {
+    DWORD id_version; //tool id and version (use RICH_VERSION_ID and RICH_VERSION_VERSION macros)
+    DWORD times; //number of times this tool was used
+} RICH_VERSION_INFO, *PRICH_VERSION_INFO;
+
 typedef struct _RICH_SIGNATURE {
     DWORD dans;
     DWORD key1;
     DWORD key2;
     DWORD key3;
+    RICH_VERSION_INFO versions[0];
 } RICH_SIGNATURE, *PRICH_SIGNATURE;
 
 #define RICH_DANS 0x536e6144 // "DanS"
 #define RICH_RICH 0x68636952 // "Rich"
 
-typedef struct _RICH_DATA {
-    size_t len;
-    BYTE* raw_data;
-    BYTE* clear_data;
-} RICH_DATA, *PRICH_DATA;
 
 #pragma pack(pop)
+#endif

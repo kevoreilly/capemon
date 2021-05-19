@@ -1,17 +1,30 @@
 /*
 Copyright (c) 2013-2014. The YARA Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifndef YR_EXEC_H
@@ -23,57 +36,72 @@ limitations under the License.
 #include <yara/rules.h>
 
 
-#define UNDEFINED           0xFFFABADAFABADAFFLL
-#define IS_UNDEFINED(x)     ((size_t)(x) == (size_t) UNDEFINED)
+#define YR_UNDEFINED           0xFFFABADAFABADAFFLL
+#define IS_UNDEFINED(x)     ((size_t)(x) == (size_t) YR_UNDEFINED)
 
 #define OP_ERROR          0
 #define OP_HALT           255
+#define OP_NOP            254
 
-#define OP_AND            1
-#define OP_OR             2
-#define OP_NOT            3
-#define OP_BITWISE_NOT    4
-#define OP_BITWISE_AND    5
-#define OP_BITWISE_OR     6
-#define OP_BITWISE_XOR    7
-#define OP_SHL            8
-#define OP_SHR            9
-#define OP_MOD            10
-#define OP_INT_TO_DBL     11
-#define OP_STR_TO_BOOL    12
-#define OP_PUSH           13
-#define OP_POP            14
-#define OP_CALL           15
-#define OP_OBJ_LOAD       16
-#define OP_OBJ_VALUE      17
-#define OP_OBJ_FIELD      18
-#define OP_INDEX_ARRAY    19
-#define OP_COUNT          20
-#define OP_LENGTH         21
-#define OP_FOUND          22
-#define OP_FOUND_AT       23
-#define OP_FOUND_IN       24
-#define OP_OFFSET         25
-#define OP_OF             26
-#define OP_PUSH_RULE      27
-#define OP_INIT_RULE      28
-#define OP_MATCH_RULE     29
-#define OP_INCR_M         30
-#define OP_CLEAR_M        31
-#define OP_ADD_M          32
-#define OP_POP_M          33
-#define OP_PUSH_M         34
-#define OP_SWAPUNDEF      35
-#define OP_JNUNDEF        36
-#define OP_JLE            37
-#define OP_FILESIZE       38
-#define OP_ENTRYPOINT     39
-#define OP_CONTAINS       40
-#define OP_MATCHES        41
-#define OP_IMPORT         42
-#define OP_LOOKUP_DICT    43
-#define OP_JFALSE         44
-#define OP_JTRUE          45
+#define OP_AND                     1
+#define OP_OR                      2
+#define OP_NOT                     3
+#define OP_BITWISE_NOT             4
+#define OP_BITWISE_AND             5
+#define OP_BITWISE_OR              6
+#define OP_BITWISE_XOR             7
+#define OP_SHL                     8
+#define OP_SHR                     9
+#define OP_MOD                     10
+#define OP_INT_TO_DBL              11
+#define OP_STR_TO_BOOL             12
+#define OP_PUSH                    13
+#define OP_POP                     14
+#define OP_CALL                    15
+#define OP_OBJ_LOAD                16
+#define OP_OBJ_VALUE               17
+#define OP_OBJ_FIELD               18
+#define OP_INDEX_ARRAY             19
+#define OP_COUNT                   20
+#define OP_LENGTH                  21
+#define OP_FOUND                   22
+#define OP_FOUND_AT                23
+#define OP_FOUND_IN                24
+#define OP_OFFSET                  25
+#define OP_OF                      26
+#define OP_PUSH_RULE               27
+#define OP_INIT_RULE               28
+#define OP_MATCH_RULE              29
+#define OP_INCR_M                  30
+#define OP_CLEAR_M                 31
+#define OP_ADD_M                   32
+#define OP_POP_M                   33
+#define OP_PUSH_M                  34
+#define OP_SET_M                   35
+#define OP_SWAPUNDEF               36
+#define OP_FILESIZE                37
+#define OP_ENTRYPOINT              38
+#define OP_CONTAINS                39
+#define OP_MATCHES                 40
+#define OP_IMPORT                  41
+#define OP_LOOKUP_DICT             42
+#define OP_JUNDEF                  43   # Not used
+#define OP_JUNDEF_P                44
+#define OP_JNUNDEF                 45
+#define OP_JNUNDEF_P               46   # Not used
+#define OP_JFALSE                  47
+#define OP_JFALSE_P                48
+#define OP_JTRUE                   49
+#define OP_JTRUE_P                 50
+#define OP_JL_P                    51
+#define OP_JLE_P                   52
+#define OP_ITER_NEXT               53
+#define OP_ITER_START_ARRAY        54
+#define OP_ITER_START_DICT         55
+#define OP_ITER_START_INT_RANGE    56
+#define OP_ITER_START_INT_ENUM     57
+#define OP_JZ                      58
+#define OP_JZ_P                    59
 
 
 #define _OP_EQ            0
@@ -146,7 +174,7 @@ limitations under the License.
 
 
 #define OPERATION(operator, op1, op2) \
-    (IS_UNDEFINED(op1) || IS_UNDEFINED(op2)) ? (UNDEFINED) : (op1 operator op2)
+    (IS_UNDEFINED(op1) || IS_UNDEFINED(op2)) ? (YR_UNDEFINED) : (op1 operator op2)
 
 
 #define COMPARISON(operator, op1, op2) \
@@ -154,9 +182,6 @@ limitations under the License.
 
 
 int yr_execute_code(
-    YR_RULES* rules,
-    YR_SCAN_CONTEXT* context,
-    int timeout,
-    time_t start_time);
+    YR_SCAN_CONTEXT* context);
 
 #endif

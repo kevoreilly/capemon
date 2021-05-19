@@ -1,17 +1,30 @@
 /*
 Copyright (c) 2014. The YARA Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-   http://www.apache.org/licenses/LICENSE-2.0
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+may be used to endorse or promote products derived from this software without
+specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifndef YR_MODULES_H
@@ -27,20 +40,21 @@ limitations under the License.
 #include <yara/error.h>
 #include <yara/exec.h>
 #include <yara/types.h>
+#include <yara/re.h>
 #include <yara/object.h>
 #include <yara/libyara.h>
 
 // Concatenation that macro-expands its arguments.
 
-#define CONCAT(arg1, arg2) _CONCAT(arg1, arg2) // expands the arguments.
-#define _CONCAT(arg1, arg2) arg1 ## arg2       // do the actual concatenation.
+#define YR_CONCAT(arg1, arg2) _YR_CONCAT(arg1, arg2) // expands the arguments.
+#define _YR_CONCAT(arg1, arg2) arg1 ## arg2  // do the actual concatenation.
 
 
-#define module_declarations CONCAT(MODULE_NAME, __declarations)
-#define module_load CONCAT(MODULE_NAME, __load)
-#define module_unload CONCAT(MODULE_NAME, __unload)
-#define module_initialize CONCAT(MODULE_NAME, __initialize)
-#define module_finalize CONCAT(MODULE_NAME, __finalize)
+#define module_declarations YR_CONCAT(MODULE_NAME, __declarations)
+#define module_load YR_CONCAT(MODULE_NAME, __load)
+#define module_unload YR_CONCAT(MODULE_NAME, __unload)
+#define module_initialize YR_CONCAT(MODULE_NAME, __initialize)
+#define module_finalize YR_CONCAT(MODULE_NAME, __finalize)
 
 #define begin_declarations \
     int module_declarations(YR_OBJECT* module) { \
@@ -253,25 +267,25 @@ limitations under the License.
 
 #define define_function(func) \
     int func ( \
-        void* __args, \
+        YR_VALUE* __args, \
         YR_SCAN_CONTEXT* __context, \
         YR_OBJECT_FUNCTION* __function_obj)
 
 
 #define sized_string_argument(n) \
-    ((SIZED_STRING*)(size_t)((int64_t*) __args)[n-1])
+    (__args[n-1].ss)
 
 #define string_argument(n) \
     (sized_string_argument(n)->c_string)
 
 #define integer_argument(n) \
-    (((int64_t*) __args)[n-1])
+    (__args[n-1].i)
 
 #define float_argument(n) \
-    (((double*) __args)[n-1])
+    (__args[n-1].d)
 
 #define regexp_argument(n) \
-    ((RE_CODE)((int64_t*) __args)[n-1])
+    ((RE*)(__args[n-1].re))
 
 
 #define module()        yr_object_get_root((YR_OBJECT*) __function_obj)
@@ -279,14 +293,14 @@ limitations under the License.
 #define scan_context()  (__context)
 
 
-#define foreach_memory_block(context, block) \
-  for (block = (context)->mem_block; \
+#define foreach_memory_block(iterator, block) \
+  for (block = iterator->first(iterator); \
        block != NULL; \
-       block = block->next) \
+       block = iterator->next(iterator)) \
 
 
 #define first_memory_block(context) \
-      (context)->mem_block
+      (context)->iterator->first((context)->iterator)
 
 
 #define is_undefined(object, ...) \
@@ -322,18 +336,17 @@ limitations under the License.
 
 
 #define set_string(value, object, ...) \
-    set_sized_string(value, strlen(value), object, __VA_ARGS__)
+    set_sized_string(value, (value == NULL) ? 0 : strlen(value), object, __VA_ARGS__)
 
 
 #define return_integer(integer) { \
       assertf( \
           __function_obj->return_obj->type == OBJECT_TYPE_INTEGER, \
           "return type differs from function declaration"); \
-      yr_object_set_integer( \
+      return yr_object_set_integer( \
           (integer), \
           __function_obj->return_obj, \
           NULL); \
-      return ERROR_SUCCESS; \
     }
 
 
@@ -342,11 +355,10 @@ limitations under the License.
       assertf( \
           __function_obj->return_obj->type == OBJECT_TYPE_FLOAT, \
           "return type differs from function declaration"); \
-      yr_object_set_float( \
-          (d != (double) UNDEFINED) ? d : NAN, \
+      return yr_object_set_float( \
+          (d != (double) YR_UNDEFINED) ? d : NAN, \
           __function_obj->return_obj, \
           NULL); \
-      return ERROR_SUCCESS; \
     }
 
 
@@ -355,24 +367,20 @@ limitations under the License.
       assertf( \
           __function_obj->return_obj->type == OBJECT_TYPE_STRING, \
           "return type differs from function declaration"); \
-      yr_object_set_string( \
-          (s != (char*) UNDEFINED) ? s : NULL, \
-          (s != (char*) UNDEFINED) ? strlen(s) : 0, \
+      return yr_object_set_string( \
+          (s != (char*) YR_UNDEFINED) ? s : NULL, \
+          (s != (char*) YR_UNDEFINED) ? strlen(s) : 0, \
           __function_obj->return_obj, \
           NULL); \
-      return ERROR_SUCCESS; \
     }
 
 
-struct _YR_MODULE;
-
-
 typedef int (*YR_EXT_INITIALIZE_FUNC)(
-    struct _YR_MODULE* module);
+    YR_MODULE* module);
 
 
 typedef int (*YR_EXT_FINALIZE_FUNC)(
-    struct _YR_MODULE* module);
+    YR_MODULE* module);
 
 
 typedef int (*YR_EXT_DECLARATIONS_FUNC)(
@@ -390,7 +398,7 @@ typedef int (*YR_EXT_UNLOAD_FUNC)(
     YR_OBJECT* module_object);
 
 
-typedef struct _YR_MODULE
+struct YR_MODULE
 {
   char* name;
 
@@ -399,17 +407,15 @@ typedef struct _YR_MODULE
   YR_EXT_UNLOAD_FUNC unload;
   YR_EXT_INITIALIZE_FUNC initialize;
   YR_EXT_FINALIZE_FUNC finalize;
+};
 
-} YR_MODULE;
 
-
-typedef struct _YR_MODULE_IMPORT
+struct YR_MODULE_IMPORT
 {
   const char* module_name;
   void* module_data;
   size_t module_data_size;
-
-} YR_MODULE_IMPORT;
+};
 
 
 int yr_modules_initialize(void);
@@ -431,7 +437,4 @@ int yr_modules_load(
 int yr_modules_unload_all(
     YR_SCAN_CONTEXT* context);
 
-
-void yr_modules_print_data(
-    YR_SCAN_CONTEXT* context);
 #endif

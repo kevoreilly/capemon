@@ -21,18 +21,18 @@ void DumpSectionViewsForPid(DWORD Pid);
 void DumpSectionViewsForHandle(HANDLE SectionHandle);
 
 typedef enum _SECTION_INHERIT {
-    ViewShare = 1,
-    ViewUnmap = 2
+	ViewShare = 1,
+	ViewUnmap = 2
 } SECTION_INHERIT;
 
 typedef struct InjectionSectionView
 {
-    HANDLE                          SectionHandle;
-    PVOID                           LocalView;
-    SIZE_T                          ViewSize;
-    int                             TargetProcessId;
-    wchar_t                         *SectionName;
-    struct InjectionSectionView     *NextSectionView;
+	HANDLE						  SectionHandle;
+	PVOID						   LocalView;
+	SIZE_T						  ViewSize;
+	int							 TargetProcessId;
+	wchar_t						 *SectionName;
+	struct InjectionSectionView	 *NextSectionView;
 } INJECTIONSECTIONVIEW, *PINJECTIONSECTIONVIEW;
 
 PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE_T ViewSize);
@@ -43,18 +43,19 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView);
 
 typedef struct InjectionInfo
 {
-    int                         ProcessId;
-	HANDLE	                    ProcessHandle;
-    DWORD_PTR                   ImageBase;
-    DWORD_PTR                   EntryPoint;
-    BOOL                        WriteDetected;
-    BOOL                        ImageDumped;
-    LPVOID                      BufferBase;
-    LPVOID                      StackPointer;
-    unsigned int                BufferSizeOfImage;
-    HANDLE                      SectionHandle;
-//    struct InjectionSectionView *SectionViewList;
-    struct InjectionInfo        *NextInjectionInfo;
+	DWORD					ProcessId;
+	HANDLE					ProcessHandle;
+	DWORD					InitialThreadId;
+	DWORD_PTR				ImageBase;
+	DWORD_PTR				EntryPoint;
+	BOOL					MapDetected;
+	BOOL					ImageDumped;
+	LPVOID					BufferBase;
+	LPVOID					StackPointer;
+	unsigned int			BufferSizeOfImage;
+	HANDLE					SectionHandle;
+//	struct InjectionSectionView *SectionViewList;
+	struct InjectionInfo	*NextInjectionInfo;
 } INJECTIONINFO, *PINJECTIONINFO;
 
 struct InjectionInfo *InjectionInfoList;

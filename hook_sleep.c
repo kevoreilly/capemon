@@ -55,8 +55,8 @@ void disable_sleep_skip()
 
 HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 	__in	HANDLE Handle,
-	__in    BOOLEAN Alertable,
-	__in_opt    PLARGE_INTEGER Timeout
+	__in	BOOLEAN Alertable,
+	__in_opt	PLARGE_INTEGER Timeout
 ) {
 	NTSTATUS ret = 0;
 	LONGLONG interval;
@@ -139,10 +139,10 @@ docall:
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
-    __in    BOOLEAN Alertable,
-    __in    PLARGE_INTEGER DelayInterval
+	__in	BOOLEAN Alertable,
+	__in	PLARGE_INTEGER DelayInterval
 ) {
-    NTSTATUS ret = 0;
+	NTSTATUS ret = 0;
 	LONGLONG interval;
 	FILETIME ft;
 	LARGE_INTEGER li;
@@ -174,12 +174,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 	milli = (unsigned long)(interval / 10000);
 
 	GetSystemTimeAsFileTime(&ft);
-    li.HighPart = ft.dwHighDateTime;
-    li.LowPart = ft.dwLowDateTime;
+	li.HighPart = ft.dwHighDateTime;
+	li.LowPart = ft.dwLowDateTime;
 
-    // check if we're still within the hardcoded limit
-    if(sleep_skip_active && (li.QuadPart < time_start.QuadPart + MAX_SLEEP_SKIP_DIFF * 10000)) {
-        time_skipped.QuadPart += interval;
+	// check if we're still within the hardcoded limit
+	if(sleep_skip_active && (li.QuadPart < time_start.QuadPart + MAX_SLEEP_SKIP_DIFF * 10000)) {
+		time_skipped.QuadPart += interval;
 
 		if (num_skipped < 20) {
 			// notify how much we've skipped
@@ -190,7 +190,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 			LOQ_ntstatus("system", "s", "Status", "Skipped log limit reached");
 			num_skipped++;
 		}
-        goto skipcall;
+		goto skipcall;
 	}
 	/* clamp sleeps between 30 seconds and 1 hour down to 10 seconds  as long as we didn't force off sleep skipping */
 	else if (milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
@@ -205,9 +205,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 		newint.QuadPart = 0;
 		goto docall;
 	}
-    else {
-        disable_sleep_skip();
-    }
+	else {
+		disable_sleep_skip();
+	}
 	if (milli <= 10) {
 		if (num_small < 20) {
 			LOQ_ntstatus("system", "i", "Milliseconds", milli);
@@ -235,11 +235,11 @@ skipcall:
 }
 
 HOOKDEF(DWORD, WINAPI, MsgWaitForMultipleObjectsEx,
-	_In_       DWORD  nCount,
+	_In_	   DWORD  nCount,
 	_In_ const HANDLE *pHandles,
-	_In_       DWORD  dwMilliseconds,
-	_In_       DWORD  dwWakeMask,
-	_In_       DWORD  dwFlags
+	_In_	   DWORD  dwMilliseconds,
+	_In_	   DWORD  dwWakeMask,
+	_In_	   DWORD  dwFlags
 ) {
 	DWORD ret = 0;
 
@@ -290,13 +290,13 @@ docall:
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
-	IN HANDLE               TimerHandle,
-	IN PLARGE_INTEGER       DueTime,
+	IN HANDLE			   TimerHandle,
+	IN PLARGE_INTEGER	   DueTime,
 	IN PVOID				TimerApcRoutine OPTIONAL,
-	IN PVOID                TimerContext OPTIONAL,
-	IN BOOLEAN              ResumeTimer,
-	IN LONG                 Period OPTIONAL,
-	OUT PBOOLEAN            PreviousState OPTIONAL
+	IN PVOID				TimerContext OPTIONAL,
+	IN BOOLEAN			  ResumeTimer,
+	IN LONG				 Period OPTIONAL,
+	OUT PBOOLEAN			PreviousState OPTIONAL
 ) {
 	NTSTATUS ret = 0;
 	LONGLONG interval;
@@ -427,7 +427,7 @@ docall:
 static LARGE_INTEGER perf_multiplier;
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueryPerformanceCounter,
-	_Out_     PLARGE_INTEGER PerformanceCounter,
+	_Out_	 PLARGE_INTEGER PerformanceCounter,
 	_Out_opt_ PLARGE_INTEGER PerformanceFrequency
 ) {
 	NTSTATUS ret;
@@ -446,7 +446,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryPerformanceCounter,
 
 
 HOOKDEF(void, WINAPI, GetLocalTime,
-    __out  LPSYSTEMTIME lpSystemTime
+	__out  LPSYSTEMTIME lpSystemTime
 ) {
 	lasterror_t lasterror;
 	LARGE_INTEGER li; FILETIME ft;
@@ -457,12 +457,12 @@ HOOKDEF(void, WINAPI, GetLocalTime,
 	get_lasterrors(&lasterror);
 
 	SystemTimeToFileTime(lpSystemTime, &ft);
-    li.HighPart = ft.dwHighDateTime;
-    li.LowPart = ft.dwLowDateTime;
-    li.QuadPart += time_skipped.QuadPart;
-    ft.dwHighDateTime = li.HighPart;
-    ft.dwLowDateTime = li.LowPart;
-    FileTimeToSystemTime(&ft, lpSystemTime);
+	li.HighPart = ft.dwHighDateTime;
+	li.LowPart = ft.dwLowDateTime;
+	li.QuadPart += time_skipped.QuadPart;
+	ft.dwHighDateTime = li.HighPart;
+	ft.dwLowDateTime = li.LowPart;
+	FileTimeToSystemTime(&ft, lpSystemTime);
 
 	LOQ_void("system", "");
 
@@ -470,23 +470,23 @@ HOOKDEF(void, WINAPI, GetLocalTime,
 }
 
 HOOKDEF(void, WINAPI, GetSystemTime,
-    __out  LPSYSTEMTIME lpSystemTime
+	__out  LPSYSTEMTIME lpSystemTime
 ) {
 	lasterror_t lasterror;
 	LARGE_INTEGER li; FILETIME ft;
 	DWORD ret = 0;
 
-    Old_GetSystemTime(lpSystemTime);
+	Old_GetSystemTime(lpSystemTime);
 
 	get_lasterrors(&lasterror);
 
-    SystemTimeToFileTime(lpSystemTime, &ft);
-    li.HighPart = ft.dwHighDateTime;
-    li.LowPart = ft.dwLowDateTime;
-    li.QuadPart += time_skipped.QuadPart;
-    ft.dwHighDateTime = li.HighPart;
-    ft.dwLowDateTime = li.LowPart;
-    FileTimeToSystemTime(&ft, lpSystemTime);
+	SystemTimeToFileTime(lpSystemTime, &ft);
+	li.HighPart = ft.dwHighDateTime;
+	li.LowPart = ft.dwLowDateTime;
+	li.QuadPart += time_skipped.QuadPart;
+	ft.dwHighDateTime = li.HighPart;
+	ft.dwLowDateTime = li.LowPart;
+	FileTimeToSystemTime(&ft, lpSystemTime);
 
 	LOQ_void("system", "");
 
@@ -513,7 +513,7 @@ ULONGLONG raw_gettickcount64(void)
 }
 
 HOOKDEF(DWORD, WINAPI, GetTickCount,
-    void
+	void
 ) {
 	DWORD ret;
 
@@ -521,10 +521,10 @@ HOOKDEF(DWORD, WINAPI, GetTickCount,
 
 	ret = raw_gettickcount();
 
-    // add the time we've skipped
-    ret += (DWORD)(time_skipped.QuadPart / 10000);
+	// add the time we've skipped
+	ret += (DWORD)(time_skipped.QuadPart / 10000);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(ULONGLONG, WINAPI, GetTickCount64,
@@ -544,14 +544,14 @@ HOOKDEF(ULONGLONG, WINAPI, GetTickCount64,
 
 
 HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemTime,
-    _Out_  PLARGE_INTEGER SystemTime
+	_Out_  PLARGE_INTEGER SystemTime
 ) {
-    NTSTATUS ret = Old_NtQuerySystemTime(SystemTime);
+	NTSTATUS ret = Old_NtQuerySystemTime(SystemTime);
 	LOQ_ntstatus("system", "");
-    if(NT_SUCCESS(ret)) {
-        SystemTime->QuadPart += time_skipped.QuadPart;
-    }
-    return 0;
+	if(NT_SUCCESS(ret)) {
+		SystemTime->QuadPart += time_skipped.QuadPart;
+	}
+	return 0;
 }
 
 HOOKDEF(DWORD, WINAPI, timeGetTime,
@@ -603,48 +603,48 @@ VOID CALLBACK WaitOrTimerCallbackHook(
   _In_ BOOLEAN TimerOrWaitFired
 )
 {
-    _WaitOrTimerCallback pWaitOrTimerCallback;
-    int ret = 0;
+	_WaitOrTimerCallback pWaitOrTimerCallback;
+	int ret = 0;
 
-    if (!HookedCallback) {
-        DebugOutput("Timer callback hook: error, HookedCallback NULL.\n");
-        return;
-    }
-    
-    if (g_config.debugger) {
-        DWORD Tid = GetCurrentThreadId();
-        DebugOutput("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
-        InitNewThreadBreakpoints(Tid);
-    }
-    
-    *(FARPROC*)&pWaitOrTimerCallback = (FARPROC)HookedCallback;
-    LOQ_void("system", "p", "Callback", HookedCallback);
-    HookedCallback = NULL;
-    pWaitOrTimerCallback(lpParameter, TimerOrWaitFired);    
+	if (!HookedCallback) {
+		DebugOutput("Timer callback hook: error, HookedCallback NULL.\n");
+		return;
+	}
+	
+	if (g_config.debugger) {
+		DWORD Tid = GetCurrentThreadId();
+		DebugOutput("Timer callback hook: Initialising breakpoints for thread %d.\n", Tid);
+		InitNewThreadBreakpoints(Tid);
+	}
+	
+	*(FARPROC*)&pWaitOrTimerCallback = (FARPROC)HookedCallback;
+	LOQ_void("system", "p", "Callback", HookedCallback);
+	HookedCallback = NULL;
+	pWaitOrTimerCallback(lpParameter, TimerOrWaitFired);	
 }
 
 HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
-  _Out_    PHANDLE             phNewTimer,
-  _In_opt_ HANDLE              TimerQueue,
-  _In_     WAITORTIMERCALLBACK Callback,
-  _In_opt_ PVOID               Parameter,
-  _In_     DWORD               DueTime,
-  _In_     DWORD               Period,
-  _In_     ULONG               Flags
+  _Out_	PHANDLE			 phNewTimer,
+  _In_opt_ HANDLE			  TimerQueue,
+  _In_	 WAITORTIMERCALLBACK Callback,
+  _In_opt_ PVOID			   Parameter,
+  _In_	 DWORD			   DueTime,
+  _In_	 DWORD			   Period,
+  _In_	 ULONG			   Flags
 ) {
-    BOOL ret;
-    
-    if (Callback && !HookedCallback) {
-        HookedCallback = Callback;
-        Callback = &WaitOrTimerCallbackHook;
-    }
-    
-    ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
+	BOOL ret;
+	
+	if (Callback && !HookedCallback) {
+		HookedCallback = Callback;
+		Callback = &WaitOrTimerCallbackHook;
+	}
+	
+	ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
 
-    if (HookedCallback)
-        Callback = HookedCallback;
-        
-    LOQ_bool("system", "Pphhiii", "phNewTimer", phNewTimer, "TimerQueue", TimerQueue, "Callback", Callback, "Parameter", Parameter, "DueTime", DueTime, "Period", Period, "Flags", Flags);
+	if (HookedCallback)
+		Callback = HookedCallback;
+		
+	LOQ_bool("system", "Pphhiii", "phNewTimer", phNewTimer, "TimerQueue", TimerQueue, "Callback", Callback, "Parameter", Parameter, "DueTime", DueTime, "Period", Period, "Flags", Flags);
 	return ret;
 }
 
@@ -668,18 +668,18 @@ HOOKDEF(BOOL, WINAPI, GetLastInputInfo,
 
 void init_sleep_skip(int first_process)
 {
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    time_start.HighPart = ft.dwHighDateTime;
-    time_start.LowPart = ft.dwLowDateTime;
+	FILETIME ft;
+	GetSystemTimeAsFileTime(&ft);
+	time_start.HighPart = ft.dwHighDateTime;
+	time_start.LowPart = ft.dwLowDateTime;
 
-    // we don't want to skip sleep calls in child processes
-    if(first_process == 0) {
-        disable_sleep_skip();
-    }
+	// we don't want to skip sleep calls in child processes
+	if(first_process == 0) {
+		disable_sleep_skip();
+	}
 }
 
 void init_startup_time(unsigned int startup_time)
 {
-    time_skipped.QuadPart += (unsigned __int64) startup_time * 10000;
+	time_skipped.QuadPart += (unsigned __int64) startup_time * 10000;
 }

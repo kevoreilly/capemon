@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-int utf8_encode(unsigned short x, unsigned char *out);
+int utf8_do_encode(unsigned short x, unsigned char *out);
 int utf8_length(unsigned short x);
 
 // name is a bit weird.. but it calculates the length of the utf8 encoded

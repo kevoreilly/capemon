@@ -24,6 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include <Sddl.h>
+#include "CAPE\YaraHarness.h"
 
 #define UNHOOK_MAXCOUNT 2048
 #define UNHOOK_BUFSIZE 32
@@ -87,7 +88,7 @@ uint32_t get_first_zero_addr_index(void)
 static int max_unhook_warned;
 
 void unhook_detect_add_region(const hook_t *hook, uint8_t *addr,
-    const uint8_t *orig, const uint8_t *our, uint32_t length)
+	const uint8_t *orig, const uint8_t *our, uint32_t length)
 {
 	uint32_t index;
 
@@ -95,8 +96,8 @@ void unhook_detect_add_region(const hook_t *hook, uint8_t *addr,
 		if (!max_unhook_warned)
 			pipe("CRITICAL:Reached maximum number of unhook detection entries!");
 		max_unhook_warned = 1;
-        return;
-    }
+		return;
+	}
 
 	if (address_already_hooked(addr))
 		return;
@@ -104,7 +105,7 @@ void unhook_detect_add_region(const hook_t *hook, uint8_t *addr,
 	index = get_first_zero_addr_index();
 
 	g_length[index] = MIN(length, UNHOOK_BUFSIZE);
-    g_addr[index] = addr;
+	g_addr[index] = addr;
 	g_unhook_hooks[index] = hook;
 
 	memcpy(g_orig[index], orig, g_length[index]);
@@ -157,22 +158,22 @@ void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
 
 static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 {
-    static int watcher_first = 1;
+	static int watcher_first = 1;
 	uint32_t idx;
 
-    hook_disable();
+	hook_disable();
 
-    while (1) {
-        if(WaitForSingleObject(g_watcher_thread_handle,
-                500) != WAIT_TIMEOUT) {
-            if(watcher_first != 0) {
-                if(is_shutting_down() == 0) {
-                    log_anomaly("unhook", "Unhook watcher thread has been corrupted!");
-                }
-                watcher_first = 0;
-            }
-            raw_sleep(100);
-        }
+	while (1) {
+		if(WaitForSingleObject(g_watcher_thread_handle,
+				500) != WAIT_TIMEOUT) {
+			if(watcher_first != 0) {
+				if(is_shutting_down() == 0) {
+					log_anomaly("unhook", "Unhook watcher thread has been corrupted!");
+				}
+				watcher_first = 0;
+			}
+			raw_sleep(100);
+		}
 
 		for (idx = 0; idx < g_index; idx++) {
 			if (g_unhook_hooks[idx]->is_hooked && g_hook_reported[idx] == 0) {
@@ -216,19 +217,19 @@ static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 		}
 	}
 
-    return 0;
+	return 0;
 }
 
 static DWORD WINAPI _unhook_watch_thread(LPVOID param)
 {
-    hook_disable();
+	hook_disable();
 
-    while (WaitForSingleObject(g_unhook_thread_handle, 1000) == WAIT_TIMEOUT);
+	while (WaitForSingleObject(g_unhook_thread_handle, 1000) == WAIT_TIMEOUT);
 
-    if(is_shutting_down() == 0) {
-        log_anomaly("unhook", "Unhook detection thread has been corrupted!");
-    }
-    return 0;
+	if(is_shutting_down() == 0) {
+		log_anomaly("unhook", "Unhook detection thread has been corrupted!");
+	}
+	return 0;
 }
 
 DWORD g_unhook_detect_thread_id;
@@ -236,18 +237,18 @@ DWORD g_unhook_watcher_thread_id;
 
 int unhook_init_detection()
 {
-    g_unhook_thread_handle =
+	g_unhook_thread_handle =
 		CreateThread(NULL, 0, &_unhook_detect_thread, NULL, 0, &g_unhook_detect_thread_id);
 
-    g_watcher_thread_handle =
+	g_watcher_thread_handle =
 		CreateThread(NULL, 0, &_unhook_watch_thread, NULL, 0, &g_unhook_watcher_thread_id);
 
-    if(g_unhook_thread_handle != NULL && g_watcher_thread_handle != NULL) {
-        return 0;
-    }
+	if(g_unhook_thread_handle != NULL && g_watcher_thread_handle != NULL) {
+		return 0;
+	}
 
-    pipe("CRITICAL:Error initializing unhook detection threads!");
-    return -1;
+	pipe("CRITICAL:Error initializing unhook detection threads!");
+	return -1;
 }
 
 static HANDLE g_terminate_event_thread_handle;
@@ -257,51 +258,54 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 {
 	hook_disable();
 
-    DWORD ProcessId = GetCurrentProcessId();
+	DWORD ProcessId = GetCurrentProcessId();
 
-    WaitForSingleObject(g_terminate_event_handle, INFINITE);
+	WaitForSingleObject(g_terminate_event_handle, INFINITE);
 
-    CloseHandle(g_terminate_event_handle);
+	CloseHandle(g_terminate_event_handle);
 
-    if (g_config.debugger)
-        DebuggerShutdown();
+	if (g_config.unpacker) {
+		g_config.unpacker = FALSE;
+		DebugOutput("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
+		ProcessTrackedRegions();
+		ClearAllBreakpoints();
+	}
 
-    if (g_config.unpacker) {
-        g_config.unpacker = FALSE;
-        DebugOutput("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
-        ProcessTrackedRegions();
-        ClearAllBreakpoints();
-    }
+	if (g_config.debugger)
+		DebuggerShutdown();
 
-    if (g_config.procdump || g_config.procmemdump) {
-        if (!ProcessDumped) {
-            DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
-            DoProcessDump(NULL);
-        }
-        else
-            DebugOutput("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
-    }
-    else
-        DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
+	if (g_config.yarascan)
+		YaraShutdown();
 
-    file_handle_terminate();
+	if (g_config.procdump || g_config.procmemdump) {
+		if (!ProcessDumped) {
+			DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
+			DoProcessDump(NULL);
+		}
+		else
+			DebugOutput("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);
+	}
+	else
+		DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
-    if (g_config.tlsdump && TlsLog)
-        CloseHandle(TlsLog);
+	file_handle_terminate();
 
-    g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
-    if (g_terminate_event_handle) {
-        SetEvent(g_terminate_event_handle);
-        CloseHandle(g_terminate_event_handle);
-        DebugOutput("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
-    }
-    else
-        DebugOutput("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
+	if (g_config.tlsdump && TlsLog)
+		CloseHandle(TlsLog);
 
-    log_flush();
-    if (g_config.terminate_processes)
-        ExitProcess(0);
-    return 0;
+	g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);
+	if (g_terminate_event_handle) {
+		SetEvent(g_terminate_event_handle);
+		CloseHandle(g_terminate_event_handle);
+		DebugOutput("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
+	}
+	else
+		DebugOutput("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
+
+	log_flush();
+	if (g_config.terminate_processes)
+		ExitProcess(0);
+	return 0;
 }
 
 DWORD g_terminate_event_thread_id;

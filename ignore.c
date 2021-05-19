@@ -31,19 +31,19 @@ static DWORD g_pid_count;
 
 void add_protected_pid(DWORD pid)
 {
-    g_pids[g_pid_count++] = pid;
+	g_pids[g_pid_count++] = pid;
 }
 
 int is_protected_pid(DWORD pid)
 {
 	DWORD i;
 
-    for (i = 0; i < g_pid_count; i++) {
-        if(pid == g_pids[i]) {
-            return 1;
-        }
-    }
-    return 0;
+	for (i = 0; i < g_pid_count; i++) {
+		if(pid == g_pids[i]) {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 //
@@ -52,41 +52,41 @@ int is_protected_pid(DWORD pid)
 
 #define S(s, f) {L##s, sizeof(s)-1, f}
 
-#define FLAG_NONE           0
-#define FLAG_BEGINS_WITH    1
+#define FLAG_NONE		   0
+#define FLAG_BEGINS_WITH	1
 
 static struct _ignored_file_t {
-    const wchar_t   *unicode;
-    unsigned int    length;
-    unsigned int    flags;
+	const wchar_t   *unicode;
+	unsigned int	length;
+	unsigned int	flags;
 } g_ignored_files[] = {
-    S("\\??\\PIPE\\lsarpc", FLAG_NONE),
-    S("\\??\\IDE#", FLAG_BEGINS_WITH),
-    S("\\??\\STORAGE#", FLAG_BEGINS_WITH),
-    S("\\??\\MountPointManager", FLAG_NONE),
-    S("\\??\\root#", FLAG_BEGINS_WITH),
-    S("\\Device\\", FLAG_BEGINS_WITH),
+	S("\\??\\PIPE\\lsarpc", FLAG_NONE),
+	S("\\??\\IDE#", FLAG_BEGINS_WITH),
+	S("\\??\\STORAGE#", FLAG_BEGINS_WITH),
+	S("\\??\\MountPointManager", FLAG_NONE),
+	S("\\??\\root#", FLAG_BEGINS_WITH),
+	S("\\Device\\", FLAG_BEGINS_WITH),
 };
 
 int is_ignored_file_unicode(const wchar_t *fname, unsigned int length)
 {
-    struct _ignored_file_t *f = g_ignored_files;
+	struct _ignored_file_t *f = g_ignored_files;
 	unsigned int i;
-    for (i = 0; i < ARRAYSIZE(g_ignored_files); i++, f++) {
-        if(f->flags == FLAG_NONE && length == f->length &&
-                !wcsnicmp(fname, f->unicode, length)) {
-            return 1;
-        }
-        else if(f->flags == FLAG_BEGINS_WITH && length >= f->length &&
-                !wcsnicmp(fname, f->unicode, f->length)) {
-            return 1;
-        }
-    }
-    return 0;
+	for (i = 0; i < ARRAYSIZE(g_ignored_files); i++, f++) {
+		if(f->flags == FLAG_NONE && length == f->length &&
+				!wcsnicmp(fname, f->unicode, length)) {
+			return 1;
+		}
+		else if(f->flags == FLAG_BEGINS_WITH && length >= f->length &&
+				!wcsnicmp(fname, f->unicode, f->length)) {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 int is_ignored_file_objattr(const OBJECT_ATTRIBUTES *obj)
 {
-    return is_ignored_file_unicode(obj->ObjectName->Buffer,
-        obj->ObjectName->Length / sizeof(wchar_t));
+	return is_ignored_file_unicode(obj->ObjectName->Buffer,
+		obj->ObjectName->Length / sizeof(wchar_t));
 }

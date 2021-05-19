@@ -51,16 +51,16 @@ typedef NTSTATUS(WINAPI *_NtUnmapViewOfSection)(
 	HANDLE ProcessHandle,
 	PVOID BaseAddress);
 typedef NTSTATUS(WINAPI *_NtMapViewOfSection)(
-	_In_     HANDLE SectionHandle,
-	_In_     HANDLE ProcessHandle,
+	_In_	 HANDLE SectionHandle,
+	_In_	 HANDLE ProcessHandle,
 	__inout  PVOID *BaseAddress,
-	_In_     ULONG_PTR ZeroBits,
-	_In_     SIZE_T CommitSize,
+	_In_	 ULONG_PTR ZeroBits,
+	_In_	 SIZE_T CommitSize,
 	__inout  PLARGE_INTEGER SectionOffset,
 	__inout  PSIZE_T ViewSize,
-	__in     UINT InheritDisposition,
-	__in     ULONG AllocationType,
-	__in     ULONG Win32Protect);
+	__in	 UINT InheritDisposition,
+	__in	 ULONG AllocationType,
+	__in	 ULONG Win32Protect);
 typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA {
 	ULONG Flags;
 	const PUNICODE_STRING FullDllName;
@@ -83,16 +83,16 @@ typedef union _LDR_DLL_NOTIFICATION_DATA {
 } LDR_DLL_NOTIFICATION_DATA, *PLDR_DLL_NOTIFICATION_DATA;
 
 typedef VOID (CALLBACK *PLDR_DLL_NOTIFICATION_FUNCTION)(
-	_In_     ULONG                       NotificationReason,
-	_In_     const PLDR_DLL_NOTIFICATION_DATA NotificationData,
-	_In_opt_ PVOID                       Context
+	_In_	 ULONG					   NotificationReason,
+	_In_	 const PLDR_DLL_NOTIFICATION_DATA NotificationData,
+	_In_opt_ PVOID					   Context
 );
 
 typedef NTSTATUS(WINAPI *_LdrRegisterDllNotification)(
-	_In_     ULONG                          Flags,
-	_In_     PLDR_DLL_NOTIFICATION_FUNCTION NotificationFunction,
-	_In_opt_ PVOID                          Context,
-	_Out_    PVOID                          *Cookie
+	_In_	 ULONG						  Flags,
+	_In_	 PLDR_DLL_NOTIFICATION_FUNCTION NotificationFunction,
+	_In_opt_ PVOID						  Context,
+	_Out_	PVOID						  *Cookie
 );
 
 typedef void (WINAPI *_CoTaskMemFree)(LPVOID pv);
@@ -116,10 +116,10 @@ void hide_module_from_peb(HMODULE module_handle);
 BOOLEAN is_suspended(DWORD pid, DWORD tid);
 
 uint32_t path_from_handle(HANDLE handle,
-    wchar_t *path, uint32_t path_buffer_len);
+	wchar_t *path, uint32_t path_buffer_len);
 
 uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
-    wchar_t *path, uint32_t buffer_length);
+	wchar_t *path, uint32_t buffer_length);
 
 struct {
 	wchar_t *hkcu_string;
@@ -191,7 +191,6 @@ ULONG_PTR get_cdocument_write_addr(HMODULE mod);
 ULONG_PTR get_olescript_compile_addr(HMODULE mod);
 ULONG_PTR get_olescript_parsescripttext_addr(HMODULE mod);
 
-PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen);
 BOOL is_bytes_in_buf(PCHAR buf, ULONG len, PCHAR memstr, ULONG memlen, ULONG maxsearchbytes);
 void replace_string_in_buf(PCHAR buf, ULONG len, PCHAR findstr, PCHAR repstr);
 void replace_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR repstr);
@@ -200,18 +199,14 @@ void replace_ci_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR rep
 void perform_ascii_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength);
 void perform_unicode_registry_fakery(PWCHAR keypath, LPVOID Data, ULONG DataLength);
 void perform_device_fakery(PVOID OutputBuffer, ULONG OutputBufferLength, ULONG IoControlCode);
-
 char* stristr(char* haystack, char* needle);
 unsigned short our_htons(unsigned short num);
 unsigned int our_htonl(unsigned int num);
 void addr_to_string(const IN_ADDR addr, char *string);
-
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle);
-
+BOOL loader_lock_held();
 void perform_create_time_fakery(FILETIME *createtime);
-
 wchar_t *ascii_to_unicode_dup(char *str);
-
 int is_stack_pivoted(void);
 
 LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);

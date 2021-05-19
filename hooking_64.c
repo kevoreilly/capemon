@@ -45,6 +45,17 @@ int lde(void *addr)
 	return ret == DECRES_SUCCESS ? instructions[0].size : 0;
 }
 
+// instruction disassembler engine
+int ide(_DecodedInst* instruction, void *addr)
+{
+	unsigned int used_instruction_count; _DecodedInst instructions[16];
+	_DecodeResult ret = distorm_decode(0, addr, 16, Decode64Bits, instructions, 1, &used_instruction_count);
+	if (ret)
+		*instruction = instructions[0];
+
+	return ret;
+}
+
 static _DInst *get_insn(void *addr)
 {
 	unsigned int used_instruction_count; _DInst instructions[16];
@@ -947,7 +958,7 @@ int hook_api(hook_t *h, int type)
 			DWORD timestamp = GetTimeStamp(hmod);
 			if (timestamp == h->timestamp)
 				addr = (unsigned char *)hmod + h->rva;
-        }
+		}
 	}
 	if (addr == NULL) {
 		// function doesn't exist in this DLL, not a critical error
@@ -1065,40 +1076,40 @@ int hook_api(hook_t *h, int type)
 static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigned int count)
 {
 	/* derived from http://www.nynaeve.net/Code/StackWalk64.cpp */
-    CONTEXT ctx;
-    DWORD64 imgbase;
-    PRUNTIME_FUNCTION runfunc;
-    KNONVOLATILE_CONTEXT_POINTERS nvctx;
-    PVOID handlerdata;
-    ULONG_PTR establisherframe;
-    unsigned int frame;
+	CONTEXT ctx;
+	DWORD64 imgbase;
+	PRUNTIME_FUNCTION runfunc;
+	KNONVOLATILE_CONTEXT_POINTERS nvctx;
+	PVOID handlerdata;
+	ULONG_PTR establisherframe;
+	unsigned int frame;
 
-    __try
-    {
-        RtlCaptureContext(&ctx);
+	__try
+	{
+		RtlCaptureContext(&ctx);
 
-        for (frame = 0; frame < count; frame++) {
+		for (frame = 0; frame < count; frame++) {
 
-            backtrace[frame] = (PVOID)ctx.Rip;
-            runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);
-            memset(&nvctx, 0, sizeof(nvctx));
-            if (runfunc == NULL) {
-                ctx.Rip = (ULONG_PTR)(*(ULONG_PTR *)ctx.Rsp);
-                ctx.Rsp += 8;
-            }
-            else {
-                RtlVirtualUnwind(UNW_FLAG_NHANDLER, imgbase, ctx.Rip, runfunc, &ctx, &handlerdata, &establisherframe, &nvctx);
-            }
-            if (!ctx.Rip)
-                break;
-        }
+			backtrace[frame] = (PVOID)ctx.Rip;
+			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);
+			memset(&nvctx, 0, sizeof(nvctx));
+			if (runfunc == NULL) {
+				ctx.Rip = (ULONG_PTR)(*(ULONG_PTR *)ctx.Rsp);
+				ctx.Rsp += 8;
+			}
+			else {
+				RtlVirtualUnwind(UNW_FLAG_NHANDLER, imgbase, ctx.Rip, runfunc, &ctx, &handlerdata, &establisherframe, &nvctx);
+			}
+			if (!ctx.Rip)
+				break;
+		}
 
-        return frame + 1;
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        return 0;
-    }
+		return frame + 1;
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		return 0;
+	}
 }
 
 int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(void *, ULONG_PTR))

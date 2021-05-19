@@ -1,17 +1,14 @@
 #pragma once
 
-#define DEBUGGER_LAUNCHER 0
-#define DisableThreadSuspend 0
-
-#define BP_EXEC        0x00
-#define BP_WRITE       0x01
-#define BP_RESERVED    0x02
+#define BP_EXEC		0x00
+#define BP_WRITE	   0x01
+#define BP_RESERVED	0x02
 #define BP_READWRITE   0x03
 
-#define NUMBER_OF_DEBUG_REGISTERS       4
-#define MAX_DEBUG_REGISTER_DATA_SIZE    4
-#define DEBUG_REGISTER_DATA_SIZES       {1, 2, 4}
-#define DEBUG_REGISTER_LENGTH_MASKS     {0xFFFFFFFF, 0, 1, 0xFFFFFFFF, 3}
+#define NUMBER_OF_DEBUG_REGISTERS	   4
+#define MAX_DEBUG_REGISTER_DATA_SIZE	4
+#define DEBUG_REGISTER_DATA_SIZES	   {1, 2, 4}
+#define DEBUG_REGISTER_LENGTH_MASKS	 {0xFFFFFFFF, 0, 1, 0xFFFFFFFF, 3}
 
 #define EXECUTABLE_FLAGS (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)
 #define WRITABLE_FLAGS (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY | PAGE_WRITECOMBINE)
@@ -20,8 +17,8 @@
 
 #if (NTDDI_VERSION <= NTDDI_WINBLUE)
 typedef struct _EXCEPTION_REGISTRATION_RECORD {
-    struct _EXCEPTION_REGISTRATION_RECORD *Next;
-    PEXCEPTION_ROUTINE Handler;
+	struct _EXCEPTION_REGISTRATION_RECORD *Next;
+	PEXCEPTION_ROUTINE Handler;
 } EXCEPTION_REGISTRATION_RECORD;
 
 typedef EXCEPTION_REGISTRATION_RECORD *PEXCEPTION_REGISTRATION_RECORD;
@@ -29,10 +26,10 @@ typedef EXCEPTION_REGISTRATION_RECORD *PEXCEPTION_REGISTRATION_RECORD;
 typedef struct BreakpointInfo
 {
 	HANDLE	ThreadHandle;
-    int		Register;
-    int		Size;
-    LPVOID	Address;
-    DWORD	Type;
+	int		Register;
+	int		Size;
+	LPVOID	Address;
+	DWORD	Type;
 	LPVOID	Callback;
 } BREAKPOINTINFO, *PBREAKPOINTINFO;
 
@@ -40,7 +37,7 @@ typedef BOOL (cdecl *BREAKPOINT_HANDLER)(PBREAKPOINTINFO, struct _EXCEPTION_POIN
 
 typedef struct ThreadBreakpoints
 {
-    DWORD						ThreadId;
+	DWORD						ThreadId;
 	HANDLE						ThreadHandle;
 	BREAKPOINTINFO 				BreakpointInfo[4];
 	struct ThreadBreakpoints	*NextThreadBreakpoints;
@@ -57,11 +54,6 @@ extern "C" {
 #endif
 
 BOOL DebuggerInitialised;
-
-// Global variables for submission options
-void *CAPE_var1, *CAPE_var2, *CAPE_var3, *CAPE_var4;
-PVOID bp0, bp1, bp2, bp3;
-PVOID bpw0, bpw1, bpw2, bpw3;
 
 LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 PVOID CAPEExceptionFilterHandle;
@@ -94,6 +86,9 @@ BOOL FlipZeroFlag(PCONTEXT Context);
 BOOL SetSignFlag(PCONTEXT Context);
 BOOL ClearSignFlag(PCONTEXT Context);
 BOOL FlipSignFlag(PCONTEXT Context);
+BOOL SetCarryFlag(PCONTEXT Context);
+BOOL ClearCarryFlag(PCONTEXT Context);
+BOOL FlipCarryFlag(PCONTEXT Context);
 PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId);
 
 // Get

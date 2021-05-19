@@ -79,7 +79,7 @@ public:
 	void setDefaultFileAlignment();
 	bool dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath);
 	bool dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR * dumpFilePath, std::vector<PeSection> & sectionList);
-    bool dumpProcessToHandle(DWORD_PTR modBase, DWORD_PTR entryPoint, HANDLE FileHandle);
+	bool dumpProcessToHandle(DWORD_PTR modBase, DWORD_PTR entryPoint, HANDLE FileHandle);
 
 	void setEntryPointVa(DWORD_PTR entryPoint);
 	void setEntryPointRva(DWORD entryPoint);
@@ -92,9 +92,9 @@ public:
 	DWORD_PTR convertRVAToOffsetVector(DWORD_PTR dwRVA);
 	DWORD_PTR convertRVAToOffsetRelative(DWORD_PTR dwRVA);
 	DWORD getSectionAddressRVAByIndex( int index );
-    BOOL reBasePEImage(DWORD_PTR NewBase);
+	BOOL reBasePEImage(DWORD_PTR NewBase);
 
-    PIMAGE_NT_HEADERS getCurrentNtHeader();
+	PIMAGE_NT_HEADERS getCurrentNtHeader();
 	std::vector<PeFileSection> listPeSection;
 
 	DWORD dumpSize;
@@ -109,12 +109,12 @@ protected:
 	DWORD_PTR moduleBaseAddress;
 
 	/************************************************************************/
-	/* PE FILE                                                              */
-	/*                                                                      */
-	/*  IMAGE_DOS_HEADER      64   0x40                                     */
-	/*	IMAGE_NT_HEADERS32   248   0xF8                                     */
-	/*	IMAGE_NT_HEADERS64   264  0x108                                     */
-	/*	IMAGE_SECTION_HEADER  40   0x28                                     */
+	/* PE FILE															  */
+	/*																	  */
+	/*  IMAGE_DOS_HEADER	  64   0x40									 */
+	/*	IMAGE_NT_HEADERS32   248   0xF8									 */
+	/*	IMAGE_NT_HEADERS64   264  0x108									 */
+	/*	IMAGE_SECTION_HEADER  40   0x28									 */
 	/************************************************************************/
 
 	PIMAGE_DOS_HEADER pDosHeader;
@@ -132,8 +132,8 @@ protected:
 	HANDLE hInfoFile;
 	DWORD fileSize;
 
-    SIZE_T SizeOfSlackData;
-    BYTE* SlackData;
+	SIZE_T SizeOfSlackData;
+	BYTE* SlackData;
 
 	bool readPeHeaderFromFile(bool readSectionHeaders);
 	bool readPeHeaderFromProcess(bool readSectionHeaders);
