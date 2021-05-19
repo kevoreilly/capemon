@@ -110,7 +110,7 @@ do { \
 	static volatile LONG _index; \
 	if (_index == 0) \
 		InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
-	loq_none(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
+	loq(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
 } while (0)
 
 #define LOQ_ntstatus(cat, fmt, ...) _LOQ(NT_SUCCESS(ret), cat, fmt, ##__VA_ARGS__)
