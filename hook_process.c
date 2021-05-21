@@ -166,11 +166,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 	__in_opt	HANDLE SectionHandle,
 	__in_opt	HANDLE DebugPort,
 	__in_opt	HANDLE ExceptionPort,
-	__in		BOOLEAN InJob
+	__in		ULONG JobMemberLevel
 ) {
 	NTSTATUS ret = Old_NtCreateProcessEx(ProcessHandle, DesiredAccess,
 		ObjectAttributes, ParentProcess, Flags, SectionHandle, DebugPort,
-		ExceptionPort, InJob);
+		ExceptionPort, JobMemberLevel);
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
 	LOQ_ntstatus("process", "PphOhhl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
 		"FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
