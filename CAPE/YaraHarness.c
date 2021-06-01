@@ -74,6 +74,9 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 	switch(message)
 	{
 		case CALLBACK_MSG_RULE_NOT_MATCHING:
+#ifdef DEBUG_COMMENTS
+			DebugOutput("YaraScan rule did not match.");
+#endif
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
@@ -145,6 +148,9 @@ void ScannerError(int Error)
 		case ERROR_SUCCESS:
 			break;
 		case ERROR_COULD_NOT_MAP_FILE:  // exception scanning region
+#ifdef DEBUG_COMMENTS
+			DebugOutput("Yara error: exception scanning region.\n");
+#endif
 			break;
 		case ERROR_COULD_NOT_ATTACH_TO_PROCESS:
 			DebugOutput("Yara error: 'Cannot attach to process'\n");
@@ -186,6 +192,9 @@ void YaraScan(PVOID Address, SIZE_T Size)
 		SIZE_T AccessibleSize = ScanForAccess(Address, Size);
 		if (!AccessibleSize)
 			return;
+#ifdef DEBUG_COMMENTS
+		DebugOutput("YaraScan: AccessibleSize 0x%x\n", AccessibleSize);
+#endif
 		Result = yr_rules_scan_mem(Rules, Address, AccessibleSize, Flags, YaraCallback, Address, Timeout);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)

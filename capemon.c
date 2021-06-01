@@ -120,18 +120,16 @@ VOID CALLBACK New_DllLoadNotification(
 	_In_	 const PLDR_DLL_NOTIFICATION_DATA NotificationData,
 	_In_opt_ PVOID					   Context)
 {
-	PWCHAR dllname, cmdline;
+	PWCHAR dllname, dllpath;
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
 	dllname = get_dll_basename(&library);
+	dllpath = wcschr(our_commandline, ' ');
+	if (dllpath) dllpath = wcsstr(dllpath, L"C:");
 
 	if (g_config.debug) {
 		int ret = 0;
 		LOQ_void("system", "sup", "NotificationReason", NotificationReason == 1 ? "load" : "unload", "DllName", library.Buffer, "DllBase", NotificationReason == 1 ? NotificationData->Loaded.DllBase : NotificationData->Unloaded.DllBase);
 	}
-
-	cmdline = wcschr(our_commandline, ' ');
-	while (cmdline && (*cmdline == L' ' || *cmdline == L'"'))
-		cmdline++;
 
 	if (NotificationReason == 1) {
 		BOOL coverage_module = FALSE;
@@ -147,7 +145,7 @@ VOID CALLBACK New_DllLoadNotification(
 				SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
 		}
 		else if ((g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) ||
-			(path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && !wcsnicmp(cmdline, library.Buffer, wcslen(library.Buffer)))) {
+			(path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && dllpath && !wcsnicmp(dllpath, library.Buffer, wcslen(library.Buffer)))) {
 			if (!base_of_dll_of_interest)
 				set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
 			//ImageBase = (PVOID)base_of_dll_of_interest;

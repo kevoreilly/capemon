@@ -166,11 +166,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 	__in_opt	HANDLE SectionHandle,
 	__in_opt	HANDLE DebugPort,
 	__in_opt	HANDLE ExceptionPort,
-	__in		BOOLEAN InJob
+	__in		ULONG JobMemberLevel
 ) {
 	NTSTATUS ret = Old_NtCreateProcessEx(ProcessHandle, DesiredAccess,
 		ObjectAttributes, ParentProcess, Flags, SectionHandle, DebugPort,
-		ExceptionPort, InJob);
+		ExceptionPort, JobMemberLevel);
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
 	LOQ_ntstatus("process", "PphOhhl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
 		"FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
@@ -1013,23 +1013,18 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 			if (dllname && !strcmp(dllname, "ntdll.dll")) {
 				free(dllname);
 				// if trying to write to ntdll.dll, then just skip the instruction
-				_DecodedInst instruction;
 #ifdef _WIN64
-				if (ide(&instruction, (void*)Context->Rip) && !stricmp("mov", instruction.mnemonic.p)) {
-					if (!ntdll_protect_logged) {
-						ntdll_protect_logged = TRUE;
-						DebugOutput("RtlDispatchException: skipped %s instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", instruction.mnemonic.p, Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
-					}
-					Context->Rip += lde((void*)Context->Rip);
+				if (!ntdll_protect_logged) {
+					ntdll_protect_logged = TRUE;
+					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
 				}
+				Context->Rip += lde((void*)Context->Rip);
 #else
-				if (ide(&instruction, (void*)Context->Eip) && !stricmp("mov", instruction.mnemonic.p)) {
-					if (!ntdll_protect_logged) {
-						ntdll_protect_logged = TRUE;
-						DebugOutput("RtlDispatchException: skipped %s instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", instruction.mnemonic.p, Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
-					}
-					Context->Eip += lde((void*)Context->Eip);
+				if (!ntdll_protect_logged) {
+					ntdll_protect_logged = TRUE;
+					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
 				}
+				Context->Eip += lde((void*)Context->Eip);
 #endif
 				return TRUE;
 			}

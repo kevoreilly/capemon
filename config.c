@@ -28,12 +28,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define SINGLE_STEP_LIMIT 0x4000  // default unless specified in web ui
 #define DROPPED_LIMIT 100
 
-#define BP_EXEC		0x00
-#define BP_WRITE	   0x01
-#define BP_RESERVED	0x02
-#define BP_READWRITE   0x03
-#define DoClearZeroFlag 1
-#define DoSetZeroFlag   2
+#define BP_EXEC			0x00
+#define BP_WRITE		0x01
+#define BP_RESERVED		0x02
+#define BP_READWRITE	0x03
+#define DoClearZeroFlag	1
+#define DoSetZeroFlag	2
 #define PrintEAX		3
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -305,15 +305,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", g_config.bp0, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else {
-					g_config.bp0 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-					if (g_config.bp0) {
-						g_config.break_on_apiname_set = TRUE;
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.bp0 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", g_config.bp0, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
@@ -370,15 +370,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else {
-					g_config.bp1 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-					if (g_config.bp1) {
-						g_config.break_on_apiname_set = TRUE;
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.bp1 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
@@ -435,15 +435,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else {
-					g_config.bp2 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-					if (g_config.bp2) {
-						g_config.break_on_apiname_set = TRUE;
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.bp2 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
@@ -500,15 +500,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else {
-					g_config.bp3 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-					if (g_config.bp3) {
-						g_config.break_on_apiname_set = TRUE;
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.bp3 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {

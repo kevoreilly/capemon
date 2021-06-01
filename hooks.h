@@ -907,9 +907,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateNamedPipeFile,
 	IN		  ULONG ShareAccess,
 	IN		  ULONG CreateDisposition,
 	IN		  ULONG CreateOptions,
-	IN		  BOOLEAN WriteModeMessage,
-	IN		  BOOLEAN ReadModeMessage,
-	IN		  BOOLEAN NonBlocking,
+	IN		  ULONG WriteModeMessage,
+	IN		  ULONG ReadModeMessage,
+	IN		  ULONG NonBlocking,
 	IN		  ULONG MaxInstances,
 	IN		  ULONG InBufferSize,
 	IN		  ULONG OutBufferSize,
@@ -996,7 +996,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 	__in_opt	HANDLE SectionHandle,
 	__in_opt	HANDLE DebugPort,
 	__in_opt	HANDLE ExceptionPort,
-	__in		BOOLEAN InJob
+	__in		ULONG JobMemberLevel
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,

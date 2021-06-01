@@ -65,8 +65,8 @@ typedef struct _DR7
 	DWORD G2   : 1;	//Global enable bp2
 	DWORD L3   : 1;	//Local enable bp3
 	DWORD G3   : 1;	//Global enable bp3
-	DWORD LE   : 1;	//Local Enable
-	DWORD GE   : 1;	//Global Enable
+	DWORD LE   : 1;	//Local Enable/LBR
+	DWORD GE   : 1;	//Global Enable/BTF
 	DWORD PAD1 : 3;
 	DWORD GD   : 1;	//General Detect Enable
 	DWORD PAD2 : 1;
@@ -475,7 +475,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 
 		// Test Dr6 to see if this is a breakpoint
-		BreakpointFlag = FALSE;
 		for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
 		{
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
@@ -1454,9 +1453,9 @@ BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler)
 
 	if (g_config.branch_trace)
 	{
-		// set bit 8: LBR for branch trace
 		PDR7 Dr7 = (PDR7)&(Context->Dr7);
-		Dr7->GE = 1;
+		Dr7->LE = 1;	// LBR
+		Dr7->GE = 1;	// BTF
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -1477,7 +1476,7 @@ BOOL ClearSingleStepMode(PCONTEXT Context)
 	// Clear the trap flag & index
 	Context->EFlags &= ~FL_TF;
 
-	SingleStepHandler = NULL;
+	//SingleStepHandler = NULL;
 
 	return TRUE;
 }
@@ -2065,7 +2064,9 @@ BOOL SetBreakpoint
 
 	while (ThreadBreakpoints)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("SetBreakpoint: About to call SetThreadBreakpoint for thread %d.\n", ThreadBreakpoints->ThreadId);
+#endif
 
 		SetThreadBreakpoint(ThreadBreakpoints->ThreadId, Register, Size, Address, Type, Callback);
 
