@@ -349,11 +349,13 @@ hook_info_t *hook_info()
 	return ptr;
 }
 
-void get_lasterrors(lasterror_t *errors)
+// Make this noinline in order not to trigger compiler bug described in:
+// https://github.com/kevoreilly/capemon/issues/16
+void __declspec(noinline) get_lasterrors(lasterror_t *errors)
 {
 	char *teb;
 
-	errors->Eflags = (DWORD)__readeflags();
+	errors->Eflags = __readeflags();
 
 	teb = (char *)NtCurrentTeb();
 
@@ -362,7 +364,9 @@ void get_lasterrors(lasterror_t *errors)
 }
 
 // we do our own version of this function to avoid the potential debug triggers
-void set_lasterrors(lasterror_t *errors)
+// Make this noinline in order not to trigger compiler bug described in:
+// https://github.com/kevoreilly/capemon/issues/16
+void __declspec(noinline) set_lasterrors(lasterror_t *errors)
 {
 	char *teb = (char *)NtCurrentTeb();
 

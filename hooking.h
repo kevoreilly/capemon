@@ -140,7 +140,7 @@ typedef struct _hook_info_t {
 typedef struct _lasterror_t {
 	DWORD Win32Error;
 	DWORD NtstatusError;
-	DWORD Eflags;
+	DWORD_PTR Eflags;				// This is 64-bit on 64-bit platforms
 } lasterror_t;
 
 int lde(void *addr);
