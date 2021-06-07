@@ -958,29 +958,6 @@ int read_config(void)
 	char buf[32768], config_fname[MAX_PATH], analyzer_path[MAX_PATH];
 	FILE *fp;
 
-	// look for the config in monitor directory
-	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(analyzer_path); // remove filename
-	sprintf(config_fname, "%s\\%u.ini", analyzer_path, GetCurrentProcessId());
-
-	fp = fopen(config_fname, "r");
-
-	// backward compatibility
-	if (fp == NULL) {
-		memset(config_fname, 0, sizeof(config_fname));
-		sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
-		fp = fopen(config_fname, "r");
-	}
-
-	// for debugging purposes
-	if (fp == NULL) {
-		memset(config_fname, 0, sizeof(config_fname));
-		sprintf(config_fname, "%s\\config.ini", analyzer_path);
-		fp = fopen(config_fname, "r");
-		if (fp == NULL)
-			return 0;
-	}
-
 	// config defaults
 	g_config.force_sleepskip = -1;
 #ifdef _WIN64
@@ -1004,9 +981,32 @@ int read_config(void)
 	memset(g_config.results, 0, MAX_PATH);
 	memset(g_config.analyzer, 0, MAX_PATH);
 	memset(g_config.pythonpath, 0, MAX_PATH);
-	memset(g_config.w_results, 0, sizeof(WCHAR)*MAX_PATH);
-	memset(g_config.w_analyzer, 0, sizeof(WCHAR)*MAX_PATH);
-	memset(g_config.w_pythonpath, 0, sizeof(WCHAR)*MAX_PATH);
+	memset(g_config.w_results, 0, sizeof(WCHAR) * MAX_PATH);
+	memset(g_config.w_analyzer, 0, sizeof(WCHAR) * MAX_PATH);
+	memset(g_config.w_pythonpath, 0, sizeof(WCHAR) * MAX_PATH);
+
+	// look for the config in monitor directory
+	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
+	PathRemoveFileSpec(analyzer_path); // remove filename
+	sprintf(config_fname, "%s\\%u.ini", analyzer_path, GetCurrentProcessId());
+
+	fp = fopen(config_fname, "r");
+
+	// backward compatibility
+	if (fp == NULL) {
+		memset(config_fname, 0, sizeof(config_fname));
+		sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
+		fp = fopen(config_fname, "r");
+	}
+
+	// for debugging purposes
+	if (fp == NULL) {
+		memset(config_fname, 0, sizeof(config_fname));
+		sprintf(config_fname, "%s\\config.ini", analyzer_path);
+		fp = fopen(config_fname, "r");
+		if (fp == NULL)
+			return 0;
+	}
 
 	memset(buf, 0, sizeof(buf));
 	while (fgets(buf, sizeof(buf), fp) != NULL)
