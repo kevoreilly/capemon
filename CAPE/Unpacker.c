@@ -17,6 +17,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
 //#define DEBUG_COMMENTS
 
+#include <math.h>
 #include <windows.h>
 #include <distorm.h>
 #include "Debugger.h"

@@ -460,7 +460,7 @@ typedef struct _PEB_LDR_DATA {
 	LIST_ENTRY InInitializationOrderModuleList;
 } PEB_LDR_DATA, *PPEB_LDR_DATA;
 
-typedef struct _LDR_MODULE {
+typedef struct _LDR_DATA_TABLE_ENTRY {
 	LIST_ENTRY InLoadOrderModuleList;
 	LIST_ENTRY InMemoryOrderModuleList;
 	LIST_ENTRY InInitializationOrderModuleList;
@@ -474,7 +474,7 @@ typedef struct _LDR_MODULE {
 	SHORT TlsIndex;
 	LIST_ENTRY HashTableEntry;
 	ULONG TimeDateStamp;
-} LDR_MODULE, *PLDR_MODULE;
+} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
 
 #ifdef _WIN64
 typedef struct _PEB {
