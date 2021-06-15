@@ -934,30 +934,30 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 	}
 	else
 	{
-		if (NumberOfBytesWritten > 0x10)	// We assign some lower limit
+		if (NumberOfBytesWritten <= 0x10)	// We assign some lower limit
+			return;
+
+		if (CurrentInjectionInfo->BufferBase && Buffer > CurrentInjectionInfo->BufferBase &&
+			Buffer < (LPVOID)((UINT_PTR)CurrentInjectionInfo->BufferBase + CurrentInjectionInfo->BufferSizeOfImage) && CurrentInjectionInfo->ImageDumped == TRUE)
 		{
-			if (CurrentInjectionInfo->BufferBase && Buffer > CurrentInjectionInfo->BufferBase &&
-				Buffer < (LPVOID)((UINT_PTR)CurrentInjectionInfo->BufferBase + CurrentInjectionInfo->BufferSizeOfImage) && CurrentInjectionInfo->ImageDumped == TRUE)
+			// Looks like a previously dumped PE image is being written a section at a time to the target process.
+			// We don't want to dump these writes.
+			DebugOutput("WriteMemoryHandler: injection of section of PE image which has already been dumped.\n");
+		}
+		else
+		{
+			DebugOutput("WriteMemoryHandler: shellcode at 0x%p (size 0x%x) injected into process %d.\n", Buffer, NumberOfBytesWritten, Pid);
+
+			// dump injected code/data
+			CapeMetaData->DumpType = INJECTION_SHELLCODE;
+			CapeMetaData->TargetPid = Pid;
+			if (DumpMemory((LPVOID)Buffer, NumberOfBytesWritten))
 			{
-				// Looks like a previously dumped PE image is being written a section at a time to the target process.
-				// We don't want to dump these writes.
-				DebugOutput("WriteMemoryHandler: injection of section of PE image which has already been dumped.\n");
+
+				DebugOutput("WriteMemoryHandler: Dumped injected code/data from buffer.");
 			}
 			else
-			{
-				DebugOutput("WriteMemoryHandler: shellcode at 0x%p (size 0x%x) injected into process %d.\n", Buffer, NumberOfBytesWritten, Pid);
-
-				// dump injected code/data
-				CapeMetaData->DumpType = INJECTION_SHELLCODE;
-				CapeMetaData->TargetPid = Pid;
-				if (DumpMemory((LPVOID)Buffer, NumberOfBytesWritten))
-				{
-
-					DebugOutput("WriteMemoryHandler: Dumped injected code/data from buffer.");
-				}
-				else
-					DebugOutput("WriteMemoryHandler: Failed to dump injected code/data from buffer.");
-			}
+				DebugOutput("WriteMemoryHandler: Failed to dump injected code/data from buffer.");
 		}
 	}
 }
