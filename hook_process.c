@@ -225,7 +225,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 			ProcessInformation.dwThreadId = tid;
 			ProcessInformation.hProcess = (*ProcessHandle);
 			ProcessInformation.hThread = (*ThreadHandle);
-			CreateProcessHandler(NULL, NULL, &ProcessInformation);
+			CreateProcessHandler(ProcessParameters->ImagePathName.Buffer, NULL, &ProcessInformation);
 			ProcessMessage(pid, tid);
 		}
 		if (!(ThreadFlags & 1))
@@ -262,7 +262,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
 			WinProcessInformation.dwThreadId = (DWORD)ProcessInformation->ClientId.UniqueThread;
 			WinProcessInformation.hProcess = ProcessInformation->ProcessHandle;
 			WinProcessInformation.hThread = ProcessInformation->ThreadHandle;
-			CreateProcessHandler(NULL, NULL, &WinProcessInformation);
+			CreateProcessHandler(ProcessParameters->ImagePathName.Buffer, NULL, &WinProcessInformation);
 			ProcessMessage(pid, tid);
 		}
 		disable_sleep_skip();
