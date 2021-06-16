@@ -1774,7 +1774,7 @@ int DoProcessDump(PVOID CallerBase)
 	MEMORY_BASIC_INFORMATION MemInfo;
 	HANDLE FileHandle;
 	char *FullDumpPath, *OutputFilename;
-	PVOID NewImageBase;
+	PVOID NewImageBase = NULL;
 
 	DWORD ThreadId = GetCurrentThreadId();
 
@@ -1787,39 +1787,17 @@ int DoProcessDump(PVOID CallerBase)
 		goto out;
 	}
 
-	if (base_of_dll_of_interest)
-		ImageBase = (PVOID)base_of_dll_of_interest;
-	else
-	{
-		NewImageBase = GetModuleHandle(NULL);
-		if (ImageBase && ImageBase == NewImageBase)
-			NewImageBase = NULL;
-	}
-
 	if (g_config.procdump)
 	{
-		if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
+		if (base_of_dll_of_interest)
+			ImageBase = (PVOID)base_of_dll_of_interest;
+		else
 		{
-			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
-
-			CapeMetaData->DumpType = PROCDUMP;
-			__try
-			{
-				if (g_config.import_reconstruction)
-					ProcessDumped = DumpImageInCurrentProcessFixImports(NewImageBase, 0);
-				else
-					ProcessDumped = DumpImageInCurrentProcess(NewImageBase);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", NewImageBase);
-				goto out;
-			}
+			NewImageBase = GetModuleHandle(NULL);
+			if (ImageBase && ImageBase == NewImageBase)
+				NewImageBase = NULL;
 		}
-#ifdef DEBUG_COMMENTS
-		else if (NewImageBase)
-			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
-#endif
+
 		if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)))
 		{
 			DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
@@ -1840,6 +1818,28 @@ int DoProcessDump(PVOID CallerBase)
 		}
 #ifdef DEBUG_COMMENTS
 		else
+			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+#endif
+		if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
+		{
+			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
+
+			CapeMetaData->DumpType = PROCDUMP;
+			__try
+			{
+				if (g_config.import_reconstruction)
+					ProcessDumped = DumpImageInCurrentProcessFixImports(NewImageBase, 0);
+				else
+					ProcessDumped = DumpImageInCurrentProcess(NewImageBase);
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				DebugOutput("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", NewImageBase);
+				goto out;
+			}
+		}
+#ifdef DEBUG_COMMENTS
+		else if (NewImageBase)
 			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
 #endif
 
