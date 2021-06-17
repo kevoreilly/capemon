@@ -258,8 +258,8 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
 		DWORD tid = tid_from_thread_handle(ProcessInformation->ThreadHandle);
 		if (!g_config.single_process) {
 			PROCESS_INFORMATION WinProcessInformation;
-			WinProcessInformation.dwProcessId = (DWORD)ProcessInformation->ClientId.UniqueProcess;
-			WinProcessInformation.dwThreadId = (DWORD)ProcessInformation->ClientId.UniqueThread;
+			WinProcessInformation.dwProcessId = (DWORD)(DWORD_PTR)ProcessInformation->ClientId.UniqueProcess;
+			WinProcessInformation.dwThreadId = (DWORD)(DWORD_PTR)ProcessInformation->ClientId.UniqueThread;
 			WinProcessInformation.hProcess = ProcessInformation->ProcessHandle;
 			WinProcessInformation.hThread = ProcessInformation->ThreadHandle;
 			CreateProcessHandler(ProcessParameters->ImagePathName.Buffer, NULL, &WinProcessInformation);

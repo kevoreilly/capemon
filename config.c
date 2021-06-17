@@ -28,12 +28,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define SINGLE_STEP_LIMIT 0x4000  // default unless specified in web ui
 #define DROPPED_LIMIT 100
 
-#define BP_EXEC			0x00
-#define BP_WRITE		0x01
-#define BP_RESERVED		0x02
-#define BP_READWRITE	0x03
-#define DoClearZeroFlag	1
-#define DoSetZeroFlag	2
+#define BP_EXEC		0x00
+#define BP_WRITE	   0x01
+#define BP_RESERVED	0x02
+#define BP_READWRITE   0x03
+#define DoClearZeroFlag 1
+#define DoSetZeroFlag   2
 #define PrintEAX		3
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -338,7 +338,7 @@ void parse_config_line(char* line)
 					}
 				}
 				PVOID bp = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2) {
+				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2 && bp != g_config.bp3) {
 					g_config.bp0 = bp;
 					g_config.debugger = 1;
 					if (g_config.bp0 == (PVOID)(DWORD_PTR)ULONG_MAX)
@@ -370,15 +370,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else if (Module) {
-					unsigned int delta = strtoul(p+2, NULL, 0);
-					if (delta) {
-						g_config.bp1 = (PBYTE)Module + delta;
+				else {
+					g_config.bp1 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+					if (g_config.bp1) {
+						g_config.break_on_apiname_set = TRUE;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
+						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
@@ -403,7 +403,7 @@ void parse_config_line(char* line)
 					}
 				}
 				PVOID bp = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2) {
+				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2 && bp != g_config.bp3) {
 					g_config.bp1 = bp;
 					g_config.debugger = 1;
 					if (g_config.bp1 == (PVOID)(DWORD_PTR)ULONG_MAX)
@@ -435,15 +435,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else if (Module) {
-					unsigned int delta = strtoul(p+2, NULL, 0);
-					if (delta) {
-						g_config.bp2 = (PBYTE)Module + delta;
+				else {
+					g_config.bp2 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+					if (g_config.bp2) {
+						g_config.break_on_apiname_set = TRUE;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
+						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
@@ -468,7 +468,7 @@ void parse_config_line(char* line)
 					}
 				}
 				PVOID bp = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2) {
+				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2 && bp != g_config.bp3) {
 					g_config.bp2 = bp;
 					g_config.debugger = 1;
 					if (g_config.bp2 == (PVOID)(DWORD_PTR)ULONG_MAX)
@@ -500,15 +500,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else if (Module) {
-					unsigned int delta = strtoul(p+2, NULL, 0);
-					if (delta) {
-						g_config.bp3 = (PBYTE)Module + delta;
+				else {
+					g_config.bp3 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+					if (g_config.bp3) {
+						g_config.break_on_apiname_set = TRUE;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
+						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
@@ -533,7 +533,7 @@ void parse_config_line(char* line)
 					}
 				}
 				PVOID bp = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp3) {
+				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2 && bp != g_config.bp3) {
 					g_config.bp3 = bp;
 					g_config.debugger = 1;
 					if (g_config.bp3 == (PVOID)(DWORD_PTR)ULONG_MAX)
@@ -543,6 +543,71 @@ void parse_config_line(char* line)
 						g_config.bp3 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.bp3 + delta);
 					}
 					DebugOutput("Config: bp3 set to 0x%p.\n", g_config.bp3);
+				}
+			}
+		}
+		else if (!stricmp(key, "bp4")) {
+			char *p;
+			p = strchr(value, ':');
+			if (p && *(p+1) == ':') {
+				g_config.bp4 = 0;
+				*p = '\0';
+				*(p+1) = '\0';
+				HANDLE Module = GetModuleHandle(value);
+				g_config.break_on_apiname = strdup(p+2);
+				g_config.break_on_modname = strdup(value);
+				if (Module)
+					g_config.bp4 = GetProcAddress(Module, p+2);
+				else
+					DebugOutput("Config: Failed to get base for module (%s).\n", g_config.break_on_modname);
+				if (g_config.bp4) {
+					g_config.break_on_apiname_set = TRUE;
+					g_config.debugger = 1;
+					DebugOutput("Config: bp4 set to 0x%p (%s::%s).\n", g_config.bp4, g_config.break_on_modname, g_config.break_on_apiname);
+				}
+				else {
+					g_config.bp4 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
+					if (g_config.bp4) {
+						g_config.break_on_apiname_set = TRUE;
+						g_config.debugger = 1;
+						DebugOutput("Config: bp4 set to 0x%p (%s::%s).\n", g_config.bp4, g_config.break_on_modname, g_config.break_on_apiname);
+					}
+					else
+						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+				}
+			}
+			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
+				DebugOutput("Config: bp4 set to entry point.\n", g_config.bp4);
+				EntryPointRegister = 1;
+				g_config.debugger = 1;
+			}
+			else {
+				int delta=0;
+				p = strchr(value, '+');
+				if (p) {
+					delta = strtoul(p+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p = '\0';
+				}
+				else {
+					p = strchr(value, '-');
+					if (p) {
+						delta = - (int)strtoul(p+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p = '\0';
+					}
+				}
+				PVOID bp = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+				if (bp != g_config.bp0 && bp != g_config.bp1 && bp != g_config.bp2 && bp != g_config.bp3) {
+					g_config.bp4 = bp;
+					g_config.debugger = 1;
+					if (g_config.bp4 == (PVOID)(DWORD_PTR)ULONG_MAX)
+						g_config.bp4 = (PVOID)_strtoui64(value, NULL, 0);
+					if (delta) {
+						DebugOutput("Config: bp4 was 0x%p.\n", g_config.bp4);
+						g_config.bp4 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.bp4 + delta);
+					}
+					DebugOutput("Config: bp4 set to 0x%p.\n", g_config.bp4);
 				}
 			}
 		}
@@ -611,6 +676,22 @@ void parse_config_line(char* line)
 				g_config.debugger = 1;
 				DebugOutput("Config: br3 set to 0x%x (break-on-return)\n", g_config.br3);
 			}
+		}
+		else if (!stricmp(key, "hc0")) {
+			g_config.hc0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Hit count for breakpoint 0 set to %d\n", g_config.hc0);
+		}
+		else if (!stricmp(key, "hc1")) {
+			g_config.hc1 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Hit count for breakpoint 1 set to %d\n", g_config.hc1);
+		}
+		else if (!stricmp(key, "hc2")) {
+			g_config.hc2 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Hit count for breakpoint 2 set to %d\n", g_config.hc2);
+		}
+		else if (!stricmp(key, "hc3")) {
+			g_config.hc3 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Hit count for breakpoint 3 set to %d\n", g_config.hc3);
 		}
 		else if (!stricmp(key, "depth")) {
 			if (!_strnicmp(value, "all", 3)) {
@@ -731,6 +812,29 @@ void parse_config_line(char* line)
 		}
 		else if (!stricmp(key, "dumptype2")) {
 			g_config.dumptype2 = (unsigned int)strtoul(value, NULL, 0);
+		}
+		else if (!stricmp(key, "dumptype3")) {
+			g_config.dumptype3 = (unsigned int)strtoul(value, NULL, 0);
+		}
+		else if (!stricmp(key, "typestring0")) {
+			memset(g_config.typestring0, 0, MAX_PATH);
+			strncpy(g_config.typestring0, value, strlen(value));
+			DebugOutput("Config: typestring0 set to %s", g_config.typestring0);
+		}
+		else if (!stricmp(key, "typestring1")) {
+			memset(g_config.typestring1, 0, MAX_PATH);
+			strncpy(g_config.typestring1, value, strlen(value));
+			DebugOutput("Config: typestring1 set to %s", g_config.typestring1);
+		}
+		else if (!stricmp(key, "typestring2")) {
+			memset(g_config.typestring2, 0, MAX_PATH);
+			strncpy(g_config.typestring2, value, strlen(value));
+			DebugOutput("Config: typestring2 set to %s", g_config.typestring2);
+		}
+		else if (!stricmp(key, "typestring3")) {
+			memset(g_config.typestring3, 0, MAX_PATH);
+			strncpy(g_config.typestring3, value, strlen(value));
+			DebugOutput("Config: typestring3 set to %s", g_config.typestring3);
 		}
 		else if (!stricmp(key, "type0")) {
 			if (!_strnicmp(value, "w", 1)) {

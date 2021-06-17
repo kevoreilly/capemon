@@ -727,7 +727,7 @@ extern "C" PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZ
 
 	ScyllaInit(NULL);
 
-	 for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
+	for (unsigned int i = 0; i < ProcessAccessHelp::ownModuleList.size(); i++) {
 		if ((DWORD_PTR)Address >= ProcessAccessHelp::ownModuleList[i].modBaseAddr && (DWORD_PTR)Address < (ProcessAccessHelp::ownModuleList[i].modBaseAddr + ProcessAccessHelp::ownModuleList[i].modBaseSize))
 			ModuleIndex = i+1;
 	}
@@ -749,6 +749,10 @@ extern "C" PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZ
 #endif
 		return NULL;
 	}
+#ifdef DEBUG_COMMENTS
+	else
+		DebugOutput("ScyllaGetExportNameByScan: AllocationBase 0x%p for 0x%p.\n", ModuleBase, Address);
+#endif
 
 	PeParser *peFile = new PeParser((DWORD_PTR)ModuleBase, true);
 
