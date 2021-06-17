@@ -684,6 +684,9 @@ BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj)
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 {
 	FILE_BASIC_INFORMATION basic_information;
+	wchar_t pipe_base_name[] = L"\\??\\pipe\\";
+	if (!wcsnicmp(obj->ObjectName->Buffer, pipe_base_name, wcslen(pipe_base_name)))
+		return FALSE;
 	NTSTATUS ret = pNtQueryAttributesFile(obj, &basic_information);
 	if (NT_SUCCESS(ret) || ret == STATUS_INVALID_DEVICE_REQUEST)
 		return TRUE;
