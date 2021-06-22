@@ -1502,10 +1502,10 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 #endif
 
 	// We can use this to put a marker in behavior log
-	extern void log_anomaly(const char *subcategory, const char *msg);
-	memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-	_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
-	log_anomaly(DebuggerBuffer, NULL);
+	//extern void log_anomaly(const char *subcategory, const char *msg);
+	//memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+	//_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+	//log_anomaly(DebuggerBuffer, NULL);
 
 	FilterTrace = FALSE;
 
