@@ -1101,7 +1101,12 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 	__in_opt PLARGE_INTEGER Timeout
 );
 
-HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
+HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
+	__in PEXCEPTION_RECORD ExceptionRecord,
+	__in PCONTEXT Context
+);
+
+HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 	__in PEXCEPTION_RECORD ExceptionRecord,
 	__in PCONTEXT Context
 );

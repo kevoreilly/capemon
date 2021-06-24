@@ -999,39 +999,10 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 	return ret;
 }
 
-HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
+HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
 	__in PEXCEPTION_RECORD ExceptionRecord,
 	__in PCONTEXT Context)
 {
-	BOOL RetVal;
-
-	if (g_config.ntdll_protect) {
-		if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
-			ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
-			unsigned int offset;
-			char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
-			if (dllname && !strcmp(dllname, "ntdll.dll")) {
-				free(dllname);
-				// if trying to write to ntdll.dll, then just skip the instruction
-#ifdef _WIN64
-				if (!ntdll_protect_logged) {
-					ntdll_protect_logged = TRUE;
-					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
-				}
-				Context->Rip += lde((void*)Context->Rip);
-#else
-				if (!ntdll_protect_logged) {
-					ntdll_protect_logged = TRUE;
-					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
-				}
-				Context->Eip += lde((void*)Context->Eip);
-#endif
-				return TRUE;
-			}
-			if (dllname) free(dllname);
-		}
-	}
-
 	if (ExceptionRecord && (ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) {
 		if (!(g_config.debugger && ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)) {
 			char buf[160];
@@ -1046,31 +1017,46 @@ HOOKDEF(BOOLEAN, WINAPI, RtlDispatchException,
 		}
 	}
 
-	if (CAPEExceptionDispatcher(ExceptionRecord, Context))
-		return TRUE;
-	else
-		RetVal = Old_RtlDispatchException(ExceptionRecord, Context);
-
 	// flush logs prior to handling of an exception without having to register a vectored exception handler
 	log_flush();
 
-	if (!RetVal && ExceptionRecord) {
-		if (ExceptionRecord->NumberParameters == 1) {
-			DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, parameter 0x%x.\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->ExceptionInformation[0]);
+	return TRUE;
+}
+
+HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
+	__in PEXCEPTION_RECORD ExceptionRecord,
+	__in PCONTEXT Context)
+{
+	if (g_config.ntdll_protect) {
+		if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
+			ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
+			unsigned int offset;
+			char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
+			if (dllname && !strcmp(dllname, "ntdll.dll")) {
+				free(dllname);
+				// if trying to write to ntdll.dll, then just skip the instruction
+				if (!ntdll_protect_logged) {
+					ntdll_protect_logged = TRUE;
+#ifdef _WIN64
+					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
+				}
+				Context->Rip += lde((void*)Context->Rip);
+#else
+					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
+				}
+				Context->Eip += lde((void*)Context->Eip);
+#endif
+				return TRUE;
+			}
+			if (dllname)
+				free(dllname);
 		}
-		else if (ExceptionRecord->NumberParameters == 2) {
-			DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, parameters 0x%x and 0x%x.\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
-		}
-		else {
-			DebugOutput("RtlDispatchException: Unhandled exception! Address 0x%p, code 0x%x, flags 0x%x, %d parameters: 0x%x, 0x%x & ...\n", ExceptionRecord->ExceptionAddress, ExceptionRecord->ExceptionCode, ExceptionRecord->ExceptionFlags, ExceptionRecord->NumberParameters, ExceptionRecord->ExceptionInformation[0], ExceptionRecord->ExceptionInformation[1]);
-		}
-		EXCEPTION_POINTERS ExceptionInfo;
-		ExceptionInfo.ExceptionRecord = ExceptionRecord;
-		ExceptionInfo.ContextRecord = Context;
-		capemon_exception_handler(&ExceptionInfo);
 	}
 
-	return RetVal;
+	if (CAPEExceptionDispatcher(ExceptionRecord, Context))
+		return TRUE;
+	else
+		return Old_RtlDispatchException(ExceptionRecord, Context);
 }
 
 HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
