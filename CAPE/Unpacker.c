@@ -1792,7 +1792,7 @@ BOOL OverlayWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POI
 		if (InsideMonitor(NULL, ReturnAddress))
 		{
 			DebugOutput("OverlayWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
-			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
+			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, 0, HookReturnCallback))
 			{
 				DebugOutput("OverlayWriteCallback: set exec bp on return address 0x%p.\n", ReturnAddress);
 				TrackedRegionFromHook = TrackedRegion;
@@ -1862,7 +1862,7 @@ BOOL FinalByteWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 		if (InsideMonitor(NULL, ReturnAddress))
 		{
 			DebugOutput("FinalByteWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
-			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
+			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, 0, HookReturnCallback))
 			{
 				DebugOutput("FinalByteWriteCallback: set exec bp on return address 0x%p.\n", ReturnAddress);
 				TrackedRegionFromHook = TrackedRegion;
@@ -1930,7 +1930,7 @@ BOOL FinalSectionHeaderWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EX
 
 	FinalByteAddress = (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + FinalSectionHeader->SizeOfRawData - 1;
 
-	if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), FinalByteAddress, BP_WRITE, FinalByteWriteCallback))
+	if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), FinalByteAddress, BP_WRITE, 0, FinalByteWriteCallback))
 	{
 		DebugOutput("FinalSectionHeaderWriteCallback: write bp set on final byte at 0x%p.\n", FinalByteAddress);
 	}
@@ -1942,7 +1942,7 @@ BOOL FinalSectionHeaderWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EX
 	else
 		VirtualSize = ((FinalSectionHeader->SizeOfRawData / pNtHeader->OptionalHeader.SectionAlignment) + 1) * pNtHeader->OptionalHeader.SectionAlignment;
 
-	if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, NULL, sizeof(DWORD), (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize, BP_WRITE, OverlayWriteCallback))
+	if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, NULL, sizeof(DWORD), (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize, BP_WRITE, 0, OverlayWriteCallback))
 		DebugOutput("FinalSectionHeaderWriteCallback: Set write breakpoint on first byte of overlay at: 0x%p\n", (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize);
 	else
 		DebugOutput("FinalSectionHeaderWriteCallback: Unable to set overlay breakpoint.\n");
@@ -2038,7 +2038,7 @@ BOOL EntryPointWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_
 		return TRUE;
 	}
 
-	if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->ExecBpRegister, 0, pBreakpointInfo->Address, BP_EXEC, EntryPointExecCallback))
+	if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->ExecBpRegister, 0, pBreakpointInfo->Address, BP_EXEC, 0, EntryPointExecCallback))
 	{
 		DebugOutput("EntryPointWriteCallback: ContextSetNextAvailableBreakpoint on EntryPoint 0x%p failed\n", (BYTE*)TrackedRegion->AllocationBase+*(DWORD*)(pBreakpointInfo->Address));
 		return FALSE;
@@ -2074,7 +2074,7 @@ BOOL EntryPointWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_
 		{
 			PVOID FinalByteAddress = (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + FinalSectionHeader->SizeOfRawData - 1;
 
-			if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), FinalByteAddress, BP_WRITE, FinalByteWriteCallback))
+			if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), FinalByteAddress, BP_WRITE, 0, FinalByteWriteCallback))
 			{
 				DebugOutput("EntryPointWriteCallback: ContextUpdateCurrentBreakpoint failed to set write bp on final section, (address: 0x%p).\n", FinalByteAddress);
 				return FALSE;
@@ -2150,7 +2150,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 		if (InsideMonitor(NULL, ReturnAddress))
 		{
 			DebugOutput("AddressOfEPWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
-			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
+			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, 0, HookReturnCallback))
 			{
 				DebugOutput("AddressOfEPWriteCallback: set exec bp on return address 0x%p.\n", ReturnAddress);
 				TrackedRegionFromHook = TrackedRegion;
@@ -2205,7 +2205,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 	{
 		//ContextClearCurrentBreakpoint(ExceptionInfo->ContextRecord);
 
-		if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_EXEC, EntryPointExecCallback))
+		if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_EXEC, 0, EntryPointExecCallback))
 		{
 			DebugOutput("AddressOfEPWriteCallback: ContextSetNextAvailableBreakpoint on EntryPoint 0x%p failed\n", (BYTE*)TrackedRegion->AllocationBase+*(DWORD*)(pBreakpointInfo->Address));
 			TrackedRegion->ExecBp = NULL;
@@ -2218,7 +2218,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 	}
 	else
 	{
-		if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_WRITE, EntryPointWriteCallback))
+		if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_WRITE, 0, EntryPointWriteCallback))
 		{
 			DebugOutput("AddressOfEPWriteCallback: ContextUpdateCurrentBreakpoint failed\n");
 			ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
@@ -2240,7 +2240,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 		{
 			PVOID FinalByteAddress = (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + FinalSectionHeader->SizeOfRawData - 1;
 
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(BYTE), FinalByteAddress, BP_WRITE, FinalByteWriteCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(BYTE), FinalByteAddress, BP_WRITE, 0, FinalByteWriteCallback))
 			{
 				DebugOutput("AddressOfEPWriteCallback: SetNextAvailableBreakpoint failed to set write bp on final section, (address: 0x%p).\n", FinalByteAddress);
 				return FALSE;
@@ -2257,7 +2257,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 
 			if (FinalSectionHeader->VirtualAddress)
 			{
-				if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, NULL, sizeof(DWORD), (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize, BP_WRITE, OverlayWriteCallback))
+				if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, NULL, sizeof(DWORD), (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize, BP_WRITE, 0, OverlayWriteCallback))
 				{
 					DebugOutput("AddressOfEPWriteCallback: SetNextAvailableBreakpoint failed to set write bp on final section, last byte: 0x%p.\n", (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + FinalSectionHeader->Misc.VirtualSize);
 					return FALSE;
@@ -2268,7 +2268,7 @@ BOOL AddressOfEPWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 		}
 		else
 		{
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(DWORD), &FinalSectionHeader->SizeOfRawData, BP_WRITE, FinalSectionHeaderWriteCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(DWORD), &FinalSectionHeader->SizeOfRawData, BP_WRITE, 0, FinalSectionHeaderWriteCallback))
 			{
 				DebugOutput("AddressOfEPWriteCallback: SetNextAvailableBreakpoint failed to set write bp on final section, last byte: 0x%p.\n", &FinalSectionHeader->SizeOfRawData);
 				return FALSE;
@@ -2346,7 +2346,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		if (InsideMonitor(NULL, ReturnAddress))
 		{
 			DebugOutput("MagicWriteCallback: We are in a hooked function with return address 0x%p.\n", ReturnAddress);
-			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, HookReturnCallback))
+			if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 0, ReturnAddress, BP_EXEC, 0, HookReturnCallback))
 			{
 				DebugOutput("MagicWriteCallback: set exec bp on return address 0x%p.\n", ReturnAddress);
 				TrackedRegionFromHook = TrackedRegion;
@@ -2393,7 +2393,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	if (*((BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint))
 	{
-		if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_EXEC, EntryPointExecCallback))
+		if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_EXEC, 0, EntryPointExecCallback))
 		{
 			DebugOutput("MagicWriteCallback: ContextSetNextAvailableBreakpoint on EntryPoint 0x%p failed\n", (BYTE*)TrackedRegion->AllocationBase+*(DWORD*)(pBreakpointInfo->Address));
 			TrackedRegion->ExecBp = NULL;
@@ -2406,7 +2406,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 	else
 	{
-		if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_WRITE, EntryPointWriteCallback))
+		if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(BYTE), (BYTE*)TrackedRegion->AllocationBase + pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_WRITE, 0, EntryPointWriteCallback))
 		{
 			DebugOutput("MagicWriteCallback: ContextUpdateCurrentBreakpoint failed\n");
 			ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
@@ -2428,7 +2428,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		{
 			FinalByteAddress = (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + FinalSectionHeader->SizeOfRawData - 1;
 
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(BYTE), FinalByteAddress, BP_WRITE, FinalByteWriteCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(BYTE), FinalByteAddress, BP_WRITE, 0, FinalByteWriteCallback))
 			{
 				DebugOutput("MagicWriteCallback: SetNextAvailableBreakpoint failed to set write bp on final section, last byte: 0x%p.\n", FinalByteAddress);
 				return FALSE;
@@ -2445,7 +2445,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 			if (FinalSectionHeader->VirtualAddress)
 			{
-				if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, NULL, sizeof(DWORD), (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize, BP_WRITE, OverlayWriteCallback))
+				if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, NULL, sizeof(DWORD), (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + VirtualSize, BP_WRITE, 0, OverlayWriteCallback))
 				{
 					DebugOutput("MagicWriteCallback: SetNextAvailableBreakpoint failed to set write bp on final section, last byte: 0x%p.\n", (BYTE*)TrackedRegion->AllocationBase + FinalSectionHeader->VirtualAddress + FinalSectionHeader->Misc.VirtualSize);
 					return FALSE;
@@ -2456,7 +2456,7 @@ BOOL MagicWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		}
 		else
 		{
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(DWORD), &FinalSectionHeader->SizeOfRawData, BP_WRITE, FinalSectionHeaderWriteCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(DWORD), &FinalSectionHeader->SizeOfRawData, BP_WRITE, 0, FinalSectionHeaderWriteCallback))
 			{
 				DebugOutput("MagicWriteCallback: SetNextAvailableBreakpoint failed to set write bp on final section, last byte: 0x%p.\n", &FinalSectionHeader->SizeOfRawData);
 				return FALSE;
@@ -2523,7 +2523,7 @@ BOOL PEPointerWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 		// This is to be expected a lot when it's not a PE.
 		DebugOutput("PEPointerWriteCallback: candidate pointer to PE header too big: 0x%x (at 0x%p).\n", pDosHeader->e_lfanew, &pDosHeader->e_lfanew);
 
-		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->AllocationBase, BP_EXEC, ShellcodeExecCallback))
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->AllocationBase, BP_EXEC, 0, ShellcodeExecCallback))
 		{
 			DebugOutput("PEPointerWriteCallback: set write bp on AddressOfEntryPoint at 0x%p.\n", TrackedRegion->AllocationBase);
 			return TRUE;
@@ -2553,13 +2553,13 @@ BOOL PEPointerWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 			return TRUE;
 		}
 
-		if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->MagicBpRegister, sizeof(WORD), &pNtHeader->OptionalHeader.Magic, BP_WRITE, MagicWriteCallback))
+		if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, TrackedRegion->MagicBpRegister, sizeof(WORD), &pNtHeader->OptionalHeader.Magic, BP_WRITE, 0, MagicWriteCallback))
 		{
 			DebugOutput("PEPointerWriteCallback: Failed to set breakpoint on magic address.\n");
 			return FALSE;
 		}
 	}
-	else if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(WORD), &pNtHeader->OptionalHeader.Magic, BP_WRITE, MagicWriteCallback))
+	else if (!ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(WORD), &pNtHeader->OptionalHeader.Magic, BP_WRITE, 0, MagicWriteCallback))
 	{
 		DebugOutput("PEPointerWriteCallback: Failed to set breakpoint on magic address.\n");
 		return FALSE;
@@ -2567,7 +2567,7 @@ BOOL PEPointerWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
 	TrackedRegion->MagicBp = &pNtHeader->OptionalHeader.Magic;
 
-	if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, 0, 4, &pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_WRITE, AddressOfEPWriteCallback))
+	if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, 0, 4, &pNtHeader->OptionalHeader.AddressOfEntryPoint, BP_WRITE, 0, AddressOfEPWriteCallback))
 	{
 		DebugOutput("PEPointerWriteCallback: set write bp on AddressOfEntryPoint at 0x%p.\n", &pNtHeader->OptionalHeader.AddressOfEntryPoint);
 		return TRUE;
@@ -2784,7 +2784,7 @@ BOOL BaseAddressWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 			{
 				// Deal with the situation where the breakpoint triggers after e_lfanew has already been written
 				PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((BYTE*)TrackedRegion->AllocationBase + pDosHeader->e_lfanew);
-				if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(WORD), &pNtHeader->OptionalHeader.Magic, BP_WRITE, MagicWriteCallback))
+				if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(WORD), &pNtHeader->OptionalHeader.Magic, BP_WRITE, 0, MagicWriteCallback))
 				{
 #ifdef _WIN64
 					DebugOutput("BaseAddressWriteCallback: set write bp on magic address 0x%p (RIP = 0x%p)\n", (BYTE*)pDosHeader + pDosHeader->e_lfanew, ExceptionInfo->ContextRecord->Rip);
@@ -2799,7 +2799,7 @@ BOOL BaseAddressWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 				}
 			}
 		}
-		else if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(DWORD), (BYTE*)&pDosHeader->e_lfanew, BP_WRITE, PEPointerWriteCallback))
+		else if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, sizeof(DWORD), (BYTE*)&pDosHeader->e_lfanew, BP_WRITE, 0, PEPointerWriteCallback))
 		{
 			TrackedRegion->CanDump = TRUE;
 #ifdef _WIN64
@@ -2820,7 +2820,7 @@ BOOL BaseAddressWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 		DebugOutput("BaseAddressWriteCallback: M written to first byte, awaiting next byte.\n");
 		return TRUE;
 	}
-	else if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, 0, pBreakpointInfo->Address, BP_EXEC, ShellcodeExecCallback))
+	else if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, 0, pBreakpointInfo->Address, BP_EXEC, 0, ShellcodeExecCallback))
 	{
 		DebugOutput("BaseAddressWriteCallback: Failed to set exec bp on tracked region protect address.\n");
 		return FALSE;
@@ -2939,7 +2939,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 		// We set the initial 'execute' breakpoint
 		if (ExceptionInfo == NULL)
 		{
-			if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->ExecBp, BP_EXEC, ShellcodeExecCallback))
+			if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->ExecBp, BP_EXEC, 0, ShellcodeExecCallback))
 			{
 				DebugOutput("ActivateBreakpoints: SetNextAvailableBreakpoint failed to set exec bp on tracked region protect address 0x%p.\n", TrackedRegion->ExecBp);
 				TrackedRegion->ExecBp = NULL;
@@ -2950,7 +2950,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 		}
 		else
 		{
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->ExecBp, BP_EXEC, ShellcodeExecCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, 0, (BYTE*)TrackedRegion->ExecBp, BP_EXEC, 0, ShellcodeExecCallback))
 			{
 				DebugOutput("ActivateBreakpoints: SetNextAvailableBreakpoint failed to set exec bp on tracked region protect address 0x%p.\n", TrackedRegion->ExecBp);
 				TrackedRegion->ExecBp = NULL;
@@ -2965,7 +2965,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 		// We set a write breakpoint instead
 		if (ExceptionInfo == NULL)
 		{
-			if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &TrackedRegion->ExecBpRegister, sizeof(WORD), (BYTE*)TrackedRegion->ExecBp, BP_WRITE, BaseAddressWriteCallback))
+			if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &TrackedRegion->ExecBpRegister, sizeof(WORD), (BYTE*)TrackedRegion->ExecBp, BP_WRITE, 0, BaseAddressWriteCallback))
 			{
 				DebugOutput("ActivateBreakpoints: SetNextAvailableBreakpoint failed to set write bp on tracked region protect address 0x%p.\n", TrackedRegion->ExecBp);
 				TrackedRegion->ExecBp = NULL;
@@ -2976,7 +2976,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 		}
 		else
 		{
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, sizeof(WORD), (BYTE*)TrackedRegion->ExecBp, BP_WRITE, BaseAddressWriteCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TrackedRegion->ExecBpRegister, sizeof(WORD), (BYTE*)TrackedRegion->ExecBp, BP_WRITE, 0, BaseAddressWriteCallback))
 			{
 				DebugOutput("ActivateBreakpoints: SetNextAvailableBreakpoint failed to set write bp on tracked region protect address 0x%p.\n", TrackedRegion->ExecBp);
 				TrackedRegion->ExecBp = NULL;
@@ -2992,7 +2992,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 
 	if (ExceptionInfo == NULL)
 	{
-		if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, sizeof(LONG), (BYTE*)&pDosHeader->e_lfanew, BP_WRITE, PEPointerWriteCallback))
+		if (!SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, sizeof(LONG), (BYTE*)&pDosHeader->e_lfanew, BP_WRITE, 0, PEPointerWriteCallback))
 		{
 			DebugOutput("ActivateBreakpoints: SetNextAvailableBreakpoint failed to set write bp on e_lfanew address 0x%p.\n", TrackedRegion->ExecBp);
 			return FALSE;
@@ -3002,7 +3002,7 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 	}
 	else
 	{
-		if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(LONG), (BYTE*)&pDosHeader->e_lfanew, BP_WRITE, PEPointerWriteCallback))
+		if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, sizeof(LONG), (BYTE*)&pDosHeader->e_lfanew, BP_WRITE, 0, PEPointerWriteCallback))
 		{
 			DebugOutput("ActivateBreakpoints: SetNextAvailableBreakpoint failed to set write bp on e_lfanew address 0x%p.\n", TrackedRegion->ExecBp);
 			return FALSE;

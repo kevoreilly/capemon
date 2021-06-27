@@ -965,7 +965,7 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size)
 	}
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("ScanForNonZero: No data found at 0x%p (size 0x%x)\n", Buffer, Size);
+	DebugOutput("ScanForNonZero: No data found at 0x%p (size %d bytes)\n", Buffer, Size);
 #endif
 	return 0;
 }
@@ -1123,7 +1123,7 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 
 			if (NtSection->VirtualAddress + MinSize > (ULONG)pNtHeader->OptionalHeader.SizeOfImage)
 			{
-				DebugOutput("TestPERequirements: Possible PE image rejected due to section %d of %d, RVA 0x%x and size 0x%x.\n", i+1, pNtHeader->FileHeader.NumberOfSections, NtSection->VirtualAddress, MinSize);
+				DebugOutput("TestPERequirements: Possible PE image rejected due to section %d of %d, RVA 0x%x and size %d bytes.\n", i+1, pNtHeader->FileHeader.NumberOfSections, NtSection->VirtualAddress, MinSize);
 				return FALSE;
 			}
 
@@ -1175,7 +1175,7 @@ SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader)
 
 		if (!MinSize || MinSize > (ULONG)pNtHeader->OptionalHeader.SizeOfImage)
 		{
-			DebugOutput("GetMinPESize: Possible PE image rejected due to min size 0x%x (SizeOfImage 0x%x).\n", MinSize, pNtHeader->OptionalHeader.SizeOfImage);
+			DebugOutput("GetMinPESize: Possible PE image rejected due to min size %d bytes (SizeOfImage 0x%x).\n", MinSize, pNtHeader->OptionalHeader.SizeOfImage);
 			return 0;
 		}
 
@@ -1484,9 +1484,9 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (hOutputFile == INVALID_HANDLE_VALUE)
 	{
 		if (GetLastError() == ERROR_FILE_EXISTS)
-			DebugOutput("DumpMemory: CAPE output filename exists already: %s", FullPathName);
+			DebugOutput("DumpMemory: Payloadname exists already: %s", FullPathName);
 		else
-			ErrorOutput("DumpMemory: Could not create CAPE output file");
+			ErrorOutput("DumpMemory: Could not create Payload");
 		free(FullPathName);
 		return 0;
 	}
@@ -1495,7 +1495,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 
 	if (FALSE == WriteFile(hOutputFile, BufferCopy, (DWORD)Size, &dwBytesWritten, NULL))
 	{
-		ErrorOutput("DumpMemory: WriteFile error on CAPE output file");
+		ErrorOutput("DumpMemory: WriteFile error on Payload");
 		goto end;
 	}
 
@@ -1511,7 +1511,7 @@ end:
 		CapeMetaData->Address = Buffer;
 		CapeMetaData->Size = Size;
 		CapeOutputFile(FullPathName);
-		DebugOutput("DumpMemory: CAPE output file successfully created: %s (size 0x%x)", FullPathName, Size);
+		DebugOutput("DumpMemory: Payload successfully created: %s (size %d bytes)", FullPathName, Size);
 	}
 
 	if (FullPathName)
@@ -1565,7 +1565,7 @@ BOOL DumpRegion(PVOID Address)
 
 	if (DumpPEsInRange(AllocationBase, AllocationSize))
 	{
-		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size 0x%x.\n", AllocationBase, AllocationSize);
+		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size %d bytes.\n", AllocationBase, AllocationSize);
 		return TRUE;
 	}
 
@@ -1574,28 +1574,28 @@ BOOL DumpRegion(PVOID Address)
 	if (DumpMemory(AllocationBase, AllocationSize))
 	{
 		if (address_is_in_stack(AllocationBase))
-			DebugOutput("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", AllocationBase, AllocationSize);
+			DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", AllocationBase, AllocationSize);
 		else
-			DebugOutput("DumpRegion: Dumped entire allocation from 0x%p, size 0x%x.\n", AllocationBase, AllocationSize);
+			DebugOutput("DumpRegion: Dumped entire allocation from 0x%p, size %d bytes.\n", AllocationBase, AllocationSize);
 		return TRUE;
 	}
 	else
 	{
-		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size 0x%x.\n", AllocationBase, AllocationSize);
+		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size %d bytes.\n", AllocationBase, AllocationSize);
 
 		SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)BaseAddress);
 
 		if (DumpMemory(BaseAddress, RegionSize))
 		{
 			if (address_is_in_stack(BaseAddress))
-				DebugOutput("DumpRegion: Dumped stack region from 0x%p, size 0x%x.\n", BaseAddress, RegionSize);
+				DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", BaseAddress, RegionSize);
 			else
-				DebugOutput("DumpRegion: Dumped region at 0x%p, size 0x%x.\n", BaseAddress, RegionSize);
+				DebugOutput("DumpRegion: Dumped region at 0x%p, size %d bytes.\n", BaseAddress, RegionSize);
 			return TRUE;
 		}
 		else
 		{
-			DebugOutput("DumpRegion: Failed to dump region at 0x%p size 0x%x.\n", BaseAddress, RegionSize);
+			DebugOutput("DumpRegion: Failed to dump region at 0x%p size %d bytes.\n", BaseAddress, RegionSize);
 			return FALSE;
 		}
 	}
@@ -1774,7 +1774,7 @@ int DoProcessDump(PVOID CallerBase)
 	MEMORY_BASIC_INFORMATION MemInfo;
 	HANDLE FileHandle;
 	char *FullDumpPath, *OutputFilename;
-	PVOID NewImageBase;
+	PVOID NewImageBase = NULL;
 
 	DWORD ThreadId = GetCurrentThreadId();
 
@@ -1787,39 +1787,17 @@ int DoProcessDump(PVOID CallerBase)
 		goto out;
 	}
 
-	if (base_of_dll_of_interest)
-		ImageBase = (PVOID)base_of_dll_of_interest;
-	else
-	{
-		NewImageBase = GetModuleHandle(NULL);
-		if (ImageBase && ImageBase == NewImageBase)
-			NewImageBase = NULL;
-	}
-
 	if (g_config.procdump)
 	{
-		if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
+		if (base_of_dll_of_interest)
+			ImageBase = (PVOID)base_of_dll_of_interest;
+		else
 		{
-			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
-
-			CapeMetaData->DumpType = PROCDUMP;
-			__try
-			{
-				if (g_config.import_reconstruction)
-					ProcessDumped = DumpImageInCurrentProcessFixImports(NewImageBase, 0);
-				else
-					ProcessDumped = DumpImageInCurrentProcess(NewImageBase);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", NewImageBase);
-				goto out;
-			}
+			NewImageBase = GetModuleHandle(NULL);
+			if (ImageBase && ImageBase == NewImageBase)
+				NewImageBase = NULL;
 		}
-#ifdef DEBUG_COMMENTS
-		else if (NewImageBase)
-			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
-#endif
+
 		if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)))
 		{
 			DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
@@ -1840,6 +1818,28 @@ int DoProcessDump(PVOID CallerBase)
 		}
 #ifdef DEBUG_COMMENTS
 		else
+			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+#endif
+		if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
+		{
+			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
+
+			CapeMetaData->DumpType = PROCDUMP;
+			__try
+			{
+				if (g_config.import_reconstruction)
+					ProcessDumped = DumpImageInCurrentProcessFixImports(NewImageBase, 0);
+				else
+					ProcessDumped = DumpImageInCurrentProcess(NewImageBase);
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				DebugOutput("DoProcessDump: Failed to dump 'new' process image base at 0x%p.\n", NewImageBase);
+				goto out;
+			}
+		}
+#ifdef DEBUG_COMMENTS
+		else if (NewImageBase)
 			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
 #endif
 

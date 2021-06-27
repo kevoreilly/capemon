@@ -103,6 +103,7 @@ typedef struct CapeMetadata
     DWORD	TargetPid;      // "
     PVOID   Address;        // For shellcode/modules
 	SIZE_T  Size;           // "
+	char*	TypeString;
 } CAPEMETADATA, *PCAPEMETADATA;
 
 struct CapeMetadata *CapeMetaData;
@@ -144,6 +145,8 @@ enum {
 	REGDUMP = 0x67,
 
 	STACK_REGION = 0x6c,
+
+	TYPE_STRING = 0x100,
 
 	UPX = 0x1000
 };

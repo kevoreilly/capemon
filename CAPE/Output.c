@@ -229,11 +229,6 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			// Injection-specific format
 				_snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n%s\n%d\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
 		}
-		else if (CapeMetaData->DumpType == SEDRECO_DATA)
-		{
-			// Sedreco-specific format where TargetPid is used for config item index #
-			_snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n0x%x\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, (DWORD)CapeMetaData->TargetPid);
-		}
 		else
 			if (CapeMetaData->ProcessPath)
 				_snprintf_s(Buffer, BufferSize, BufferSize, "%d\n%d\n%s\n%s\n", CapeMetaData->DumpType, CapeMetaData->Pid, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
@@ -317,19 +312,20 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			// Unpacker-specific format
 			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%p;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
 		}
-		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE || CapeMetaData->DumpType == EVILGRAB_PAYLOAD || CapeMetaData->DumpType == EVILGRAB_DATA)
+		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE)
 		{
-			if (CapeMetaData->TargetProcess && CapeMetaData->ProcessPath)
+			if (CapeMetaData->TargetProcess)
 			// Injection-specific format
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?%d;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
 		}
-		else if (CapeMetaData->DumpType == SEDRECO_DATA)
-		{
-			// Sedreco-specific format where TargetPid is used for config item index #
-			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%x;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, (DWORD)CapeMetaData->TargetPid);
-		}
 		else
-			if (CapeMetaData->ProcessPath)
+			if (strlen(CapeMetaData->TypeString))
+			{
+				CapeMetaData->DumpType = TYPE_STRING;
+				DebugOutput("Output: Type string %s", CapeMetaData->TypeString);
+				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
+			}
+			else
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
 		memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));

@@ -684,6 +684,9 @@ BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj)
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 {
 	FILE_BASIC_INFORMATION basic_information;
+	wchar_t pipe_base_name[] = L"\\??\\pipe\\";
+	if (!wcsnicmp(obj->ObjectName->Buffer, pipe_base_name, wcslen(pipe_base_name)))
+		return FALSE;
 	NTSTATUS ret = pNtQueryAttributesFile(obj, &basic_information);
 	if (NT_SUCCESS(ret) || ret == STATUS_INVALID_DEVICE_REQUEST)
 		return TRUE;
@@ -724,15 +727,18 @@ void set_dll_of_interest(ULONG_PTR BaseAddress)
 
 void add_all_dlls_to_dll_ranges(void)
 {
-	LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
+	LDR_DATA_TABLE_ENTRY * mod;
+	PLIST_ENTRY pHeadEntry;
+	PLIST_ENTRY pListEntry;
+	PEB *peb = (PEB *)get_peb();
 
 	/* skip the base image */
-	mod = (LDR_MODULE *)peb->LoaderData->InLoadOrderModuleList.Flink;
-	if (mod->BaseAddress == NULL)
-		return;
-	for (mod = (LDR_MODULE *)mod->InLoadOrderModuleList.Flink;
-		mod->BaseAddress != NULL;
-		mod = (LDR_MODULE *)mod->InLoadOrderModuleList.Flink) {
+	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+	for(pListEntry = pHeadEntry->Flink->Flink;
+		pListEntry != pHeadEntry;
+		pListEntry = pListEntry->Flink)
+	{
+		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 		if ((ULONG_PTR)mod->BaseAddress != base_of_dll_of_interest)
 			add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
@@ -740,7 +746,10 @@ void add_all_dlls_to_dll_ranges(void)
 
 char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset)
 {
-	LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
+	PLDR_DATA_TABLE_ENTRY mod;
+	PLIST_ENTRY pHeadEntry;
+	PLIST_ENTRY pListEntry;
+	PEB *peb = (PEB *)get_peb();
 
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
 	{
@@ -753,9 +762,12 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 		return buf;
 	}
 
-	for (mod = (LDR_MODULE *)peb->LoaderData->InLoadOrderModuleList.Flink;
-		mod->BaseAddress != NULL;
-		mod = (LDR_MODULE *)mod->InLoadOrderModuleList.Flink) {
+	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+	for(pListEntry = pHeadEntry->Flink;
+		pListEntry != pHeadEntry;
+		pListEntry = pListEntry->Flink)
+	{
+		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 		char *buf;
 		unsigned int i;
 
@@ -781,11 +793,17 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 
 void hide_module_from_peb(HMODULE module_handle)
 {
-	LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
+	PLDR_DATA_TABLE_ENTRY mod;
+	PLIST_ENTRY pHeadEntry;
+	PLIST_ENTRY pListEntry;
+	PEB *peb = (PEB *)get_peb();
 
-	for (mod = (LDR_MODULE *) peb->LoaderData->InLoadOrderModuleList.Flink;
-		 mod->BaseAddress != NULL;
-		 mod = (LDR_MODULE *) mod->InLoadOrderModuleList.Flink) {
+	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+	for(pListEntry = pHeadEntry->Flink;
+		pListEntry != pHeadEntry;
+		pListEntry = pListEntry->Flink)
+	{
+		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 
 		if (mod->BaseAddress == module_handle) {
 			CUT_LIST(mod->InLoadOrderModuleList);
@@ -796,7 +814,7 @@ void hide_module_from_peb(HMODULE module_handle)
 			// like InLoadOrderModuleList etc
 			CUT_LIST(mod->HashTableEntry);
 
-			memset(mod, 0, sizeof(LDR_MODULE));
+			memset(mod, 0, sizeof(LDR_DATA_TABLE_ENTRY));
 			break;
 		}
 	}
@@ -804,11 +822,17 @@ void hide_module_from_peb(HMODULE module_handle)
 
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle)
 {
-	LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
+	PLDR_DATA_TABLE_ENTRY mod;
+	PLIST_ENTRY pHeadEntry;
+	PLIST_ENTRY pListEntry;
+	PEB* peb = (PEB*)get_peb();
 
-	for (mod = (LDR_MODULE *)peb->LoaderData->InLoadOrderModuleList.Flink;
-		mod->BaseAddress != NULL;
-		mod = (LDR_MODULE *)mod->InLoadOrderModuleList.Flink) {
+	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+	for(pListEntry = pHeadEntry->Flink;
+		pListEntry != pHeadEntry;
+		pListEntry = pListEntry->Flink)
+	{
+		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 
 		if (mod->BaseAddress == module_handle)
 			return &mod->BaseDllName;

@@ -299,7 +299,7 @@ BOOL StackWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		return FALSE;
 	}
 
-	if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 1, (BYTE*)pBreakpointInfo->Address, BP_READWRITE, StackReadCallback))
+	if (ContextUpdateCurrentBreakpoint(ExceptionInfo->ContextRecord, 1, (BYTE*)pBreakpointInfo->Address, BP_READWRITE, 0, StackReadCallback))
 	{
 		DebuggerOutput("StackWriteCallback: Updated breakpoint to break on read (& write).\n");
 	}
@@ -339,7 +339,7 @@ BOOL EntryPointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	StackPointer = (PVOID)(ExceptionInfo->ContextRecord->Esp - 1);
 #endif
 
-	if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, 1, (BYTE*)StackPointer, BP_WRITE, StackWriteCallback))
+	if (!ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, 1, (BYTE*)StackPointer, BP_WRITE, 0, StackWriteCallback))
 	{
 		DebuggerOutput("EntryPointCallback: Failed to set write breakpoint on stack.\n");
 		return FALSE;
@@ -372,7 +372,7 @@ BOOL UPXInitialBreakpoints(PVOID ImageBase)
 
 	if (EntryPoint)
 	{
-		if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, (BYTE*)EntryPoint, BP_EXEC, EntryPointCallback))
+		if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, (BYTE*)EntryPoint, BP_EXEC, 0, EntryPointCallback))
 			DebuggerOutput("Breakpoint %d set on entry point at 0x%p.\n", Register, EntryPoint);
 		else
 		{

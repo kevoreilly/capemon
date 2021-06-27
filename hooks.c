@@ -68,7 +68,7 @@ hook_t min_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
 
-	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
 	HOOK(ntdll, NtCreateProcess),
@@ -144,7 +144,7 @@ hook_t zero_hooks[] = {
 	// the debugger/instruction trace?
 	//
 
-	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK(ntdll, NtContinue),
 };
 
@@ -177,7 +177,7 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
@@ -691,7 +691,7 @@ hook_t test_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
 
-	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
 	// lowest variant of MoveFile()
@@ -813,7 +813,7 @@ hook_t ie_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
@@ -1285,7 +1285,7 @@ hook_t firefox_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ntdll, RtlDispatchException),
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),

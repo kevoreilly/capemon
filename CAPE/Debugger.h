@@ -25,12 +25,13 @@ typedef EXCEPTION_REGISTRATION_RECORD *PEXCEPTION_REGISTRATION_RECORD;
 #endif
 typedef struct BreakpointInfo
 {
-	HANDLE	ThreadHandle;
-	int		Register;
-	int		Size;
-	LPVOID	Address;
-	DWORD	Type;
-	LPVOID	Callback;
+	HANDLE			ThreadHandle;
+	int				Register;
+	int				Size;
+	LPVOID			Address;
+	DWORD			Type;
+	unsigned int	HitCount;
+	LPVOID			Callback;
 } BREAKPOINTINFO, *PBREAKPOINTINFO;
 
 typedef BOOL (cdecl *BREAKPOINT_HANDLER)(PBREAKPOINTINFO, struct _EXCEPTION_POINTERS*);
@@ -67,17 +68,19 @@ PWIN32ENTRY OEP;
 int launch_debugger(void);
 
 // Set
-BOOL SetBreakpoint(int Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
-BOOL SetThreadBreakpoint(DWORD ThreadId, int Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
-BOOL ContextSetThreadBreakpoint(PCONTEXT Context, int Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
 BOOL ContextSetDebugRegister(PCONTEXT Context, int Register, int Size, LPVOID Address, DWORD Type);
 BOOL ContextSetDebugRegisterEx(PCONTEXT Context, int Register, int Size, LPVOID Address, DWORD Type, BOOL NoSetThreadContext);
-BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
+BOOL SetBreakpoint(int Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+BOOL SetThreadBreakpoint(DWORD ThreadId, int Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+BOOL ContextSetThreadBreakpoint(PCONTEXT Context, int Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS ThreadBreakpoints);
 BOOL ContextSetThreadBreakpointsEx(PCONTEXT ThreadContext, PTHREADBREAKPOINTS ThreadBreakpoints, BOOL NoSetThreadContext);
-BOOL ContextSetBreakpoint(PTHREADBREAKPOINTS ThreadBreakpoints);
-BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, PVOID Callback);
-BOOL SetNextAvailableBreakpoint(DWORD ThreadId, unsigned int* Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
+BOOL ContextSetBreakpoint(PCONTEXT Context, int Register, int Size, LPVOID ddress, DWORD Type, unsigned int HitCount, PVOID Callback);
+BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
+
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);
 BOOL SetZeroFlag(PCONTEXT Context);
@@ -92,10 +95,9 @@ BOOL FlipCarryFlag(PCONTEXT Context);
 PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId);
 
 // Get
-BOOL GetNextAvailableBreakpoint(DWORD ThreadId, unsigned int* Register);
+BOOL GetNextAvailableBreakpoint(DWORD ThreadId, int* Register);
 PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId);
-BOOL ContextGetNextAvailableBreakpoint(PCONTEXT Context, unsigned int* Register);
-BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, unsigned int* Register, int Size, LPVOID Address, DWORD Type, PVOID Callback);
+BOOL ContextGetNextAvailableBreakpoint(PCONTEXT Context, int* Register);
 int CheckDebugRegister(HANDLE hThread, int Register);
 BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext);
 int ContextCheckDebugRegister(CONTEXT Context, int Register);

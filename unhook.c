@@ -341,9 +341,9 @@ static DWORD WINAPI _procname_watch_thread(LPVOID param)
 	hook_disable();
 
 	while (1) {
-		LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
+		PLDR_DATA_TABLE_ENTRY mod; PEB *peb = (PEB *)get_peb();
 		__try {
-			mod = (LDR_MODULE *)peb->LoaderData->InLoadOrderModuleList.Flink;
+			mod = (PLDR_DATA_TABLE_ENTRY)peb->LoaderData->InLoadOrderModuleList.Flink;
 			if (InitialProcessName.Length != mod->BaseDllName.Length || InitialProcessPath.Length != mod->FullDllName.Length ||
 				memcmp(InitialProcessName.Buffer, mod->BaseDllName.Buffer, InitialProcessName.Length) ||
 				memcmp(InitialProcessPath.Buffer, mod->FullDllName.Buffer, InitialProcessPath.Length)) {
@@ -367,8 +367,8 @@ DWORD g_procname_watcher_thread_id;
 
 int procname_watch_init()
 {
-	LDR_MODULE *mod; PEB *peb = (PEB *)get_peb();
-	mod = (LDR_MODULE *)peb->LoaderData->InLoadOrderModuleList.Flink;
+	PLDR_DATA_TABLE_ENTRY mod; PEB *peb = (PEB *)get_peb();
+	mod = (PLDR_DATA_TABLE_ENTRY)peb->LoaderData->InLoadOrderModuleList.Flink;
 
 	InitialProcessName.MaximumLength = InitialProcessName.Length = mod->BaseDllName.Length;
 	InitialProcessName.Buffer = malloc(InitialProcessName.Length);

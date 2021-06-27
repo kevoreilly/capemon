@@ -205,11 +205,16 @@ struct _g_config {
 
 	// debugger breakpoints
 	PVOID bp0, bp1, bp2, bp3;
+	PVOID bp4, bp5, bp6, bp7;
 	// break-on-return: brX
 	PVOID br0, br1, br2, br3;
-	int dumptype0;
-	int dumptype1;
-	int dumptype2;
+	// Hit count
+	unsigned int hc0, hc1, hc2, hc3;
+	// Dump type
+	int dumptype0, dumptype1, dumptype2, dumptype3;
+	// Type strings
+	char typestring0[MAX_PATH], typestring1[MAX_PATH], typestring2[MAX_PATH], typestring3[MAX_PATH];
+
 	int trace_all;
 	int step_out;
 	int file_offsets;
