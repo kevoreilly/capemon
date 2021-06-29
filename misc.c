@@ -814,7 +814,6 @@ void hide_module_from_peb(HMODULE module_handle)
 			// like InLoadOrderModuleList etc
 			CUT_LIST(mod->HashTableEntry);
 
-			memset(mod, 0, sizeof(LDR_DATA_TABLE_ENTRY));
 			break;
 		}
 	}
