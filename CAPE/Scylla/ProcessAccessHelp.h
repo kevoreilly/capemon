@@ -5,7 +5,7 @@
 #include <vector>
 
 /************************************************************************/
-/* distorm                                                              */
+/* distorm															  */
 /************************************************************************/
 #include <distorm.h>
 #include <mnemonics.h>
@@ -225,7 +225,7 @@ public:
 	static bool suspendProcess();
 	static bool resumeProcess();
 	static bool terminateProcess();
-    static bool isPageExecutable( DWORD Protect );
+	static bool isPageExecutable( DWORD Protect );
 	static bool isPageAccessable( DWORD Protect );
-    static SIZE_T getSizeOfImageProcessNative( HANDLE processHandle, DWORD_PTR moduleBase );
+	static SIZE_T getSizeOfImageProcessNative( HANDLE processHandle, DWORD_PTR moduleBase );
 };

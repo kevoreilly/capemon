@@ -23,38 +23,38 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateMutant,
-    __out       PHANDLE MutantHandle,
-    __in        ACCESS_MASK DesiredAccess,
-    __in_opt    POBJECT_ATTRIBUTES ObjectAttributes,
-    __in        BOOLEAN InitialOwner
+	__out	   PHANDLE MutantHandle,
+	__in		ACCESS_MASK DesiredAccess,
+	__in_opt	POBJECT_ATTRIBUTES ObjectAttributes,
+	__in		BOOLEAN InitialOwner
 ) {
-    NTSTATUS ret = Old_NtCreateMutant(MutantHandle, DesiredAccess,
-        ObjectAttributes, InitialOwner);
-    LOQ_ntstatus("synchronization", "Poi", "Handle", MutantHandle,
-        "MutexName", unistr_from_objattr(ObjectAttributes),
-        "InitialOwner", InitialOwner);
-    return ret;
+	NTSTATUS ret = Old_NtCreateMutant(MutantHandle, DesiredAccess,
+		ObjectAttributes, InitialOwner);
+	LOQ_ntstatus("synchronization", "Poi", "Handle", MutantHandle,
+		"MutexName", unistr_from_objattr(ObjectAttributes),
+		"InitialOwner", InitialOwner);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtOpenMutant,
-    __out       PHANDLE MutantHandle,
-    __in        ACCESS_MASK DesiredAccess,
-    __in        POBJECT_ATTRIBUTES ObjectAttributes
+	__out	   PHANDLE MutantHandle,
+	__in		ACCESS_MASK DesiredAccess,
+	__in		POBJECT_ATTRIBUTES ObjectAttributes
 ) {
-    NTSTATUS ret = Old_NtOpenMutant(MutantHandle, DesiredAccess,
-        ObjectAttributes);
-    LOQ_ntstatus("synchronization", "Po", "Handle", MutantHandle,
-        "MutexName", unistr_from_objattr(ObjectAttributes));
-    return ret;
+	NTSTATUS ret = Old_NtOpenMutant(MutantHandle, DesiredAccess,
+		ObjectAttributes);
+	LOQ_ntstatus("synchronization", "Po", "Handle", MutantHandle,
+		"MutexName", unistr_from_objattr(ObjectAttributes));
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtReleaseMutant,
-    __in        HANDLE MutantHandle,
-    __out_opt   PLONG PreviousCount
+	__in		HANDLE MutantHandle,
+	__out_opt   PLONG PreviousCount
 ) {
-    NTSTATUS ret = Old_NtReleaseMutant(MutantHandle, PreviousCount);
-    LOQ_ntstatus("synchronization", "h", "Handle", MutantHandle);
-    return ret;
+	NTSTATUS ret = Old_NtReleaseMutant(MutantHandle, PreviousCount);
+	LOQ_ntstatus("synchronization", "h", "Handle", MutantHandle);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateEvent,
@@ -88,30 +88,30 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenEvent,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateNamedPipeFile,
-    OUT         PHANDLE NamedPipeFileHandle,
-    IN          ACCESS_MASK DesiredAccess,
-    IN          POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT         PIO_STATUS_BLOCK IoStatusBlock,
-    IN          ULONG ShareAccess,
-    IN          ULONG CreateDisposition,
-    IN          ULONG CreateOptions,
-    IN          BOOLEAN WriteModeMessage,
-    IN          BOOLEAN ReadModeMessage,
-    IN          BOOLEAN NonBlocking,
-    IN          ULONG MaxInstances,
-    IN          ULONG InBufferSize,
-    IN          ULONG OutBufferSize,
-    IN          PLARGE_INTEGER DefaultTimeOut
+	OUT		 PHANDLE NamedPipeFileHandle,
+	IN		  ACCESS_MASK DesiredAccess,
+	IN		  POBJECT_ATTRIBUTES ObjectAttributes,
+	OUT		 PIO_STATUS_BLOCK IoStatusBlock,
+	IN		  ULONG ShareAccess,
+	IN		  ULONG CreateDisposition,
+	IN		  ULONG CreateOptions,
+	IN		  ULONG WriteModeMessage,
+	IN		  ULONG ReadModeMessage,
+	IN		  ULONG NonBlocking,
+	IN		  ULONG MaxInstances,
+	IN		  ULONG InBufferSize,
+	IN		  ULONG OutBufferSize,
+	IN		  PLARGE_INTEGER DefaultTimeOut
 ) {
-    NTSTATUS ret = Old_NtCreateNamedPipeFile(NamedPipeFileHandle,
-        DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess,
-        CreateDisposition, CreateOptions, WriteModeMessage, ReadModeMessage,
-        NonBlocking, MaxInstances, InBufferSize, OutBufferSize,
-        DefaultTimeOut);
-    LOQ_ntstatus("synchronization", "PhOi", "NamedPipeHandle", NamedPipeFileHandle,
-        "DesiredAccess", DesiredAccess, "PipeName", ObjectAttributes,
-        "ShareAccess", ShareAccess);
-    return ret;
+	NTSTATUS ret = Old_NtCreateNamedPipeFile(NamedPipeFileHandle,
+		DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess,
+		CreateDisposition, CreateOptions, WriteModeMessage, ReadModeMessage,
+		NonBlocking, MaxInstances, InBufferSize, OutBufferSize,
+		DefaultTimeOut);
+	LOQ_ntstatus("synchronization", "PhOi", "NamedPipeHandle", NamedPipeFileHandle,
+		"DesiredAccess", DesiredAccess, "PipeName", ObjectAttributes,
+		"ShareAccess", ShareAccess);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtAddAtom,
@@ -157,23 +157,23 @@ HOOKDEF(NTSTATUS, WINAPI, NtAddAtomEx,
 HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationAtom,
 	IN	RTL_ATOM Atom,
 	IN	ATOM_INFORMATION_CLASS AtomInformationClass,
-    OUT PVOID AtomInformation,
-    IN  ULONG AtomInformationLength,
-    OUT PULONG ReturnLength OPTIONAL
+	OUT PVOID AtomInformation,
+	IN  ULONG AtomInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
 ) {
-    WCHAR* AtomName;
-    ULONG AtomNameLength;
-    
-	NTSTATUS ret = Old_NtQueryInformationAtom(Atom, AtomInformationClass, AtomInformation, AtomInformationLength, ReturnLength);
-    
-    if (NT_SUCCESS(ret) && AtomInformationClass == AtomBasicInformation)
-    {
-        AtomNameLength = (ULONG)((PATOM_BASIC_INFORMATION)AtomInformation)->NameLength;
-        AtomName = ((PATOM_BASIC_INFORMATION)AtomInformation)->Name;
-        LOQ_ntstatus("synchronization", "bih", "AtomName", AtomNameLength, AtomName, "Size", AtomNameLength, "Atom", Atom);
-    }
-    else
-        LOQ_ntstatus("synchronization", "h", "Atom", Atom);
+	WCHAR* AtomName;
+	ULONG AtomNameLength;
 	
-    return ret;
+	NTSTATUS ret = Old_NtQueryInformationAtom(Atom, AtomInformationClass, AtomInformation, AtomInformationLength, ReturnLength);
+	
+	if (NT_SUCCESS(ret) && AtomInformationClass == AtomBasicInformation)
+	{
+		AtomNameLength = (ULONG)((PATOM_BASIC_INFORMATION)AtomInformation)->NameLength;
+		AtomName = ((PATOM_BASIC_INFORMATION)AtomInformation)->Name;
+		LOQ_ntstatus("synchronization", "bih", "AtomName", AtomNameLength, AtomName, "Size", AtomNameLength, "Atom", Atom);
+	}
+	else
+		LOQ_ntstatus("synchronization", "h", "Atom", Atom);
+	
+	return ret;
 }

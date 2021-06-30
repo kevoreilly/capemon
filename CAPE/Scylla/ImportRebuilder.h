@@ -24,7 +24,7 @@ public:
 		BuildDirectImportsJumpTable = false;
 		sizeOfJumpTable = 0;
 	}
-    
+	
 	ImportRebuilder(const DWORD_PTR moduleBase) : PeParser(moduleBase, true)
 	{
 		pImportDescriptor = 0;

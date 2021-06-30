@@ -20,8 +20,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <windows.h>
 
 typedef struct _lookup_internal_t {
-    CRITICAL_SECTION cs;
-    void *root;
+	CRITICAL_SECTION cs;
+	void *root;
 } lookup_t;
 
 typedef struct _entry_t {

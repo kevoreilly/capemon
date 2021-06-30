@@ -32,6 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern BOOL PlugXConfigDumped;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
@@ -46,7 +47,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
 		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
-			pipe("PROCESS:%d:%d,%d", is_suspended(pid, dwThreadId), pid, dwThreadId);
+			ProcessMessage(pid, dwThreadId);
 	}
 
 	ret = Old_SetWindowsHookExA(idHook, lpfn, hMod, dwThreadId);
@@ -67,7 +68,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
 		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
-			pipe("PROCESS:%d:%d,%d", is_suspended(pid, dwThreadId), pid, dwThreadId);
+			ProcessMessage(pid, dwThreadId);
 	}
 
 	ret = Old_SetWindowsHookExW(idHook, lpfn, hMod, dwThreadId);
@@ -100,13 +101,28 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
     return res;
 }
 
+PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
+
+LONG WINAPI VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+    if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
+        return EXCEPTION_CONTINUE_SEARCH;
+    else
+        return SampleVectoredHandler(ExceptionInfo);
+}
+
 HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
     __in    ULONG First,
     __out   PVECTORED_EXCEPTION_HANDLER Handler
 ) {
 	PVOID ret = 0;
 
-    ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
+    if (!SampleVectoredHandler) {
+        SampleVectoredHandler = Handler;
+        ret = Old_RtlAddVectoredExceptionHandler(First, VectoredExceptionFilter);
+    }
+    else
+        ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
 
     LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
 
@@ -144,16 +160,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
     __in_opt    WORD Ordinal,
     __out       PVOID *FunctionAddress
 ) {
-    NTSTATUS ret = Old_LdrGetProcedureAddress(ModuleHandle, FunctionName,
-        Ordinal, FunctionAddress);
+    NTSTATUS ret = Old_LdrGetProcedureAddress(ModuleHandle, FunctionName, Ordinal, FunctionAddress);
 
 	if (FunctionName != NULL && FunctionName->Length == 13 && FunctionName->Buffer != NULL &&
 		(!strncmp(FunctionName->Buffer, "EncodePointer", 13) || !strncmp(FunctionName->Buffer, "DecodePointer", 13)))
 		return ret;
 
     LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
-        "FunctionName", FunctionName != NULL ? FunctionName->Length : 0,
-            FunctionName != NULL ? FunctionName->Buffer : NULL,
+        "FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
         "Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
 	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&

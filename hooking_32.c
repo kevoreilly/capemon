@@ -27,6 +27,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "config.h"
 
+extern DWORD GetTimeStamp(LPVOID Address);
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+
 // length disassembler engine
 int lde(void *addr)
 {
@@ -41,6 +44,17 @@ int lde(void *addr)
 	return ret == DECRES_SUCCESS ? instructions[0].size : 0;
 }
 
+// instruction disassembler engine
+int ide(_DecodedInst* instruction, void *addr)
+{
+	unsigned int used_instruction_count; _DecodedInst instructions[16];
+	_DecodeResult ret = distorm_decode(0, addr, 16, Decode32Bits, instructions, 1, &used_instruction_count);
+	if (ret)
+		*instruction = instructions[0];
+
+	return ret;
+}
+
 // create a trampoline at the given address, that is, we are going to replace
 // the original instructions at this particular address. So, in order to
 // call the original function from our hook, we have to execute the original
@@ -50,123 +64,123 @@ int lde(void *addr)
 // NOTE: tramp represents the memory address where the trampoline will be
 // placed, copying it to another memory address will result into failure
 static int hook_create_trampoline(unsigned char *addr, int len,
-    unsigned char *tramp)
+	unsigned char *tramp)
 {
-    const unsigned char *base = tramp;
+	const unsigned char *base = tramp;
 
-    // our trampoline should contain at least enough bytes to fit the given
-    // length
-    while (len > 0) {
+	// our trampoline should contain at least enough bytes to fit the given
+	// length
+	while (len > 0) {
 
-        // obtain the length of this instruction
-        int length = lde(addr);
+		// obtain the length of this instruction
+		int length = lde(addr);
 
-        // error?
-        if(length == 0) {
-            return 0;
-        }
+		// error?
+		if(length == 0) {
+			return 0;
+		}
 
-        // how many bytes left?
-        len -= length;
+		// how many bytes left?
+		len -= length;
 
-        // check the type of instruction at this particular address, if it's
-        // a jump or a call instruction, then we have to calculate some fancy
-        // addresses, otherwise we can simply copy the instruction to our
-        // trampoline
+		// check the type of instruction at this particular address, if it's
+		// a jump or a call instruction, then we have to calculate some fancy
+		// addresses, otherwise we can simply copy the instruction to our
+		// trampoline
 
-        // it's a (conditional) jump or call with 32bit relative offset
-        if(*addr == 0xe9 || *addr == 0xe8 || (*addr == 0x0f &&
-                addr[1] >= 0x80 && addr[1] < 0x90)) {
+		// it's a (conditional) jump or call with 32bit relative offset
+		if(*addr == 0xe9 || *addr == 0xe8 || (*addr == 0x0f &&
+				addr[1] >= 0x80 && addr[1] < 0x90)) {
 			unsigned long jmp_addr;
 
-            // copy the jmp or call instruction (conditional jumps are two
-            // bytes, the rest is one byte)
-            *tramp++ = *addr++;
-            if(addr[-1] != 0xe9 && addr[-1] != 0xe8) {
-                *tramp++ = *addr++;
-            }
+			// copy the jmp or call instruction (conditional jumps are two
+			// bytes, the rest is one byte)
+			*tramp++ = *addr++;
+			if(addr[-1] != 0xe9 && addr[-1] != 0xe8) {
+				*tramp++ = *addr++;
+			}
 
-            // when a jmp/call is performed, then the relative offset +
-            // the instruction pointer + the size of the instruction is the
-            // calculated address, so that's our target address as well.
-            // (note that `addr' is already increased by one or two, so the
-            // 4 represents the 32bit offset of this particular instruction)
-            jmp_addr = *(int *) addr + 4 + (unsigned long) addr;
-            addr += 4;
+			// when a jmp/call is performed, then the relative offset +
+			// the instruction pointer + the size of the instruction is the
+			// calculated address, so that's our target address as well.
+			// (note that `addr' is already increased by one or two, so the
+			// 4 represents the 32bit offset of this particular instruction)
+			jmp_addr = *(int *) addr + 4 + (unsigned long) addr;
+			addr += 4;
 
-            // trampoline is already filled with the opcode itself (the jump
-            // instruction), now we will actually jump to the location by
-            // calculating the relative offset which points to the real
-            // address (this is the reverse operation of the one to calculate
-            // the absolute address of a jump)
-            *(unsigned long *) tramp = jmp_addr - (unsigned long) tramp - 4;
-            tramp += 4;
+			// trampoline is already filled with the opcode itself (the jump
+			// instruction), now we will actually jump to the location by
+			// calculating the relative offset which points to the real
+			// address (this is the reverse operation of the one to calculate
+			// the absolute address of a jump)
+			*(unsigned long *) tramp = jmp_addr - (unsigned long) tramp - 4;
+			tramp += 4;
 
-            // because an unconditional jump denotes the end of a basic block
-            // we will return failure if we have not yet processed enough room
-            // to store our hook code
-            if(tramp[-5] == 0xe9 && len > 0) return 0;
-        }
-        // (conditional) jump with 8bit relative offset
-        else if(*addr == 0xeb || (*addr >= 0x70 && *addr < 0x80)) {
+			// because an unconditional jump denotes the end of a basic block
+			// we will return failure if we have not yet processed enough room
+			// to store our hook code
+			if(tramp[-5] == 0xe9 && len > 0) return 0;
+		}
+		// (conditional) jump with 8bit relative offset
+		else if(*addr == 0xeb || (*addr >= 0x70 && *addr < 0x80)) {
 
-            // same rules apply as with the 32bit relative offsets, except
-            // for the fact that both conditional and unconditional 8bit
-            // relative jumps take only one byte for the opcode
+			// same rules apply as with the 32bit relative offsets, except
+			// for the fact that both conditional and unconditional 8bit
+			// relative jumps take only one byte for the opcode
 
-            // 8bit relative offset, we have to sign-extend it (by casting it
-            // as signed char) in order to calculate the correct address
-            unsigned long jmp_addr = (unsigned long) addr + 2 +
-                *(signed char *)(addr + 1);
+			// 8bit relative offset, we have to sign-extend it (by casting it
+			// as signed char) in order to calculate the correct address
+			unsigned long jmp_addr = (unsigned long) addr + 2 +
+				*(signed char *)(addr + 1);
 
-            // the chance is *fairly* high that we will not be able to perform
-            // a jump from the trampoline to the original function, so instead
-            // we will use 32bit relative offset jumps
-            if(*addr == 0xeb) {
-                *tramp++ = 0xe9;
-            }
-            else {
-                // hex representation of the two types of 32bit jumps
-                // 8bit relative conditional jumps:     70..80
-                // 32bit relative conditional jumps: 0f 80..90
-                // so we will simply add 0x10 to the opcode of 8bit relative
-                // offset jump to obtain the 32bit relative offset jump opcode
-                *tramp++ = 0x0f;
-                *tramp++ = *addr + 0x10;
-            }
+			// the chance is *fairly* high that we will not be able to perform
+			// a jump from the trampoline to the original function, so instead
+			// we will use 32bit relative offset jumps
+			if(*addr == 0xeb) {
+				*tramp++ = 0xe9;
+			}
+			else {
+				// hex representation of the two types of 32bit jumps
+				// 8bit relative conditional jumps:	 70..80
+				// 32bit relative conditional jumps: 0f 80..90
+				// so we will simply add 0x10 to the opcode of 8bit relative
+				// offset jump to obtain the 32bit relative offset jump opcode
+				*tramp++ = 0x0f;
+				*tramp++ = *addr + 0x10;
+			}
 
-            // calculate the correct relative offset address
-            *(unsigned long *) tramp = jmp_addr - (unsigned long) tramp - 4;
-            tramp += 4;
+			// calculate the correct relative offset address
+			*(unsigned long *) tramp = jmp_addr - (unsigned long) tramp - 4;
+			tramp += 4;
 
-            // again, end of basic block, check for length
-            if(*addr == 0xeb && len > 0) {
-                return 0;
-            }
+			// again, end of basic block, check for length
+			if(*addr == 0xeb && len > 0) {
+				return 0;
+			}
 
-            // add the instruction length
-            addr += 2;
-        }
-        // return instruction, indicates end of basic block as well, so we
-        // have to check if we already have enough space for our hook..
-        else if((*addr == 0xc3 || *addr == 0xc2) && len > 0) {
-            return 0;
-        }
-        else {
-            // copy the instruction directly to the trampoline
-            while (length-- != 0) {
-                *tramp++ = *addr++;
-            }
-        }
-    }
+			// add the instruction length
+			addr += 2;
+		}
+		// return instruction, indicates end of basic block as well, so we
+		// have to check if we already have enough space for our hook..
+		else if((*addr == 0xc3 || *addr == 0xc2) && len > 0) {
+			return 0;
+		}
+		else {
+			// copy the instruction directly to the trampoline
+			while (length-- != 0) {
+				*tramp++ = *addr++;
+			}
+		}
+	}
 
-    // append a jump from the trampoline to the original function
-    *tramp++ = 0xe9;
+	// append a jump from the trampoline to the original function
+	*tramp++ = 0xe9;
 	emit_rel(tramp, tramp, addr);
-    tramp += 4;
+	tramp += 4;
 
 	// return the length of this trampoline
-    return tramp - base;
+	return tramp - base;
 }
 
 // this function constructs the so-called pre-trampoline, this pre-trampoline
@@ -363,69 +377,69 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 }
 
 static int hook_api_jmp_direct(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // unconditional jump opcode
-    *from = 0xe9;
+	// unconditional jump opcode
+	*from = 0xe9;
 
-    // store the relative address from this opcode to our hook function
-    *(unsigned long *)(from + 1) = (unsigned char *) to - from - 5;
-    return 0;
+	// store the relative address from this opcode to our hook function
+	*(unsigned long *)(from + 1) = (unsigned char *) to - from - 5;
+	return 0;
 }
 
 static int hook_api_nop_jmp_direct(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // nop
-    *from++ = 0x90;
+	// nop
+	*from++ = 0x90;
 
-    return hook_api_jmp_direct(h, from, to);
+	return hook_api_jmp_direct(h, from, to);
 }
 
 static int hook_api_hotpatch_jmp_direct(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // mov edi, edi
-    *from++ = 0x8b;
-    *from++ = 0xff;
+	// mov edi, edi
+	*from++ = 0x8b;
+	*from++ = 0xff;
 
-    return hook_api_jmp_direct(h, from, to);
+	return hook_api_jmp_direct(h, from, to);
 }
 
 static int hook_api_push_retn(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // push addr
-    *from++ = 0x68;
-    *(unsigned char **) from = to;
+	// push addr
+	*from++ = 0x68;
+	*(unsigned char **) from = to;
 
-    // retn
-    from[4] = 0xc3;
+	// retn
+	from[4] = 0xc3;
 
-    return 0;
+	return 0;
 }
 
 static int hook_api_nop_push_retn(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // nop
-    *from++ = 0x90;
+	// nop
+	*from++ = 0x90;
 
-    return hook_api_push_retn(h, from, to);
+	return hook_api_push_retn(h, from, to);
 }
 
 static int hook_api_jmp_indirect(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // jmp dword [hook_data]
-    *from++ = 0xff;
-    *from++ = 0x25;
+	// jmp dword [hook_data]
+	*from++ = 0xff;
+	*from++ = 0x25;
 
 	*(unsigned char **)from = h->hookdata->hook_data;
 
-    // the real address is stored in hook_data
+	// the real address is stored in hook_data
 	memcpy(h->hookdata->hook_data, &to, sizeof(to));
-    return 0;
+	return 0;
 }
 
 static int hook_api_hotpatch_jmp_indirect(hook_t *h, unsigned char *from,
@@ -439,109 +453,109 @@ static int hook_api_hotpatch_jmp_indirect(hook_t *h, unsigned char *from,
 }
 
 static int hook_api_mov_eax_jmp_eax(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // mov eax, address
-    *from++ = 0xb8;
-    *(unsigned char **) from = to;
-    from += 4;
+	// mov eax, address
+	*from++ = 0xb8;
+	*(unsigned char **) from = to;
+	from += 4;
 
-    // jmp eax
-    *from++ = 0xff;
-    *from++ = 0xe0;
-    return 0;
+	// jmp eax
+	*from++ = 0xff;
+	*from++ = 0xe0;
+	return 0;
 }
 
 static int hook_api_mov_eax_push_retn(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // mov eax, address
-    *from++ = 0xb8;
-    *(unsigned char **) from = to;
-    from += 4;
+	// mov eax, address
+	*from++ = 0xb8;
+	*(unsigned char **) from = to;
+	from += 4;
 
-    // push eax
-    *from++ = 0x50;
+	// push eax
+	*from++ = 0x50;
 
-    // retn
-    *from++ = 0xc3;
-    return 0;
+	// retn
+	*from++ = 0xc3;
+	return 0;
 }
 
 static int hook_api_mov_eax_indirect_jmp_eax(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // mov eax, [hook_data]
-    *from++ = 0xa1;
+	// mov eax, [hook_data]
+	*from++ = 0xa1;
 	*(unsigned char **)from = h->hookdata->hook_data;
-    from += 4;
+	from += 4;
 
-    // store the address at hook_data
+	// store the address at hook_data
 	memcpy(h->hookdata->hook_data, &to, sizeof(to));
 
-    // jmp eax
-    *from++ = 0xff;
-    *from++ = 0xe0;
-    return 0;
+	// jmp eax
+	*from++ = 0xff;
+	*from++ = 0xe0;
+	return 0;
 }
 
 static int hook_api_mov_eax_indirect_push_retn(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // mov eax, [hook_data]
-    *from++ = 0xa1;
+	// mov eax, [hook_data]
+	*from++ = 0xa1;
 	*(unsigned char **)from = h->hookdata->hook_data;
-    from += 4;
+	from += 4;
 
-    // store the address at hook_data
+	// store the address at hook_data
 	memcpy(h->hookdata->hook_data, &to, sizeof(to));
 
-    // push eax
-    *from++ = 0x50;
+	// push eax
+	*from++ = 0x50;
 
-    // retn
-    *from++ = 0xc3;
-    return 0;
+	// retn
+	*from++ = 0xc3;
+	return 0;
 }
 
 #if HOOK_ENABLE_FPU
 static int hook_api_push_fpu_retn(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // push ebp
-    *from++ = 0x55;
+	// push ebp
+	*from++ = 0x55;
 
-    // fld qword [hook_data]
-    *from++ = 0xdd;
-    *from++ = 0x05;
+	// fld qword [hook_data]
+	*from++ = 0xdd;
+	*from++ = 0x05;
 
-    *(unsigned char **) from = h->hook_data;
-    from += 4;
+	*(unsigned char **) from = h->hook_data;
+	from += 4;
 
-    // fistp dword [esp]
-    *from++ = 0xdb;
-    *from++ = 0x1c;
-    *from++ = 0xe4;
+	// fistp dword [esp]
+	*from++ = 0xdb;
+	*from++ = 0x1c;
+	*from++ = 0xe4;
 
-    // retn
-    *from++ = 0xc3;
+	// retn
+	*from++ = 0xc3;
 
-    // store the address as double
-    double addr = (double) (unsigned long) to;
-    memcpy(h->hook_data, &addr, sizeof(addr));
-    return 0;
+	// store the address as double
+	double addr = (double) (unsigned long) to;
+	memcpy(h->hook_data, &addr, sizeof(addr));
+	return 0;
 }
 #endif
 
 static int hook_api_special_jmp(hook_t *h, unsigned char *from,
-    unsigned char *to)
+	unsigned char *to)
 {
-    // our largest hook in use is currently 7 bytes. so we have to make sure
-    // that this special hook (a hook that will be patched over again later)
-    // is atleast seven bytes.
-    *from++ = 0x90;
-    *from++ = 0x90;
-    return hook_api_jmp_direct(h, from, to);
+	// our largest hook in use is currently 7 bytes. so we have to make sure
+	// that this special hook (a hook that will be patched over again later)
+	// is atleast seven bytes.
+	*from++ = 0x90;
+	*from++ = 0x90;
+	return hook_api_jmp_direct(h, from, to);
 }
 
 static int hook_api_native_jmp_indirect(hook_t *h, unsigned char *from,
@@ -598,43 +612,43 @@ int hook_api(hook_t *h, int type)
 	DWORD old_protect;
 	BOOL delay_loaded = FALSE;
 
-    // table with all possible hooking types
-    static struct {
-        int(*hook)(hook_t *h, unsigned char *from, unsigned char *to);
-        int len;
+	// table with all possible hooking types
+	static struct {
+		int(*hook)(hook_t *h, unsigned char *from, unsigned char *to);
+		int len;
 		int offset;
-    } hook_types[] = {
-        /* HOOK_JMP_DIRECT */ {&hook_api_jmp_direct, 5, 0},
-        /* HOOK_NOP_JMP_DIRECT */ {&hook_api_nop_jmp_direct, 6, 0},
-        /* HOOK_HOTPATCH_JMP_DIRECT */ {&hook_api_hotpatch_jmp_direct, 7, 0},
-        /* HOOK_PUSH_RETN */ {&hook_api_push_retn, 6, 0},
-        /* HOOK_NOP_PUSH_RETN */ {&hook_api_nop_push_retn, 7, 0},
-        /* HOOK_JMP_INDIRECT */ {&hook_api_jmp_indirect, 6, 0},
-        /* HOOK_MOV_EAX_JMP_EAX */ {&hook_api_mov_eax_jmp_eax, 7, 0},
-        /* HOOK_MOV_EAX_PUSH_RETN */ {&hook_api_mov_eax_push_retn, 7, 0},
-        /* HOOK_MOV_EAX_INDIRECT_JMP_EAX */
-            {&hook_api_mov_eax_indirect_jmp_eax, 7, 0},
-        /* HOOK_MOV_EAX_INDIRECT_PUSH_RETN */
-            {&hook_api_mov_eax_indirect_push_retn, 7, 0},
+	} hook_types[] = {
+		/* HOOK_JMP_DIRECT */ {&hook_api_jmp_direct, 5, 0},
+		/* HOOK_NOP_JMP_DIRECT */ {&hook_api_nop_jmp_direct, 6, 0},
+		/* HOOK_HOTPATCH_JMP_DIRECT */ {&hook_api_hotpatch_jmp_direct, 7, 0},
+		/* HOOK_PUSH_RETN */ {&hook_api_push_retn, 6, 0},
+		/* HOOK_NOP_PUSH_RETN */ {&hook_api_nop_push_retn, 7, 0},
+		/* HOOK_JMP_INDIRECT */ {&hook_api_jmp_indirect, 6, 0},
+		/* HOOK_MOV_EAX_JMP_EAX */ {&hook_api_mov_eax_jmp_eax, 7, 0},
+		/* HOOK_MOV_EAX_PUSH_RETN */ {&hook_api_mov_eax_push_retn, 7, 0},
+		/* HOOK_MOV_EAX_INDIRECT_JMP_EAX */
+			{&hook_api_mov_eax_indirect_jmp_eax, 7, 0},
+		/* HOOK_MOV_EAX_INDIRECT_PUSH_RETN */
+			{&hook_api_mov_eax_indirect_push_retn, 7, 0},
 #if HOOK_ENABLE_FPU
-        /* HOOK_PUSH_FPU_RETN */ {&hook_api_push_fpu_retn, 11, 0},
+		/* HOOK_PUSH_FPU_RETN */ {&hook_api_push_fpu_retn, 11, 0},
 #endif
-        /* HOOK_SPECIAL_JMP */ {&hook_api_special_jmp, 7, 0},
+		/* HOOK_SPECIAL_JMP */ {&hook_api_special_jmp, 7, 0},
 		/* HOOK_NATIVE_JMP_INDIRECT */ {&hook_api_native_jmp_indirect, 11, 0},
 		/* HOOK_HOTPATCH_JMP_INDIRECT */{ &hook_api_hotpatch_jmp_indirect, 8, 0},
 		/* HOOK_SAFEST */{ &hook_api_safest, 2, 5},
 	};
 
-    // is this address already hooked?
-    if (h->is_hooked != 0) {
-        return 0;
-    }
+	// is this address already hooked?
+	if (h->is_hooked != 0) {
+		return 0;
+	}
 
 	if (hook_is_excluded(h))
 		return 0;
 
-    // resolve the address to hook
-    addr = h->addr;
+	// resolve the address to hook
+	addr = h->addr;
 
 	if (addr == NULL && h->library != NULL && h->funcname != NULL) {
 		HMODULE hmod = GetModuleHandleW(h->library);
@@ -665,7 +679,7 @@ int hook_api(hook_t *h, int type)
 		else if (!strcmp(h->funcname, "JsEval")) {
 			type = HOOK_JMP_DIRECT;
 			addr = (unsigned char *)get_jseval_addr(hmod);
-		} 
+		}
 		else if (!strcmp(h->funcname, "COleScript_ParseScriptText")) {
 			type = HOOK_JMP_DIRECT;
 			addr = (unsigned char *)get_olescript_parsescripttext_addr(hmod);
@@ -676,12 +690,18 @@ int hook_api(hook_t *h, int type)
 		}
 		else
 			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
-    }
 
-    if (addr == NULL || addr == (unsigned char *)0xffbadd11) {
+		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
+			DWORD timestamp = GetTimeStamp(hmod);
+			if (timestamp == h->timestamp)
+				addr = (unsigned char *)hmod + h->rva;
+		}
+	}
+
+	if (addr == NULL || addr == (unsigned char *)0xffbadd11) {
 		// function doesn't exist in this DLL, not a critical error
 		return 0;
-    }
+	}
 
 	// the following applies for "inlined" functions on windows 7,
 	// some functions are inlined into kernelbase.dll, rather than
@@ -779,8 +799,7 @@ int hook_api(hook_t *h, int type)
 		type = HOOK_JMP_DIRECT;
 
 	// make the address writable
-	if (VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, PAGE_EXECUTE_READWRITE,
-		&old_protect)) {
+	if (VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, PAGE_EXECUTE_READWRITE, &old_protect)) {
 
 		h->hookdata = alloc_hookdata_near(addr);
 
@@ -819,14 +838,13 @@ int hook_api(hook_t *h, int type)
 		}
 
 		// restore the old protection
-		VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect,
-			&old_protect);
+		VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
 	}
 	else {
 		pipe("WARNING:Unable to change protection for hook on %z", h->funcname);
 	}
 
-    return ret;
+	return ret;
 }
 
 int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR))
@@ -838,30 +856,30 @@ int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)
 
 	unsigned int count = HOOK_BACKTRACE_DEPTH;
 
-    __try
-    {
-        if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
-            ret = func(extra, *(ULONG_PTR *)_esp);
-            if (ret)
-                return ret;
-        }
+	__try
+	{
+		if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
+			ret = func(extra, *(ULONG_PTR *)_esp);
+			if (ret)
+				return ret;
+		}
 
-        while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count-- != 0)
-        {
-            // obtain the return address and the next value of ebp
-            ULONG_PTR addr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
-            _ebp = *(ULONG_PTR *)_ebp;
+		while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count-- != 0)
+		{
+			// obtain the return address and the next value of ebp
+			ULONG_PTR addr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
+			_ebp = *(ULONG_PTR *)_ebp;
 
-            ret = func(extra, addr);
-            if (ret)
-                return ret;
-        }
+			ret = func(extra, addr);
+			if (ret)
+				return ret;
+		}
 
-        return ret;
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        return 0;
-    }
+		return ret;
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		return 0;
+	}
 }
 #endif

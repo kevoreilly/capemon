@@ -40,7 +40,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define PIMAGE_THUNK_DATAXX PIMAGE_THUNK_DATA64
 #endif
 
-typedef struct _LSA_UNICODE_STRING 
+typedef struct _LSA_UNICODE_STRING
 {
 	USHORT Length;
 	USHORT MaximumLength;
@@ -48,69 +48,69 @@ typedef struct _LSA_UNICODE_STRING
 } LSA_UNICODE_STRING, *PLSA_UNICODE_STRING, UNICODE_STRING, *PUNICODE_STRING;
 
 typedef struct _CLIENT_ID {
-    HANDLE UniqueProcess;
-    HANDLE UniqueThread;
+	HANDLE UniqueProcess;
+	HANDLE UniqueThread;
 } CLIENT_ID;
 typedef CLIENT_ID *PCLIENT_ID;
 
-typedef struct _PROCESS_BASIC_INFORMATION 
+typedef struct _PROCESS_BASIC_INFORMATION
 {
-    PVOID Reserved1;
-    PVOID PebBaseAddress;
-    PVOID Reserved2[2];
-    ULONG_PTR UniqueProcessId;
+	PVOID Reserved1;
+	PVOID PebBaseAddress;
+	PVOID Reserved2[2];
+	ULONG_PTR UniqueProcessId;
 	ULONG_PTR ParentProcessId;
 } PROCESS_BASIC_INFORMATION;
 
-typedef struct _PEB_LDR_DATA 
+typedef struct _PEB_LDR_DATA
 {
-    ULONG Length;
-    BOOLEAN Initialized;
-    PVOID SsHandle;
-    LIST_ENTRY InLoadOrderModuleList;
-    LIST_ENTRY InMemoryOrderModuleList;
-    LIST_ENTRY InInitializationOrderModuleList;
+	ULONG Length;
+	BOOLEAN Initialized;
+	PVOID SsHandle;
+	LIST_ENTRY InLoadOrderModuleList;
+	LIST_ENTRY InMemoryOrderModuleList;
+	LIST_ENTRY InInitializationOrderModuleList;
 } PEB_LDR_DATA, *PPEB_LDR_DATA;
 
-typedef struct _RTL_USER_PROCESS_PARAMETERS 
+typedef struct _RTL_USER_PROCESS_PARAMETERS
 {
-    BYTE Reserved1[16];
-    PVOID Reserved2[10];
-    UNICODE_STRING ImagePathName;
-    UNICODE_STRING CommandLine;
+	BYTE Reserved1[16];
+	PVOID Reserved2[10];
+	UNICODE_STRING ImagePathName;
+	UNICODE_STRING CommandLine;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
-typedef void (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE) 
+typedef void (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE)
 (
-    void
+	void
 );
 
-typedef struct _PEB 
+typedef struct _PEB
 {
-    BYTE Reserved1[2];
-    BYTE BeingDebugged;
-    BOOLEAN Spare;
-    HANDLE Mutant;
-    PVOID ImageBaseAddress;
-    PPEB_LDR_DATA Ldr;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
-    BYTE Reserved4[104];
-    PVOID Reserved5[52];
-    PPS_POST_PROCESS_INIT_ROUTINE PostProcessInitRoutine;
-    BYTE Reserved6[128];
-    PVOID Reserved7[1];
-    ULONG SessionId;
+	BYTE Reserved1[2];
+	BYTE BeingDebugged;
+	BOOLEAN Spare;
+	HANDLE Mutant;
+	PVOID ImageBaseAddress;
+	PPEB_LDR_DATA Ldr;
+	PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+	BYTE Reserved4[104];
+	PVOID Reserved5[52];
+	PPS_POST_PROCESS_INIT_ROUTINE PostProcessInitRoutine;
+	BYTE Reserved6[128];
+	PVOID Reserved7[1];
+	ULONG SessionId;
 } PEB, *PPEB;
 
-typedef struct _TEB 
+typedef struct _TEB
 {
-    NT_TIB NtTib;
-    PVOID EnvironmentPointer;
-    CLIENT_ID ClientId;
-    PVOID ActiveRpcHandle;
-    PVOID ThreadLocalStoragePointer;
-    PPEB ProcessEnvironmentBlock;
-    ULONG LastErrorValue;
+	NT_TIB NtTib;
+	PVOID EnvironmentPointer;
+	CLIENT_ID ClientId;
+	PVOID ActiveRpcHandle;
+	PVOID ThreadLocalStoragePointer;
+	PPEB ProcessEnvironmentBlock;
+	ULONG LastErrorValue;
 // truncated
 } TEB, *PTEB;
 
@@ -124,7 +124,7 @@ typedef NTSTATUS(WINAPI * _NtQuerySystemInformation)
 
 typedef NTSTATUS(WINAPI * _NtContinue)
 (
-    void
+	void
 );
 
 typedef NTSTATUS(WINAPI * _NtResumeProcess)
@@ -132,31 +132,41 @@ typedef NTSTATUS(WINAPI * _NtResumeProcess)
 	__in  HANDLE ProcessHandle
 );
 
-typedef LONG(WINAPI *_NtQueryInformationProcess)(HANDLE ProcessHandle,
-    ULONG ProcessInformationClass, PVOID ProcessInformation,
-    ULONG ProcessInformationLength, PULONG ReturnLength);
-
-typedef NTSTATUS (NTAPI *_RtlCreateUserThread)
+typedef LONG(WINAPI *_NtQueryInformationProcess)
 (
-    HANDLE, 
-    PSECURITY_DESCRIPTOR, 
-    BOOLEAN, 
-    ULONG, 
-    PULONG, 
-    PULONG, 
-    PVOID, 
-    PVOID, 
-    PHANDLE, 
-    PVOID
+	HANDLE ProcessHandle,
+	ULONG ProcessInformationClass,
+	PVOID ProcessInformation,
+	ULONG ProcessInformationLength,
+	PULONG ReturnLength
+);
+
+typedef NTSTATUS(NTAPI *_RtlCreateUserThread)
+(
+	HANDLE,
+	PSECURITY_DESCRIPTOR,
+	BOOLEAN,
+	ULONG,
+	PULONG,
+	PULONG,
+	PVOID,
+	PVOID,
+	PHANDLE,
+	PVOID
+);
+
+typedef ULONG(WINAPI * _RtlNtStatusToDosError)
+(
+	__in  NTSTATUS Status
 );
 
 typedef HRESULT (WINAPI *PDLLREGRSRV)(void);
 typedef void (cdecl *PSHELLCODE)(void);
 
 typedef struct _LoadLibraryThread {
-    FARPROC LoadLibrary;
-    FARPROC GetLastError;
-    PCHAR DllPath;
+	FARPROC LoadLibrary;
+	FARPROC GetLastError;
+	PCHAR DllPath;
 } LoadLibraryThread;
 
 SYSTEM_INFO SystemInfo;

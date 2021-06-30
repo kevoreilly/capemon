@@ -21,16 +21,16 @@ DWORD_PTR ApiReader::maxApiAddress = 0;
 
 void ApiReader::readApisFromModuleList()
 {
-    if (APIS_ALWAYS_FROM_DISK)
-    {
-        readExportTableAlwaysFromDisk = true;
-    }
-    else
-    {
-        readExportTableAlwaysFromDisk = false;
-    }
+	if (APIS_ALWAYS_FROM_DISK)
+	{
+		readExportTableAlwaysFromDisk = true;
+	}
+	else
+	{
+		readExportTableAlwaysFromDisk = false;
+	}
 
-    DebugOutput("ApiReader: module list size: %i", moduleList.size());
+	DebugOutput("ApiReader: module list size: %i", moduleList.size());
 	for (unsigned int i = 0; i < moduleList.size();i++)
 	{
 		setModulePriority(&moduleList[i]);
@@ -58,7 +58,7 @@ void ApiReader::parseModule(ModuleInfo *module)
 	module->parsing = true;
 
 	//  For CAPE, modules are all in own process, and this call fails for WinSxS modules
-    //if (isWinSxSModule(module))
+	//if (isWinSxSModule(module))
 	//{
 	//	parseModuleWithMapping(module);
 	//}
@@ -157,7 +157,7 @@ void ApiReader::handleForwardedApi(DWORD_PTR vaStringPointer,char * functionName
 	if (!_strnicmp(dllName, "API-", 4) || !_strnicmp(dllName, "EXT-", 4)) //API_SET_PREFIX_NAME, API_SET_EXTENSION
 	{
 		/* 
-		    Info: http://www.nirsoft.net/articles/windows_7_kernel_architecture_changes.html
+			Info: http://www.nirsoft.net/articles/windows_7_kernel_architecture_changes.html
 		*/
 		FARPROC address = 0;
 		HMODULE hModTemp = GetModuleHandleA(dllName);
@@ -333,13 +333,13 @@ BYTE * ApiReader::getExportTableFromProcess(ModuleInfo * module, PIMAGE_NT_HEADE
 	{
 		bufferExportTable = new BYTE[readSize];
 
-        if (!bufferExportTable)
-        {
+		if (!bufferExportTable)
+		{
 #ifdef DEBUG_COMMENTS
-            DebugOutput("Something is wrong with the PE Header here Export table size %d", readSize);
+			DebugOutput("Something is wrong with the PE Header here Export table size %d", readSize);
 #endif
-            return 0;
-        }
+			return 0;
+		}
 
 		if(!readMemoryFromProcess(module->modBaseAddr + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress, readSize, bufferExportTable))
 		{
@@ -366,12 +366,12 @@ void ApiReader::parseModuleWithProcess(ModuleInfo * module)
 	PIMAGE_DOS_HEADER pDosHeader = 0;
 	BYTE *bufferHeader = 0;
 	BYTE *bufferExportTable = 0;
-    PeParser peParser(module->modBaseAddr, false);
+	PeParser peParser(module->modBaseAddr, false);
 
-    if (!peParser.isValidPeFile())
-        return;
+	if (!peParser.isValidPeFile())
+		return;
 
-    pNtHeader = peParser.getCurrentNtHeader();
+	pNtHeader = peParser.getCurrentNtHeader();
 
 	if (peParser.hasExportDirectory())
 	{
@@ -396,19 +396,19 @@ void ApiReader::parseExportTable(ModuleInfo *module, PIMAGE_NT_HEADERS pNtHeader
 	bool withoutName;
 
 
-    if (pExportDir && pExportDir->Name) {
-        directoryName = (char*)((PBYTE)(DWORD_PTR)pExportDir->Name + deltaAddress);
-        strncpy_s(module->DirectoryName, directoryName, strlen(directoryName)+1);
+	if (pExportDir && pExportDir->Name) {
+		directoryName = (char*)((PBYTE)(DWORD_PTR)pExportDir->Name + deltaAddress);
+		strncpy_s(module->DirectoryName, directoryName, strlen(directoryName)+1);
 #ifdef DEBUG_COMMENTS
-        DebugOutput("parseExportTable:: pExportDir->Name %s", module->DirectoryName);
+		DebugOutput("parseExportTable:: pExportDir->Name %s", module->DirectoryName);
 #endif
-    }
+	}
 	addressOfFunctionsArray = (DWORD *)((DWORD_PTR)pExportDir->AddressOfFunctions + deltaAddress);
 	addressOfNamesArray = (DWORD *)((DWORD_PTR)pExportDir->AddressOfNames + deltaAddress);
 	addressOfNameOrdinalsArray = (WORD *)((DWORD_PTR)pExportDir->AddressOfNameOrdinals + deltaAddress);
 
 #ifdef DEBUG_COMMENTS
-    DebugOutput("parseExportTable :: module %s NumberOfNames %X", module->fullPath, pExportDir->NumberOfNames);
+	DebugOutput("parseExportTable :: module %s NumberOfNames %X", module->fullPath, pExportDir->NumberOfNames);
 #endif
 
 	for (i = 0; i < pExportDir->NumberOfNames; i++)
@@ -534,7 +534,9 @@ bool ApiReader::isModuleLoadedInOwnProcess(ModuleInfo * module)
 			return true;
 		}
 	}
-    DebugOutput("isModuleLoadedInOwnProcess returned false: %s\n",module->fullPath);
+#ifdef DEBUG_COMMENTS
+	DebugOutput("isModuleLoadedInOwnProcess returned false: %s\n",module->fullPath);
+#endif
 	return false;
 }
 
@@ -677,10 +679,10 @@ void ApiReader::setModulePriority(ModuleInfo * module)
 	{
 		module->priority = 2;
 	}
-    else if (!_strnicmp(moduleFileName, "API-", 4) || !_strnicmp(moduleFileName, "EXT-", 4)) //API_SET_PREFIX_NAME, API_SET_EXTENSION
-    {
-        module->priority = 0;
-    }
+	else if (!_strnicmp(moduleFileName, "API-", 4) || !_strnicmp(moduleFileName, "EXT-", 4)) //API_SET_PREFIX_NAME, API_SET_EXTENSION
+	{
+		module->priority = 0;
+	}
 	else
 	{
 		module->priority = 1;
@@ -949,58 +951,58 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 #ifdef DEBUG_COMMENTS
 		DebugOutput("%08X %08X %d out of %d", addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i],i,sizeIAT);
 #endif
-        if (!isInvalidMemoryForIat(pIATAddress[i]))
-        {
+		if (!isInvalidMemoryForIat(pIATAddress[i]))
+		{
 #ifdef DEBUG_COMMENTS
 			DebugOutput("min %p max %p address %p", minApiAddress, maxApiAddress, pIATAddress[i]);
 #endif
-            if ( (pIATAddress[i] > minApiAddress) && (pIATAddress[i] < maxApiAddress) )
-            {
-                apiFound = getApiByVirtualAddress(pIATAddress[i], &isSuspect);
+			if ( (pIATAddress[i] > minApiAddress) && (pIATAddress[i] < maxApiAddress) )
+			{
+				apiFound = getApiByVirtualAddress(pIATAddress[i], &isSuspect);
 #ifdef DEBUG_COMMENTS
 				DebugOutput("apiFound %p address %p", apiFound, pIATAddress[i]);
 #endif
-                if (apiFound == 0)
-                {
-                    DebugOutput("getApiByVirtualAddress :: No Api found " PRINTF_DWORD_PTR_FULL, pIATAddress[i]);
-                }
-                if (apiFound == (ApiInfo *)1)
-                {
+				if (apiFound == 0)
+				{
+					DebugOutput("getApiByVirtualAddress :: No Api found " PRINTF_DWORD_PTR_FULL, pIATAddress[i]);
+				}
+				if (apiFound == (ApiInfo *)1)
+				{
 #ifdef DEBUG_COMMENTS
-                    DebugOutput("apiFound == (ApiInfo *)1 -> " PRINTF_DWORD_PTR_FULL, pIATAddress[i]);
+					DebugOutput("apiFound == (ApiInfo *)1 -> " PRINTF_DWORD_PTR_FULL, pIATAddress[i]);
 #endif
-                }
-                else if (apiFound)
-                {
-                    countApiFound++;
+				}
+				else if (apiFound)
+				{
+					countApiFound++;
 #ifdef DEBUG_COMMENTS
-                    DebugOutput(PRINTF_DWORD_PTR_FULL " %s %d %s", apiFound->va, apiFound->module->getFilename(), apiFound->ordinal, apiFound->name);
+					DebugOutput(PRINTF_DWORD_PTR_FULL " %s %d %s", apiFound->va, apiFound->module->getFilename(), apiFound->ordinal, apiFound->name);
 #endif
-                    if (module != apiFound->module)
-                    {
-                        module = apiFound->module;
-                        addFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, apiFound, true, isSuspect);
-                    }
-                    else
-                    {
-                        addFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, apiFound, false, isSuspect);
-                    }
+					if (module != apiFound->module)
+					{
+						module = apiFound->module;
+						addFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, apiFound, true, isSuspect);
+					}
+					else
+					{
+						addFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, apiFound, false, isSuspect);
+					}
 
-                }
-                else
-                {
-                    countApiNotFound++;
-                    addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
-                    DebugOutput("parseIAT :: API not found %08X\n", pIATAddress[i]);
-                }
-            }
-            else
-            {
-                DebugOutput("parseIAT :: API not found %08X\n", pIATAddress[i]);
-                countApiNotFound++;
-                addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
-            }
-        }
+				}
+				else
+				{
+					countApiNotFound++;
+					addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
+					DebugOutput("parseIAT :: API not found %08X\n", pIATAddress[i]);
+				}
+			}
+			else
+			{
+				DebugOutput("parseIAT :: API not found %08X\n", pIATAddress[i]);
+				countApiNotFound++;
+				addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
+			}
+		}
 
 	}
 
@@ -1245,27 +1247,27 @@ bool ApiReader::isWinSxSModule( ModuleInfo * module )
 
 bool ApiReader::isInvalidMemoryForIat( DWORD_PTR address )
 {
-    if (address == 0)
-        return true;
+	if (address == 0)
+		return true;
 
    if (address == -1)
-       return true;
+	   return true;
 
    MEMORY_BASIC_INFORMATION memBasic = {0};
 
    if (VirtualQueryEx(ProcessAccessHelp::hProcess, (LPCVOID)address, &memBasic, sizeof(MEMORY_BASIC_INFORMATION)))
    {
-       if((memBasic.State == MEM_COMMIT) && ProcessAccessHelp::isPageAccessable(memBasic.Protect))
-       {
-           return false;
-       }
-       else
-       {
-           return true;
-       }
+	   if((memBasic.State == MEM_COMMIT) && ProcessAccessHelp::isPageAccessable(memBasic.Protect))
+	   {
+		   return false;
+	   }
+	   else
+	   {
+		   return true;
+	   }
    }
    else
    {
-       return true;
+	   return true;
    }
 }

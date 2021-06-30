@@ -22,25 +22,25 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define EXCLUSION_MAX 128
 
 struct _g_config {
-    // name of the pipe to communicate with cuckoo
-    wchar_t pipe_name[MAX_PATH];
+	// name of the pipe to communicate with cuckoo
+	wchar_t pipe_name[MAX_PATH];
 
 	char logserver[MAX_PATH];
 
-    // results directory, has to be hidden
-    char results[MAX_PATH];
+	// results directory, has to be hidden
+	char results[MAX_PATH];
 
 	// results directory, has to be hidden
 	wchar_t w_results[MAX_PATH];
 
 	// analyzer directory, has to be hidden
-    char analyzer[MAX_PATH];
+	char analyzer[MAX_PATH];
 
 	// analyzer directory, has to be hidden
 	wchar_t w_analyzer[MAX_PATH];
 
 	// python directory, has to be hidden
-    char pythonpath[MAX_PATH];
+	char pythonpath[MAX_PATH];
 
 	// python directory, has to be hidden
 	wchar_t w_pythonpath[MAX_PATH];
@@ -59,15 +59,15 @@ struct _g_config {
 	char *referrer;
 
 	// if this mutex exists then we're shutting down
-    char shutdown_mutex[MAX_PATH];
+	char shutdown_mutex[MAX_PATH];
 
 	// event set by analyzer when our process is potentially going to be terminated
 	// capemon itself will flush logs at this point, but the analyzer may take additional
 	// actions, like process dumping
 	char terminate_event_name[MAX_PATH];
 
-    // is this the first process or not?
-    int first_process;
+	// is this the first process or not?
+	int first_process;
 
 	// do we want to ignore "file of interest" and other forms of log reduction?
 	int full_logs;
@@ -75,8 +75,8 @@ struct _g_config {
 	// should we attempt anti-anti-sandbox/VM tricks ?
 	int no_stealth;
 
-    // how many milliseconds since startup
-    unsigned int startup_time;
+	// how many milliseconds since startup
+	unsigned int startup_time;
 
 	// system volume serial number (for reproducing Milicenso)
 	unsigned int serial_number;
@@ -87,8 +87,8 @@ struct _g_config {
 	// system volume information create time (for reproducing Milicenso)
 	FILETIME sysvol_ctime;
 
-    // do we force sleep-skipping despite threads?
-    int force_sleepskip;
+	// do we force sleep-skipping despite threads?
+	int force_sleepskip;
 
 	// do we force flushing of each log?
 	int force_flush;
@@ -102,12 +102,15 @@ struct _g_config {
 	// Disable hook content
 	int disable_hook_content;
 
-    // Disable api hooks that spam
-    unsigned int api_rate_cap;
+	// Disable api hooks that spam
+	unsigned int api_rate_cap;
 
-    // server ip and port
-    //unsigned int host_ip;
-    //unsigned short host_port;
+	// server ip and port
+	//unsigned int host_ip;
+	//unsigned short host_port;
+
+	// ntdll write protection
+	unsigned int ntdll_protect;
 
 	// Dropped files limit
 	unsigned int dropped_limit;
@@ -118,77 +121,108 @@ struct _g_config {
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
 	char *base_on_apiname[EXCLUSION_MAX];
  	char *dump_on_apinames[EXCLUSION_MAX];
-    int dump_on_api_type;
+ 	wchar_t *coverage_modules[EXCLUSION_MAX];
+	int dump_on_api_type;
 
-    // behavioural payload extraction options
-    int compression;
-    int unpacker;
-    int injection;
-    int caller_dump;
+	// behavioural payload extraction options
+	int compression;
+	int unpacker;
+	int injection;
+	int caller_dump;
 
-    // should we dump each process on exit/analysis timeout?
-    int procdump;
-    int procmemdump;
+	// should we dump each process on exit/analysis timeout?
+	int procdump;
+	int procmemdump;
 
-    // should we attempt import reconstruction on each process dump? (slow)
-    int import_reconstruction;
+	// should we attempt import reconstruction on each process dump? (slow)
+	int import_reconstruction;
 
-    // should we terminate processes after dumping on terminate_event?
-    int terminate_processes;
+	// should we terminate processes after dumping on terminate_event?
+	int terminate_processes;
 
-    // dump regions containing c2
-    int dump_config_region;
+	// dump regions containing c2
+	int dump_config_region;
 
-    // prevent monitoring child processes
-    int single_process;
+	// prevent monitoring child processes
+	int single_process;
 
-    // branch tracing
-    int branch_trace;
+	// branch tracing
+	int branch_trace;
 
-    // for monitor testing
-    int standalone;
+	// for monitor testing
+	int standalone;
 
-    // for dumping of crypto API buffers
-    int dump_crypto;
+	// for dumping of crypto API buffers
+	int dump_crypto;
 
-    // for PlugX config & payload extraction
-    int plugx;
+	// for PlugX config & payload extraction
+	int plugx;
 
-    // for Hancitor config & payload extraction
-    int hancitor;
+	// for Hancitor config & payload extraction
+	int hancitor;
 
-    // dynamic upx unpacker
-    int upx;
+	// dynamic upx unpacker
+	int upx;
 
-    // Enable debugger
-    int debugger;
+	// Enable debugger
+	int debugger;
 
-    // Fake RDTSC
-    int fake_rdtsc;
+	// Fake RDTSC
+	int fake_rdtsc;
 
-    // Adobe Reader settings
-    int pdf;
+	// Adobe Reader settings
+	int pdf;
 
-    // Microsoft Office settings
-    int office;
+	// Microsoft Office settings
+	int office;
+
+	// TLS secret dump mode
+	int tlsdump;
+
+	// Registry API dump mode
+	int regdump;
+
+	// YARA scans
+	int yarascan;
+
+	// Minimal hook set
+	int minhook;
+
+	// Zero hook set
+	int zerohook;
+
+	// Mozilla Firefox hook set
+	int firefox;
+
+	// Internet Explorer hook set
+	int iexplore;
 
 	char *break_on_apiname;
 	char *break_on_modname;
-    char break_on_return[MAX_PATH];
-    BOOLEAN break_on_return_set;
-    BOOLEAN break_on_apiname_set;
+	char break_on_return[MAX_PATH];
+	BOOLEAN break_on_return_set;
+	BOOLEAN break_on_apiname_set;
 
-    // break-on-return: brX
-    PVOID br0, br1, br2, br3;
-    int dumptype0;
-    int trace_all;
-    int step_out;
-    int file_offsets;
-    int divert_debugger_log;
-    int disable_logging;
-    int base_on_alloc;
-    int base_on_caller;
-    char *trace_into_api[EXCLUSION_MAX];
+	// debugger breakpoints
+	PVOID bp0, bp1, bp2, bp3;
+	PVOID bp4, bp5, bp6, bp7;
+	// break-on-return: brX
+	PVOID br0, br1, br2, br3;
+	// Hit count
+	unsigned int hc0, hc1, hc2, hc3;
+	// Dump type
+	int dumptype0, dumptype1, dumptype2, dumptype3;
+	// Type strings
+	char typestring0[MAX_PATH], typestring1[MAX_PATH], typestring2[MAX_PATH], typestring3[MAX_PATH];
+
+	int trace_all;
+	int step_out;
+	int file_offsets;
+	int no_logs;
+	int disable_logging;
+	int base_on_alloc;
+	int base_on_caller;
+	char *trace_into_api[EXCLUSION_MAX];
 };
 
 extern struct _g_config g_config;

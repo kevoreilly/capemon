@@ -19,38 +19,41 @@ extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
-#define PE_MAX_SIZE     ((ULONG)0x77000000)
-#define PE_MIN_SIZE     ((ULONG)0x1000)
+#define PE_MAX_SIZE	 ((ULONG)0x77000000)
+#define PE_MIN_SIZE	 ((ULONG)0x1000)
 #define PE_MAX_SECTIONS 0xFFFF
+#define REGISTRY_VALUE_SIZE_MIN 1024
 
 void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 PVOID GetHookCallerBase();
-BOOL InsideMonitor(LPVOID* ReturnAddress, LPVOID Address);
+BOOL InsideMonitor(PVOID* ReturnAddress, PVOID Address);
 PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
+SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
+SIZE_T GetAccessibleSize(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
 double GetEntropy(PUCHAR Buffer);
 BOOL TranslatePathFromDeviceToLetter(__in TCHAR *DeviceFilePath, __out TCHAR* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize);
-DWORD GetEntryPoint(LPVOID Address);
-BOOL DumpPEsInRange(LPVOID Buffer, SIZE_T Size);
+DWORD GetEntryPoint(PVOID Address);
+BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
-int DumpMemory(LPVOID Buffer, SIZE_T Size);
-int DumpCurrentProcessNewEP(LPVOID NewEP);
-int DumpImageInCurrentProcessFixImports(LPVOID BaseAddress, LPVOID NewEP);
-int DumpCurrentProcessFixImports(LPVOID NewEP);
+int DumpMemory(PVOID Buffer, SIZE_T Size);
+int DumpCurrentProcessNewEP(PVOID NewEP);
+int DumpImageInCurrentProcessFixImports(PVOID BaseAddress, PVOID NewEP);
+int DumpCurrentProcessFixImports(PVOID NewEP);
 int DumpCurrentProcess();
-int DumpProcess(HANDLE hProcess, LPVOID ImageBase, LPVOID NewEP);
-int DumpPE(LPVOID Buffer);
-int ScanForNonZero(LPVOID Buffer, SIZE_T Size);
-int ScanPageForNonZero(LPVOID Address);
-int ScanForPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
-int ScanForDisguisedPE(LPVOID Buffer, SIZE_T Size, LPVOID* Offset);
-int IsDisguisedPEHeader(LPVOID Buffer);
-int DumpImageInCurrentProcess(LPVOID ImageBase);
+int DumpProcess(HANDLE hProcess, PVOID ImageBase, PVOID NewEP, BOOL FixImports);
+int DumpPE(PVOID Buffer);
+int ScanForNonZero(PVOID Buffer, SIZE_T Size);
+int ScanPageForNonZero(PVOID Address);
+int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
+int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
+int IsDisguisedPEHeader(PVOID Buffer);
+int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
 BOOL DumpStackRegion(void);
 
@@ -66,7 +69,7 @@ PVOID CallingModule;
 //
 //  STATUS_SUCCESS
 //
-#define STATUS_SUCCESS                   ((NTSTATUS)0x00000000L)
+#define STATUS_SUCCESS				   ((NTSTATUS)0x00000000L)
 
 //
 // MessageId: STATUS_BAD_COMPRESSION_BUFFER
@@ -75,7 +78,7 @@ PVOID CallingModule;
 //
 // The specified buffer contains ill-formed data.
 //
-#define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
+#define STATUS_BAD_COMPRESSION_BUFFER	((NTSTATUS)0xC0000242L)
 
 #define	PE_HEADER_LIMIT		0x200	// Range to look for PE header within candidate buffer
 
@@ -85,7 +88,7 @@ PVOID CallingModule;
 
 #define	DATA				0
 #define	EXECUTABLE			1
-#define	DLL			        2
+#define	DLL					2
 
 #define PLUGX_SIGNATURE		0x5658	// 'XV'
 
@@ -100,6 +103,7 @@ typedef struct CapeMetadata
     DWORD	TargetPid;      // "
     PVOID   Address;        // For shellcode/modules
 	SIZE_T  Size;           // "
+	char*	TypeString;
 } CAPEMETADATA, *PCAPEMETADATA;
 
 struct CapeMetadata *CapeMetaData;
@@ -107,42 +111,44 @@ struct CapeMetadata *CapeMetaData;
 BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
 enum {
-    PROCDUMP                = 0,
+	PROCDUMP = 0,
 
-    COMPRESSION             = 1,
+	COMPRESSION = 1,
 
-    INJECTION_PE            = 3,
-    INJECTION_SHELLCODE     = 4,
-    //INJECTION_RUNPE         = 5,
+	INJECTION_PE = 3,
+	INJECTION_SHELLCODE	= 4,
 
-    UNPACKED_PE           = 8,
-    UNPACKED_SHELLCODE    = 9,
+	UNPACKED_PE = 8,
+	UNPACKED_SHELLCODE = 9,
 
-    PLUGX_PAYLOAD           = 0x10,
-    PLUGX_CONFIG            = 0x11,
+	PLUGX_PAYLOAD = 0x10,
+	PLUGX_CONFIG = 0x11,
 
-    EVILGRAB_PAYLOAD        = 0x14,
-    EVILGRAB_DATA           = 0x15,
+	EVILGRAB_PAYLOAD = 0x14,
+	EVILGRAB_DATA = 0x15,
 
-    SEDRECO_DATA            = 0x20,
+	SEDRECO_DATA = 0x20,
 
-    URSNIF_CONFIG           = 0x24,
-    URSNIF_PAYLOAD          = 0x25,
+	URSNIF_CONFIG = 0x24,
+	URSNIF_PAYLOAD = 0x25,
 
-    CERBER_CONFIG           = 0x30,
-    CERBER_PAYLOAD          = 0x31,
+	CERBER_CONFIG = 0x30,
+	CERBER_PAYLOAD = 0x31,
 
-    HANCITOR_CONFIG         = 0x34,
-    HANCITOR_PAYLOAD        = 0x35,
+	HANCITOR_CONFIG = 0x34,
+	HANCITOR_PAYLOAD = 0x35,
 
-    QAKBOT_CONFIG           = 0x38,
-    QAKBOT_PAYLOAD          = 0x39,
+	QAKBOT_CONFIG = 0x38,
+	QAKBOT_PAYLOAD = 0x39,
 
-    DATADUMP                = 0x66,
+	DATADUMP = 0x66,
+	REGDUMP = 0x67,
 
-    STACK_REGION            = 0x6c,
+	STACK_REGION = 0x6c,
 
-    UPX                     = 0x1000
+	TYPE_STRING = 0x100,
+
+	UPX = 0x1000
 };
 
 HANDLE EvilGrabRegHandle;
