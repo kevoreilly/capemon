@@ -965,7 +965,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 					TraceOutput(CIP, DecodedInstruction);
 			}
 			else if (!FilterTrace || g_config.trace_all)
-				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", CallTarget);
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 		}
 		else if (DecodedInstruction.size > 4)
 		{
@@ -1088,7 +1088,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExportName)
 			{
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 				StepOver = TRUE;
 			}
 			else if (!FilterTrace || g_config.trace_all)
@@ -1214,13 +1214,12 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			{
 				ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)JumpTarget, &DllRVA);
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s%s::%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ModuleName, ExportName);
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 				if (!g_config.trace_all)
 					ForceStepOver = TRUE;
 			}
 			else if (!FilterTrace || g_config.trace_all)
-				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p,
-			DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 
 			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
 			//	ForceStepOver = TRUE;
@@ -1250,7 +1249,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 		}
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
@@ -1856,7 +1855,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
-				DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 				StepOver = TRUE;
 			}
 			else
@@ -1996,7 +1995,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 					ForceStepOver = TRUE;
 			}
 			else if (!FilterTrace || g_config.trace_all)
-				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 
 			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
 			//	ForceStepOver = TRUE;
@@ -2023,7 +2022,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			}
 			else
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 		}
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
