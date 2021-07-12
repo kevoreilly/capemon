@@ -1136,17 +1136,11 @@ int read_config(void)
 		DebugOutput("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
 	}
 
-	/* if no option supplied for dropped limit set a sensible value */
-	if (!g_config.dropped_limit) {
-		g_config.dropped_limit = DROPPED_LIMIT;
-		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
-	}
-
 	if (g_config.tlsdump) {
 		g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
-		g_config.dropped_limit = 0;
+		g_config.dropped_limit = DROPPED_LIMIT;
 		g_config.injection = 0;
 		g_config.compression = 0;
 		g_config.caller_dump = 0;
@@ -1163,6 +1157,12 @@ int read_config(void)
 
 	if (TraceDepthLimit == 0xFFFFFFFF)
 		TraceDepthLimit = 1;
+
+	/* if no option supplied for dropped limit set a sensible value */
+	if (!g_config.dropped_limit) {
+		g_config.dropped_limit = DROPPED_LIMIT;
+		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
+	}
 
 	fclose(fp);
 	if (!g_config.standalone)
