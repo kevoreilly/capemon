@@ -544,7 +544,7 @@ static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
 			CloseHandle(RemoteThreadHandle);
 			VirtualFreeEx(ProcessHandle, Pointers.DllPath, SystemInfo.dwPageSize, MEM_RELEASE);
 
-			if (!ExitCode)
+			if (ExitCode)
 			{
 				RtlNtStatusToDosError = (_RtlNtStatusToDosError)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlNtStatusToDosError");
 				SetLastError(RtlNtStatusToDosError(ExitCode));
