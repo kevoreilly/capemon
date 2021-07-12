@@ -20,6 +20,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <windows.h>
 #include "Shlwapi.h"
 #include "YaraHarness.h"
+#include "..\config.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
@@ -218,7 +219,8 @@ BOOL YaraInit()
 	int flags = 0;
 
 	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(analyzer_path);
+	if (!g_config.standalone)
+		PathRemoveFileSpec(analyzer_path);
 	PathRemoveFileSpec(analyzer_path);
 	sprintf(yara_dir, "%s\\data\\yara", analyzer_path);
 	sprintf(compiled_rules, "%s\\capemon.yac", yara_dir);
@@ -233,10 +235,12 @@ BOOL YaraInit()
 
 		fclose(rule_file);
 
-		if (Result != ERROR_SUCCESS)
-			ScannerError(Result);
-		else
+		if (Result == ERROR_SUCCESS)
 			DebugOutput("YaraInit: Compiled rules loaded from existing file %s\n", compiled_rules);
+		else if (Result == ERROR_COULD_NOT_OPEN_FILE)
+			DebugOutput("YaraInit: Unable to load existing compiled rules file %s\n", compiled_rules);
+		else
+			ScannerError(Result);
 	}
 	else
 	{
@@ -249,6 +253,9 @@ BOOL YaraInit()
 		char FindString[MAX_PATH];
 		WIN32_FIND_DATA FindFileData;
 		sprintf(FindString, "%s\\*.yar*", yara_dir);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("YaraInit: Yara search string: %s", FindString);
+#endif
 		HANDLE hFind = FindFirstFile(FindString, &FindFileData);
 		if (hFind != INVALID_HANDLE_VALUE)
 		{
@@ -264,7 +271,9 @@ BOOL YaraInit()
 					{
 						int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
 
-						if (errors)
+						if (errors == ERROR_COULD_NOT_OPEN_FILE)
+							DebugOutput("YaraInit: Unable to open file %s\n", file_name);
+						else if (errors)
 							ScannerError(errors);
 						else
 							DebugOutput("YaraInit: Compiled rule file %s\n", file_name);
