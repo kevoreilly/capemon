@@ -2047,7 +2047,7 @@ void CAPE_init()
 	// Initialise CAPE global variables
 	//
 	//if (!g_config.standalone)
-	CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
+	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA),1);
 	CapeMetaData->Pid = GetCurrentProcessId();
 	CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
 	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
