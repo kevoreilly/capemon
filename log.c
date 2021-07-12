@@ -1191,6 +1191,10 @@ void log_init(int debug)
 	if (g_sock == DEBUG_SOCKET) {
 		char pid[8];
 		char* filename = GetResultsPath("API");
+		if (!filename) {
+			pipe("CRITICAL:Error initializing debug logging!");
+			return;
+		}
 		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
 		strcat(filename, "\\");
 		strcat(filename, pid);
