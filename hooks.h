@@ -3208,3 +3208,10 @@ HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
 HOOKDEF(BOOL, WINAPI, SwitchToThread,
 	void
 );
+
+HOOKDEF(DWORD, WINAPI, DsEnumerateDomainTrustsW,
+	__in	LPWSTR	ServerName,
+	__in	ULONG	Flags,
+	__out	PVOID 	*Domains,
+	__out	PULONG	DomainCount
+);

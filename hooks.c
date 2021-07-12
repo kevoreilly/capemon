@@ -503,6 +503,7 @@ hook_t full_hooks[] = {
 	HOOK(netapi32, NetUserGetInfo),
 	HOOK(netapi32, NetGetJoinInformation),
 	HOOK(netapi32, NetUserGetLocalGroups),
+	HOOK(netapi32, DsEnumerateDomainTrustsW),
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
 	HOOK(urlmon, ObtainUserAgentString),

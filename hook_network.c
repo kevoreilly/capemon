@@ -969,3 +969,18 @@ HOOKDEF(HRESULT, WINAPI, CoInternetSetFeatureEnabled,
 
 	return ret;
 }
+
+HOOKDEF(DWORD, WINAPI, DsEnumerateDomainTrustsW,
+	__in	LPWSTR	ServerName,
+	__in	ULONG	Flags,
+	__out	PVOID 	*Domains,
+	__out	PULONG	DomainCount
+)
+{
+	DWORD ret = Old_DsEnumerateDomainTrustsW(ServerName, Flags, Domains, DomainCount);
+	if (ServerName)
+		LOQ_zero("network", "u", "ServerName", ServerName);
+	else
+		LOQ_zero("network", "u", "ServerName", L"localhost");
+	return ret;
+}
