@@ -783,6 +783,8 @@ hook_t tls_hooks[] = {
 	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c2680c4, 0xd690),
 	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e1def, 0x4be0),
 	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e1def, 0xd690),
+	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e240c, 0x4be0),
+	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e240c, 0xd690),
 	HOOK_FUNCRVA(ncrypt, PRF, 0x54d04091, 0x4ca0),
 	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x54d04091, 0xe250),
 #else
