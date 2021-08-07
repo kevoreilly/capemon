@@ -816,7 +816,6 @@ extern "C" PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName)
 extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
 //**************************************************************************************
 {
-	ApiReader apiReader;
 	unsigned int ModuleIndex = 0;
 
 	ScyllaInit(NULL);
@@ -855,20 +854,7 @@ extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
 		return NULL;
 	}
 
-	if (!peFile->hasExportDirectory())
-	{
-#ifdef DEBUG_COMMENTS
-		DebugOutput("ScyllaGetExportDirectory: Module has no exports.\n");
-#endif
-		delete peFile;
-		return NULL;
-	}
-
-	apiReader.clearAll();
-
-	// This creates moduleInfo->apiList
-	apiReader.parseModuleWithOwnProcess(&ProcessAccessHelp::ownModuleList[ModuleIndex-1]);
-	char *DirectoryName = (&ProcessAccessHelp::ownModuleList[ModuleIndex-1])->DirectoryName;
+	char* DirectoryName = peFile->getExportDirectory();
 
 	if (DirectoryName)
 	{

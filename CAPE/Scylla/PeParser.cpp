@@ -182,6 +182,28 @@ bool PeParser::hasRelocationDirectory()
 	return hasDirectory(IMAGE_DIRECTORY_ENTRY_BASERELOC);
 }
 
+char* PeParser::getExportDirectory()
+{
+	PIMAGE_EXPORT_DIRECTORY pExportDir;
+
+	if (!hasExportDirectory())
+		return NULL;
+
+	if (isPE32())
+	{
+		pExportDir = (PIMAGE_EXPORT_DIRECTORY)((DWORD_PTR)moduleBaseAddress + pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	}
+	else if (isPE64())
+	{
+		pExportDir = (PIMAGE_EXPORT_DIRECTORY)((DWORD_PTR)moduleBaseAddress + pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	}
+
+	if (pExportDir && pExportDir->Name)
+		return (char*)((DWORD_PTR)pExportDir->Name + (DWORD_PTR)moduleBaseAddress);
+
+	return NULL;
+}
+
 DWORD PeParser::getEntryPoint()
 {
 	if (isPE32())

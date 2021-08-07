@@ -59,7 +59,7 @@ extern PCHAR ScyllaGetExportDirectory(PVOID Address);
 extern PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZE_T ScanSize);
 extern void UnpackerDllInit(PVOID DllBase);
 
-extern void set_hooks_dll(const wchar_t *library);
+extern BOOL set_hooks_dll(const wchar_t *library);
 extern void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library);
 extern void revalidate_all_hooks(void);
 extern void set_hooks();
@@ -175,18 +175,18 @@ VOID CALLBACK New_DllLoadNotification(
 			// unoptimized, but easy
 			add_all_dlls_to_dll_ranges();
 
-			set_hooks_dll(dllname);
-
-			exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
-			if (exportdirectory) {
-				size = strlen(exportdirectory);
-				mbstowcs_s(&numconverted, exportdirectory_w, MAX_PATH, exportdirectory, size+1);
-				for (unsigned int i=0; i<numconverted; i++) {
-					if (!wcsnicmp(exportdirectory_w+i, L".dll", 4))
-						memset(exportdirectory_w+i, 0, sizeof(WCHAR));
+			if (!set_hooks_dll(dllname)) {
+				exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
+				if (exportdirectory) {
+					size = strlen(exportdirectory);
+					mbstowcs_s(&numconverted, exportdirectory_w, MAX_PATH, exportdirectory, size+1);
+					for (unsigned int i=0; i<numconverted; i++) {
+						if (!wcsnicmp(exportdirectory_w+i, L".dll", 4))
+							memset(exportdirectory_w+i, 0, sizeof(WCHAR));
+					}
+					if (wcsicmp(dllname, exportdirectory_w))
+						set_hooks_by_export_directory(exportdirectory_w, dllname);
 				}
-				if (wcsicmp(dllname, exportdirectory_w))
-					set_hooks_by_export_directory(exportdirectory_w, dllname);
 			}
 
 			//if (g_config.debugger) {
