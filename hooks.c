@@ -1769,14 +1769,17 @@ BOOL inside_hook(LPVOID Address)
 	return FALSE;
 }
 
-void set_hooks_dll(const wchar_t *library)
+BOOL set_hooks_dll(const wchar_t *library)
 {
+	BOOL ret = FALSE;
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
 		if (!wcsicmp((hooks+i)->library, library)) {
+			BOOL ret = TRUE;
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
 		}
 	}
+	return ret;
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
