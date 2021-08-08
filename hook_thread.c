@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+//#define DEBUG_COMMENTS
 
 #include <stdio.h>
 #include "ntapi.h"
@@ -28,14 +29,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 
+extern _RtlNtStatusToDosError pRtlNtStatusToDosError;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
 extern void NtContinueHandler(PCONTEXT ThreadContext);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
-extern BOOL BreakpointsSet;
-unsigned int TestFlag = 0;
+extern BOOL BreakpointsSet, BreakOnNtContinue;
+extern PVOID BreakOnNtContinueCallback;
+extern int StepOverRegister;
 
 static lookup_t g_ignored_threads;
 
@@ -303,17 +306,20 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 
 	if (g_config.debugger && Context && Context->ContextFlags & CONTEXT_CONTROL) {
 		CONTEXT CurrentContext;
+		CurrentContext.ContextFlags = CONTEXT_CONTROL;
 		ret = Old_NtGetContextThread(ThreadHandle, &CurrentContext);
 		if (NT_SUCCESS(ret)) {
-			Context->Dr0 = CurrentContext.Dr0;
-			Context->Dr1 = CurrentContext.Dr1;
-			Context->Dr2 = CurrentContext.Dr2;
-			Context->Dr3 = CurrentContext.Dr3;
-			Context->Dr6 = CurrentContext.Dr6;
-			Context->Dr7 = CurrentContext.Dr7;
+			PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(tid);
+			if (ThreadBreakpoints)
+			{
+				DebugOutput("NtSetContextThread hook: protecting breakpoints for thread %d.\n", tid);
+				ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+			}
 		}
-		else
-			DebugOutput("NtSetContextThread: Failed to protect debugger breakpoints.\n");
+		else {
+			SetLastError(pRtlNtStatusToDosError(ret));
+			ErrorOutput("NtSetContextThread: Failed to protect debugger breakpoints");
+		}
 	}
 
 	ret = Old_NtSetContextThread(ThreadHandle, Context);
@@ -603,8 +609,52 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
 )
 {
 	NTSTATUS ret = 0;
-	if (g_config.debugger)
-		NtContinueHandler(ThreadContext);
+	DWORD ThreadId = GetCurrentThreadId();
+	if (g_config.debugger) {
+		PTHREADBREAKPOINTS Bps = GetThreadBreakpoints(ThreadId);
+		if (Bps) {
+#ifdef DEBUG_COMMENTS
+			DebugOutput("NtContinue hook: restoring breakpoints for thread %d: Dr0 0x%x, Dr1 0x%x, Dr2 0x%x, Dr3 0x%x\n", ThreadId, ThreadContext->Dr0, ThreadContext->Dr1, ThreadContext->Dr2, ThreadContext->Dr3);
+#endif
+			if (ThreadContext->Dr0 && (PVOID)ThreadContext->Dr0 == Bps->BreakpointInfo[0].Address)
+				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[0].Register, Bps->BreakpointInfo[0].Size, Bps->BreakpointInfo[0].Address, Bps->BreakpointInfo[0].Type, Bps->BreakpointInfo[0].HitCount, Bps->BreakpointInfo[0].Callback, TRUE);
+			if (ThreadContext->Dr1 && (PVOID)ThreadContext->Dr1 == Bps->BreakpointInfo[1].Address)
+				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[1].Register, Bps->BreakpointInfo[1].Size, Bps->BreakpointInfo[1].Address, Bps->BreakpointInfo[1].Type, Bps->BreakpointInfo[1].HitCount, Bps->BreakpointInfo[1].Callback, TRUE);
+			if (ThreadContext->Dr2 && (PVOID)ThreadContext->Dr2 == Bps->BreakpointInfo[2].Address)
+				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[2].Register, Bps->BreakpointInfo[2].Size, Bps->BreakpointInfo[2].Address, Bps->BreakpointInfo[2].Type, Bps->BreakpointInfo[2].HitCount, Bps->BreakpointInfo[2].Callback, TRUE);
+			if (ThreadContext->Dr3 && (PVOID)ThreadContext->Dr3 == Bps->BreakpointInfo[3].Address)
+				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[3].Register, Bps->BreakpointInfo[3].Size, Bps->BreakpointInfo[3].Address, Bps->BreakpointInfo[3].Type, Bps->BreakpointInfo[3].HitCount, Bps->BreakpointInfo[3].Callback, TRUE);
+		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("NtContinue hook: Unable to restore breakpoints for thread %d.\n", ThreadId);
+#endif
+
+#ifndef _WIN64
+		if (BreakOnNtContinue) {
+			BreakOnNtContinue = FALSE;
+			for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++) {
+				if (!Bps->BreakpointInfo[Register].Address) {
+					ContextSetThreadBreakpointEx(ThreadContext, Register, 0, (PBYTE)ThreadContext->Eip, BP_EXEC, 0, BreakOnNtContinueCallback, TRUE);
+					break;
+				}
+			}
+			BreakOnNtContinueCallback = NULL;
+		}
+		else if (BreakOnNtContinueCallback) {
+			//BreakOnNtContinue = TRUE;
+			PEXCEPTION_REGISTRATION_RECORD SEH = (PEXCEPTION_REGISTRATION_RECORD)__readfsdword(0);
+			for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++) {
+				if (!Bps->BreakpointInfo[Register].Address) {
+					ContextSetThreadBreakpointEx(ThreadContext, Register, 0, (PBYTE)SEH->Handler, BP_EXEC, 0, BreakOnNtContinueCallback, TRUE);
+					StepOverRegister = Register;
+					break;
+				}
+			}
+			BreakOnNtContinueCallback = NULL;
+		}
+#endif
+	}
 	ret = Old_NtContinue(ThreadContext, RaiseAlert);
 	return ret;
 }

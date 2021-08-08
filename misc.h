@@ -95,6 +95,10 @@ typedef NTSTATUS(WINAPI *_LdrRegisterDllNotification)(
 	_Out_	PVOID						  *Cookie
 );
 
+typedef ULONG(WINAPI *_RtlNtStatusToDosError)(
+	NTSTATUS Status
+);
+
 typedef void (WINAPI *_CoTaskMemFree)(LPVOID pv);
 typedef HRESULT (WINAPI *_ProgIDFromCLSID)(
 	_In_  REFCLSID clsid,

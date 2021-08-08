@@ -205,7 +205,9 @@ struct _g_config {
 
 	// debugger breakpoints
 	PVOID bp0, bp1, bp2, bp3;
+	BOOLEAN zerobp0, zerobp1, zerobp2, zerobp3;
 	PVOID bp4, bp5, bp6, bp7;
+	BOOLEAN zerobp4, zerobp5, zerobp6, zerobp7;
 	// break-on-return: brX
 	PVOID br0, br1, br2, br3;
 	// Hit count

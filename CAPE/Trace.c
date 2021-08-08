@@ -53,9 +53,9 @@ extern void loq(int index, const char *category, const char *name,
 extern PVOID _KiUserExceptionDispatcher;
 
 char *ModuleName, *PreviousModuleName;
-PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress;
+PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
-BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning;
+BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
 unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
@@ -712,7 +712,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 
 #ifdef _WIN64
-	if (!FilterTrace && LastContext.Rip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -776,7 +776,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
 			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
 #else
-	if (!FilterTrace && LastContext.Eip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -1267,16 +1267,67 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
 		ForceStepOver = TRUE;
 	}
-#endif
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "INT 3"))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+		BreakOnNtContinueCallback = BreakpointCallback;
+		//LastContext = *ExceptionInfo->ContextRecord;
+		//ClearSingleStepMode(ExceptionInfo->ContextRecord);
+		//ReturnAddress = NULL;
+		//return TRUE;
+	}
+
+#endif
+#ifndef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
 	{
 		if (!FilterTrace)
 			TraceOutput(CIP, DecodedInstruction);
 
-		// Better than nothing for now
-		ForceStepOver = TRUE;
+		if (InsideMonitor(NULL, CIP))
+		{
+			DebuggerOutput("\nInternal POP SS detected.\n");
+		}
+		//else
+		//{
+			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (PVOID)ExceptionInfo->ContextRecord->Esp, BP_READWRITE, 0, BreakpointCallback))
+			{
+				DebugOutput("Trace: Set stack breakpoint before POP SS at 0x%p\n", CIP);
+				LastContext = *ExceptionInfo->ContextRecord;
+				ClearSingleStepMode(ExceptionInfo->ContextRecord);
+				ReturnAddress = NULL;
+				return TRUE;
+			}
+			else
+				DebugOutput("Trace: Failed to set stack breakpoint on 0x%p\n", ExceptionInfo->ContextRecord->Esp);
+		//}
 	}
-    //else if (!InsideMonitor(NULL, CIP) && (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF") ||
+//#else
+//	else if (!strcmp(DecodedInstruction.mnemonic.p, "MOV") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
+//	{
+//		TraceOutput(CIP, DecodedInstruction);
+//
+//		if (InsideMonitor(NULL, CIP))
+//		{
+//			DebuggerOutput("\nInternal MOV SS detected.\n");
+//
+//			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, &StackSelector, BP_READWRITE, 0, BreakpointCallback))
+//			{
+//				DebugOutput("DoSyscall: Set breakpoint before MOV SS at 0x%p\n", ExceptionInfo->ContextRecord->Rip);
+//				//TraceRunning = FALSE;
+//				//LastContext = *ExceptionInfo->ContextRecord;
+//				//ClearSingleStepMode(ExceptionInfo->ContextRecord);
+//				//ReturnAddress = NULL;
+//				//return TRUE;
+//				ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+//				ForceStepOver = TRUE;
+//			}
+//			else
+//				DebugOutput("DoSyscall: Failed to set stack breakpoint on 0x%p\n", (PBYTE)ExceptionInfo->ContextRecord->Rsp-8);
+//		}
+//	}
+#endif
     else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
     {
         if (!FilterTrace)
@@ -1340,11 +1391,15 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		//DebugOutput("Trace: Restoring single-step mode!\n");
 	}
 	else
-		DebugOutput("Trace: Stopping trace!n");
+	{
+		DebugOutput("Trace: Stopping trace!\n");
+		TraceRunning = FALSE;
+	}
 #else
 	}
+	else
+		TraceRunning = FALSE;
 #endif
-	TraceRunning = FALSE;
 	ReturnAddress = NULL;
 	return TRUE;
 }
@@ -1520,7 +1575,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	StepCount++;
 
 #ifdef _WIN64
-	if (!FilterTrace && LastContext.Rip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -1584,7 +1639,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
 			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
 #else
-	if (!FilterTrace && LastContext.Eip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -2339,7 +2394,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
 			if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, 0, BreakpointCallback))
 			{
-				DebuggerOutput("Breakpoint %d set on entry point at 0x%p.\n", Register, EntryPoint);
+				DebuggerOutput("Breakpoint %d set on entry point at 0x%p\n", Register, EntryPoint);
 				BreakpointsSet = TRUE;
 				g_config.bp0 = EntryPoint;
 			}
@@ -2362,6 +2417,18 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
 	if (g_config.bp3)
 		SetConfigBP(ImageBase, 3, g_config.bp3);
+
+	if (g_config.zerobp0)
+		SetConfigBP(ImageBase, 0, 0);
+
+	if (g_config.zerobp1)
+		SetConfigBP(ImageBase, 1, 0);
+
+	if (g_config.zerobp2)
+		SetConfigBP(ImageBase, 2, 0);
+
+	if (g_config.zerobp3)
+		SetConfigBP(ImageBase, 3, 0);
 
 	if (!g_config.bp0 && g_config.br0)
 	{

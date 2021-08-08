@@ -594,13 +594,13 @@ HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 WAITORTIMERCALLBACK HookedCallback;
 
 typedef VOID(CALLBACK *_WaitOrTimerCallback)(
-  _In_ PVOID   lpParameter,
-  _In_ BOOLEAN TimerOrWaitFired
+  _In_ PVOID	lpParameter,
+  _In_ BOOLEAN	TimerOrWaitFired
 );
 
 VOID CALLBACK WaitOrTimerCallbackHook(
-  _In_ PVOID   lpParameter,
-  _In_ BOOLEAN TimerOrWaitFired
+  _In_	PVOID   lpParameter,
+  _In_	BOOLEAN TimerOrWaitFired
 )
 {
 	_WaitOrTimerCallback pWaitOrTimerCallback;
@@ -624,13 +624,13 @@ VOID CALLBACK WaitOrTimerCallbackHook(
 }
 
 HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
-  _Out_	PHANDLE			 phNewTimer,
-  _In_opt_ HANDLE			  TimerQueue,
-  _In_	 WAITORTIMERCALLBACK Callback,
-  _In_opt_ PVOID			   Parameter,
-  _In_	 DWORD			   DueTime,
-  _In_	 DWORD			   Period,
-  _In_	 ULONG			   Flags
+  _Out_		PHANDLE				phNewTimer,
+  _In_opt_	HANDLE				TimerQueue,
+  _In_		WAITORTIMERCALLBACK	Callback,
+  _In_opt_	PVOID				Parameter,
+  _In_		DWORD				DueTime,
+  _In_		DWORD				Period,
+  _In_		ULONG				Flags
 ) {
 	BOOL ret;
 	

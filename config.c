@@ -316,6 +316,10 @@ void parse_config_line(char* line)
 						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp0 set to zero.\n");
+				g_config.zerobp0 = TRUE;
+			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp0 set to entry point.\n", g_config.bp0);
 				EntryPointRegister = 1;
@@ -380,6 +384,10 @@ void parse_config_line(char* line)
 					else
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
+			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp1 set to zero.\n");
+				g_config.zerobp1 = TRUE;
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp1 set to entry point.\n", g_config.bp1);
@@ -446,6 +454,10 @@ void parse_config_line(char* line)
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp2 set to zero.\n");
+				g_config.zerobp2 = TRUE;
+			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp2 set to entry point.\n", g_config.bp2);
 				EntryPointRegister = 1;
@@ -511,6 +523,10 @@ void parse_config_line(char* line)
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp3 set to zero.\n");
+				g_config.zerobp3 = TRUE;
+			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp3 set to entry point.\n", g_config.bp3);
 				EntryPointRegister = 1;
@@ -575,6 +591,10 @@ void parse_config_line(char* line)
 					else
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
+			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp4 set to zero.\n");
+				g_config.zerobp4 = TRUE;
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp4 set to entry point.\n", g_config.bp4);

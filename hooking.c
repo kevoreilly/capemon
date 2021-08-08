@@ -115,7 +115,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		else if (g_config.caller_dump && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
 			DumpRegion((PVOID)addr);
 		else
-			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
+			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
 	}
 }
 
