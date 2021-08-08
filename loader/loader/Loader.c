@@ -1512,10 +1512,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		__try
 		{
 			Payload();
+			DebugOutput("Successfully executed payload at 0x%p.\n", (PBYTE)PayloadBuffer + Offset);
 		}
 		__except(EXCEPTION_EXECUTE_HANDLER)
 		{
-			DebugOutput("Exception executing payload at 0x%p.\n", PayloadBuffer);
+			DebugOutput("Exception executing payload at 0x%p.\n", (PBYTE)PayloadBuffer + Offset);
 		}
 
 		free(PayloadBuffer);
