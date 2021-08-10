@@ -1121,12 +1121,6 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 			else if (NtSection->Misc.VirtualSize)
 				MinSize = NtSection->Misc.VirtualSize;
 
-			if (NtSection->VirtualAddress + MinSize > (ULONG)pNtHeader->OptionalHeader.SizeOfImage)
-			{
-				DebugOutput("TestPERequirements: Possible PE image rejected due to section %d of %d, RVA 0x%x and size %d bytes.\n", i+1, pNtHeader->FileHeader.NumberOfSections, NtSection->VirtualAddress, MinSize);
-				return FALSE;
-			}
-
 			++NtSection;
 		}
 
