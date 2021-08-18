@@ -863,7 +863,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 					FilterTrace = TRUE;
 				}
 				else
-					DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
+					DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
 
 				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
 				{
@@ -876,7 +876,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else if (!g_config.branch_trace)
 			{
-				DebuggerOutput("Break in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
+				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
 				PreviousModuleName = ModuleName;
 				FunctionName = NULL;
 				ModuleName = NULL;
@@ -1673,8 +1673,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	if (!FilterTrace)
 		DebuggerOutput("\n");
-	else
-		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+
+	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
 
 	if (ModuleName)
 	{
