@@ -24,6 +24,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\hooking.h"
 #include "..\log.h"
 #include "..\pipe.h"
+#include "..\config.h"
 #include "Debugger.h"
 #include "CAPE.h"
 #include "Injection.h"
@@ -622,6 +623,25 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
 #endif
 }
 
+BOOL CheckDontMonitorList(WCHAR* TargetProcess)
+{
+	const wchar_t *DontMonitorList[] =
+	{
+		L"c:\\windows\\splwow64.exe",
+	};
+
+	if (!g_config.file_of_interest || !g_config.suspend_logging)
+		return FALSE;
+
+	for (unsigned int i=0; i<ARRAYSIZE(DontMonitorList); i++)
+	{
+		if (!wcsicmp(TargetProcess, DontMonitorList[i]))
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
 void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation)
 {
 	WCHAR TargetProcess[MAX_PATH];
@@ -662,6 +682,8 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine, wcslen(lpCommandLine)+1);
 		}
 	}
+
+	CurrentInjectionInfo->DontMonitor = CheckDontMonitorList(TargetProcess);
 
 	if (lpApplicationName || lpCommandLine)
 		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
@@ -767,7 +789,10 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 	else if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
 	{
 		CurrentInjectionInfo->MapDetected = TRUE;
-		CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
+		CurrentSectionView = GetSectionView(SectionHandle);
+
+		if (!CurrentSectionView)
+			CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
 
 		if (CurrentSectionView)
 		{
@@ -775,27 +800,20 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
 		}
 		else
-		{
 			DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
-		}
 	}
 	else if (!CurrentInjectionInfo && Pid != GetCurrentProcessId())
 	{
-		CurrentInjectionInfo->MapDetected = TRUE;
 		CurrentInjectionInfo = CreateInjectionInfo(Pid);
 
-		if (CurrentInjectionInfo == NULL)
+		if (CurrentInjectionInfo)
 		{
-			DebugOutput("MapSectionViewHandler: Cannot create new injection info - error.\n");
-		}
-		else
-		{
+			CurrentInjectionInfo->MapDetected = TRUE;
 			CurrentInjectionInfo->ProcessHandle = ProcessHandle;
 			CurrentInjectionInfo->ProcessId = Pid;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
 			CapeMetaData->TargetProcess = (char*)malloc(BufferSize);
-
 			CurrentInjectionInfo->ImageBase = (DWORD_PTR)get_process_image_base(ProcessHandle);
 
 			if (CurrentInjectionInfo->ImageBase)
@@ -811,7 +829,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
 				ErrorOutput("MapSectionViewHandler: Error translating target process path");
 
-			CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
+			CurrentSectionView = GetSectionView(SectionHandle);
 
 			if (CurrentSectionView)
 			{
@@ -819,7 +837,17 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 				DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
 			}
 			else
-				DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
+			{
+				CurrentSectionView = AddSectionView(SectionHandle, NULL, 0);
+
+				if (CurrentSectionView)
+				{
+					CurrentSectionView->TargetProcessId = Pid;
+					DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
+				}
+				else
+					DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
+			}
 		}
 	}
 }
@@ -1089,11 +1117,21 @@ void TerminateHandler()
 
 void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 {
-	if (!ThreadId)
+	PINJECTIONINFO CurrentInjectionInfo = GetInjectionInfo(ProcessId);
+
+	if (CurrentInjectionInfo && !ThreadId)
+		ThreadId = CurrentInjectionInfo->InitialThreadId;
+
+	if (CurrentInjectionInfo && CurrentInjectionInfo->DontMonitor)
 	{
-		PINJECTIONINFO CurrentInjectionInfo = GetInjectionInfo(ProcessId);
-		if (CurrentInjectionInfo)
-			ThreadId = CurrentInjectionInfo->InitialThreadId;
+		DebugOutput("ProcessMessage: Skipping monitoring process %d", ProcessId);
+		return;
+	}
+
+	if (g_config.single_process)
+	{
+		DebugOutput("ProcessMessage: Skipping monitoring process %d as single-process mode set.", ProcessId);
+		return;
 	}
 
 	pipe("PROCESS:0:%d,%d", ProcessId, ThreadId);
