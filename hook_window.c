@@ -23,7 +23,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "log.h"
 
+#define StringAtomSize 0x100
+
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void DumpSectionViewsForPid(DWORD Pid);
 
 typedef DWORD (WINAPI * __GetWindowThreadProcessId)(
 	__in HWND hWnd,
@@ -207,8 +210,10 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	get_lasterrors(&lasterror);
 	if (hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
-		if (!g_config.single_process && pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId()) {
+			DumpSectionViewsForPid(pid);
 			ProcessMessage(pid, 0);
+		}
 	}
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
@@ -231,8 +236,10 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 	get_lasterrors(&lasterror);
 	if (hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
-		if (!g_config.single_process && pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId()) {
+			DumpSectionViewsForPid(pid);
 			ProcessMessage(pid, 0);
+		}
 	}
 	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
@@ -253,14 +260,15 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
@@ -286,14 +294,15 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
@@ -319,14 +328,15 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
@@ -353,14 +363,15 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 	BOOL isbad = FALSE;
 
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}

@@ -94,7 +94,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-	if (!g_config.single_process && pid != GetCurrentProcessId())
+	if (pid != GetCurrentProcessId())
 		ProcessMessage(pid, tid);
 
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
@@ -119,7 +119,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-	if (!g_config.single_process && pid != GetCurrentProcessId())
+	if (pid != GetCurrentProcessId())
 		ProcessMessage(pid, tid);
 
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
@@ -157,7 +157,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 			InitNewThreadBreakpoints(tid);
 		}
 
-		if (!g_config.single_process && pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId())
 			ProcessMessage(pid, tid);
 
 		if (CreateSuspended == FALSE) {
@@ -211,8 +211,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 				InitNewThreadBreakpoints(tid);
 			}
 
-			if (!g_config.single_process)
-				ProcessMessage(pid, tid);
+			ProcessMessage(pid, tid);
 
 			if (!(CreateFlags & 1)) {
 			lasterror_t lasterror;
@@ -334,7 +333,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 		LOQ_ntstatus("threading", "p", "ThreadHandle", ThreadHandle);
 	//if (g_config.injection)
 	SetThreadContextHandler(pid, Context);
-	if (!g_config.single_process && pid != GetCurrentProcessId())
+	if (pid != GetCurrentProcessId())
 		ProcessMessage(pid, tid);
 
 	return ret;
@@ -359,8 +358,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 			"ProcessId", pid);
 	}
 	else {
-		if (!g_config.single_process)
-			ProcessMessage(pid, tid);
+		ProcessMessage(pid, tid);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 		LOQ_ntstatus("threading", "pLii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
@@ -480,8 +478,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 
 	if (ret != NULL) {
 		if (pid != GetCurrentProcessId())
-			if (!g_config.single_process)
-				ProcessMessage(pid, *lpThreadId);
+			ProcessMessage(pid, *lpThreadId);
 		else if (g_config.debugger && !called_by_hook()) {
 			DebugOutput("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
 			InitNewThreadBreakpoints(*lpThreadId);
@@ -530,8 +527,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	if (NT_SUCCESS(ret) && ClientId && ThreadHandle) {
 		DWORD tid = tid_from_thread_handle(ThreadHandle);
 		if (pid != GetCurrentProcessId())
-			if (!g_config.single_process)
-				ProcessMessage(pid, tid);
+			ProcessMessage(pid, tid);
 		else if (g_config.debugger && !called_by_hook()) {
 			DebugOutput("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
 			InitNewThreadBreakpoints(tid);
