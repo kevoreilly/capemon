@@ -173,9 +173,6 @@ struct _g_config {
 	// Adobe Reader settings
 	int pdf;
 
-	// Microsoft Office settings
-	int office;
-
 	// TLS secret dump mode
 	int tlsdump;
 

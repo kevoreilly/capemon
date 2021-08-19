@@ -1000,15 +1000,6 @@ void parse_config_line(char* line)
 				g_config.api_rate_cap = 2;
 			}
 		}
-		else if (!stricmp(key, "office")) {
-			g_config.office = value[0] == '1';
-			if (g_config.office && g_config.first_process) {
-				DebugOutput("Microsoft Office settings enabled.\n");
-				g_config.caller_dump = 0;
-				g_config.injection = 0;
-				g_config.yarascan = 0;
-			}
-		}
 		else if (!stricmp(key, "api-rate-cap")) {
 			g_config.api_rate_cap = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.api_rate_cap)
