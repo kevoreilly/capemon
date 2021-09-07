@@ -1860,6 +1860,7 @@ void set_hooks()
 			g_config.caller_dump = 0;
 			g_config.injection = 0;
 			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
 			DebugOutput("Microsoft Office settings enabled.\n");
         }
 	}
