@@ -26,7 +26,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 
-extern BOOL FilesDumped;
 extern unsigned int dropped_count;
 extern BOOL DumpRegion(PVOID Address);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -274,7 +273,7 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
 ) {
 	HRESULT ret = Old_URLDownloadToFileW(pCaller, szURL, szFileName, dwReserved, lpfnCB);
 	LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-	if (ret == S_OK && dropped_count < g_config.dropped_limit && !FilesDumped) {
+	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
 		pipe("FILE_NEW:%Z", szFileName);
 		dropped_count++;
 	}
@@ -292,7 +291,7 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
 ) {
 	HRESULT ret = Old_URLDownloadToCacheFileW(lpUnkcalled, szURL, szFilename, cchFilename, dwReserved, pBSC);
 	LOQ_hresult("network", "uFs", "URL", szURL, "Filename", ret == S_OK ? szFilename : L"", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
-	if (ret == S_OK && dropped_count < g_config.dropped_limit && !FilesDumped) {
+	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
 		pipe("FILE_NEW:%Z", szFilename);
 		dropped_count++;
 	}

@@ -139,7 +139,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 
-BOOL ProcessDumped, FilesDumped, ModuleDumped, PlugXConfigDumped;
+BOOL ProcessDumped, ModuleDumped, PlugXConfigDumped;
 PVOID ImageBase;
 char *CommandLine;
 static unsigned int DumpCount;

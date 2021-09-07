@@ -15,7 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+//#define DEBUG_COMMENTS
 #include <stdio.h>
 #include <ctype.h>
 #include "ntapi.h"
@@ -34,9 +34,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define UNILEN(x) (sizeof(x) / sizeof(wchar_t) - 1)
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL FilesDumped;
 extern HANDLE DebuggerLog;
 
+BOOL files_dumped;
 unsigned int dropped_count;
 
 typedef struct _file_record_t {
@@ -65,43 +65,51 @@ void file_init()
 	dropped_count = 0;
 }
 
-static void add_file_to_log_tracking(HANDLE fhandle)
+static void add_file_to_log_tracking(HANDLE file_handle)
 {
-	file_log_t *r = lookup_add(&g_file_logs, (ULONG_PTR)fhandle, sizeof(file_log_t));
-
+	file_log_t *r = lookup_add(&g_file_logs, (ULONG_PTR)file_handle, sizeof(file_log_t));
+#ifdef DEBUG_COMMENTS
+	DebugOutput("add_file_to_log_tracking: Adding file handle to tracking: 0x%x", file_handle);
+#endif
 	memset(r, 0, sizeof(*r));
 }
 
-static unsigned int increment_file_log_read_count(HANDLE fhandle)
+static unsigned int increment_file_log_read_count(HANDLE file_handle)
 {
-	file_log_t *r = lookup_get(&g_file_logs, (ULONG_PTR)fhandle, NULL);
+	file_log_t *r = lookup_get(&g_file_logs, (ULONG_PTR)file_handle, NULL);
 	if (r != NULL)
 		return ++r->read_count;
 	return 0;
 }
 
-static unsigned int increment_file_log_write_count(HANDLE fhandle)
+static unsigned int increment_file_log_write_count(HANDLE file_handle)
 {
-	file_log_t *r = lookup_get(&g_file_logs, (ULONG_PTR)fhandle, NULL);
+	file_log_t *r = lookup_get(&g_file_logs, (ULONG_PTR)file_handle, NULL);
 	if (r != NULL)
 		return ++r->write_count;
 	return 0;
 }
 
-void remove_file_from_log_tracking(HANDLE fhandle)
+void remove_file_from_log_tracking(HANDLE file_handle)
 {
-	lookup_del(&g_file_logs, (ULONG_PTR)fhandle);
+	lookup_del(&g_file_logs, (ULONG_PTR)file_handle);
 }
 
 static void new_file_path_ascii(const char *fname)
 {
-	if (dropped_count >= g_config.dropped_limit || FilesDumped)
+	if (dropped_count >= g_config.dropped_limit) {
+		DebugOutput("Dropped file limit reached.");
 		return;
+	}
+
 	char *absolutename = malloc(32768);
 	if (absolutename != NULL) {
 		unsigned int len;
 		ensure_absolute_ascii_path(absolutename, fname);
 		len = (unsigned int)strlen(absolutename);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("new_file_path_ascii: FILE_NEW %s\n", fname);
+#endif
 		pipe("FILE_NEW:%s", len, absolutename);
 		dropped_count++;
 	}
@@ -109,13 +117,19 @@ static void new_file_path_ascii(const char *fname)
 
 static void new_file_path_unicode(const wchar_t *fname)
 {
-	if (dropped_count >= g_config.dropped_limit || FilesDumped)
+	if (dropped_count >= g_config.dropped_limit) {
+		DebugOutput("Dropped file limit reached.");
 		return;
+	}
+
 	wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
 	if (absolutename != NULL) {
 		unsigned int len;
 		ensure_absolute_unicode_path(absolutename, fname);
 		len = lstrlenW(absolutename);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("new_file_path_unicode: FILE_NEW %s\n", fname);
+#endif
 		pipe("FILE_NEW:%S", len, absolutename);
 		dropped_count++;
 	}
@@ -123,14 +137,21 @@ static void new_file_path_unicode(const wchar_t *fname)
 
 static void new_file(const UNICODE_STRING *obj)
 {
-	if (dropped_count >= g_config.dropped_limit || FilesDumped)
+	if (dropped_count >= g_config.dropped_limit) {
+		DebugOutput("Dropped file limit reached.");
 		return;
+	}
+
 	const wchar_t *str = obj->Buffer;
 	unsigned int len = obj->Length / sizeof(wchar_t);
+
 
 	// maybe it's an absolute path (or a relative path with a harddisk,
 	// such as C:abc.txt)
 	if (isalpha(str[0]) != 0 && str[1] == ':') {
+#ifdef DEBUG_COMMENTS
+		//DebugOutput("new_file: FILE_NEW %ws\n", str);
+#endif
 		pipe("FILE_NEW:%S", len, str);
 		dropped_count++;
 	}
@@ -147,6 +168,9 @@ static void cache_file(HANDLE file_handle, const wchar_t *path,
 	r->length = length_in_chars;
 
 	wcsncpy(r->filename, path, r->length + 1);
+#ifdef DEBUG_COMMENTS
+	DebugOutput("cache_file: Adding file handle to tracking: 0x%x, %ws", file_handle, path);
+#endif
 }
 
 void file_write(HANDLE file_handle)
@@ -158,9 +182,16 @@ void file_write(HANDLE file_handle)
 
 	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
 	if (r == NULL) {
+#ifdef DEBUG_COMMENTS
+		DebugOutput("file_write: Adding file handle to tracking: 0x%x", file_handle);
+#endif
 		r = lookup_add(&g_files, (ULONG_PTR)file_handle, sizeof(file_record_t));
 		memset(r, 0, sizeof(*r));
 	}
+#ifdef DEBUG_COMMENTS
+	else
+		DebugOutput("file_write: File handle already tracked: 0x%x", file_handle);
+#endif
 
 	set_lasterrors(&lasterror);
 }
@@ -264,6 +295,9 @@ void file_close(HANDLE file_handle)
 		str.Buffer = r->filename;
 		new_file(&str);
 		lookup_del(&g_files, (ULONG_PTR) file_handle);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("file_close: Closing tracked file handle: 0x%x", file_handle);
+#endif
 	}
 
 	set_lasterrors(&lasterror);
@@ -276,10 +310,8 @@ void file_handle_terminate()
 	lasterror_t lasterror;
 
 	// ensure this only happens once as we can't lookup_del in the loop
-	if (FilesDumped)
+	if (files_dumped)
 		return;
-
-	FilesDumped = TRUE;
 
 	get_lasterrors(&lasterror);
 
@@ -291,6 +323,9 @@ void file_handle_terminate()
 				str.Length = (USHORT)r->length * sizeof(wchar_t);
 				str.MaximumLength = ((USHORT)r->length + 1) * sizeof(wchar_t);
 				str.Buffer = r->filename;
+#ifdef DEBUG_COMMENTS
+				//DebugOutput("file_handle_terminate: new_file %ws", r->filename);
+#endif
 				new_file(&str);
 			}
 		}
@@ -302,6 +337,11 @@ void file_handle_terminate()
 		DebuggerLog = NULL;
 	}
 
+	files_dumped = TRUE;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("file_handle_terminate complete");
+#endif
 	set_lasterrors(&lasterror);
 }
 
@@ -506,7 +546,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 		else if (write_count == 50) {
 			LOQ_ntstatus("filesystem", "pFbls", "FileHandle", FileHandle,
 				"HandleName", fname, "Buffer", length, Buffer, "Length", length, "Status", "Maximum logged writes reached for this file");
-
 		}
 
 		free(fname);
@@ -529,6 +568,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeleteFile,
 	ensure_absolute_unicode_path(absolutepath, path);
 
 	if (dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
+		DebugOutput("NtDeleteFile: FILE_DEL %ws\n", absolutepath);
+#endif
 		pipe("FILE_DEL:%Z", absolutepath);
 		dropped_count++;
 	}
@@ -709,6 +751,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 			FileInformationClass == FileDispositionInformation &&
 			dropped_count < g_config.dropped_limit &&
 			*(BOOLEAN *) FileInformation != FALSE) {
+#ifdef DEBUG_COMMENTS
+		DebugOutput("NtSetInformationFile: FILE_DEL %ws\n", absolutepath);
+#endif
 		pipe("FILE_DEL:%Z", absolutepath);
 		dropped_count++;
 	}
@@ -724,6 +769,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 
 	if (FileInformation != NULL && FileInformationClass == FileRenameInformation) {
 		if (NT_SUCCESS(ret) && dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
+			DebugOutput("NtSetInformationFile: FILE_MOVE %ws::%ws\n", absolutepath, renamepath);
+#endif
 			pipe("FILE_MOVE:%Z::%Z", absolutepath, renamepath);
 			dropped_count++;
 		}
@@ -871,12 +919,17 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 		"NewFileName", lpNewFileName, "Flags", dwFlags);
 	if (ret != FALSE) {
 		if (lpNewFileName && dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
 			DebugOutput("MoveFileWithProgressW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
+#endif
 			pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
 			dropped_count++;
 		}
 		else if (dropped_count < g_config.dropped_limit) {
 			// we can do this here because it's not scheduled for deletion until reboot
+#ifdef DEBUG_COMMENTS
+			DebugOutput("MoveFileWithProgressW: FILE_DEL %ws\n", path);
+#endif
 			pipe("FILE_DEL:%Z", path);
 			dropped_count++;
 		}
@@ -934,12 +987,18 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 		if (ret != FALSE) {
 			if (lpNewFileName)
 				if (dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
+					DebugOutput("MoveFileWithProgressTransactedW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
+#endif
 					pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
 					dropped_count++;
 				}
 			else {
 				// we can do this here because it's not scheduled for deletion until reboot
 				if (dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
+					DebugOutput("MoveFileWithProgressTransactedW: FILE_DEL %ws\n", path);
+#endif
 					pipe("FILE_DEL:%Z", path);
 					dropped_count++;
 				}
@@ -1230,6 +1289,9 @@ HOOKDEF(BOOL, WINAPI, DeleteFileA,
 	ensure_absolute_ascii_path(path, lpFileName);
 
 	if (dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
+		DebugOutput("DeleteFileA: FILE_DEL %ws\n", path);
+#endif
 		pipe("FILE_DEL:%z", path);
 		dropped_count++;
 	}
@@ -1250,6 +1312,9 @@ HOOKDEF(BOOL, WINAPI, DeleteFileW,
 		ensure_absolute_unicode_path(path, lpFileName);
 
 		if (dropped_count < g_config.dropped_limit) {
+#ifdef DEBUG_COMMENTS
+			DebugOutput("DeleteFileW: FILE_DEL %ws\n", path);
+#endif
 			pipe("FILE_DEL:%Z", path);
 			dropped_count++;
 		}

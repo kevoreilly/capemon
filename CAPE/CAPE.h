@@ -57,7 +57,7 @@ int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
 BOOL DumpStackRegion(void);
 
-BOOL ProcessDumped, FilesDumped, ModuleDumped;
+BOOL ProcessDumped, ModuleDumped;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
