@@ -36,7 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern HANDLE DebuggerLog;
 
-BOOL files_dumped;
+BOOL files_dumped, dropped_limit_reached;
 unsigned int dropped_count;
 
 typedef struct _file_record_t {
@@ -63,6 +63,7 @@ void file_init()
 	lookup_init(&g_file_logs);
 
 	dropped_count = 0;
+	dropped_limit_reached = FALSE;
 }
 
 static void add_file_to_log_tracking(HANDLE file_handle)
@@ -98,7 +99,10 @@ void remove_file_from_log_tracking(HANDLE file_handle)
 static void new_file_path_ascii(const char *fname)
 {
 	if (dropped_count >= g_config.dropped_limit) {
-		DebugOutput("Dropped file limit reached.");
+		if (!dropped_limit_reached) {
+			dropped_limit_reached = TRUE;
+			DebugOutput("Dropped file limit reached.");
+		}
 		return;
 	}
 
@@ -118,7 +122,10 @@ static void new_file_path_ascii(const char *fname)
 static void new_file_path_unicode(const wchar_t *fname)
 {
 	if (dropped_count >= g_config.dropped_limit) {
-		DebugOutput("Dropped file limit reached.");
+		if (!dropped_limit_reached) {
+			dropped_limit_reached = TRUE;
+			DebugOutput("Dropped file limit reached.");
+		}
 		return;
 	}
 
@@ -138,7 +145,10 @@ static void new_file_path_unicode(const wchar_t *fname)
 static void new_file(const UNICODE_STRING *obj)
 {
 	if (dropped_count >= g_config.dropped_limit) {
-		DebugOutput("Dropped file limit reached.");
+		if (!dropped_limit_reached) {
+			dropped_limit_reached = TRUE;
+			DebugOutput("Dropped file limit reached.");
+		}
 		return;
 	}
 
