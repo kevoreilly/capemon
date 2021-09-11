@@ -303,7 +303,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 
-	if (g_config.debugger && Context && Context->ContextFlags & CONTEXT_CONTROL) {
+	if (pid == GetCurrentProcessId() && g_config.debugger && Context && Context->ContextFlags & CONTEXT_CONTROL) {
 		CONTEXT CurrentContext;
 		CurrentContext.ContextFlags = CONTEXT_CONTROL;
 		ret = Old_NtGetContextThread(ThreadHandle, &CurrentContext);
