@@ -3215,3 +3215,9 @@ HOOKDEF(DWORD, WINAPI, DsEnumerateDomainTrustsW,
 	__out	PVOID 	*Domains,
 	__out	PULONG	DomainCount
 );
+
+HOOKDEF(HRESULT, WINAPI, IsValidURL,
+	_In_       LPBC    pBC,
+	_In_       LPCWSTR szURL,
+	_Reserved_ DWORD   dwReserved
+);

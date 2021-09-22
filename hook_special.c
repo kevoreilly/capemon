@@ -260,7 +260,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 			}
 		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
 			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
-			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880")  || !strcmp(idbuf1, "0006F03A-0000-0000-C000-000000000046"))
+			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880") || !strcmp(idbuf1, "0006F03A-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002DF01-0000-0000-C000-000000000046") ||
+			!strcmp(idbuf1, "000C101C-0000-0000-C000-000000000046"))
 			if (!interop_sent) {
 				interop_sent = 1;
 				pipe("INTEROP:");
@@ -336,7 +337,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 			}
 		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
 			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
-			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880"))
+			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880") || !strcmp(idbuf1, "0006F03A-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002DF01-0000-0000-C000-000000000046") ||
+			!strcmp(idbuf1, "000C101C-0000-0000-C000-000000000046"))
 			if (!interop_sent) {
 				interop_sent = 1;
 				pipe("INTEROP:");
@@ -522,5 +524,16 @@ HOOKDEF(int, WINAPI, CDocument_write,
 
 	LOQ_ntstatus("browser", "u", "Buffer", buf);
 
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, IsValidURL,
+	_In_       LPBC    pBC,
+	_In_       LPCWSTR szURL,
+	_Reserved_ DWORD   dwReserved
+)
+{
+	HRESULT ret = Old_IsValidURL(pBC, szURL, dwReserved);
+	LOQ_hresult("network", "u", "URL", szURL);
 	return ret;
 }
