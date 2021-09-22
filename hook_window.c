@@ -207,6 +207,10 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	DWORD pid;
 	lasterror_t lasterror;
 
+	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
+
+	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
+
 	get_lasterrors(&lasterror);
 	if (hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
@@ -216,9 +220,6 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 		}
 	}
 	set_lasterrors(&lasterror);
-	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
-
-	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
 
 	return ret;
 }
@@ -233,6 +234,10 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 	DWORD pid;
 	lasterror_t lasterror;
 
+	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
+
+	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
+
 	get_lasterrors(&lasterror);
 	if (hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
@@ -242,9 +247,6 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 		}
 	}
 	set_lasterrors(&lasterror);
-	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
-
-	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
 
 	return ret;
 }
@@ -258,6 +260,8 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 	lasterror_t lasterror;
 	LONG ret;
 	BOOL isbad = FALSE;
+
+	ret = Old_SetWindowLongA(hWnd, nIndex, dwNewLong);
 
 	get_lasterrors(&lasterror);
 	if (nIndex == 0 && hWnd) {
@@ -274,8 +278,6 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongA(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
@@ -293,6 +295,8 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 	LONG_PTR ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
 	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
@@ -308,8 +312,6 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
@@ -327,6 +329,8 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 	LONG ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongW(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
 	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
@@ -342,8 +346,6 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongW(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
@@ -362,6 +364,8 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 	LONG_PTR ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongPtrW(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
 	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
@@ -377,8 +381,6 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongPtrW(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
