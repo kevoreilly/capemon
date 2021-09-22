@@ -1049,6 +1049,14 @@ void parse_config_line(char* line)
 				DebugOutput("Registry dump mode enabled.\n");
 			}
 		}
+		else if (!stricmp(key, "loaderlock")) {
+			g_config.loaderlock_scans = value[0] == '1';
+			if (g_config.loaderlock_scans) {
+				DebugOutput("Scans/dumps while loader lock held enabled.\n");
+			}
+			else
+				DebugOutput("Scans/dumps while loader lock held disabled.\n");
+		}
 		else if (!stricmp(key, "plugx")) {
 			g_config.plugx = value[0] == '1';
 			if (g_config.plugx)
@@ -1113,6 +1121,7 @@ int read_config(void)
 	g_config.caller_dump = 1;
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
+	g_config.loaderlock_scans = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 

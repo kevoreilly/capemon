@@ -194,6 +194,9 @@ struct _g_config {
 	// Internet Explorer hook set
 	int iexplore;
 
+	// Allow scans/dumps with loader lock held
+	int loaderlock_scans;
+
 	char *break_on_apiname;
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];
