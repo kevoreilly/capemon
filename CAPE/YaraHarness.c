@@ -23,10 +23,13 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\config.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern void parse_config_line(char* line);
+extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T ScanForAccess(LPVOID Buffer, SIZE_T Size);
+extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
+
 YR_RULES* Rules = NULL;
 BOOL YaraActivated;
 
@@ -187,16 +190,27 @@ void YaraScan(PVOID Address, SIZE_T Size)
 	if (!Size)
 		return;
 
+	SIZE_T AccessibleSize = GetAccessibleSize(Address);
+
+	if (!AccessibleSize)
+		return;
+
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
+
+	Size = (SIZE_T)ReverseScanForNonZero(Address, Size);
+
+	if (!Size)
+	{
+		DebugOutput("YaraScan: Nothing to scan at 0x%p!\n", Address);
+		return;
+	}
+
 	DebugOutput("YaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
+
 	__try
 	{
-		SIZE_T AccessibleSize = ScanForAccess(Address, Size);
-		if (!AccessibleSize)
-			return;
-#ifdef DEBUG_COMMENTS
-		DebugOutput("YaraScan: AccessibleSize 0x%x\n", AccessibleSize);
-#endif
-		Result = yr_rules_scan_mem(Rules, Address, AccessibleSize, Flags, YaraCallback, Address, Timeout);
+		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{

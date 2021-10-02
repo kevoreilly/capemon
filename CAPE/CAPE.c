@@ -440,7 +440,7 @@ SIZE_T GetAllocationSize(PVOID Address)
 
 	while (MemInfo.AllocationBase == OriginalAllocationBase)
 	{
-		(PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
+		(PUCHAR)AddressOfPage += MemInfo.RegionSize;
 
 		if (!VirtualQuery(AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
@@ -511,7 +511,9 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 	while (MemInfo.AllocationBase == OriginalAllocationBase)
 	{
-		if (!VirtualQuery((PUCHAR)AddressOfPage + SystemInfo.dwPageSize, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+		(PUCHAR)AddressOfPage += MemInfo.RegionSize;
+
+		if (!VirtualQuery((PUCHAR)AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
 			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%x", (PUCHAR)AddressOfPage + SystemInfo.dwPageSize);
 			return 0;
@@ -525,8 +527,6 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 		if (!MemInfo.Protect)
 			break;
-
-		(PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
 	}
 
 	return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
@@ -563,10 +563,7 @@ BOOL IsAddressAccessible(PVOID Address)
 		return FALSE;
 
 	if (!MemInfo.Protect)
-	{
-		DebugOutput("IsAddressAccessible: Zero protect");
 		return FALSE;
-	}
 
 	return TRUE;
 }
@@ -1383,7 +1380,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 
 	PEDetected = FALSE;
 
-	AccessibleSize = GetAccessibleSize(Buffer);
+	AccessibleSize = ScanForAccess(Buffer, Size);
 	if (Size > AccessibleSize)
 		Size = AccessibleSize;
 
@@ -1536,26 +1533,35 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	char *FullPathName = NULL;
 	int ret = 0;
 
+	if (!Size)
+		goto end;
+
+	SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+
+	if (!AccessibleSize)
+		goto end;
+
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
+
+	Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
+
+	if (!Size)
+	{
+		DebugOutput("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
+		goto end;
+	}
+
+	BufferCopy = (PVOID)((BYTE*)malloc(Size));
+
+	if (BufferCopy == NULL)
+	{
+		DebugOutput("DumpMemory: Failed to allocate 0x%x bytes for buffer copy.\n", Size);
+		goto end;
+	}
+
 	__try
 	{
-		SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
-
-		Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
-
-		if (!Size)
-		{
-			DebugOutput("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
-			goto end;
-		}
-
-		BufferCopy = (PVOID)((BYTE*)malloc(Size));
-
-		if (BufferCopy == NULL)
-		{
-			DebugOutput("DumpMemory: Failed to allocate 0x%x bytes for buffer copy.\n", Size);
-			goto end;
-		}
-
 		memcpy(BufferCopy, Buffer, Size);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)

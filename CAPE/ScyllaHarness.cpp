@@ -193,12 +193,18 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
 				DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
 			else
+			{
 				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+				goto fail;
+			}
 		else
 			if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 				DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 			else
+			{
 				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+				goto fail;
+			}
 	}
 	else
 	{
@@ -269,6 +275,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				}
 			}
 
+			delete peFile;
 			peFile = new PeParser((char*)PEImage, TRUE);
 
 			if (peFile->isValidPeFile())
