@@ -76,8 +76,7 @@ hook_t min_hooks[] = {
 	HOOK(ntdll, RtlCreateUserProcess),
 	HOOK(advapi32, CreateProcessWithLogonW),
 	HOOK(advapi32, CreateProcessWithTokenW),
-	HOOK(advapi32, CreateProcessWithLogonW),
-	HOOK(advapi32, CreateProcessWithTokenW),
+
 	HOOK(shell32, ShellExecuteExW),
 
 	HOOK(ntdll, NtAllocateVirtualMemory),
