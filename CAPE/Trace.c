@@ -607,10 +607,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				DumpSize = (SIZE_T)(DWORD_PTR)strtoul(p+1, NULL, 0);
 		}
 
-		DebugOutput("CapeMetaData->TypeString = %s\n", CapeMetaData->TypeString);
 		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Target, DumpSize))
 		{
 			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
+			return;
+		}
+		else if (Target && DumpRegion(Target))
+		{
+			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p.\n", Target);
 			return;
 		}
 		else
