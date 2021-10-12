@@ -40,6 +40,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define CUCKOODBG 0
 #endif
 
+#define WIDE_STRING_LIMIT 32768
+
 char *our_process_path;
 char *our_process_name;
 char *our_dll_path;
@@ -284,7 +286,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 
 	log_flush();
 
-	msg = malloc(32768);
+	msg = malloc(WIDE_STRING_LIMIT);
 
 	dllname = convert_address_to_dll_name_and_offset(eip, &offset);
 
@@ -418,11 +420,11 @@ static void notify_successful_load(void)
 
 void get_our_process_path(void)
 {
-	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
-	wchar_t *tmp2 = calloc(1, 32768 * sizeof(wchar_t));
+	wchar_t *tmp = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
+	wchar_t *tmp2 = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
 	our_process_path = (char*)calloc(sizeof(char), MAX_PATH);
 
-	GetModuleFileNameW(NULL, tmp, 32768);
+	GetModuleFileNameW(NULL, tmp, WIDE_STRING_LIMIT);
 
 	ensure_absolute_unicode_path(tmp2, tmp);
 
@@ -437,11 +439,11 @@ void get_our_process_path(void)
 
 void get_our_dll_path(void)
 {
-	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
-	wchar_t *tmp2 = calloc(1, 32768 * sizeof(wchar_t));
+	wchar_t *tmp = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
+	wchar_t *tmp2 = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
 	our_dll_path = (char*)calloc(sizeof(char), MAX_PATH);
 
-	GetModuleFileNameW((HMODULE)g_our_dll_base, tmp, 32768);
+	GetModuleFileNameW((HMODULE)g_our_dll_base, tmp, WIDE_STRING_LIMIT);
 
 	ensure_absolute_unicode_path(tmp2, tmp);
 
@@ -454,7 +456,7 @@ void get_our_dll_path(void)
 
 void get_our_commandline(void)
 {
-	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
+	wchar_t *tmp = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
 
 	PEB *peb = get_peb();
 
