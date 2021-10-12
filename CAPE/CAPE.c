@@ -1577,7 +1577,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (hOutputFile == INVALID_HANDLE_VALUE)
 	{
 		if (GetLastError() == ERROR_FILE_EXISTS)
-			DebugOutput("DumpMemory: Payloadname exists already: %s", FullPathName);
+			DebugOutput("DumpMemory: Payload name exists already: %s", FullPathName);
 		else
 			ErrorOutput("DumpMemory: Could not create Payload");
 		free(FullPathName);
