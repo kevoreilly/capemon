@@ -31,6 +31,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
 
+PVOID LdrpInvertedFunctionTableSRWLock;
+
 // length disassembler engine
 int lde(void *addr)
 {
@@ -1073,6 +1075,15 @@ int hook_api(hook_t *h, int type)
 	return ret;
 }
 
+BOOL srw_lock_held()
+{
+	if (!LdrpInvertedFunctionTableSRWLock)
+		return FALSE;
+	if (*(PVOID*)LdrpInvertedFunctionTableSRWLock)
+		return TRUE;
+	return FALSE;
+}
+
 static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigned int count)
 {
 	/* derived from http://www.nynaeve.net/Code/StackWalk64.cpp */
@@ -1084,14 +1095,16 @@ static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace
 	ULONG_PTR establisherframe;
 	unsigned int frame;
 
+	if (srw_lock_held())
+		return 0;
+
 	__try
 	{
 		RtlCaptureContext(&ctx);
 
 		for (frame = 0; frame < count; frame++) {
-
 			backtrace[frame] = (PVOID)ctx.Rip;
-			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);
+			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock on Win10
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
 				ctx.Rip = (ULONG_PTR)(*(ULONG_PTR *)ctx.Rsp);

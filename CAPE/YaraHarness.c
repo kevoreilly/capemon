@@ -19,12 +19,15 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <windows.h>
 #include "Shlwapi.h"
+#include "CAPE.h"
 #include "YaraHarness.h"
 #include "..\config.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern void parse_config_line(char* line);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern void parse_config_line(char* line);
+extern BOOL DumpRegion(PVOID Address);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T ScanForAccess(LPVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
@@ -32,8 +35,17 @@ extern char *our_dll_path;
 
 YR_RULES* Rules = NULL;
 BOOL YaraActivated;
+#ifdef _WIN64
+extern PVOID LdrpInvertedFunctionTableSRWLock;
+#endif
 
 static char NewLine[MAX_PATH];
+
+char InternalYara[] =
+	"rule RtlInsertInvertedFunctionTable"
+	"{strings:$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
+	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}";
 
 BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 {
@@ -84,7 +96,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
-			BOOL SetBreakpoints;
+			BOOL SetBreakpoints, DoDumpRegion;
 			YR_MATCH* Match;
 			YR_STRING* String;
 			YR_META* Meta;
@@ -124,6 +136,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 #ifdef DEBUG_COMMENTS
 						DebugOutput("YaraScan hit: parse_config_line %s", OptionLine);
 #endif
+						if (!_stricmp("dump", OptionLine))
+							DoDumpRegion = TRUE;
 						parse_config_line(OptionLine);
 						if (p)
 						{
@@ -139,6 +153,49 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 			if (SetBreakpoints)
 				SetInitialBreakpoints(user_data);
 
+			if (DoDumpRegion)
+				DumpRegion(user_data);
+
+			return CALLBACK_CONTINUE;
+	}
+
+	return CALLBACK_ERROR;
+}
+
+int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
+{
+	switch(message)
+	{
+		case CALLBACK_MSG_RULE_NOT_MATCHING:
+#ifdef DEBUG_COMMENTS
+			DebugOutput("YaraScan rule did not match.");
+#endif
+		case CALLBACK_MSG_IMPORT_MODULE:
+			return CALLBACK_CONTINUE;
+		case CALLBACK_MSG_RULE_MATCHING:
+			YR_MATCH* Match;
+			YR_STRING* String;
+			YR_RULE* Rule = (YR_RULE*)message_data;
+
+			DebugOutput("InternalYaraScan hit: %s\n", Rule->identifier);
+
+			yr_rule_strings_foreach(Rule, String)
+			{
+				yr_string_matches_foreach(context, String, Match)
+				{
+#ifdef _WIN64
+					if (!strcmp(Rule->identifier, "RtlInsertInvertedFunctionTable"))
+					{
+						if (!strcmp(String->identifier, "$10_0_19041_662") || !strcmp(String->identifier, "$10_0_18362_1350"))
+						{
+							PVOID RtlInsertInvertedFunctionTable = (PVOID)((PBYTE)user_data + Match->offset);
+							LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
+							DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
+						}
+					}
+#endif
+				}
+			}
 			return CALLBACK_CONTINUE;
 	}
 
@@ -225,6 +282,51 @@ void YaraScan(PVOID Address, SIZE_T Size)
 #endif
 }
 
+void InternalYaraScan(PVOID Address, SIZE_T Size)
+{
+	if (!YaraActivated)
+		return;
+
+	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+
+	if (!Size)
+		return;
+
+	SIZE_T AccessibleSize = GetAccessibleSize(Address);
+
+	if (!AccessibleSize)
+		return;
+
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
+
+	Size = (SIZE_T)ReverseScanForNonZero(Address, Size);
+
+	if (!Size)
+	{
+		DebugOutput("InternalYaraScan: Nothing to scan at 0x%p!\n", Address);
+		return;
+	}
+
+	DebugOutput("InternalYaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
+
+	__try
+	{
+		Result = yr_rules_scan_mem(Rules, Address, AccessibleSize, Flags, InternalYaraCallback, Address, Timeout);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DebugOutput("InternalYaraScan: Unable to scan 0x%p\n", Address);
+		return;
+	}
+	if (Result != ERROR_SUCCESS)
+		ScannerError(Result);
+#ifdef DEBUG_COMMENTS
+	else
+		DebugOutput("InternalYaraScan: successfully scanned 0x%p\n", Address);
+#endif
+}
+
 BOOL YaraInit()
 {
 	YR_COMPILER* Compiler = NULL;
@@ -301,6 +403,11 @@ BOOL YaraInit()
 			FindClose(hFind);
 		}
 
+		// Add 'internal' yara
+		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)
+		{
+			DebugOutput("YaraInit: Failed to add internal yara rules.\n", compiled_rules);
+		}
 		Result = yr_compiler_get_rules(Compiler, &Rules);
 
 		if (Result != ERROR_SUCCESS)
@@ -322,6 +429,21 @@ BOOL YaraInit()
 	Compiler = NULL;
 
 	YaraActivated = TRUE;
+
+	OSVERSIONINFO OSVersion;
+	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+	if (!GetVersionEx(&OSVersion))
+	{
+		ErrorOutput("YaraInit: Failed to get OS version");
+		return TRUE;
+	}
+
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+	{
+		PVOID Ntdll = GetModuleHandleA("ntdll");
+		InternalYaraScan(Ntdll, GetAllocationSize(Ntdll));
+	}
 
 	return TRUE;
 exit:
