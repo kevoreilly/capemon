@@ -698,7 +698,7 @@ BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 DWORD loaded_dlls;
 struct dll_range dll_ranges[MAX_DLLS];
 
-static void add_dll_range(ULONG_PTR start, ULONG_PTR end)
+void add_dll_range(ULONG_PTR start, ULONG_PTR end)
 {
 	DWORD tmp_loaded_dlls = loaded_dlls;
 	if (tmp_loaded_dlls >= MAX_DLLS)
