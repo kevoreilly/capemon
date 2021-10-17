@@ -835,6 +835,15 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 
 	PCHAR FunctionName = NULL;
+	__try
+	{
+		FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DebugOutput("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
+		FunctionName = NULL;
+	}
 	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
 
 	if (ModuleName)
@@ -848,26 +857,11 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		else if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 		{
 			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-			__try
-			{
-				FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
-				FunctionName = NULL;
-			}
 			if (FilterTrace)
 				DebuggerOutput("\n");
 			if (FunctionName)
 			{
-				if (!strcmp(ModuleName, "ntdll.dll") && !strcmp(FunctionName, "RtlAllocateHeap"))
-				{
-					ForceStepOver = TRUE;
-					FilterTrace = TRUE;
-				}
-				else
-					DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
+				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
 
 				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
 				{
@@ -985,6 +979,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				DebugOutput("Trace: Error dereferencing CallTarget 0x%x.", CallTarget);
 				ExportName = NULL;
 			}
+
+			if (ExportName && !strcmp(ExportName, "RtlAllocateHeap"))
+				ForceStepOver = TRUE;
 
 			if (CallTarget == &loq)
 			{
