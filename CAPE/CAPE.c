@@ -141,7 +141,6 @@ extern BOOL BreakpointsSet;
 
 BOOL ProcessDumped, ModuleDumped, PlugXConfigDumped;
 PVOID ImageBase;
-char *CommandLine;
 static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
@@ -237,7 +236,7 @@ PVOID GetHookCallerBase()
 
 		if (AllocationBase)
 		{
-			DebugOutput("GetHookCallerBase: thread %d (handle 0x%x), return address 0x%p, allocation base 0x%p.\n", ThreadId, GetThreadHandle(ThreadId), ReturnAddress, AllocationBase);
+			DebugOutput("GetHookCallerBase: thread %d, return address 0x%p, allocation base 0x%p.\n", ThreadId, ReturnAddress, AllocationBase);
 			CallingModule = AllocationBase;
 			return CallingModule;
 			// Base-dependent breakpoints can be activated now
@@ -2123,9 +2122,6 @@ void CAPE_init()
 		Character++;
 	}
 
-	CommandLine = (char*)malloc(MAX_PATH);
-	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_commandline, (int)wcslen(our_commandline)+1, CommandLine, MAX_PATH, NULL, NULL);
-
 	// This is package (and technique) dependent:
 	CapeMetaData->DumpType = PROCDUMP;
 	ProcessDumped = FALSE;
@@ -2146,7 +2142,7 @@ void CAPE_init()
 	DebugOutput("Monitor initialised: 32-bit capemon loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
-	DebugOutput("Commandline: %s\n", CommandLine);
+	DebugOutput("Commandline: %s\n", GetCommandLineA());
 
 	return;
 }

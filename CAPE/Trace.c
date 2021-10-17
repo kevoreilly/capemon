@@ -40,7 +40,7 @@ extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
 extern void log_anomaly(const char *subcategory, const char *msg);
-extern char *CommandLine, *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
+extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset);
 extern DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase);
@@ -2344,7 +2344,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 	if (BreakpointsHit)
 		return TRUE;
 
-	if (procname0 && !stristr(CommandLine, procname0))
+	if (procname0 && !stristr(GetCommandLineA(), procname0))
 		return TRUE;
 
 	if (!DebuggerInitialised)

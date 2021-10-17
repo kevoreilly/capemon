@@ -456,13 +456,7 @@ void get_our_dll_path(void)
 
 void get_our_commandline(void)
 {
-	wchar_t *tmp = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
-
-	PEB *peb = get_peb();
-
-	ensure_absolute_unicode_path(tmp, peb->ProcessParameters->CommandLine.Buffer);
-
-	our_commandline = tmp;
+	our_commandline = GetCommandLineW();
 }
 
 void set_os_bitness(void)
