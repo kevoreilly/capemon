@@ -1117,6 +1117,9 @@ void TerminateHandler()
 
 void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 {
+	if (ProcessId == GetCurrentProcessId())
+		return;
+
 	PINJECTIONINFO CurrentInjectionInfo = GetInjectionInfo(ProcessId);
 
 	if (CurrentInjectionInfo && !ThreadId)

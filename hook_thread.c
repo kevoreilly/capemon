@@ -280,7 +280,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 #endif
 	else
 		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
-	//if (g_config.injection)
+
 	GetThreadContextHandler(pid, Context);
 
 	if (g_config.debugger) {
@@ -358,7 +358,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 			"ProcessId", pid);
 	}
 	else {
-		ProcessMessage(pid, tid);
+		if (pid != GetCurrentProcessId())
+			ProcessMessage(pid, tid);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 		LOQ_ntstatus("threading", "pLii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
