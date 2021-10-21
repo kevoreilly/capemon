@@ -1329,9 +1329,6 @@ int IsDisguisedPEHeader(PVOID Buffer)
 
 	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
 
-	if (!IsAddressAccessible((PUCHAR)Buffer + FIELD_OFFSET(IMAGE_DOS_HEADER, e_lfanew)))
-		return 0;
-
 	__try
 	{
 		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
