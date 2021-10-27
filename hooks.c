@@ -76,8 +76,7 @@ hook_t min_hooks[] = {
 	HOOK(ntdll, RtlCreateUserProcess),
 	HOOK(advapi32, CreateProcessWithLogonW),
 	HOOK(advapi32, CreateProcessWithTokenW),
-	HOOK(advapi32, CreateProcessWithLogonW),
-	HOOK(advapi32, CreateProcessWithTokenW),
+
 	HOOK(shell32, ShellExecuteExW),
 
 	HOOK(ntdll, NtAllocateVirtualMemory),
@@ -166,6 +165,7 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+	HOOK_SPECIAL(urlmon, IsValidURL),
 	//HOOK(kernel32, lstrcpynA),
 	//HOOK(kernel32, lstrcmpiA),
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
@@ -503,6 +503,7 @@ hook_t full_hooks[] = {
 	HOOK(netapi32, NetUserGetInfo),
 	HOOK(netapi32, NetGetJoinInformation),
 	HOOK(netapi32, NetUserGetLocalGroups),
+	HOOK(netapi32, DsEnumerateDomainTrustsW),
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
 	HOOK(urlmon, ObtainUserAgentString),
@@ -782,6 +783,8 @@ hook_t tls_hooks[] = {
 	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c2680c4, 0xd690),
 	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e1def, 0x4be0),
 	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e1def, 0xd690),
+	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e240c, 0x4be0),
+	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e240c, 0xd690),
 	HOOK_FUNCRVA(ncrypt, PRF, 0x54d04091, 0x4ca0),
 	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x54d04091, 0xe250),
 #else
@@ -802,6 +805,7 @@ hook_t ie_hooks[] = {
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+	HOOK_SPECIAL(urlmon, IsValidURL),
 	//HOOK(kernel32, lstrcpynA),
 	//HOOK(kernel32, lstrcmpiA),
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
@@ -1766,14 +1770,17 @@ BOOL inside_hook(LPVOID Address)
 	return FALSE;
 }
 
-void set_hooks_dll(const wchar_t *library)
+BOOL set_hooks_dll(const wchar_t *library)
 {
+	BOOL ret = FALSE;
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
 		if (!wcsicmp((hooks+i)->library, library)) {
+			BOOL ret = TRUE;
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
 		}
 	}
+	return ret;
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
@@ -1842,11 +1849,18 @@ void set_hooks()
             g_config.iexplore = 1;
             g_config.injection = 0;
             g_config.compression = 0;
-            g_config.caller_dump = 0;
             g_config.api_rate_cap = 0;
-            g_config.yarascan = 0;
             g_config.ntdll_protect = 0;
             DebugOutput("Internet Explorer-specific hook-set enabled.\n");
+        }
+
+		if (strstr(our_process_path, "Microsoft Office"))
+        {
+			g_config.caller_dump = 0;
+			g_config.injection = 0;
+			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
+			DebugOutput("Microsoft Office settings enabled.\n");
         }
 	}
 

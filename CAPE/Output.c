@@ -319,20 +319,20 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?%d;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
 		}
 		else
-			if (strlen(CapeMetaData->TypeString))
+			if (CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
 			{
 				CapeMetaData->DumpType = TYPE_STRING;
-				DebugOutput("Output: Type string %s", CapeMetaData->TypeString);
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
 			}
 			else
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
-		memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+		if (g_config.standalone)
+		{memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
 		_sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
 
-        if (g_config.standalone)
-            OutputDebugString(DebugBuffer);
+
+            OutputDebugString(DebugBuffer);}
         else
         {
             char OutputBuffer[MAX_PATH];

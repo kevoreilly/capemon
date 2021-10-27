@@ -40,6 +40,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define CUCKOODBG 0
 #endif
 
+#define WIDE_STRING_LIMIT 32768
+
 char *our_process_path;
 char *our_process_name;
 char *our_dll_path;
@@ -51,6 +53,7 @@ BOOL is_64bit_os;
 extern PVOID ImageBase;
 extern void CAPE_init();
 extern void CAPE_post_init();
+extern SIZE_T GetAllocationSize(PVOID Address);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
@@ -59,7 +62,7 @@ extern PCHAR ScyllaGetExportDirectory(PVOID Address);
 extern PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZE_T ScanSize);
 extern void UnpackerDllInit(PVOID DllBase);
 
-extern void set_hooks_dll(const wchar_t *library);
+extern BOOL set_hooks_dll(const wchar_t *library);
 extern void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library);
 extern void revalidate_all_hooks(void);
 extern void set_hooks();
@@ -124,7 +127,7 @@ VOID CALLBACK New_DllLoadNotification(
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
 	dllname = get_dll_basename(&library);
 	dllpath = wcschr(our_commandline, ' ');
-	if (dllpath) dllpath = wcsstr(dllpath, L"C:");
+	if (dllpath) dllpath = wcsstr(_wcsupr(dllpath), L"C:");
 
 	if (g_config.debug) {
 		int ret = 0;
@@ -172,21 +175,20 @@ VOID CALLBACK New_DllLoadNotification(
 			WCHAR exportdirectory_w[MAX_PATH];
 			char* exportdirectory;
 
-			// unoptimized, but easy
-			add_all_dlls_to_dll_ranges();
+			add_dll_range((ULONG_PTR)NotificationData->Loaded.DllBase, (ULONG_PTR)NotificationData->Loaded.DllBase + GetAllocationSize(NotificationData->Loaded.DllBase));
 
-			set_hooks_dll(dllname);
-
-			exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
-			if (exportdirectory) {
-				size = strlen(exportdirectory);
-				mbstowcs_s(&numconverted, exportdirectory_w, MAX_PATH, exportdirectory, size+1);
-				for (unsigned int i=0; i<numconverted; i++) {
-					if (!wcsnicmp(exportdirectory_w+i, L".dll", 4))
-						memset(exportdirectory_w+i, 0, sizeof(WCHAR));
+			if (!set_hooks_dll(dllname)) {
+				exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
+				if (exportdirectory) {
+					size = strlen(exportdirectory);
+					mbstowcs_s(&numconverted, exportdirectory_w, MAX_PATH, exportdirectory, size+1);
+					for (unsigned int i=0; i<numconverted; i++) {
+						if (!wcsnicmp(exportdirectory_w+i, L".dll", 4))
+							memset(exportdirectory_w+i, 0, sizeof(WCHAR));
+					}
+					if (wcsicmp(dllname, exportdirectory_w))
+						set_hooks_by_export_directory(exportdirectory_w, dllname);
 				}
-				if (wcsicmp(dllname, exportdirectory_w))
-					set_hooks_by_export_directory(exportdirectory_w, dllname);
 			}
 
 			//if (g_config.debugger) {
@@ -284,7 +286,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 
 	log_flush();
 
-	msg = malloc(32768);
+	msg = malloc(WIDE_STRING_LIMIT);
 
 	dllname = convert_address_to_dll_name_and_offset(eip, &offset);
 
@@ -418,11 +420,11 @@ static void notify_successful_load(void)
 
 void get_our_process_path(void)
 {
-	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
-	wchar_t *tmp2 = calloc(1, 32768 * sizeof(wchar_t));
+	wchar_t *tmp = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
+	wchar_t *tmp2 = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
 	our_process_path = (char*)calloc(sizeof(char), MAX_PATH);
 
-	GetModuleFileNameW(NULL, tmp, 32768);
+	GetModuleFileNameW(NULL, tmp, WIDE_STRING_LIMIT);
 
 	ensure_absolute_unicode_path(tmp2, tmp);
 
@@ -437,11 +439,11 @@ void get_our_process_path(void)
 
 void get_our_dll_path(void)
 {
-	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
-	wchar_t *tmp2 = calloc(1, 32768 * sizeof(wchar_t));
+	wchar_t *tmp = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
+	wchar_t *tmp2 = calloc(1, WIDE_STRING_LIMIT * sizeof(wchar_t));
 	our_dll_path = (char*)calloc(sizeof(char), MAX_PATH);
 
-	GetModuleFileNameW((HMODULE)g_our_dll_base, tmp, 32768);
+	GetModuleFileNameW((HMODULE)g_our_dll_base, tmp, WIDE_STRING_LIMIT);
 
 	ensure_absolute_unicode_path(tmp2, tmp);
 
@@ -454,13 +456,7 @@ void get_our_dll_path(void)
 
 void get_our_commandline(void)
 {
-	wchar_t *tmp = calloc(1, 32768 * sizeof(wchar_t));
-
-	PEB *peb = get_peb();
-
-	ensure_absolute_unicode_path(tmp, peb->ProcessParameters->CommandLine.Buffer);
-
-	our_commandline = tmp;
+	our_commandline = GetCommandLineW();
 }
 
 void set_os_bitness(void)

@@ -29,62 +29,10 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #define PIPEBUFSIZE 512
 
-// eflags register
-#define FL_CF			0x00000001	  // Carry Flag
-#define FL_PF			0x00000004	  // Parity Flag
-#define FL_AF			0x00000010	  // Auxiliary carry Flag
-#define FL_ZF			0x00000040	  // Zero Flag
-#define FL_SF			0x00000080	  // Sign Flag
-#define FL_TF			0x00000100	  // Trap Flag
-#define FL_IF			0x00000200	  // Interrupt Enable
-#define FL_DF			0x00000400	  // Direction Flag
-#define FL_OF			0x00000800	  // Overflow Flag
-#define FL_IOPL_MASK	0x00003000	  // I/O Privilege Level bitmask
-#define FL_IOPL_0		0x00000000	  //   IOPL == 0
-#define FL_IOPL_1		0x00001000	  //   IOPL == 1
-#define FL_IOPL_2		0x00002000	  //   IOPL == 2
-#define FL_IOPL_3		0x00003000	  //   IOPL == 3
-#define FL_NT			0x00004000	  // Nested Task
-#define FL_RF			0x00010000	  // Resume Flag
-#define FL_VM			0x00020000	  // Virtual 8086 mode
-#define FL_AC			0x00040000	  // Alignment Check
-#define FL_VIF			0x00080000	  // Virtual Interrupt Flag
-#define FL_VIP			0x00100000	  // Virtual Interrupt Pending
-#define FL_ID			0x00200000	  // ID flag
-
-//
-// debug register DR7 bit fields
-//
-typedef struct _DR7
-{
-	DWORD L0   : 1;	//Local enable bp0
-	DWORD G0   : 1;	//Global enable bp0
-	DWORD L1   : 1;	//Local enable bp1
-	DWORD G1   : 1;	//Global enable bp1
-	DWORD L2   : 1;	//Local enable bp2
-	DWORD G2   : 1;	//Global enable bp2
-	DWORD L3   : 1;	//Local enable bp3
-	DWORD G3   : 1;	//Global enable bp3
-	DWORD LE   : 1;	//Local Enable/LBR
-	DWORD GE   : 1;	//Global Enable/BTF
-	DWORD PAD1 : 3;
-	DWORD GD   : 1;	//General Detect Enable
-	DWORD PAD2 : 1;
-	DWORD PAD3 : 1;
-	DWORD RWE0 : 2;	//Read/Write/Execute bp0
-	DWORD LEN0 : 2;	//Length bp0
-	DWORD RWE1 : 2;	//Read/Write/Execute bp1
-	DWORD LEN1 : 2;	//Length bp1
-	DWORD RWE2 : 2;	//Read/Write/Execute bp2
-	DWORD LEN2 : 2;	//Length bp2
-	DWORD RWE3 : 2;	//Read/Write/Execute bp3
-	DWORD LEN3 : 2;	//Length bp3
-} DR7, *PDR7;
-
 typedef struct _LSA_UNICODE_STRING {
 	USHORT Length;
 	USHORT MaximumLength;
-	PWSTR  Buffer;
+	PWSTR Buffer;
 } LSA_UNICODE_STRING, *PLSA_UNICODE_STRING, UNICODE_STRING, *PUNICODE_STRING;
 
 typedef struct _INJECT_STRUCT {
@@ -205,10 +153,7 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 		}
 
 		if ((CurrentThreadBreakpoint->ThreadId) == ThreadId)
-		{
-			// We have our thread breakpoint list
 			break;
-		}
 
 		PreviousThreadBreakpoint = CurrentThreadBreakpoint;
 		CurrentThreadBreakpoint = CurrentThreadBreakpoint->NextThreadBreakpoints;
@@ -458,7 +403,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	PTRACKEDREGION TrackedRegion;
 
 	// Hardware breakpoints generate EXCEPTION_SINGLE_STEP rather than EXCEPTION_BREAKPOINT
-	if (ExceptionInfo->ExceptionRecord->ExceptionCode==EXCEPTION_SINGLE_STEP)
+	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
 	{
 		PBREAKPOINTINFO pBreakpointInfo;
 		PTHREADBREAKPOINTS CurrentThreadBreakpoint;
@@ -467,7 +412,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (CurrentThreadBreakpoint == NULL)
 		{
-			DebugOutput("CAPEExceptionFilter: Can't get thread breakpoints.\n");
+			DebugOutput("CAPEExceptionFilter: Can't find breakpoints for thread %d\n", GetCurrentThreadId());
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
@@ -500,7 +445,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (pBreakpointInfo == NULL)
 		{
-			DebugOutput("CAPEExceptionFilter: Can't get BreakpointInfo.\n");
+			DebugOutput("CAPEExceptionFilter: Can't get BreakpointInfo for thread %d\n", GetCurrentThreadId());
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 
@@ -575,7 +520,10 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif // !_WIN64
 
 		if (pBreakpointInfo->Callback == NULL)
-			DebugOutput("CAPEExceptionFilter: Can't get callback.\n");
+		{
+			DebugOutput("CAPEExceptionFilter: Can't find callback, passing exception (thread %d)\n", GetCurrentThreadId());
+			return EXCEPTION_CONTINUE_SEARCH;
+		}
 		else
 		{
 			Handler = (BREAKPOINT_HANDLER)pBreakpointInfo->Callback;
@@ -675,15 +623,15 @@ BOOL ContextSetDebugRegisterEx
 	BOOL		NoSetThreadContext
 )
 {
-	DWORD	Length;
+	DWORD Length;
 #ifdef _WIN64
 	PTHREADBREAKPOINTS CurrentThreadBreakpoint;
 #endif
 
-	PDWORD_PTR  Dr0 = &(Context->Dr0);
-	PDWORD_PTR  Dr1 = &(Context->Dr1);
-	PDWORD_PTR  Dr2 = &(Context->Dr2);
-	PDWORD_PTR  Dr3 = &(Context->Dr3);
+	PDWORD_PTR Dr0 = &(Context->Dr0);
+	PDWORD_PTR Dr1 = &(Context->Dr1);
+	PDWORD_PTR Dr2 = &(Context->Dr2);
+	PDWORD_PTR Dr3 = &(Context->Dr3);
 	PDR7 Dr7 = (PDR7)&(Context->Dr7);
 
 	if ((unsigned int)Type > 3)
@@ -710,7 +658,7 @@ BOOL ContextSetDebugRegisterEx
 		return FALSE;
 	}
 
-	Length  = LengthMask[Size];
+	Length	= LengthMask[Size];
 
 	// intel spec requires 0 for bp on execution
 	if (Type == BP_EXEC)
@@ -854,7 +802,7 @@ BOOL SetDebugRegister
 		return FALSE;
 	}
 
-	Length  = LengthMask[Size];
+	Length	= LengthMask[Size];
 
 	// intel spec requires 0 for bp on execution
 	if (Type == BP_EXEC)
@@ -934,10 +882,10 @@ BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext)
 //**************************************************************************************
 {
 	CONTEXT	Context;
-	PDWORD_PTR  Dr0 = &Context.Dr0;
-	PDWORD_PTR  Dr1 = &Context.Dr1;
-	PDWORD_PTR  Dr2 = &Context.Dr2;
-	PDWORD_PTR  Dr3 = &Context.Dr3;
+	PDWORD_PTR Dr0 = &Context.Dr0;
+	PDWORD_PTR Dr1 = &Context.Dr1;
+	PDWORD_PTR Dr2 = &Context.Dr2;
+	PDWORD_PTR Dr3 = &Context.Dr3;
 	PDR7 Dr7 = (PDR7)&(Context.Dr7);
 
 	if (!hThread && !pContext)
@@ -1491,10 +1439,10 @@ BOOL ClearDebugRegister
 ){
 	CONTEXT	Context;
 	BOOL DoCloseHandle = FALSE;
-	PDWORD_PTR  Dr0 = &Context.Dr0;
-	PDWORD_PTR  Dr1 = &Context.Dr1;
-	PDWORD_PTR  Dr2 = &Context.Dr2;
-	PDWORD_PTR  Dr3 = &Context.Dr3;
+	PDWORD_PTR Dr0 = &Context.Dr0;
+	PDWORD_PTR Dr1 = &Context.Dr1;
+	PDWORD_PTR Dr2 = &Context.Dr2;
+	PDWORD_PTR Dr3 = &Context.Dr3;
 	PDR7 Dr7 = (PDR7)&(Context.Dr7);
 
 	if ((unsigned int)Type > 3)
@@ -1875,6 +1823,7 @@ BOOL ContextClearCurrentBreakpoint
 BOOL ContextSetThreadBreakpointsEx(PCONTEXT ThreadContext, PTHREADBREAKPOINTS ThreadBreakpoints, BOOL NoSetThreadContext)
 //**************************************************************************************
 {
+	BOOL RetVal;
 	if (!ThreadContext)
 	{
 		DebugOutput("ContextSetThreadBreakpointsEx: Error - no thread context.\n");
@@ -1883,7 +1832,7 @@ BOOL ContextSetThreadBreakpointsEx(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Th
 
 	for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++)
 	{
-		if (!ContextSetThreadBreakpointEx
+		RetVal = ContextSetThreadBreakpointEx
 		(
 			ThreadContext,
 			ThreadBreakpoints->BreakpointInfo[Register].Register,
@@ -1893,11 +1842,10 @@ BOOL ContextSetThreadBreakpointsEx(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Th
 			ThreadBreakpoints->BreakpointInfo[Register].HitCount,
 			ThreadBreakpoints->BreakpointInfo[Register].Callback,
 			NoSetThreadContext
-		))
-			return FALSE;
+		);
 	}
 
-	return TRUE;
+	return RetVal;
 }
 
 //**************************************************************************************
@@ -2174,7 +2122,7 @@ BOOL ClearBreakpoint(int Register)
 	while (ThreadBreakpoints)
 	{
 		if (ThreadBreakpoints->ThreadHandle)
-			ThreadBreakpoints->BreakpointInfo[Register].ThreadHandle  = ThreadBreakpoints->ThreadHandle;
+			ThreadBreakpoints->BreakpointInfo[Register].ThreadHandle = ThreadBreakpoints->ThreadHandle;
 		ThreadBreakpoints->BreakpointInfo[Register].Size		= 0;
 		ThreadBreakpoints->BreakpointInfo[Register].Address		= NULL;
 		ThreadBreakpoints->BreakpointInfo[Register].Type		= 0;
@@ -2315,14 +2263,11 @@ void NtContinueHandler(PCONTEXT ThreadContext)
 	if (BreakpointsSet && !ThreadContext->Dr0 && !ThreadContext->Dr1 && !ThreadContext->Dr2 && !ThreadContext->Dr3)
 	{
 		DWORD ThreadId = GetCurrentThreadId();
-		if (ThreadId == MainThreadId)
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
+		if (ThreadBreakpoints)
 		{
-			PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
-			if (ThreadBreakpoints)
-			{
-				DebugOutput("NtContinue hook: restoring breakpoints for thread %d.\n", ThreadId);
-				ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, TRUE);
-			}
+			DebugOutput("NtContinue hook: restoring breakpoints for thread %d.\n", ThreadId);
+			ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, TRUE);
 		}
 	}
 }

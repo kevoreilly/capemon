@@ -190,7 +190,9 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 			{
 				for (i = 0; i < Length; i++)
 					strncpy(LogPipe, Value, Length);
+#ifdef DEBUG_COMMENTS
 				DebugOutput("Loader: Successfully loaded pipe name %s.\n", LogPipe);
+#endif
 			}
 			if (!strcmp(key, "no-iat"))
 			{
@@ -269,6 +271,10 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 		}
 	}
 
+#ifdef DEBUG_COMMENTS
+	if (ThreadId)
+			DebugOutput("GetProcessInitialThreadId: Initial ThreadID %d.\n", ThreadId);
+#endif
 	if (ThreadId)
 		return ThreadId;
 
@@ -538,7 +544,7 @@ static int InjectDllViaThread(HANDLE ProcessHandle, const char *DllPath)
 			CloseHandle(RemoteThreadHandle);
 			VirtualFreeEx(ProcessHandle, Pointers.DllPath, SystemInfo.dwPageSize, MEM_RELEASE);
 
-			if (!ExitCode)
+			if (ExitCode)
 			{
 				RtlNtStatusToDosError = (_RtlNtStatusToDosError)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlNtStatusToDosError");
 				SetLastError(RtlNtStatusToDosError(ExitCode));
@@ -1320,7 +1326,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			DebugOutput("Loader: Loaded config for process %d.\n", ProcessId);
 #endif
 
-		DebugOutput("Loader: Injecting process %d (thread %d) with %s.\n", ProcessId, ThreadId, DllName);
+		if (ThreadId)
+			DebugOutput("Loader: Injecting process %d (thread %d) with %s.\n", ProcessId, ThreadId, DllName);
+		else
+			DebugOutput("Loader: Injecting process %d with %s.\n", ProcessId, DllName);
 
 		ret = InjectDll(ProcessId, ThreadId, DllName);
 
@@ -1503,10 +1512,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		__try
 		{
 			Payload();
+			DebugOutput("Successfully executed payload at 0x%p.\n", (PBYTE)PayloadBuffer + Offset);
 		}
 		__except(EXCEPTION_EXECUTE_HANDLER)
 		{
-			DebugOutput("Exception executing payload at 0x%p.\n", PayloadBuffer);
+			DebugOutput("Exception executing payload at 0x%p.\n", (PBYTE)PayloadBuffer + Offset);
 		}
 
 		free(PayloadBuffer);

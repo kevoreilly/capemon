@@ -61,6 +61,7 @@ public:
 	bool hasOverlayData();
 
 	DWORD getEntryPoint();
+	char* getExportDirectory();
 
 	bool getSectionNameUnicode(const int sectionIndex, CHAR * output, const int outputLen);
 

@@ -45,6 +45,7 @@ _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
 _NtProtectVirtualMemory pNtProtectVirtualMemory;
 _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
+_RtlNtStatusToDosError pRtlNtStatusToDosError;
 
 void resolve_runtime_apis(void)
 {
@@ -64,6 +65,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
 	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
+	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
 }
 
 ULONG_PTR g_our_dll_base;
@@ -696,7 +698,7 @@ BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 DWORD loaded_dlls;
 struct dll_range dll_ranges[MAX_DLLS];
 
-static void add_dll_range(ULONG_PTR start, ULONG_PTR end)
+void add_dll_range(ULONG_PTR start, ULONG_PTR end)
 {
 	DWORD tmp_loaded_dlls = loaded_dlls;
 	if (tmp_loaded_dlls >= MAX_DLLS)
@@ -814,7 +816,6 @@ void hide_module_from_peb(HMODULE module_handle)
 			// like InLoadOrderModuleList etc
 			CUT_LIST(mod->HashTableEntry);
 
-			memset(mod, 0, sizeof(LDR_DATA_TABLE_ENTRY));
 			break;
 		}
 	}

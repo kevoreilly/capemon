@@ -316,6 +316,10 @@ void parse_config_line(char* line)
 						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp0 set to zero.\n");
+				g_config.zerobp0 = TRUE;
+			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp0 set to entry point.\n", g_config.bp0);
 				EntryPointRegister = 1;
@@ -380,6 +384,10 @@ void parse_config_line(char* line)
 					else
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
+			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp1 set to zero.\n");
+				g_config.zerobp1 = TRUE;
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp1 set to entry point.\n", g_config.bp1);
@@ -446,6 +454,10 @@ void parse_config_line(char* line)
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp2 set to zero.\n");
+				g_config.zerobp2 = TRUE;
+			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp2 set to entry point.\n", g_config.bp2);
 				EntryPointRegister = 1;
@@ -511,6 +523,10 @@ void parse_config_line(char* line)
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
 			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp3 set to zero.\n");
+				g_config.zerobp3 = TRUE;
+			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp3 set to entry point.\n", g_config.bp3);
 				EntryPointRegister = 1;
@@ -575,6 +591,10 @@ void parse_config_line(char* line)
 					else
 						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
 				}
+			}
+			else if (!_strnicmp(value, "zero", 4)) {
+				DebugOutput("Config: bp4 set to zero.\n");
+				g_config.zerobp4 = TRUE;
 			}
 			else if (!_strnicmp(value, "ep", 2) || !_strnicmp(value, "entrypoint", 10)) {
 				DebugOutput("Config: bp4 set to entry point.\n", g_config.bp4);
@@ -980,15 +1000,6 @@ void parse_config_line(char* line)
 				g_config.api_rate_cap = 2;
 			}
 		}
-		else if (!stricmp(key, "office")) {
-			g_config.office = value[0] == '1';
-			if (g_config.office && g_config.first_process) {
-				DebugOutput("Microsoft Office settings enabled.\n");
-				g_config.caller_dump = 0;
-				g_config.injection = 0;
-				g_config.yarascan = 0;
-			}
-		}
 		else if (!stricmp(key, "api-rate-cap")) {
 			g_config.api_rate_cap = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.api_rate_cap)
@@ -1037,6 +1048,14 @@ void parse_config_line(char* line)
 			if (g_config.regdump) {
 				DebugOutput("Registry dump mode enabled.\n");
 			}
+		}
+		else if (!stricmp(key, "loaderlock")) {
+			g_config.loaderlock_scans = value[0] == '1';
+			if (g_config.loaderlock_scans) {
+				DebugOutput("Scans/dumps while loader lock held enabled.\n");
+			}
+			else
+				DebugOutput("Scans/dumps while loader lock held disabled.\n");
 		}
 		else if (!stricmp(key, "plugx")) {
 			g_config.plugx = value[0] == '1';
@@ -1102,6 +1121,7 @@ int read_config(void)
 	g_config.caller_dump = 1;
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
+	g_config.loaderlock_scans = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
@@ -1136,17 +1156,11 @@ int read_config(void)
 		DebugOutput("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
 	}
 
-	/* if no option supplied for dropped limit set a sensible value */
-	if (!g_config.dropped_limit) {
-		g_config.dropped_limit = DROPPED_LIMIT;
-		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
-	}
-
 	if (g_config.tlsdump) {
 		g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
-		g_config.dropped_limit = 0;
+		g_config.dropped_limit = DROPPED_LIMIT;
 		g_config.injection = 0;
 		g_config.compression = 0;
 		g_config.caller_dump = 0;
@@ -1163,6 +1177,12 @@ int read_config(void)
 
 	if (TraceDepthLimit == 0xFFFFFFFF)
 		TraceDepthLimit = 1;
+
+	/* if no option supplied for dropped limit set a sensible value */
+	if (!g_config.dropped_limit) {
+		g_config.dropped_limit = DROPPED_LIMIT;
+		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
+	}
 
 	fclose(fp);
 	if (!g_config.standalone)

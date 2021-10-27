@@ -97,10 +97,12 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 		if (g_config.base_on_caller)
 			SetInitialBreakpoints((PVOID)AllocationBase);
-		if (loader_lock_held()) {
+		if (!g_config.loaderlock_scans && loader_lock_held()) {
 			DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p skipped as loader lock held.\n", AllocationBase);
 			return;
 		}
+		else if (loader_lock_held())
+			DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p to proceed despite loader lock being held.\n", AllocationBase);
 		char ModulePath[MAX_PATH];
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 		if (g_config.yarascan && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
@@ -114,8 +116,10 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		}
 		else if (g_config.caller_dump && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
 			DumpRegion((PVOID)addr);
+		else if (MappedModule)
+			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
 		else
-			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped.\n", AllocationBase);
+			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
 	}
 }
 

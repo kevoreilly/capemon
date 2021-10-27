@@ -193,12 +193,18 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
 				DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
 			else
+			{
 				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+				goto fail;
+			}
 		else
 			if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 				DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 			else
+			{
 				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+				goto fail;
+			}
 	}
 	else
 	{
@@ -269,6 +275,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				}
 			}
 
+			delete peFile;
 			peFile = new PeParser((char*)PEImage, TRUE);
 
 			if (peFile->isValidPeFile())
@@ -554,7 +561,7 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 		return SectionBasedFileSize;
 	}
 
-	for (unsigned int SectionIndex = 0; SectionIndex < NumberOfSections; SectionIndex++)
+	for (unsigned int SectionIndex = NumberOfSections-1; SectionIndex >= 0; SectionIndex--)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput
@@ -569,21 +576,21 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 #endif
 		if (peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData != peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
 		{
-			if (LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData))
-			{
-#ifdef DEBUG_COMMENTS
-				DebugOutput("GetPESize: Found what looks like a 'raw' section boundary - image looks raw.\n");
-#endif
-				delete peFile;
-				return SectionBasedFileSize;
-			}
-			else if (LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress))
+			if (LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress))
 			{
 #ifdef DEBUG_COMMENTS
 				DebugOutput("GetPESize: Found what looks like a virtual section boundary - image looks virtual.\n");
 #endif
 				delete peFile;
 				return SectionBasedImageSize;
+			}
+			else if (LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData))
+			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("GetPESize: Found what looks like a 'raw' section boundary - image looks raw.\n");
+#endif
+				delete peFile;
+				return SectionBasedFileSize;
 			}
 		}
 	}
@@ -816,7 +823,6 @@ extern "C" PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName)
 extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
 //**************************************************************************************
 {
-	ApiReader apiReader;
 	unsigned int ModuleIndex = 0;
 
 	ScyllaInit(NULL);
@@ -855,20 +861,7 @@ extern "C" PCHAR ScyllaGetExportDirectory(PVOID Address)
 		return NULL;
 	}
 
-	if (!peFile->hasExportDirectory())
-	{
-#ifdef DEBUG_COMMENTS
-		DebugOutput("ScyllaGetExportDirectory: Module has no exports.\n");
-#endif
-		delete peFile;
-		return NULL;
-	}
-
-	apiReader.clearAll();
-
-	// This creates moduleInfo->apiList
-	apiReader.parseModuleWithOwnProcess(&ProcessAccessHelp::ownModuleList[ModuleIndex-1]);
-	char *DirectoryName = (&ProcessAccessHelp::ownModuleList[ModuleIndex-1])->DirectoryName;
+	char* DirectoryName = peFile->getExportDirectory();
 
 	if (DirectoryName)
 	{

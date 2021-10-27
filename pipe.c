@@ -181,15 +181,17 @@ int pipe(const char *fmt, ...)
 	if (g_config.standalone) {
 		char pid[8];
 		char* filename = GetResultsPath("pipe");
-		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
-		strcat(filename, "\\");
-		strcat(filename, pid);
-		strcat(filename, ".log");
-		FILE *f = fopen(filename, "ab");
-		if (f) {
-			fwrite(buf, len, 1, f);
-			fclose(f);
-			ret = 0;
+		if (filename) {
+			num_to_string(pid, sizeof(pid), GetCurrentProcessId());
+			strcat(filename, "\\");
+			strcat(filename, pid);
+			strcat(filename, ".log");
+			FILE *f = fopen(filename, "ab");
+			if (f) {
+				fwrite(buf, len, 1, f);
+				fclose(f);
+				ret = 0;
+			}
 		}
 	}
 	else {
