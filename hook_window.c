@@ -23,7 +23,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "log.h"
 
+#define StringAtomSize 0x100
+
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void DumpSectionViewsForPid(DWORD Pid);
 
 typedef DWORD (WINAPI * __GetWindowThreadProcessId)(
 	__in HWND hWnd,
@@ -204,16 +207,19 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 	DWORD pid;
 	lasterror_t lasterror;
 
-	get_lasterrors(&lasterror);
-	if (hWnd) {
-		our_GetWindowThreadProcessId(hWnd, &pid);
-		if (!g_config.single_process && pid != GetCurrentProcessId())
-			ProcessMessage(pid, 0);
-	}
-	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageA(hWnd, Msg, wParam, lParam);
 
 	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
+
+	get_lasterrors(&lasterror);
+	if (hWnd) {
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (pid != GetCurrentProcessId()) {
+			DumpSectionViewsForPid(pid);
+			ProcessMessage(pid, 0);
+		}
+	}
+	set_lasterrors(&lasterror);
 
 	return ret;
 }
@@ -228,16 +234,19 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 	DWORD pid;
 	lasterror_t lasterror;
 
-	get_lasterrors(&lasterror);
-	if (hWnd) {
-		our_GetWindowThreadProcessId(hWnd, &pid);
-		if (!g_config.single_process && pid != GetCurrentProcessId())
-			ProcessMessage(pid, 0);
-	}
-	set_lasterrors(&lasterror);
 	ret = Old_SendNotifyMessageW(hWnd, Msg, wParam, lParam);
 
 	LOQ_bool("windows", "ph", "WindowHandle", hWnd, "Message", Msg);
+
+	get_lasterrors(&lasterror);
+	if (hWnd) {
+		our_GetWindowThreadProcessId(hWnd, &pid);
+		if (pid != GetCurrentProcessId()) {
+			DumpSectionViewsForPid(pid);
+			ProcessMessage(pid, 0);
+		}
+	}
+	set_lasterrors(&lasterror);
 
 	return ret;
 }
@@ -252,22 +261,23 @@ HOOKDEF(LONG, WINAPI, SetWindowLongA,
 	LONG ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongA(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongA(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
@@ -285,22 +295,23 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrA,
 	LONG_PTR ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongPtrA(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
@@ -318,22 +329,23 @@ HOOKDEF(LONG, WINAPI, SetWindowLongW,
 	LONG ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongW(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongW(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);
@@ -352,22 +364,23 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 	LONG_PTR ret;
 	BOOL isbad = FALSE;
 
+	ret = Old_SetWindowLongPtrW(hWnd, nIndex, dwNewLong);
+
 	get_lasterrors(&lasterror);
-	if (hWnd) {
+	if (nIndex == 0 && hWnd) {
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
-			char classname[1024];
-			our_GetClassNameA(hWnd, classname, sizeof(classname));
-			if (!stricmp(classname, "Shell_TrayWnd") && nIndex == 0) {
-				if (!g_config.single_process)
-					ProcessMessage(pid, 0);
+			char classname[StringAtomSize];
+			memset(classname, 0, StringAtomSize);
+			our_GetClassNameA(hWnd, classname, StringAtomSize);
+			if (!stricmp(classname, "Shell_TrayWnd")) {
+				DumpSectionViewsForPid(pid);
+				ProcessMessage(pid, 0);
 				isbad = TRUE;
 			}
 		}
 	}
 	set_lasterrors(&lasterror);
-
-	ret = Old_SetWindowLongPtrW(hWnd, nIndex, dwNewLong);
 
 	if (isbad)
 		LOQ_nonzero("windows", "pip", "WindowHandle", hWnd, "Index", nIndex, "NewLong", dwNewLong);

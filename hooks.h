@@ -900,20 +900,20 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenEvent,
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateNamedPipeFile,
-	OUT		 PHANDLE NamedPipeFileHandle,
-	IN		  ACCESS_MASK DesiredAccess,
-	IN		  POBJECT_ATTRIBUTES ObjectAttributes,
-	OUT		 PIO_STATUS_BLOCK IoStatusBlock,
-	IN		  ULONG ShareAccess,
-	IN		  ULONG CreateDisposition,
-	IN		  ULONG CreateOptions,
-	IN		  ULONG WriteModeMessage,
-	IN		  ULONG ReadModeMessage,
-	IN		  ULONG NonBlocking,
-	IN		  ULONG MaxInstances,
-	IN		  ULONG InBufferSize,
-	IN		  ULONG OutBufferSize,
-	IN		  PLARGE_INTEGER DefaultTimeOut
+	OUT		PHANDLE NamedPipeFileHandle,
+	IN		ACCESS_MASK DesiredAccess,
+	IN		POBJECT_ATTRIBUTES ObjectAttributes,
+	OUT		PIO_STATUS_BLOCK IoStatusBlock,
+	IN		ULONG ShareAccess,
+	IN		ULONG CreateDisposition,
+	IN		ULONG CreateOptions,
+	IN		ULONG NamedPipeType,
+	IN		ULONG ReadMode,
+	IN		ULONG CompletionMode,
+	IN		ULONG MaxInstances,
+	IN		ULONG InBufferSize,
+	IN		ULONG OutBufferSize,
+	IN		PLARGE_INTEGER DefaultTimeOut
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtAddAtom,
@@ -3207,4 +3207,17 @@ HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
 
 HOOKDEF(BOOL, WINAPI, SwitchToThread,
 	void
+);
+
+HOOKDEF(DWORD, WINAPI, DsEnumerateDomainTrustsW,
+	__in	LPWSTR	ServerName,
+	__in	ULONG	Flags,
+	__out	PVOID 	*Domains,
+	__out	PULONG	DomainCount
+);
+
+HOOKDEF(HRESULT, WINAPI, IsValidURL,
+	_In_       LPBC    pBC,
+	_In_       LPCWSTR szURL,
+	_Reserved_ DWORD   dwReserved
 );

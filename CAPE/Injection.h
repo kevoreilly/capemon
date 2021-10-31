@@ -27,12 +27,12 @@ typedef enum _SECTION_INHERIT {
 
 typedef struct InjectionSectionView
 {
-	HANDLE						  SectionHandle;
-	PVOID						   LocalView;
-	SIZE_T						  ViewSize;
-	int							 TargetProcessId;
-	wchar_t						 *SectionName;
-	struct InjectionSectionView	 *NextSectionView;
+	HANDLE	SectionHandle;
+	PVOID	LocalView;
+	SIZE_T	ViewSize;
+	int		TargetProcessId;
+	wchar_t	*SectionName;
+	struct InjectionSectionView *NextSectionView;
 } INJECTIONSECTIONVIEW, *PINJECTIONSECTIONVIEW;
 
 PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE_T ViewSize);
@@ -43,19 +43,20 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView);
 
 typedef struct InjectionInfo
 {
-	DWORD					ProcessId;
-	HANDLE					ProcessHandle;
-	DWORD					InitialThreadId;
-	DWORD_PTR				ImageBase;
-	DWORD_PTR				EntryPoint;
-	BOOL					MapDetected;
-	BOOL					ImageDumped;
-	LPVOID					BufferBase;
-	LPVOID					StackPointer;
-	unsigned int			BufferSizeOfImage;
-	HANDLE					SectionHandle;
+	DWORD			ProcessId;
+	HANDLE			ProcessHandle;
+	DWORD			InitialThreadId;
+	DWORD_PTR		ImageBase;
+	DWORD_PTR		EntryPoint;
+	BOOL			MapDetected;
+	BOOL			ImageDumped;
+	LPVOID			BufferBase;
+	LPVOID			StackPointer;
+	unsigned int	BufferSizeOfImage;
+	HANDLE			SectionHandle;
+	BOOL			DontMonitor;
 //	struct InjectionSectionView *SectionViewList;
-	struct InjectionInfo	*NextInjectionInfo;
+	struct InjectionInfo *NextInjectionInfo;
 } INJECTIONINFO, *PINJECTIONINFO;
 
 struct InjectionInfo *InjectionInfoList;

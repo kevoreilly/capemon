@@ -139,9 +139,8 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 
-BOOL ProcessDumped, FilesDumped, ModuleDumped, PlugXConfigDumped;
+BOOL ProcessDumped, ModuleDumped, PlugXConfigDumped;
 PVOID ImageBase;
-char *CommandLine;
 static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
@@ -237,7 +236,7 @@ PVOID GetHookCallerBase()
 
 		if (AllocationBase)
 		{
-			DebugOutput("GetHookCallerBase: thread %d (handle 0x%x), return address 0x%p, allocation base 0x%p.\n", ThreadId, GetThreadHandle(ThreadId), ReturnAddress, AllocationBase);
+			DebugOutput("GetHookCallerBase: thread %d, return address 0x%p, allocation base 0x%p.\n", ThreadId, ReturnAddress, AllocationBase);
 			CallingModule = AllocationBase;
 			return CallingModule;
 			// Base-dependent breakpoints can be activated now
@@ -342,7 +341,7 @@ PVOID GetAllocationBase(PVOID Address)
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
-		//ErrorOutput("GetAllocationBase: unable to query memory address 0x%x", Address);
+		//ErrorOutput("GetAllocationBase: unable to query memory address 0x%p", Address);
 		return 0;
 	}
 
@@ -350,6 +349,36 @@ PVOID GetAllocationBase(PVOID Address)
 //	ErrorOutput("GetAllocationBase: Address 0x%p allocation base: 0x%p", Address, MemInfo.AllocationBase);
 #endif
 	return MemInfo.AllocationBase;
+}
+
+//**************************************************************************************
+PVOID GetBaseAddress(PVOID Address)
+//**************************************************************************************
+{
+	MEMORY_BASIC_INFORMATION MemInfo;
+
+	if (!Address)
+		return NULL;
+
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
+
+	if (!SystemInfo.dwPageSize)
+	{
+		ErrorOutput("GetBaseAddress: Failed to obtain system page size.\n");
+		return 0;
+	}
+
+	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+		//ErrorOutput("GetBaseAddress: unable to query memory address 0x%p", Address);
+		return 0;
+	}
+
+#ifdef DEBUG_COMMENTS
+//	ErrorOutput("GetBaseAddress: Address 0x%p base address: 0x%p", Address, MemInfo.BaseAddress);
+#endif
+	return MemInfo.BaseAddress;
 }
 
 //**************************************************************************************
@@ -372,7 +401,7 @@ SIZE_T GetRegionSize(PVOID Address)
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
-		ErrorOutput("GetRegionSize: unable to query memory address 0x%x", Address);
+		ErrorOutput("GetRegionSize: unable to query memory address 0x%p", Address);
 		return 0;
 	}
 
@@ -401,7 +430,7 @@ SIZE_T GetAllocationSize(PVOID Address)
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
-		ErrorOutput("GetAllocationSize: unable to query memory address 0x%x", Address);
+		ErrorOutput("GetAllocationSize: unable to query memory address 0x%p", Address);
 		return 0;
 	}
 
@@ -410,16 +439,45 @@ SIZE_T GetAllocationSize(PVOID Address)
 
 	while (MemInfo.AllocationBase == OriginalAllocationBase)
 	{
-		(PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
+		(PUCHAR)AddressOfPage += MemInfo.RegionSize;
 
 		if (!VirtualQuery(AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
-			ErrorOutput("GetAllocationSize: unable to query memory page 0x%x", AddressOfPage);
+			ErrorOutput("GetAllocationSize: unable to query memory page 0x%p", AddressOfPage);
 			return 0;
 		}
 	}
 
 	return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
+}
+
+//**************************************************************************************
+void GetMemoryInfo(PVOID Address)
+//**************************************************************************************
+{
+	MEMORY_BASIC_INFORMATION MemInfo;
+
+	if (!Address)
+		return;
+
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
+
+	if (!SystemInfo.dwPageSize)
+	{
+		ErrorOutput("GetMemoryInfo: Failed to obtain system page size.\n");
+		return;
+	}
+
+	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+		ErrorOutput("GetMemoryInfo: unable to query memory address 0x%p", Address);
+		return;
+	}
+
+	DebugOutput("GetMemoryInfo: Address 0x%p BaseAddress 0x%p AllocationBase 0x%p AllocationProtect 0x%x RegionSize 0x%x State 0x%x Protect 0x%x Type 0x%x", Address, MemInfo.BaseAddress, MemInfo.AllocationBase, MemInfo.AllocationProtect, MemInfo.RegionSize, MemInfo.State, MemInfo.Protect, MemInfo.Type);
+
+	return;
 }
 
 //**************************************************************************************
@@ -443,7 +501,7 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
-		ErrorOutput("GetAccessibleSize: unable to query memory address 0x%x", Address);
+		ErrorOutput("GetAccessibleSize: unable to query memory address 0x%p", Address);
 		return 0;
 	}
 
@@ -452,11 +510,11 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 	while (MemInfo.AllocationBase == OriginalAllocationBase)
 	{
-		(PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
+		(PUCHAR)AddressOfPage += MemInfo.RegionSize;
 
-		if (!VirtualQuery(AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+		if (!VirtualQuery((PUCHAR)AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
-			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%x", AddressOfPage);
+			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%x", (PUCHAR)AddressOfPage + SystemInfo.dwPageSize);
 			return 0;
 		}
 
@@ -465,9 +523,48 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 		if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
 			break;
+
+		if (!MemInfo.Protect)
+			break;
 	}
 
 	return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
+}
+
+//**************************************************************************************
+BOOL IsAddressAccessible(PVOID Address)
+//**************************************************************************************
+{
+	MEMORY_BASIC_INFORMATION MemInfo;
+
+	if (!Address)
+		return 0;
+
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
+
+	if (!SystemInfo.dwPageSize)
+	{
+		ErrorOutput("IsAddressAccessible: Failed to obtain system page size.\n");
+		return 0;
+	}
+
+	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+		ErrorOutput("IsAddressAccessible: unable to query memory address 0x%p", Address);
+		return 0;
+	}
+
+	if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+		return FALSE;
+
+	if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
+		return FALSE;
+
+	if (!MemInfo.Protect)
+		return FALSE;
+
+	return TRUE;
 }
 
 //**************************************************************************************
@@ -894,7 +991,7 @@ int ScanPageForNonZero(PVOID Address)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanPageForNonZero: Exception occurred reading memory address 0x%x\n", (char*)AddressOfPage+p);
+		DebugOutput("ScanPageForNonZero: Exception occurred reading memory address 0x%p\n", (char*)AddressOfPage+p);
 		return 0;
 	}
 
@@ -922,7 +1019,7 @@ SIZE_T ScanForAccess(PVOID Buffer, SIZE_T Size)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
+		DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%p\n", (char*)Buffer+p);
 		if (p)
 			return p-1;
 		else
@@ -946,7 +1043,7 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size)
 
 	__try
 	{
-		for (p=0; p<Size-1; p++)
+		for (p=0; p <= Size-1; p++)
 			if (*((char*)Buffer+p) != 0)
 			{
 #ifdef DEBUG_COMMENTS
@@ -960,7 +1057,7 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanForNonZero: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
+		DebugOutput("ScanForNonZero: Exception occurred reading memory address 0x%p (buffer at 0x%p, size 0x%x)\n", (char*)Buffer+p, Buffer, Size);
 		return 0;
 	}
 
@@ -978,19 +1075,26 @@ int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size)
 
 	if (!Buffer)
 	{
-		DebugOutput("ScanForNonZero: Error - Supplied address zero.\n");
+		DebugOutput("ReverseScanForNonZero: Error - Supplied address zero.\n");
+		return 0;
+	}
+
+	if (!IsAddressAccessible((PUCHAR)Buffer+Size-1))
+	{
+		DebugOutput("ReverseScanForNonZero: Error - Supplied address inaccessible: 0x%p\n", (PUCHAR)Buffer+Size-1);
 		return 0;
 	}
 
 	__try
 	{
-		for (p=Size; p>0; p--)
-			if (*((char*)Buffer+p-1) != 0)
+		for (p=Size-1; p>0; p--)
+			if (*((char*)Buffer+p) != 0)
 				return (int)p;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanForNonZero: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
+		DebugOutput("ReverseScanForNonZero: Exception occurred reading memory address 0x%p (buffer at 0x%p, size 0x%x)\n", (char*)Buffer+p, Buffer, Size);
+		GetMemoryInfo((char*)Buffer+p);
 		return 0;
 	}
 
@@ -1073,7 +1177,7 @@ int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		}
 		__except(EXCEPTION_EXECUTE_HANDLER)
 		{
-			DebugOutput("ScanForPE: Exception occurred reading memory address 0x%x\n", (DWORD_PTR)((char*)Buffer+p));
+			DebugOutput("ScanForPE: Exception occurred reading memory address 0x%p\n", (DWORD_PTR)((char*)Buffer+p));
 			return 0;
 		}
 	}
@@ -1120,12 +1224,6 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 				MinSize = NtSection->SizeOfRawData;
 			else if (NtSection->Misc.VirtualSize)
 				MinSize = NtSection->Misc.VirtualSize;
-
-			if (NtSection->VirtualAddress + MinSize > (ULONG)pNtHeader->OptionalHeader.SizeOfImage)
-			{
-				DebugOutput("TestPERequirements: Possible PE image rejected due to section %d of %d, RVA 0x%x and size %d bytes.\n", i+1, pNtHeader->FileHeader.NumberOfSections, NtSection->VirtualAddress, MinSize);
-				return FALSE;
-			}
 
 			++NtSection;
 		}
@@ -1228,48 +1326,13 @@ int IsDisguisedPEHeader(PVOID Buffer)
 {
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
-	//WORD* MachineProbe;
+
+	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
 
 	__try
 	{
-		pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
-
 		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
 			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
-
-		//if (!pDosHeader->e_lfanew)
-		//{
-		//	// In case the header until and including 'PE' has been zeroed
-		//	MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-		//	while ((PUCHAR)MachineProbe < (PUCHAR)&pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-		//	{
-		//		if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-		//		{
-		//			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-		//			break;
-		//		}
-		//		MachineProbe += sizeof(WORD);
-		//	}
-		//}
-
-		//if (pNtHeader && TestPERequirements(pNtHeader))
-		//	return 1;
-
-		// In case the header until and including 'PE' is missing
-		//MachineProbe = (WORD*)Buffer;
-		//pNtHeader = NULL;
-		//while ((PUCHAR)MachineProbe < PE_HEADER_LIMIT)
-		//{
-		//	if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-		//	{
-		//		if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4 && (PUCHAR)MachineProbe < (PUCHAR)pDosHeader + DOS_HEADER_LIMIT)
-		//		{
-		//			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-		//			break;
-		//		}
-		//	}
-		//	MachineProbe += sizeof(WORD);
-		//}
 
 		if (pNtHeader && TestPERequirements(pNtHeader))
 			return 1;
@@ -1286,9 +1349,9 @@ int IsDisguisedPEHeader(PVOID Buffer)
 int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 //**************************************************************************************
 {
-	SIZE_T p;
-	int RetVal;
+	SIZE_T p, AccessibleSize;
 	BOOL PEDetected;
+	int RetVal;
 
 	if (Size == 0)
 	{
@@ -1296,10 +1359,29 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		return 0;
 	}
 
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
+
+	if (!SystemInfo.dwPageSize)
+	{
+		ErrorOutput("ScanForDisguisedPE: Failed to obtain system page size.\n");
+		return 0;
+	}
+
+	if (Size <= SystemInfo.dwPageSize)
+	{
+		DebugOutput("ScanForDisguisedPE: Size too small.\n");
+		return 0;
+	}
+
 	PEDetected = FALSE;
 
+	AccessibleSize = ScanForAccess(Buffer, Size);
+	if (Size > AccessibleSize)
+		Size = AccessibleSize;
+
 	// we want to stop short of the max look-ahead in IsDisguisedPEHeader
-	for (p=0; p < Size - PE_HEADER_LIMIT; p++)
+	for (p=0; p < Size - SystemInfo.dwPageSize; p++)
 	{
 		RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
 
@@ -1308,6 +1390,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		else if (RetVal == -1)
 		{
 			DebugOutput("ScanForDisguisedPE: Exception occurred scanning buffer at 0x%x\n", (BYTE*)Buffer+p);
+			GetMemoryInfo((BYTE*)Buffer+p);
 			return 0;
 		}
 
@@ -1319,7 +1402,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		return 1;
 	}
 
-	DebugOutput("ScanForDisguisedPE: No PE image located in range 0x%x-0x%x.\n", Buffer, (DWORD_PTR)Buffer + Size);
+	DebugOutput("ScanForDisguisedPE: No PE image located in range 0x%p-0x%p.\n", Buffer, (DWORD_PTR)Buffer + Size);
 
 	return 0;
 }
@@ -1412,7 +1495,7 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 	PVOID PEPointer = Buffer;
 	SIZE_T Count = 0;
 
-	DebugOutput("DumpPEsInRange: Scanning range 0x%x - 0x%x.\n", Buffer, (BYTE*)Buffer + Size);
+	DebugOutput("DumpPEsInRange: Scanning range 0x%p - 0x%p.\n", Buffer, (BYTE*)Buffer + Size);
 
 	__try
 	{
@@ -1446,34 +1529,40 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	char *FullPathName = NULL;
 	int ret = 0;
 
+	if (!Size)
+		goto end;
+
+	SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+
+	if (!AccessibleSize)
+		goto end;
+
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
+
+	Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
+
+	if (!Size)
+	{
+		DebugOutput("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
+		goto end;
+	}
+
+	BufferCopy = (PVOID)((BYTE*)malloc(Size));
+
+	if (BufferCopy == NULL)
+	{
+		DebugOutput("DumpMemory: Failed to allocate 0x%x bytes for buffer copy.\n", Size);
+		goto end;
+	}
+
 	__try
 	{
-		SIZE_T AccessibleSize = ScanForAccess(Buffer, Size);
-		if (AccessibleSize < Size)
-		{
-		}
-
-		Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
-
-		if (!Size)
-		{
-			DebugOutput("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
-			goto end;
-		}
-
-		BufferCopy = (PVOID)((BYTE*)malloc(Size));
-
-		if (BufferCopy == NULL)
-		{
-			DebugOutput("DumpMemory: Failed to allocate 0x%x bytes for buffer copy.\n", Size);
-			goto end;
-		}
-
 		memcpy(BufferCopy, Buffer, Size);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("DumpMemory: Exception occurred reading memory address 0x%x\n", Buffer);
+		DebugOutput("DumpMemory: Exception occurred reading memory address 0x%p\n", Buffer);
 		goto end;
 	}
 
@@ -1484,7 +1573,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (hOutputFile == INVALID_HANDLE_VALUE)
 	{
 		if (GetLastError() == ERROR_FILE_EXISTS)
-			DebugOutput("DumpMemory: Payloadname exists already: %s", FullPathName);
+			DebugOutput("DumpMemory: Payload name exists already: %s", FullPathName);
 		else
 			ErrorOutput("DumpMemory: Could not create Payload");
 		free(FullPathName);
@@ -1524,64 +1613,32 @@ end:
 BOOL DumpRegion(PVOID Address)
 //**************************************************************************************
 {
-	MEMORY_BASIC_INFORMATION MemInfo;
-	PVOID AllocationBase, BaseAddress, AddressOfPage;
-	SIZE_T AllocationSize, RegionSize;
+	PVOID AllocationBase = GetAllocationBase(Address);
+	PVOID BaseAddress = GetBaseAddress(Address);
+	SIZE_T AccessibleSize = GetAccessibleSize(Address);
+	SIZE_T RegionSize = GetRegionSize(Address);
 
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
+	SetCapeMetaData(UNPACKED_PE, 0, NULL, AllocationBase);
 
-	if (!SystemInfo.dwPageSize)
+	if (DumpPEsInRange(AllocationBase, AccessibleSize))
 	{
-		ErrorOutput("DumpRegion: Failed to obtain system page size.\n");
-		return 0;
-	}
-
-	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
-	{
-		ErrorOutput("DumpRegion: unable to query memory address 0x%x", Address);
-		return 0;
-	}
-
-	AllocationBase = MemInfo.AllocationBase;
-	BaseAddress = MemInfo.BaseAddress;
-	RegionSize = MemInfo.RegionSize;
-	AddressOfPage = AllocationBase;
-
-	while (MemInfo.AllocationBase == AllocationBase)
-	{
-		(PUCHAR)AddressOfPage += SystemInfo.dwPageSize;
-
-		if (!VirtualQuery(AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
-		{
-			ErrorOutput("DumpRegion: unable to query memory page 0x%x", AddressOfPage);
-			return 0;
-		}
-	}
-
-	AllocationSize = (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)AllocationBase);
-
-	SetCapeMetaData(UNPACKED_PE, 0, NULL, (PVOID)AllocationBase);
-
-	if (DumpPEsInRange(AllocationBase, AllocationSize))
-	{
-		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size %d bytes.\n", AllocationBase, AllocationSize);
+		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
 		return TRUE;
 	}
 
-	SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)AllocationBase);
+	SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, AllocationBase);
 
-	if (DumpMemory(AllocationBase, AllocationSize))
+	if (DumpMemory(AllocationBase, AccessibleSize))
 	{
 		if (address_is_in_stack(AllocationBase))
-			DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", AllocationBase, AllocationSize);
+			DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
 		else
-			DebugOutput("DumpRegion: Dumped entire allocation from 0x%p, size %d bytes.\n", AllocationBase, AllocationSize);
+			DebugOutput("DumpRegion: Dumped entire allocation from 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
 		return TRUE;
 	}
 	else
 	{
-		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size %d bytes.\n", AllocationBase, AllocationSize);
+		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size %d bytes.\n", AllocationBase, AccessibleSize);
 
 		SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)BaseAddress);
 
@@ -2047,7 +2104,7 @@ void CAPE_init()
     // Initialise CAPE global variables
     //
     //if (!g_config.standalone)
-    CapeMetaData = (PCAPEMETADATA)malloc(sizeof(CAPEMETADATA));
+    CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA),1);
     CapeMetaData->Pid = GetCurrentProcessId();
     CapeMetaData->PPid = parent_process_id();
     CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
@@ -2062,9 +2119,6 @@ void CAPE_init()
 			*Character = 0x3F;  // '?'
 		Character++;
 	}
-
-	CommandLine = (char*)malloc(MAX_PATH);
-	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_commandline, (int)wcslen(our_commandline)+1, CommandLine, MAX_PATH, NULL, NULL);
 
 	// This is package (and technique) dependent:
 	CapeMetaData->DumpType = PROCDUMP;
@@ -2081,12 +2135,12 @@ void CAPE_init()
 		ImageBase = GetModuleHandle(NULL);
 
 #ifdef _WIN64
-	DebugOutput("CAPE initialised: 64-bit monitor loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+	DebugOutput("Monitor initialised: 64-bit capemon loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
 #else
-	DebugOutput("CAPE initialised: 32-bit monitor loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+	DebugOutput("Monitor initialised: 32-bit capemon loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
-	DebugOutput("Commandline: %s\n", CommandLine);
+	DebugOutput("Commandline: %s\n", GetCommandLineA());
 
 	return;
 }

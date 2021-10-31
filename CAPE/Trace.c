@@ -40,7 +40,7 @@ extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
 extern void log_anomaly(const char *subcategory, const char *msg);
-extern char *CommandLine, *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
+extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset);
 extern DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase);
@@ -53,9 +53,9 @@ extern void loq(int index, const char *category, const char *name,
 extern PVOID _KiUserExceptionDispatcher;
 
 char *ModuleName, *PreviousModuleName;
-PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress;
+PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
-BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning;
+BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
 unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
@@ -607,10 +607,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				DumpSize = (SIZE_T)(DWORD_PTR)strtoul(p+1, NULL, 0);
 		}
 
-		DebugOutput("CapeMetaData->TypeString = %s\n", CapeMetaData->TypeString);
 		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Target, DumpSize))
 		{
 			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
+			return;
+		}
+		else if (Target && DumpRegion(Target))
+		{
+			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p.\n", Target);
 			return;
 		}
 		else
@@ -712,7 +716,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 
 #ifdef _WIN64
-	if (!FilterTrace && LastContext.Rip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -776,7 +780,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
 			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
 #else
-	if (!FilterTrace && LastContext.Eip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -831,6 +835,15 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 
 	PCHAR FunctionName = NULL;
+	__try
+	{
+		FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DebugOutput("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
+		FunctionName = NULL;
+	}
 	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
 
 	if (ModuleName)
@@ -844,26 +857,11 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		else if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 		{
 			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-			__try
-			{
-				FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
-				FunctionName = NULL;
-			}
 			if (FilterTrace)
 				DebuggerOutput("\n");
 			if (FunctionName)
 			{
-				if (!strcmp(ModuleName, "ntdll.dll") && !strcmp(FunctionName, "RtlAllocateHeap"))
-				{
-					ForceStepOver = TRUE;
-					FilterTrace = TRUE;
-				}
-				else
-					DebuggerOutput("Break in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
+				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
 
 				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
 				{
@@ -876,7 +874,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else if (!g_config.branch_trace)
 			{
-				DebuggerOutput("Break in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
+				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
 				PreviousModuleName = ModuleName;
 				FunctionName = NULL;
 				ModuleName = NULL;
@@ -965,7 +963,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 					TraceOutput(CIP, DecodedInstruction);
 			}
 			else if (!FilterTrace || g_config.trace_all)
-				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", CallTarget);
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 		}
 		else if (DecodedInstruction.size > 4)
 		{
@@ -981,6 +979,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				DebugOutput("Trace: Error dereferencing CallTarget 0x%x.", CallTarget);
 				ExportName = NULL;
 			}
+
+			if (ExportName && !strcmp(ExportName, "RtlAllocateHeap"))
+				ForceStepOver = TRUE;
 
 			if (CallTarget == &loq)
 			{
@@ -1088,7 +1089,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExportName)
 			{
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 				StepOver = TRUE;
 			}
 			else if (!FilterTrace || g_config.trace_all)
@@ -1214,13 +1215,12 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			{
 				ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)JumpTarget, &DllRVA);
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s%s::%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ModuleName, ExportName);
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 				if (!g_config.trace_all)
 					ForceStepOver = TRUE;
 			}
 			else if (!FilterTrace || g_config.trace_all)
-				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p,
-			DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 
 			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
 			//	ForceStepOver = TRUE;
@@ -1250,7 +1250,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 		}
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
@@ -1268,16 +1268,67 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
 		ForceStepOver = TRUE;
 	}
-#endif
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "INT 3"))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+		BreakOnNtContinueCallback = BreakpointCallback;
+		//LastContext = *ExceptionInfo->ContextRecord;
+		//ClearSingleStepMode(ExceptionInfo->ContextRecord);
+		//ReturnAddress = NULL;
+		//return TRUE;
+	}
+
+#endif
+#ifndef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
 	{
 		if (!FilterTrace)
 			TraceOutput(CIP, DecodedInstruction);
 
-		// Better than nothing for now
-		ForceStepOver = TRUE;
+		if (InsideMonitor(NULL, CIP))
+		{
+			DebuggerOutput("\nInternal POP SS detected.\n");
+		}
+		//else
+		//{
+			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (PVOID)ExceptionInfo->ContextRecord->Esp, BP_READWRITE, 0, BreakpointCallback))
+			{
+				DebugOutput("Trace: Set stack breakpoint before POP SS at 0x%p\n", CIP);
+				LastContext = *ExceptionInfo->ContextRecord;
+				ClearSingleStepMode(ExceptionInfo->ContextRecord);
+				ReturnAddress = NULL;
+				return TRUE;
+			}
+			else
+				DebugOutput("Trace: Failed to set stack breakpoint on 0x%p\n", ExceptionInfo->ContextRecord->Esp);
+		//}
 	}
-    //else if (!InsideMonitor(NULL, CIP) && (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF") ||
+//#else
+//	else if (!strcmp(DecodedInstruction.mnemonic.p, "MOV") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
+//	{
+//		TraceOutput(CIP, DecodedInstruction);
+//
+//		if (InsideMonitor(NULL, CIP))
+//		{
+//			DebuggerOutput("\nInternal MOV SS detected.\n");
+//
+//			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, &StackSelector, BP_READWRITE, 0, BreakpointCallback))
+//			{
+//				DebugOutput("DoSyscall: Set breakpoint before MOV SS at 0x%p\n", ExceptionInfo->ContextRecord->Rip);
+//				//TraceRunning = FALSE;
+//				//LastContext = *ExceptionInfo->ContextRecord;
+//				//ClearSingleStepMode(ExceptionInfo->ContextRecord);
+//				//ReturnAddress = NULL;
+//				//return TRUE;
+//				ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+//				ForceStepOver = TRUE;
+//			}
+//			else
+//				DebugOutput("DoSyscall: Failed to set stack breakpoint on 0x%p\n", (PBYTE)ExceptionInfo->ContextRecord->Rsp-8);
+//		}
+//	}
+#endif
     else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
     {
         if (!FilterTrace)
@@ -1341,11 +1392,15 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		//DebugOutput("Trace: Restoring single-step mode!\n");
 	}
 	else
-		DebugOutput("Trace: Stopping trace!n");
+	{
+		DebugOutput("Trace: Stopping trace!\n");
+		TraceRunning = FALSE;
+	}
 #else
 	}
+	else
+		TraceRunning = FALSE;
 #endif
-	TraceRunning = FALSE;
 	ReturnAddress = NULL;
 	return TRUE;
 }
@@ -1521,7 +1576,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	StepCount++;
 
 #ifdef _WIN64
-	if (!FilterTrace && LastContext.Rip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -1585,7 +1640,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
 			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
 #else
-	if (!FilterTrace && LastContext.Eip)
+	if (!FilterTrace)
 	{
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
@@ -1619,8 +1674,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	if (!FilterTrace)
 		DebuggerOutput("\n");
-	else
-		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+
+	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
 
 	if (ModuleName)
 	{
@@ -1856,7 +1911,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
-				DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", ExceptionInfo->ContextRecord->Rip, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", ExportName);
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 				StepOver = TRUE;
 			}
 			else
@@ -1996,7 +2051,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 					ForceStepOver = TRUE;
 			}
 			else if (!FilterTrace || g_config.trace_all)
-				DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 
 			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
 			//	ForceStepOver = TRUE;
@@ -2023,7 +2078,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			}
 			else
 				if (!FilterTrace || g_config.trace_all)
-					DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", JumpTarget);
+					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 		}
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
@@ -2289,7 +2344,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 	if (BreakpointsHit)
 		return TRUE;
 
-	if (procname0 && !stristr(CommandLine, procname0))
+	if (procname0 && !stristr(GetCommandLineA(), procname0))
 		return TRUE;
 
 	if (!DebuggerInitialised)
@@ -2340,7 +2395,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
 			if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, 0, BreakpointCallback))
 			{
-				DebuggerOutput("Breakpoint %d set on entry point at 0x%p.\n", Register, EntryPoint);
+				DebuggerOutput("Breakpoint %d set on entry point at 0x%p\n", Register, EntryPoint);
 				BreakpointsSet = TRUE;
 				g_config.bp0 = EntryPoint;
 			}
@@ -2363,6 +2418,18 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 
 	if (g_config.bp3)
 		SetConfigBP(ImageBase, 3, g_config.bp3);
+
+	if (g_config.zerobp0)
+		SetConfigBP(ImageBase, 0, 0);
+
+	if (g_config.zerobp1)
+		SetConfigBP(ImageBase, 1, 0);
+
+	if (g_config.zerobp2)
+		SetConfigBP(ImageBase, 2, 0);
+
+	if (g_config.zerobp3)
+		SetConfigBP(ImageBase, 3, 0);
 
 	if (!g_config.bp0 && g_config.br0)
 	{

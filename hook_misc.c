@@ -29,7 +29,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 
-#define STATUS_BAD_COMPRESSION_BUFFER    ((NTSTATUS)0xC0000242L)
+#define STATUS_BAD_COMPRESSION_BUFFER ((NTSTATUS)0xC0000242L)
+
+LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
@@ -46,7 +48,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
-		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId())
 			ProcessMessage(pid, dwThreadId);
 	}
 
@@ -67,7 +69,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
 
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
-		if (!g_config.single_process && pid && pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId())
 			ProcessMessage(pid, dwThreadId);
 	}
 
@@ -94,10 +96,12 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 
 	if (g_config.debug)
 		res = NULL;
-	else
+	else {
 		res = Old_SetUnhandledExceptionFilter(lpTopLevelExceptionFilter);
+		TopLevelExceptionFilter = lpTopLevelExceptionFilter;
+	}
 
-	LOQ_bool("hooking", "");
+	LOQ_bool("hooking", "p", "ExceptionFilter", lpTopLevelExceptionFilter);
     return res;
 }
 
