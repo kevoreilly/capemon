@@ -983,3 +983,15 @@ HOOKDEF(DWORD, WINAPI, DsEnumerateDomainTrustsW,
 		LOQ_zero("network", "u", "ServerName", L"localhost");
 	return ret;
 }
+
+HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
+	PCWSTR pszUrl,
+	PWSTR  pszCanonicalized,
+	DWORD* pcchCanonicalized,
+	DWORD  dwFlags
+)
+{
+	HRESULT ret = Old_UrlCanonicalizeW(pszUrl, pszCanonicalized, pcchCanonicalized, dwFlags);
+	LOQ_hresult("network", "u", "Url", pszUrl);
+	return ret;
+}
