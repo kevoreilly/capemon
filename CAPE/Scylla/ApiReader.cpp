@@ -228,7 +228,7 @@ void ApiReader::handleForwardedApi(DWORD_PTR vaStringPointer,char * functionName
 		if (rvaApi == 0)
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("handleForwardedApi :: Api not found, this is really BAD! %s",fordwardedString);
+			DebugOutput("handleForwardedApi: Api not found, this is really BAD! %s",fordwardedString);
 #endif
 		}
 		else
@@ -302,7 +302,7 @@ BYTE * ApiReader::getHeaderFromProcess(ModuleInfo * module)
 	if(!readMemoryFromProcess(module->modBaseAddr, readSize, bufferHeader))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("getHeaderFromProcess :: Error reading header");
+		DebugOutput("getHeaderFromProcess: Error reading header");
 #endif
 		delete[] bufferHeader;
 		return 0;
@@ -344,7 +344,7 @@ BYTE * ApiReader::getExportTableFromProcess(ModuleInfo * module, PIMAGE_NT_HEADE
 		if(!readMemoryFromProcess(module->modBaseAddr + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress, readSize, bufferExportTable))
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("getExportTableFromProcess :: Error reading export table from process");
+			DebugOutput("getExportTableFromProcess: Error reading export table from process");
 #endif
 			delete[] bufferExportTable;
 			return 0;
@@ -400,7 +400,7 @@ void ApiReader::parseExportTable(ModuleInfo *module, PIMAGE_NT_HEADERS pNtHeader
 	addressOfNameOrdinalsArray = (WORD *)((DWORD_PTR)pExportDir->AddressOfNameOrdinals + deltaAddress);
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("parseExportTable :: module %s NumberOfNames %X", module->fullPath, pExportDir->NumberOfNames);
+	DebugOutput("parseExportTable: module %s NumberOfNames %X", module->fullPath, pExportDir->NumberOfNames);
 #endif
 
 	for (i = 0; i < pExportDir->NumberOfNames; i++)
@@ -411,7 +411,7 @@ void ApiReader::parseExportTable(ModuleInfo *module, PIMAGE_NT_HEADERS pNtHeader
 		VA = addressOfFunctionsArray[addressOfNameOrdinalsArray[i]] + module->modBaseAddr;
 
 #ifdef DEBUG_COMMENTS
-		DebugOutput("parseExportTable :: api %s ordinal %d imagebase " PRINTF_DWORD_PTR_FULL " RVA " PRINTF_DWORD_PTR_FULL " VA " PRINTF_DWORD_PTR_FULL, functionName, ordinal, module->modBaseAddr, RVA, VA);
+		DebugOutput("parseExportTable: api %s ordinal %d imagebase " PRINTF_DWORD_PTR_FULL " RVA " PRINTF_DWORD_PTR_FULL " VA " PRINTF_DWORD_PTR_FULL, functionName, ordinal, module->modBaseAddr, RVA, VA);
 #endif
 		if (!isApiBlacklisted(functionName))
 		{
@@ -499,14 +499,14 @@ void ApiReader::findApiByModule(ModuleInfo * module, char * searchFunctionName, 
 			else
 			{
 #ifdef DEBUG_COMMENTS
-				DebugOutput("findApiByModule :: vaApi == NULL, should never happen %s", searchFunctionName);
+				DebugOutput("findApiByModule: vaApi == NULL, should never happen %s", searchFunctionName);
 #endif
 			}
 		}
 		else
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("findApiByModule :: hModule == NULL, should never happen %s", module->getFilename());
+			DebugOutput("findApiByModule: hModule == NULL, should never happen %s", module->getFilename());
 #endif
 		}
 	}
@@ -551,7 +551,7 @@ void ApiReader::parseModuleWithOwnProcess( ModuleInfo * module )
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("parseModuleWithOwnProcess :: hModule is NULL");
+		DebugOutput("parseModuleWithOwnProcess: hModule is NULL");
 #endif
 	}
 }
@@ -762,7 +762,7 @@ ApiInfo * ApiReader::getApiByVirtualAddress(DWORD_PTR virtualAddress, bool * isS
 	}
 
 	//is never reached
-	DebugOutput("getApiByVirtualAddress :: There is a api resolving bug, VA: " PRINTF_DWORD_PTR_FULL, virtualAddress);
+	DebugOutput("getApiByVirtualAddress: There is a api resolving bug, VA: " PRINTF_DWORD_PTR_FULL, virtualAddress);
 	for (size_t c = 0; c < countDuplicates; c++, it1++)
 	{
 		apiFound = (ApiInfo *)((*it1).second);
@@ -922,7 +922,7 @@ void  ApiReader::readAndParseIAT(DWORD_PTR addressIAT, DWORD sizeIAT, std::map<D
 	else
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("ApiReader::readAndParseIAT :: error reading iat " PRINTF_DWORD_PTR_FULL, addressIAT);
+		DebugOutput("ApiReader::readAndparseIAT: error reading iat " PRINTF_DWORD_PTR_FULL, addressIAT);
 #endif
 	}
 
@@ -956,7 +956,7 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 #endif
 				if (apiFound == 0)
 				{
-					DebugOutput("getApiByVirtualAddress :: No Api found " PRINTF_DWORD_PTR_FULL, pIATAddress[i]);
+					DebugOutput("getApiByVirtualAddress: No Api found " PRINTF_DWORD_PTR_FULL, pIATAddress[i]);
 				}
 				if (apiFound == (ApiInfo *)1)
 				{
@@ -985,12 +985,16 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 				{
 					countApiNotFound++;
 					addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
-					DebugOutput("parseIAT :: API not found %08X\n", pIATAddress[i]);
+#ifdef DEBUG_COMMENTS
+					DebugOutput("parseIAT: API not found %08X\n", pIATAddress[i]);
+#endif
 				}
 			}
 			else
 			{
-				DebugOutput("parseIAT :: API not found %08X\n", pIATAddress[i]);
+#ifdef DEBUG_COMMENTS
+				DebugOutput("parseIAT: API not found %08X\n", pIATAddress[i]);
+#endif
 				countApiNotFound++;
 				addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
 			}

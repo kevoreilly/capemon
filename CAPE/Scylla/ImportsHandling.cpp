@@ -134,7 +134,9 @@ void ImportsHandling::scanAndFixModuleList()
 
 			if (importThunk.moduleName[0] == 0 || importThunk.moduleName[0] == L'?')
 			{
+#ifdef DEBUG_COMMENTS
 				DebugOutput("API not found - added to module list.");
+#endif
 				addNotFoundApiToModuleList(&importThunk);
 			}
 			else 
