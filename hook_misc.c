@@ -1700,6 +1700,18 @@ HOOKDEF_NOTAIL(WINAPI, rtcCreateObject2,
 	return ret;
 }
 
+HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
+	PCWSTR pszUrl,
+	PWSTR  pszCanonicalized,
+	DWORD* pcchCanonicalized,
+	DWORD  dwFlags
+)
+{
+	HRESULT ret = Old_UrlCanonicalizeW(pszUrl, pszCanonicalized, pcchCanonicalized, dwFlags);
+	LOQ_hresult("misc", "u", "Url", pszUrl);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
 	_In_       PCWSTR DosFileName,
 	_Out_      PUNICODE_STRING NtFileName,
@@ -1736,4 +1748,34 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
         *(PBOOL)Buffer = FALSE;
     LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
     return ret;
+}
+
+HOOKDEF(int, WINAPI, MultiByteToWideChar,
+	__in		UINT	CodePage,
+	__in		DWORD	dwFlags,
+	__in		LPCCH	lpMultiByteStr,
+	__in		int		cbMultiByte,
+	__out_opt	LPWSTR	lpWideCharStr,
+	__in		int		cchWideChar
+) {
+	DWORD ret = 0;
+	if (CodePage == CP_ACP || CodePage == CP_UTF8)
+		LOQ_zero("misc", "s", "String", lpMultiByteStr);
+	return Old_MultiByteToWideChar(CodePage, dwFlags, lpMultiByteStr, cbMultiByte, lpWideCharStr, cchWideChar);
+}
+
+HOOKDEF(int, WINAPI, WideCharToMultiByte,
+	__in		UINT	CodePage,
+	__in		DWORD	dwFlags,
+	__in		LPCWCH	lpWideCharStr,
+	__in		int		cchWideChar,
+	__out_opt	LPSTR	lpMultiByteStr,
+	__in		int		cbMultiByte,
+	__in_opt	LPCCH	lpDefaultChar,
+	__out_opt	LPBOOL	lpUsedDefaultChar
+) {
+	DWORD ret = 0;
+	if (CodePage == CP_ACP || CodePage == CP_UTF8)
+		LOQ_zero("misc", "u", "String", lpWideCharStr);
+	return Old_WideCharToMultiByte(CodePage, dwFlags, lpWideCharStr, cchWideChar, lpMultiByteStr, cbMultiByte, lpDefaultChar, lpUsedDefaultChar);
 }
