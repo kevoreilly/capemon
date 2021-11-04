@@ -1700,18 +1700,6 @@ HOOKDEF_NOTAIL(WINAPI, rtcCreateObject2,
 	return ret;
 }
 
-HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
-	PCWSTR pszUrl,
-	PWSTR  pszCanonicalized,
-	DWORD* pcchCanonicalized,
-	DWORD  dwFlags
-)
-{
-	HRESULT ret = Old_UrlCanonicalizeW(pszUrl, pszCanonicalized, pcchCanonicalized, dwFlags);
-	LOQ_hresult("misc", "u", "Url", pszUrl);
-	return ret;
-}
-
 HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
 	_In_       PCWSTR DosFileName,
 	_Out_      PUNICODE_STRING NtFileName,
