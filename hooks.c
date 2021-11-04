@@ -25,6 +25,7 @@ extern char *our_process_name;
 extern int path_is_program_files(const wchar_t *path_w);
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
 
 struct _g_config g_config;
@@ -2241,12 +2242,22 @@ void set_hooks()
 	// otherwise our racy modifications can cause the task to crash prematurely
 	// This code itself is racy as additional threads could be created while we're
 	// processing the list, but the risk is at least greatly reduced
+
 	HANDLE hSnapShot;
+	BOOL Wow64Process;
+	OSVERSIONINFO OSVersion;
 	THREADENTRY32 threadInfo;
 	DWORD i, old_protect, num_suspended_threads = 0;
 	PHANDLE suspended_threads = (PHANDLE)calloc(4096, sizeof(HANDLE));
 	DWORD our_tid = GetCurrentThreadId();
 	DWORD our_pid = GetCurrentProcessId();
+
+	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+	if (!GetVersionEx(&OSVersion))
+		ErrorOutput("set_hooks: Failed to get OS version");
+
+	IsWow64Process(GetCurrentProcess(), &Wow64Process);
 
 	if (path_is_program_files(our_process_path_w))
 	{
@@ -2345,6 +2356,14 @@ void set_hooks()
 	} while (Thread32Next(hSnapShot, &threadInfo));
 
 	for (i = 0; i < hooks_arraysize; i++) {
+#ifndef _WIN64
+		if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6) {
+			if (Wow64Process == FALSE) {
+				if (!stricmp((hooks+i)->funcname, "NtWaitForSingleObject"))
+					continue;
+			}
+		}
+#endif
 		//DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
 		if (hook_api(hooks+i, g_config.hook_type) < 0)
 			pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
