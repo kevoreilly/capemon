@@ -188,6 +188,9 @@ struct _g_config {
 	// Zero hook set
 	int zerohook;
 
+	// Microsoft Office hook set
+	int office;
+
 	// Mozilla Firefox hook set
 	int firefox;
 
