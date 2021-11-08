@@ -124,6 +124,9 @@ struct _g_config {
  	wchar_t *coverage_modules[EXCLUSION_MAX];
 	int dump_on_api_type;
 
+	// exception logging (RtlDispatchException hook)
+	int log_exceptions;
+
 	// behavioural payload extraction options
 	int compression;
 	int unpacker;
@@ -145,6 +148,9 @@ struct _g_config {
 
 	// prevent monitoring child processes
 	int single_process;
+
+	// breakpoint logging to behavior log
+	int log_breakpoints;
 
 	// branch tracing
 	int branch_trace;

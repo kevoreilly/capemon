@@ -1053,6 +1053,16 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 		}
 	}
 
+	if (g_config.log_exceptions && !((ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) && !(g_config.debugger && (ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP || ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION))) {
+		int ret = 0;
+		if (!ExceptionRecord->NumberParameters && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+			LOQ_void("system", "ppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags);
+		else if (ExceptionRecord->NumberParameters == 1 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+			LOQ_void("system", "pppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionRecord->ExceptionInformation[0]);
+		else if (ExceptionRecord->NumberParameters == 2 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+			LOQ_void("system", "ppppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionRecord->ExceptionInformation[1]);
+	}
+
 	if (CAPEExceptionDispatcher(ExceptionRecord, Context))
 		return TRUE;
 	else

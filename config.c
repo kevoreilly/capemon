@@ -186,6 +186,20 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "large-buffer-max")) {
 			large_buffer_log_max = (unsigned int)strtoul(value, NULL, 10);
 		}
+		else if (!stricmp(key, "log-exceptions")) {
+			g_config.log_exceptions = atoi(value);
+			if (g_config.log_exceptions)
+				DebugOutput("Exception logging enabled.\n");
+			else
+				DebugOutput("Exception logging disabled.\n");
+		}
+		else if (!stricmp(key, "log-breakpoints")) {
+			g_config.log_breakpoints = value[0] == '1';
+			if (g_config.log_breakpoints)
+				DebugOutput("Breakpoint logging to behavior log enabled.\n");
+			else
+				DebugOutput("Breakpoint logging to behavior log disabled.\n");
+		}
 		else if (!strcmp(key, "dropped-limit")) {
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Dropped file limit set to %d.\n", g_config.dropped_limit);
@@ -1122,6 +1136,7 @@ int read_config(void)
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
+	g_config.log_exceptions = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 

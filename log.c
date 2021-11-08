@@ -1108,6 +1108,14 @@ void log_anomaly(const char *subcategory, const char *msg)
 		"Message", msg);
 }
 
+void log_breakpoint(const char *subcategory, const char *msg)
+{
+	loq(LOG_ID_ANOMALY_GENERIC, "__notification__", "Breakpoint", 1, 0, "iss",
+		"ThreadIdentifier", GetCurrentThreadId(),
+		"Subcategory", subcategory,
+		"Message", msg);
+}
+
 void log_procname_anomaly(PUNICODE_STRING InitialName, PUNICODE_STRING InitialPath, PUNICODE_STRING CurrentName, PUNICODE_STRING CurrentPath)
 {
 	loq(LOG_ID_ANOMALY_PROCNAME, "__notification__", "__anomaly__", 1, 0, "isoooo",

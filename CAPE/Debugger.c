@@ -18,22 +18,15 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 //#define DEBUG_COMMENTS
 #include <stdio.h>
 #include <tchar.h>
-#include <windows.h>
 #include <assert.h>
-#include <Aclapi.h>
-#include "Debugger.h"
+#include "..\hooking.h"
 #include "..\alloc.h"
 #include "..\config.h"
 #include "..\pipe.h"
+#include "Debugger.h"
 #include "Unpacker.h"
 
 #define PIPEBUFSIZE 512
-
-typedef struct _LSA_UNICODE_STRING {
-	USHORT Length;
-	USHORT MaximumLength;
-	PWSTR Buffer;
-} LSA_UNICODE_STRING, *PLSA_UNICODE_STRING, UNICODE_STRING, *PUNICODE_STRING;
 
 typedef struct _INJECT_STRUCT {
 	ULONG_PTR LdrLoadDllAddress;
@@ -205,6 +198,8 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 		CurrentThreadBreakpoint->BreakpointInfo[Register].Register = Register;
 		CurrentThreadBreakpoint->BreakpointInfo[Register].ThreadHandle = CurrentThreadBreakpoint->ThreadHandle;
 	}
+
+	g_config.debugger = 1;
 
 	return CurrentThreadBreakpoint;
 }
@@ -386,8 +381,6 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
 //**************************************************************************************
 {
-	if (!g_config.debugger)
-		return FALSE;
 	EXCEPTION_POINTERS ExceptionInfo;
 	ExceptionInfo.ExceptionRecord = ExceptionRecord;
 	ExceptionInfo.ContextRecord = Context;
@@ -403,7 +396,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	PTRACKEDREGION TrackedRegion;
 
 	// Hardware breakpoints generate EXCEPTION_SINGLE_STEP rather than EXCEPTION_BREAKPOINT
-	if (ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
+	if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
 	{
 		PBREAKPOINTINFO pBreakpointInfo;
 		PTHREADBREAKPOINTS CurrentThreadBreakpoint;
@@ -552,7 +545,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
 	// Page guard violations generate STATUS_GUARD_PAGE_VIOLATION
-	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
+	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
 	{
 		if (g_config.unpacker)
 		{
@@ -602,10 +595,45 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 	}
+	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION)
+	{
+		_DecodedInst instruction;
+#ifdef _WIN64
+		if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Rip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
+			DWORD64 Timestamp = __rdtsc();
+			DebugOutput("RtlDispatchException: Emulating %s instruction at 0x%p\n", instruction.mnemonic.p, ExceptionInfo->ContextRecord->Rip);
+
+			ExceptionInfo->ContextRecord->Rax = (DWORD)Timestamp;
+			ExceptionInfo->ContextRecord->Rdx = Timestamp >> 32;
+			ExceptionInfo->ContextRecord->Rip += lde((void*)ExceptionInfo->ContextRecord->Rip);
+#else
+		// Bug: our distorm fails to dissassemble rdtscp on x86
+		//if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Eip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
+		if (!memcmp((PUCHAR)ExceptionInfo->ContextRecord->Eip, "\x0f\x01\xf9", 3)) {
+			DWORD64 Timestamp = __rdtsc();
+			DebugOutput("RtlDispatchException: Emulating %s instruction at 0x%p\n", instruction.mnemonic.p, ExceptionInfo->ContextRecord->Eip);
+
+			ExceptionInfo->ContextRecord->Eax = (DWORD)Timestamp;
+			ExceptionInfo->ContextRecord->Edx = Timestamp >> 32;
+			ExceptionInfo->ContextRecord->Eip += lde((void*)ExceptionInfo->ContextRecord->Eip);
+#endif
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
+	}
 
 	if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
 		// This is an exception in capemon
 		DebugOutput("CAPEExceptionFilter: Exception 0x%x caught at RVA 0x%x in capemon caught accessing 0x%x (expected in memory scans), passing to next handler.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, (BYTE*)ExceptionInfo->ExceptionRecord->ExceptionAddress - g_our_dll_base, ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+
+	if (TraceRunning)
+	{
+		if (!ExceptionInfo->ExceptionRecord->NumberParameters)
+			DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+		else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
+			DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+		else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
+			DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information[0] 0x%x, exception information[1] 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+	}
 
 	// Some other exception occurred. Pass it to next handler.
 	return EXCEPTION_CONTINUE_SEARCH;
@@ -726,7 +754,7 @@ BOOL ContextSetDebugRegisterEx
 #endif
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("ContextSetDebugRegisterEx completed successfully.");
+	DebugOutput("ContextSetDebugRegisterEx completed successfully: Register %d size %d Address 0x%p Type %d", Register, Size, Address, Type);
 #endif
 
 	return TRUE;
@@ -1112,7 +1140,7 @@ BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
 	pBreakpointInfo->Size = 0;
 	pBreakpointInfo->Type = 0;
 	pBreakpointInfo->HitCount = 0;
-	pBreakpointInfo->Callback = 0;
+	//pBreakpointInfo->Callback = 0;
 
 	return TRUE;
 }
@@ -1598,13 +1626,13 @@ BOOL ContextSetThreadBreakpointEx
 
 	if (Register > 3 || Register < 0)
 	{
-		DebugOutput("ContextSetThreadBreakpoint: Error - register value %d, can only have value 0-3.\n", Register);
+		DebugOutput("ContextSetThreadBreakpointEx: Error - register value %d, can only have value 0-3.\n", Register);
 		return FALSE;
 	}
 
 	if (!ContextSetDebugRegisterEx(Context, Register, Size, Address, Type, NoSetThreadContext))
 	{
-		DebugOutput("ContextSetThreadBreakpoint: Call to ContextSetDebugRegister failed.\n");
+		DebugOutput("ContextSetThreadBreakpointEx: Call to ContextSetDebugRegister failed.\n");
 	}
 	else
 	{
@@ -1612,7 +1640,7 @@ BOOL ContextSetThreadBreakpointEx
 
 		if (CurrentThreadBreakpoint == NULL)
 		{
-			DebugOutput("ContextSetThreadBreakpoint: Error - Failed to acquire thread breakpoints.\n");
+			DebugOutput("ContextSetThreadBreakpointEx: Error - Failed to acquire thread breakpoints.\n");
 			return FALSE;
 		}
 

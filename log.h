@@ -69,6 +69,7 @@ void loq(int index, const char *category, const char *name,
 void log_new_process();
 void log_new_thread();
 void log_anomaly(const char *subcategory, const char *msg);
+void log_breakpoint(const char *subcategory, const char *msg);
 void log_hook_anomaly(const char *subcategory, int success,
 	const hook_t *h, const char *msg);
 void log_hook_modification(const hook_t *h, const char *origbytes, const char *newbytes, unsigned int len);

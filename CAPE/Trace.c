@@ -141,6 +141,8 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 			Register = (PVOID)Context->Rsp;
         else if (!stricmp(RegString, "ebp"))
 			Register = (PVOID)Context->Rbp;
+        else if (!stricmp(RegString, "eip"))
+			Register = (PVOID)Context->Rip;
 #else
         if (!stricmp(RegString, "eax"))
 			Register = (PVOID)Context->Eax;
@@ -158,6 +160,8 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 			Register = (PVOID)Context->Esp;
         else if (!stricmp(RegString, "ebp"))
 			Register = (PVOID)Context->Ebp;
+        else if (!stricmp(RegString, "eip"))
+			Register = (PVOID)Context->Eip;
 #endif
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
@@ -1556,11 +1560,14 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	DecodeType = Decode32Bits;
 #endif
 
-	// We can use this to put a marker in behavior log
-	//extern void log_anomaly(const char *subcategory, const char *msg);
-	//memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-	//_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
-	//log_anomaly(DebuggerBuffer, NULL);
+	if (g_config.log_breakpoints)
+	{
+		// Log breakpoint to behavior log
+		extern void log_breakpoint(const char *subcategory, const char *msg);
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+		_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+		log_breakpoint("Debugger", DebuggerBuffer);
+	}
 
 	FilterTrace = FALSE;
 
