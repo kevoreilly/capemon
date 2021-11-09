@@ -1053,7 +1053,7 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 		}
 	}
 
-	if (g_config.log_exceptions && !((ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) && !(g_config.debugger && (ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP || ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION))) {
+	if (g_config.log_exceptions && !((ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) && !(g_config.debugger && (ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP || ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION || ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION))) {
 		int ret = 0;
 		if (!ExceptionRecord->NumberParameters && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
 			LOQ_void("system", "ppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags);
