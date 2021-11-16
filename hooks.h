@@ -2852,7 +2852,19 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptEncrypt,
 	DWORD			 dwFlags
 );
 
-HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
+HOOKDEF(NTSTATUS, WINAPI, BCryptImportKey,
+	BCRYPT_ALG_HANDLE	hAlgorithm,
+	BCRYPT_KEY_HANDLE	hImportKey,
+	LPCWSTR				pszBlobType,
+	BCRYPT_KEY_HANDLE	*phKey,
+	PUCHAR				pbKeyObject,
+	ULONG				cbKeyObject,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	ULONG				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 	BCRYPT_KEY_HANDLE	hKey,
 	PUCHAR				pbInput,
 	ULONG				cbInput,
@@ -2865,7 +2877,7 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
 	ULONG				dwFlags
 );
 
-HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
+HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
 	BCRYPT_KEY_HANDLE	hKey,
 	PUCHAR				pbInput,
 	ULONG				cbInput,
