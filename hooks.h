@@ -2852,6 +2852,32 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptEncrypt,
 	DWORD			 dwFlags
 );
 
+HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
+	BCRYPT_KEY_HANDLE	hKey,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	VOID				*pPaddingInfo,
+	PUCHAR				pbIV,
+	ULONG				cbIV,
+	PUCHAR				pbOutput,
+	ULONG				cbOutput,
+	ULONG				*pcbResult,
+	ULONG				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
+	BCRYPT_KEY_HANDLE	hKey,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	VOID				*pPaddingInfo,
+	PUCHAR				pbIV,
+	ULONG				cbIV,
+	PUCHAR				pbOutput,
+	ULONG				cbOutput,
+	ULONG				*pcbResult,
+	ULONG				dwFlags
+);
+
 //
 // Special Hooks
 //

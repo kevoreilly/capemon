@@ -454,3 +454,37 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptEncrypt,
 	LOQ_bool("crypto", "bhp", "Output", cbInput, pbInput, "Flags", dwFlags, "CryptKey", hKey);
 	return ret;
 }
+
+HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
+	BCRYPT_KEY_HANDLE	hKey,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	VOID				*pPaddingInfo,
+	PUCHAR				pbIV,
+	ULONG				cbIV,
+	PUCHAR				pbOutput,
+	ULONG				cbOutput,
+	ULONG				*pcbResult,
+	ULONG				dwFlags
+) {
+	BOOL ret = Old_BCryptEncrypt(hKey, pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
+	LOQ_bool("crypto", "bbhp", "Input", cbInput, pbInput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
+	BCRYPT_KEY_HANDLE	hKey,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	VOID				*pPaddingInfo,
+	PUCHAR				pbIV,
+	ULONG				cbIV,
+	PUCHAR				pbOutput,
+	ULONG				cbOutput,
+	ULONG				*pcbResult,
+	ULONG				dwFlags
+) {
+	BOOL ret = Old_BCryptDecrypt(hKey, pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
+	LOQ_bool("crypto", "bbhp", "Output", cbOutput, pbOutput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey);
+	return ret;
+}
