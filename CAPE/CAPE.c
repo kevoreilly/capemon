@@ -113,6 +113,7 @@ extern wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
 extern int called_by_hook(void);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
+extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
@@ -1901,7 +1902,10 @@ int DoProcessDump(PVOID CallerBase)
 #endif
 
 		if (!ProcessDumped)
+		{
+			DebugOutput("DoProcessDump: Attempting raw dump of Imagebase at 0x%p.\n", MemInfo.BaseAddress);
 			ProcessDumped = DumpMemory(MemInfo.BaseAddress, MemInfo.RegionSize);
+		}
 	}
 
 	// For full-memory dumps, create the output file
@@ -1928,8 +1932,6 @@ int DoProcessDump(PVOID CallerBase)
 			DebugOutput("DoProcessDump: Unable to create dump file for full process memory dump.\n");
 			goto out;
 		}
-
-		DebugOutput("DoProcessDump: Created dump file for full process memory dump: %s.\n", FullDumpPath);
 	}
 
 	if (!g_config.procdump && !g_config.procmemdump)
@@ -1950,10 +1952,10 @@ int DoProcessDump(PVOID CallerBase)
 			continue;
 		}
 
-		//if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase)
+		//if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase && !is_in_dll_range((ULONG_PTR)Address))
 		//	DumpInterestingRegions(MemInfo);
 
-		if (g_config.procmemdump)
+		if (g_config.procmemdump && !is_in_dll_range((ULONG_PTR)Address))
 		{
 			LARGE_INTEGER BufferAddress;
 			DWORD BytesWritten;
@@ -2000,9 +2002,9 @@ out:
 	{
 		if (FileHandle)
 		{
-			DebugOutput("DoProcessDump: Full process memory dump saved to file: %s.\n", FullDumpPath);
 			CloseHandle(FileHandle);
 			DoOutputFile(FullDumpPath);
+			DebugOutput("DoProcessDump: Full process memory dump saved to file: %s.\n", FullDumpPath);
 		}
 		if (OutputFilename)
 			free(OutputFilename);
@@ -2086,12 +2088,6 @@ void CAPE_post_init()
 	}
 
 	lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
-
-	if (g_config.yarascan)
-	{
-		DebugOutput("Initialising Yara...\n");
-		YaraInit();
-	}
 }
 
 void CAPE_init()
@@ -2132,6 +2128,12 @@ void CAPE_init()
 		ImageBase = (PVOID)base_of_dll_of_interest;
 	else
 		ImageBase = GetModuleHandle(NULL);
+
+	if (g_config.yarascan)
+	{
+		DebugOutput("Initialising Yara...\n");
+		YaraInit();
+	}
 
 #ifdef _WIN64
 	DebugOutput("Monitor initialised: 64-bit capemon loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
