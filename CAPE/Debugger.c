@@ -601,8 +601,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #ifdef _WIN64
 		if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Rip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
 			DWORD64 Timestamp = __rdtsc();
-			DebugOutput("RtlDispatchException: Emulating %s instruction at 0x%p\n", instruction.mnemonic.p, ExceptionInfo->ContextRecord->Rip);
-
 			ExceptionInfo->ContextRecord->Rax = (DWORD)Timestamp;
 			ExceptionInfo->ContextRecord->Rdx = Timestamp >> 32;
 			ExceptionInfo->ContextRecord->Rip += lde((void*)ExceptionInfo->ContextRecord->Rip);
@@ -611,8 +609,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		//if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Eip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
 		if (!memcmp((PUCHAR)ExceptionInfo->ContextRecord->Eip, "\x0f\x01\xf9", 3)) {
 			DWORD64 Timestamp = __rdtsc();
-			DebugOutput("RtlDispatchException: Emulating %s instruction at 0x%p\n", instruction.mnemonic.p, ExceptionInfo->ContextRecord->Eip);
-
 			ExceptionInfo->ContextRecord->Eax = (DWORD)Timestamp;
 			ExceptionInfo->ContextRecord->Edx = Timestamp >> 32;
 			ExceptionInfo->ContextRecord->Eip += lde((void*)ExceptionInfo->ContextRecord->Eip);
