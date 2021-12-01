@@ -678,7 +678,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		StepOver = TRUE;
 		if (ReturnAddress)
 		{
-			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 0, BreakpointCallback))
+			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 			{
 				ClearSingleStepMode(ExceptionInfo->ContextRecord);
 #ifdef DEBUG_COMMENTS
@@ -1162,7 +1162,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 		else if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
 		{
-			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 0, BreakpointCallback))
+			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 			{
 				ClearSingleStepMode(ExceptionInfo->ContextRecord);
 #ifndef DEBUG_COMMENTS
@@ -1376,7 +1376,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (ForceStepOver && !StopTrace)
 	{
-		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 0, BreakpointCallback))
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
 #ifdef DEBUG_COMMENTS
 			DebugOutput("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
@@ -1985,7 +1985,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		}
 		else if (ReturnAddress && ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
 		{
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 0, BreakpointCallback))
+			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 				DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
 #ifdef DEBUG_COMMENTS
 			else
@@ -2111,7 +2111,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	{
 		if (ForceStepOver && ReturnAddress)
 		{
-			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 0, BreakpointCallback))
+			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 			{
 				DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
 				ReturnAddress = NULL;
@@ -2172,7 +2172,7 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 			DebuggerOutput("\nBreak at 0x%p in %s (RVA 0x%x, thread %d), releasing until return address 0x%p\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ReturnAddress);
 	}
 
-	if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 0, BreakpointCallback))
+	if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		DebugOutput("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
 	ReturnAddress = NULL;
