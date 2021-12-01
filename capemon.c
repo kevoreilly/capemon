@@ -505,7 +505,6 @@ OSVERSIONINFOA g_osverinfo;
 
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 {
-	char config_fname[MAX_PATH], analyzer_path[MAX_PATH];
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
@@ -648,18 +647,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 	g_dll_main_complete = TRUE;
 	set_lasterrors(&lasterror);
 	return TRUE;
-
-	// delete config file
-	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(analyzer_path); // remove filename
-	PathRemoveFileSpec(analyzer_path); // remove dll folder
-	sprintf(config_fname, "%s\\%u.ini", analyzer_path, GetCurrentProcessId());
-	DeleteFileA(config_fname);
-
-	// backward compatibility
-	memset(config_fname, 0, sizeof(config_fname));
-	sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
-	DeleteFileA(config_fname);
 
 abort:
 	set_lasterrors(&lasterror);

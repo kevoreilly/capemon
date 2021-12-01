@@ -1136,7 +1136,6 @@ int read_config(void)
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
-	g_config.log_exceptions = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
@@ -1200,7 +1199,5 @@ int read_config(void)
 	}
 
 	fclose(fp);
-	if (!g_config.standalone)
-		DeleteFileA(config_fname);
 	return 1;
 }
