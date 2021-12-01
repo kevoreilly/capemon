@@ -2285,6 +2285,7 @@ void set_hooks()
             g_config.compression = 0;
             g_config.api_rate_cap = 0;
             g_config.ntdll_protect = 0;
+            g_config.yarascan = 0;
             DebugOutput("Internet Explorer-specific hook-set enabled.\n");
         }
 
