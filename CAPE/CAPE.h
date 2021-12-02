@@ -96,13 +96,13 @@ typedef struct CapeMetadata
 {
 	char*	ProcessPath;
 	char*	ModulePath;
-    DWORD   Pid;
-    DWORD   PPid;
-    DWORD   DumpType;
-    char*	TargetProcess;  // For injection
-    DWORD	TargetPid;      // "
-    PVOID   Address;        // For shellcode/modules
-	SIZE_T  Size;           // "
+	DWORD   Pid;
+	DWORD   PPid;
+	DWORD   DumpType;
+	char*	TargetProcess;  // For injection
+	DWORD	TargetPid;	  // "
+	PVOID   Address;		// For shellcode/modules
+	SIZE_T  Size;		   // "
 	char*	TypeString;
 } CAPEMETADATA, *PCAPEMETADATA;
 

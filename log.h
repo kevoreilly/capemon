@@ -64,9 +64,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "hooking.h"
 
-void loq_none(int index, const char *category, const char *name,
-	int is_success, ULONG_PTR return_value, const char *fmt, ...);
-
 void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 void log_new_process();
