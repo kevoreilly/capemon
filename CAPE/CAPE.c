@@ -2102,6 +2102,7 @@ void CAPE_init()
 	//if (!g_config.standalone)
 	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA),1);
 	CapeMetaData->Pid = GetCurrentProcessId();
+	CapeMetaData->PPid = parent_process_id();
 	CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
 	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
 	Character = CapeMetaData->ProcessPath;
