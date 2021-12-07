@@ -25,7 +25,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\config.h"
 
 //#define DEBUG_COMMENTS
-#define MAX_INT_STRING_LEN 10 // 4294967294
+#define MAX_INT_STRING_LEN	10 // 4294967294
+#define BUFFER_SIZE			0x200
 
 TCHAR DebugBuffer[MAX_PATH];
 TCHAR PipeBuffer[MAX_PATH];
@@ -291,9 +292,9 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			OutputDebugString(DebugBuffer);
 		else
 		{
-			char OutputBuffer[MAX_PATH];
-			memset(OutputBuffer, 0, MAX_PATH*sizeof(char));
-			_snprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_DUMP:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
+			char OutputBuffer[BUFFER_SIZE];
+			memset(OutputBuffer, 0, BUFFER_SIZE*sizeof(char));
+			_snprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_DUMP:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
 			pipe(OutputBuffer, strlen(OutputBuffer));
 		}
 	}
@@ -335,9 +336,9 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		}
 		else
 		{
-			char OutputBuffer[MAX_PATH];
-			memset(OutputBuffer, 0, MAX_PATH*sizeof(char));
-			_sntprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_CAPE:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
+			char OutputBuffer[BUFFER_SIZE];
+			memset(OutputBuffer, 0, BUFFER_SIZE*sizeof(char));
+			_sntprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_CAPE:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
 			pipe(OutputBuffer, strlen(OutputBuffer));
 		}
 	}
