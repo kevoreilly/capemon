@@ -937,6 +937,11 @@ void parse_config_line(char* line)
 			if (g_config.fake_rdtsc)
 				DebugOutput("Config: Fake RDTSC enabled (Trace)\n");
 		}
+		else if (!stricmp(key, "nop-rdtscp")) {
+			g_config.nop_rdtscp = value[0] == '1';
+			if (g_config.nop_rdtscp)
+				DebugOutput("Config: RDTSCP nop enabled\n");
+		}
 		else if (!stricmp(key, "procdump")) {
 			g_config.procdump = value[0] == '1';
 			if (g_config.procdump)

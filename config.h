@@ -176,6 +176,9 @@ struct _g_config {
 	// Fake RDTSC
 	int fake_rdtsc;
 
+	// NOP RDTSCP
+	int nop_rdtscp;
+
 	// Adobe Reader settings
 	int pdf;
 

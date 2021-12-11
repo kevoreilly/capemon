@@ -600,18 +600,38 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		_DecodedInst instruction;
 #ifdef _WIN64
 		if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Rip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
-			DWORD64 Timestamp = __rdtsc();
-			ExceptionInfo->ContextRecord->Rax = (DWORD)Timestamp;
-			ExceptionInfo->ContextRecord->Rdx = Timestamp >> 32;
-			ExceptionInfo->ContextRecord->Rip += lde((void*)ExceptionInfo->ContextRecord->Rip);
+			if (g_config.nop_rdtscp)
+			{
+				DWORD OldProtect;
+				VirtualProtect((PVOID)ExceptionInfo->ContextRecord->Rip, 3, PAGE_EXECUTE_READWRITE, &OldProtect);
+				memcpy((PVOID)ExceptionInfo->ContextRecord->Rip, "\x90\x90\x90", 3);
+				VirtualProtect((PVOID)ExceptionInfo->ContextRecord->Rip, 3, OldProtect, &OldProtect);
+			}
+			else
+			{
+				DWORD64 Timestamp = __rdtsc();
+				ExceptionInfo->ContextRecord->Rax = (DWORD)Timestamp;
+				ExceptionInfo->ContextRecord->Rdx = Timestamp >> 32;
+				ExceptionInfo->ContextRecord->Rip += lde((void*)ExceptionInfo->ContextRecord->Rip);
+			}
 #else
 		// Bug: our distorm fails to dissassemble rdtscp on x86
 		//if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Eip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
 		if (!memcmp((PUCHAR)ExceptionInfo->ContextRecord->Eip, "\x0f\x01\xf9", 3)) {
-			DWORD64 Timestamp = __rdtsc();
-			ExceptionInfo->ContextRecord->Eax = (DWORD)Timestamp;
-			ExceptionInfo->ContextRecord->Edx = Timestamp >> 32;
-			ExceptionInfo->ContextRecord->Eip += lde((void*)ExceptionInfo->ContextRecord->Eip);
+			if (g_config.nop_rdtscp)
+			{
+				DWORD OldProtect;
+				VirtualProtect((PVOID)ExceptionInfo->ContextRecord->Eip, 3, PAGE_EXECUTE_READWRITE, &OldProtect);
+				memcpy((PVOID)ExceptionInfo->ContextRecord->Eip, "\x90\x90\x90", 3);
+				VirtualProtect((PVOID)ExceptionInfo->ContextRecord->Eip, 3, OldProtect, &OldProtect);
+			}
+			else
+			{
+				DWORD64 Timestamp = __rdtsc();
+				ExceptionInfo->ContextRecord->Eax = (DWORD)Timestamp;
+				ExceptionInfo->ContextRecord->Edx = Timestamp >> 32;
+				ExceptionInfo->ContextRecord->Eip += lde((void*)ExceptionInfo->ContextRecord->Eip);
+			}
 #endif
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
