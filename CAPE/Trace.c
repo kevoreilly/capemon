@@ -202,6 +202,67 @@ void SkipInstruction(PCONTEXT Context)
 	return;
 }
 
+void NopInstruction(PCONTEXT Context)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+	DWORD OldProtect;
+
+#ifdef _WIN64
+	CIP = (PVOID)Context->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)Context->Eip;
+	DecodeType = Decode32Bits;
+#endif
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	if (!DecodedInstruction.size)
+		return;
+
+	VirtualProtect(CIP, DecodedInstruction.size, PAGE_EXECUTE_READWRITE, &OldProtect);
+	for (unsigned int i=0; i<DecodedInstruction.size; i++)
+		memcpy((PVOID)((PUCHAR)CIP + i), "\x90", 1);
+	VirtualProtect(CIP, DecodedInstruction.size, OldProtect, &OldProtect);
+
+	return;
+}
+
+void WriteRet(PCONTEXT Context)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+	DWORD OldProtect;
+
+#ifdef _WIN64
+	CIP = (PVOID)Context->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)Context->Eip;
+	DecodeType = Decode32Bits;
+#endif
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	if (!DecodedInstruction.size)
+		return;
+
+	VirtualProtect(CIP, DecodedInstruction.size, PAGE_EXECUTE_READWRITE, &OldProtect);
+	memcpy(CIP, "\xc3", 1);
+	VirtualProtect(CIP, DecodedInstruction.size, OldProtect, &OldProtect);
+
+	return;
+}
+
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, PCHAR Action)
 {
 	// This could be further optimised per action but this is safe at least
@@ -447,6 +508,18 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		TraceOutput(CIP, DecodedInstruction);
 		SkipInstruction(ExceptionInfo->ContextRecord);
 		DebuggerOutput("\nActionDispatcher: %s detected, skipping instruction.\n", DecodedInstruction.mnemonic.p);
+	}
+	else if (!strnicmp(Action, "Nop", 3))
+	{
+		// We want the nopped instruction to appear in the trace
+		TraceOutput(CIP, DecodedInstruction);
+		NopInstruction(ExceptionInfo->ContextRecord);
+		DebuggerOutput("\nActionDispatcher: %s detected, nopping instruction.\n", DecodedInstruction.mnemonic.p);
+	}
+	else if (!strnicmp(Action, "Wret", 4))
+	{
+		WriteRet(ExceptionInfo->ContextRecord);
+		DebuggerOutput("\nActionDispatcher: %s detected, ret written.\n", DecodedInstruction.mnemonic.p);
 	}
 	else if (!strnicmp(Action, "GoTo", 4))
 	{
