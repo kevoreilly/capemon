@@ -812,6 +812,7 @@ rebase:
 			goto out;
 		}
 
+		AddressOfEntryPoint = (PVOID)(BaseAddress + NtHeader.OptionalHeader.AddressOfEntryPoint);
 		if (!VirtualQueryEx(ProcessHandle, AddressOfEntryPoint, &MemoryInfo, sizeof(MemoryInfo)))
 		{
 			DebugOutput("InjectDllViaIAT: Modified EP detected, failed to query target process address 0x%p.\n", AddressOfEntryPoint);
