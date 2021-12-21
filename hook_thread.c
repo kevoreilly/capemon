@@ -36,9 +36,7 @@ extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
 extern void NtContinueHandler(PCONTEXT ThreadContext);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
-extern BOOL BreakpointsSet, BreakOnNtContinue;
-extern PVOID BreakOnNtContinueCallback;
-extern int StepOverRegister;
+extern BOOL BreakpointsSet;
 
 static lookup_t g_ignored_threads;
 
@@ -606,52 +604,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
 )
 {
 	NTSTATUS ret = 0;
-	DWORD ThreadId = GetCurrentThreadId();
-	if (g_config.debugger) {
-		PTHREADBREAKPOINTS Bps = GetThreadBreakpoints(ThreadId);
-		if (Bps) {
-#ifdef DEBUG_COMMENTS
-			DebugOutput("NtContinue hook: restoring breakpoints for thread %d: Dr0 0x%x, Dr1 0x%x, Dr2 0x%x, Dr3 0x%x\n", ThreadId, ThreadContext->Dr0, ThreadContext->Dr1, ThreadContext->Dr2, ThreadContext->Dr3);
-#endif
-			if (ThreadContext->Dr0 && (PVOID)ThreadContext->Dr0 == Bps->BreakpointInfo[0].Address)
-				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[0].Register, Bps->BreakpointInfo[0].Size, Bps->BreakpointInfo[0].Address, Bps->BreakpointInfo[0].Type, Bps->BreakpointInfo[0].HitCount, Bps->BreakpointInfo[0].Callback, TRUE);
-			if (ThreadContext->Dr1 && (PVOID)ThreadContext->Dr1 == Bps->BreakpointInfo[1].Address)
-				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[1].Register, Bps->BreakpointInfo[1].Size, Bps->BreakpointInfo[1].Address, Bps->BreakpointInfo[1].Type, Bps->BreakpointInfo[1].HitCount, Bps->BreakpointInfo[1].Callback, TRUE);
-			if (ThreadContext->Dr2 && (PVOID)ThreadContext->Dr2 == Bps->BreakpointInfo[2].Address)
-				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[2].Register, Bps->BreakpointInfo[2].Size, Bps->BreakpointInfo[2].Address, Bps->BreakpointInfo[2].Type, Bps->BreakpointInfo[2].HitCount, Bps->BreakpointInfo[2].Callback, TRUE);
-			if (ThreadContext->Dr3 && (PVOID)ThreadContext->Dr3 == Bps->BreakpointInfo[3].Address)
-				ContextSetThreadBreakpointEx(ThreadContext, Bps->BreakpointInfo[3].Register, Bps->BreakpointInfo[3].Size, Bps->BreakpointInfo[3].Address, Bps->BreakpointInfo[3].Type, Bps->BreakpointInfo[3].HitCount, Bps->BreakpointInfo[3].Callback, TRUE);
-		}
-#ifdef DEBUG_COMMENTS
-		else
-			DebugOutput("NtContinue hook: Unable to restore breakpoints for thread %d.\n", ThreadId);
-#endif
-
-#ifndef _WIN64
-		if (BreakOnNtContinue) {
-			BreakOnNtContinue = FALSE;
-			for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++) {
-				if (!Bps->BreakpointInfo[Register].Address) {
-					ContextSetThreadBreakpointEx(ThreadContext, Register, 0, (PBYTE)ThreadContext->Eip, BP_EXEC, 0, BreakOnNtContinueCallback, TRUE);
-					break;
-				}
-			}
-			BreakOnNtContinueCallback = NULL;
-		}
-		else if (BreakOnNtContinueCallback) {
-			//BreakOnNtContinue = TRUE;
-			PEXCEPTION_REGISTRATION_RECORD SEH = (PEXCEPTION_REGISTRATION_RECORD)__readfsdword(0);
-			for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++) {
-				if (!Bps->BreakpointInfo[Register].Address) {
-					ContextSetThreadBreakpointEx(ThreadContext, Register, 0, (PBYTE)SEH->Handler, BP_EXEC, 0, BreakOnNtContinueCallback, TRUE);
-					StepOverRegister = Register;
-					break;
-				}
-			}
-			BreakOnNtContinueCallback = NULL;
-		}
-#endif
-	}
+	if (g_config.debugger)
+		NtContinueHandler(ThreadContext);
 	ret = Old_NtContinue(ThreadContext, RaiseAlert);
 	return ret;
 }

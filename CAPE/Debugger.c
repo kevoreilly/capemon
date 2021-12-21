@@ -54,7 +54,9 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace;
+extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue;
+extern PVOID BreakOnNtContinueCallback;
+extern int StepOverRegister;
 extern HANDLE DebuggerLog;
 
 DWORD MainThreadId;
@@ -2323,6 +2325,30 @@ void NtContinueHandler(PCONTEXT ThreadContext)
 		{
 			DebugOutput("NtContinue hook: restoring breakpoints for thread %d.\n", ThreadId);
 			ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, TRUE);
+#ifndef _WIN64
+			if (BreakOnNtContinue) {
+				BreakOnNtContinue = FALSE;
+				for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++) {
+					if (!ThreadBreakpoints->BreakpointInfo[Register].Address) {
+						ContextSetThreadBreakpointEx(ThreadContext, Register, 0, (PBYTE)ThreadContext->Eip, BP_EXEC, 0, BreakOnNtContinueCallback, TRUE);
+						break;
+					}
+				}
+				BreakOnNtContinueCallback = NULL;
+			}
+			else if (BreakOnNtContinueCallback) {
+				//BreakOnNtContinue = TRUE;
+				PEXCEPTION_REGISTRATION_RECORD SEH = (PEXCEPTION_REGISTRATION_RECORD)__readfsdword(0);
+				for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++) {
+					if (!ThreadBreakpoints->BreakpointInfo[Register].Address) {
+						ContextSetThreadBreakpointEx(ThreadContext, Register, 0, (PBYTE)SEH->Handler, BP_EXEC, 0, BreakOnNtContinueCallback, TRUE);
+						StepOverRegister = Register;
+						break;
+					}
+				}
+				BreakOnNtContinueCallback = NULL;
+			}
+#endif
 		}
 	}
 }
