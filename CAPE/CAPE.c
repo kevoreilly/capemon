@@ -516,7 +516,7 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 		if (!VirtualQuery((PUCHAR)AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
-			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%x", (PUCHAR)AddressOfPage + SystemInfo.dwPageSize);
+			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%p", (PUCHAR)AddressOfPage + SystemInfo.dwPageSize);
 			return 0;
 		}
 
@@ -1399,7 +1399,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		if (Offset)
 			*Offset = (PVOID)((BYTE*)Buffer+p);
 
-		DebugOutput("ScanForDisguisedPE: PE image located at: 0x%x\n", (BYTE*)Buffer+p);
+		DebugOutput("ScanForDisguisedPE: PE image located at: 0x%p\n", (BYTE*)Buffer+p);
 
 		return 1;
 	}
