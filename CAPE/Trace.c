@@ -269,6 +269,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	ReDisassemble = TRUE;
 
 	PVOID Target = NULL;
+	BOOL TargetSet = FALSE;
 #ifdef _WIN64
 	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 #else
@@ -292,13 +293,18 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				DebuggerOutput("ActionDispatcher: Failed to get base for target module (%s).\n", p+1);
 			if (!Target)
 			{
-				Target = (PVOID)(DWORD_PTR)strtoul(q+2, NULL, 0);
-				if (!Target)
+				char *endptr;
+				errno = 0;
+				Target = (PVOID)(DWORD_PTR)strtoul(q+2, &endptr, 0);
+				if (errno || endptr == q+2)
 					DebuggerOutput("ActionDispatcher: Failed to get target: %s.\n", p+1);
-#ifdef DEBUG_COMMENTS
 				else
+				{
+					TargetSet = TRUE;
+#ifdef DEBUG_COMMENTS
 					DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
 #endif
+				}
 			}
 #ifdef DEBUG_COMMENTS
 			else
@@ -312,98 +318,131 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			else
 				Target = (GetRegister(ExceptionInfo->ContextRecord, p+1));
 			if (!Target)
-				Target = (PVOID)(DWORD_PTR)strtoul(p+1, NULL, 0);
-			if (Target == (PVOID)(DWORD_PTR)ULONG_MAX)
-				Target = (PVOID)_strtoui64(p+1, NULL, 0);
+			{
+				char *endptr;
+				errno = 0;
+				Target = (PVOID)(DWORD_PTR)strtoul(p+1, &endptr, 0);
+				if (errno || endptr == p+1)
+				{
+					errno = 0;
+					Target = (PVOID)_strtoui64(p+1, &endptr, 0);
+					if (errno || endptr == p+1)
+						DebuggerOutput("ActionDispatcher: Failed to get target: %s.\n", p+1);
+					else
+					{
+						TargetSet = TRUE;
 #ifdef DEBUG_COMMENTS
-			DebuggerOutput("ActionDispatcher: Target 0x%p.\n", Target);
+						DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
 #endif
+					}
+				}
+				else
+				{
+					TargetSet = TRUE;
+#ifdef DEBUG_COMMENTS
+					DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
+#endif
+				}
+			}
+			else
+			{
+				TargetSet = TRUE;
+#ifdef DEBUG_COMMENTS
+				DebuggerOutput("ActionDispatcher: Target 0x%p.\n", Target);
+#endif
+			}
 		}
 	}
 
 	if (!strnicmp(Action, "SetEax", 6))
 	{
-#ifndef _WIN64
-		if (Target)
+		if (Target || TargetSet)
 		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rax = (DWORD64)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting RAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rax);
+#else
 			ExceptionInfo->ContextRecord->Eax = (DWORD)Target;
 			DebuggerOutput("ActionDispatcher: %s detected, setting EAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Eax);
+#endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set EAX - target value missing.\n");
-#else
-		DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
-#endif
 	}
-	if (!strnicmp(Action, "SetEbx", 6))
+	else if (!strnicmp(Action, "SetEbx", 6))
 	{
-#ifndef _WIN64
-		if (Target)
+		if (Target || TargetSet)
 		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rbx = (DWORD64)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting RBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rbx);
+#else
 			ExceptionInfo->ContextRecord->Ebx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting Ebx to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
+			DebuggerOutput("ActionDispatcher: %s detected, setting EBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
+#endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set EBX - target value missing.\n");
-#else
-		DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
-#endif
 	}
-	if (!strnicmp(Action, "SetEcx", 6))
+	else if (!strnicmp(Action, "SetEcx", 6))
 	{
-#ifndef _WIN64
-		if (Target)
+		if (Target || TargetSet)
 		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rcx = (DWORD64)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting RCX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rcx);
+#else
 			ExceptionInfo->ContextRecord->Ecx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting Ecx to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
+			DebuggerOutput("ActionDispatcher: %s detected, setting ECX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
+#endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set ECX - target value missing.\n");
-#else
-		DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
-#endif
 	}
 	else if (!strnicmp(Action, "SetEdx", 6))
 	{
-#ifndef _WIN64
-		if (Target)
+		if (Target || TargetSet)
 		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rdx = (DWORD64)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting RDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdx);
+#else
 			ExceptionInfo->ContextRecord->Edx = (DWORD)Target;
 			DebuggerOutput("ActionDispatcher: %s detected, setting EDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edx);
+#endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set EDX - target value missing.\n");
-#else
-		DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
-#endif
 	}
 	else if (!strnicmp(Action, "SetEsi", 6))
 	{
-#ifndef _WIN64
-		if (Target)
+		if (Target || TargetSet)
 		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rsi = (DWORD64)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting RSI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rsi);
+#else
 			ExceptionInfo->ContextRecord->Esi = (DWORD)Target;
 			DebuggerOutput("ActionDispatcher: %s detected, setting ESI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Esi);
+#endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set ESI - target value missing.\n");
-#else
-		DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
-#endif
 	}
 	else if (!strnicmp(Action, "SetEdi", 6))
 	{
-#ifndef _WIN64
-		if (Target)
+		if (Target || TargetSet)
 		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rdi = (DWORD64)Target;
+			DebuggerOutput("ActionDispatcher: %s detected, setting RDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdi);
+#else
 			ExceptionInfo->ContextRecord->Edi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting Edi to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
+			DebuggerOutput("ActionDispatcher: %s detected, setting EDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
+#endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set EDI - target value missing.\n");
-#else
-		DebuggerOutput("ActionDispatcher: Not yet implemented.\n");
-#endif
 	}
 	else if (!stricmp(Action, "ClearZeroFlag"))
 	{
