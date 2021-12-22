@@ -96,7 +96,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
-			BOOL SetBreakpoints, DoDumpRegion;
+			BOOL SetBreakpoints = FALSE, DoDumpRegion = FALSE;
 			YR_MATCH* Match;
 			YR_STRING* String;
 			YR_META* Meta;
@@ -154,7 +154,10 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 				SetInitialBreakpoints(user_data);
 
 			if (DoDumpRegion)
+			{
+				DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
 				DumpRegion(user_data);
+			}
 
 			return CALLBACK_CONTINUE;
 	}
