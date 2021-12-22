@@ -93,8 +93,8 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	if (!AllocationBase)
 		return;
 	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
-		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
 		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
+		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 		if (g_config.base_on_caller)
 			SetInitialBreakpoints((PVOID)AllocationBase);
 		if (!g_config.loaderlock_scans && loader_lock_held()) {
