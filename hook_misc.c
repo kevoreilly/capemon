@@ -38,10 +38,10 @@ extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern BOOL PlugXConfigDumped;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
-    __in  int idHook,
-    __in  HOOKPROC lpfn,
-    __in  HINSTANCE hMod,
-    __in  DWORD dwThreadId
+	__in  int idHook,
+	__in  HOOKPROC lpfn,
+	__in  HINSTANCE hMod,
+	__in  DWORD dwThreadId
 ) {
 
 	HHOOK ret;
@@ -53,16 +53,16 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	}
 
 	ret = Old_SetWindowsHookExA(idHook, lpfn, hMod, dwThreadId);
-    LOQ_nonnull("system", "ippi", "HookIdentifier", idHook, "ProcedureAddress", lpfn,
-        "ModuleAddress", hMod, "ThreadId", dwThreadId);
-    return ret;
+	LOQ_nonnull("system", "ippi", "HookIdentifier", idHook, "ProcedureAddress", lpfn,
+		"ModuleAddress", hMod, "ThreadId", dwThreadId);
+	return ret;
 }
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
-    __in  int idHook,
-    __in  HOOKPROC lpfn,
-    __in  HINSTANCE hMod,
-    __in  DWORD dwThreadId
+	__in  int idHook,
+	__in  HOOKPROC lpfn,
+	__in  HINSTANCE hMod,
+	__in  DWORD dwThreadId
 ) {
 
 	HHOOK ret;
@@ -74,25 +74,25 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
 	}
 
 	ret = Old_SetWindowsHookExW(idHook, lpfn, hMod, dwThreadId);
-    LOQ_nonnull("system", "ippi", "HookIdentifier", idHook, "ProcedureAddress", lpfn,
-        "ModuleAddress", hMod, "ThreadId", dwThreadId);
-    return ret;
+	LOQ_nonnull("system", "ippi", "HookIdentifier", idHook, "ProcedureAddress", lpfn,
+		"ModuleAddress", hMod, "ThreadId", dwThreadId);
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, UnhookWindowsHookEx,
-    __in  HHOOK hhk
+	__in  HHOOK hhk
 ) {
 
-    BOOL ret = Old_UnhookWindowsHookEx(hhk);
-    LOQ_bool("hooking", "p", "HookHandle", hhk);
-    return ret;
+	BOOL ret = Old_UnhookWindowsHookEx(hhk);
+	LOQ_bool("hooking", "p", "HookHandle", hhk);
+	return ret;
 }
 
 HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
-    _In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
+	_In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 ) {
-    BOOL ret = 1;
-    LPTOP_LEVEL_EXCEPTION_FILTER res;
+	BOOL ret = 1;
+	LPTOP_LEVEL_EXCEPTION_FILTER res;
 
 	if (g_config.debug)
 		res = NULL;
@@ -102,35 +102,35 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	}
 
 	LOQ_bool("hooking", "p", "ExceptionFilter", lpTopLevelExceptionFilter);
-    return res;
+	return res;
 }
 
 PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 
 LONG WINAPI VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-    if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
-        return EXCEPTION_CONTINUE_SEARCH;
-    else
-        return SampleVectoredHandler(ExceptionInfo);
+	if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
+		return EXCEPTION_CONTINUE_SEARCH;
+	else
+		return SampleVectoredHandler(ExceptionInfo);
 }
 
 HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
-    __in    ULONG First,
-    __out   PVECTORED_EXCEPTION_HANDLER Handler
+	__in	ULONG First,
+	__out   PVECTORED_EXCEPTION_HANDLER Handler
 ) {
 	PVOID ret = 0;
 
-    if (!SampleVectoredHandler) {
-        SampleVectoredHandler = Handler;
-        ret = Old_RtlAddVectoredExceptionHandler(First, VectoredExceptionFilter);
-    }
-    else
-        ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
+	if (!SampleVectoredHandler) {
+		SampleVectoredHandler = Handler;
+		ret = Old_RtlAddVectoredExceptionHandler(First, VectoredExceptionFilter);
+	}
+	else
+		ret = Old_RtlAddVectoredExceptionHandler(First, Handler);
 
-    LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
+	LOQ_nonnull("hooking", "ip", "First", First, "Handler", Handler);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(UINT, WINAPI, SetErrorMode,
@@ -148,31 +148,31 @@ HOOKDEF(UINT, WINAPI, SetErrorMode,
 
 // Called with the loader lock held
 HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandle,
-    __in_opt    PWORD pwPath,
-    __in_opt    PVOID Unused,
-    __in        PUNICODE_STRING ModuleFileName,
-    __out       PHANDLE pHModule
+	__in_opt	PWORD pwPath,
+	__in_opt	PVOID Unused,
+	__in		PUNICODE_STRING ModuleFileName,
+	__out	   PHANDLE pHModule
 ) {
-    NTSTATUS ret = Old_LdrGetDllHandle(pwPath, Unused, ModuleFileName, pHModule);
-    LOQ_ntstatus("system", "oP", "FileName", ModuleFileName, "ModuleHandle", pHModule);
-    return ret;
+	NTSTATUS ret = Old_LdrGetDllHandle(pwPath, Unused, ModuleFileName, pHModule);
+	LOQ_ntstatus("system", "oP", "FileName", ModuleFileName, "ModuleHandle", pHModule);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
-    __in        HMODULE ModuleHandle,
-    __in_opt    PANSI_STRING FunctionName,
-    __in_opt    WORD Ordinal,
-    __out       PVOID *FunctionAddress
+	__in		HMODULE ModuleHandle,
+	__in_opt	PANSI_STRING FunctionName,
+	__in_opt	WORD Ordinal,
+	__out	   PVOID *FunctionAddress
 ) {
-    NTSTATUS ret = Old_LdrGetProcedureAddress(ModuleHandle, FunctionName, Ordinal, FunctionAddress);
+	NTSTATUS ret = Old_LdrGetProcedureAddress(ModuleHandle, FunctionName, Ordinal, FunctionAddress);
 
 	if (FunctionName != NULL && FunctionName->Length == 13 && FunctionName->Buffer != NULL &&
 		(!strncmp(FunctionName->Buffer, "EncodePointer", 13) || !strncmp(FunctionName->Buffer, "DecodePointer", 13)))
 		return ret;
 
-    LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
-        "FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
-        "Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
+	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
+		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
+		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
 	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
 		!strncmp(FunctionName->Buffer, "DllMain", 7) && wcsicmp(our_process_path_w, g_config.file_of_interest)) {
@@ -184,14 +184,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 }
 
 HOOKDEF(BOOL, WINAPI, DeviceIoControl,
-    __in         HANDLE hDevice,
-    __in         DWORD dwIoControlCode,
-    __in_opt     LPVOID lpInBuffer,
-    __in         DWORD nInBufferSize,
-    __out_opt    LPVOID lpOutBuffer,
-    __in         DWORD nOutBufferSize,
-    __out_opt    LPDWORD lpBytesReturned,
-    __inout_opt  LPOVERLAPPED lpOverlapped
+	__in		 HANDLE hDevice,
+	__in		 DWORD dwIoControlCode,
+	__in_opt	 LPVOID lpInBuffer,
+	__in		 DWORD nInBufferSize,
+	__out_opt	LPVOID lpOutBuffer,
+	__in		 DWORD nOutBufferSize,
+	__out_opt	LPDWORD lpBytesReturned,
+	__inout_opt  LPOVERLAPPED lpOverlapped
 ) {
 	BOOL ret;
 	ENSURE_DWORD(lpBytesReturned);
@@ -199,9 +199,9 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	ret = Old_DeviceIoControl(hDevice, dwIoControlCode, lpInBuffer,
 		nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned,
 		lpOverlapped);
-    LOQ_bool("device", "phbb", "DeviceHandle", hDevice, "IoControlCode", dwIoControlCode,
-        "InBuffer", nInBufferSize, lpInBuffer,
-        "OutBuffer", *lpBytesReturned, lpOutBuffer);
+	LOQ_bool("device", "phbb", "DeviceHandle", hDevice, "IoControlCode", dwIoControlCode,
+		"InBuffer", nInBufferSize, lpInBuffer,
+		"OutBuffer", *lpBytesReturned, lpOutBuffer);
 
 	if (!g_config.no_stealth && ret && lpOutBuffer)
 		perform_device_fakery(lpOutBuffer, *lpBytesReturned, dwIoControlCode);
@@ -230,11 +230,11 @@ HOOKDEF_NOTAIL(WINAPI, NtSetSystemPowerState,
 }
 
 HOOKDEF_NOTAIL(WINAPI, ExitWindowsEx,
-    __in  UINT uFlags,
-    __in  DWORD dwReason
+	__in  UINT uFlags,
+	__in  DWORD dwReason
 ) {
-    DWORD ret = 0;
-    LOQ_zero("system", "hi", "Flags", uFlags, "Reason", dwReason);
+	DWORD ret = 0;
+	LOQ_zero("system", "hi", "Flags", uFlags, "Reason", dwReason);
 	pipe("SHUTDOWN:");
 	return ret;
 }
@@ -242,9 +242,9 @@ HOOKDEF_NOTAIL(WINAPI, ExitWindowsEx,
 HOOKDEF_NOTAIL(WINAPI, InitiateShutdownW,
 	_In_opt_ LPWSTR lpMachineName,
 	_In_opt_ LPWSTR lpMessage,
-	_In_     DWORD  dwGracePeriod,
-	_In_     DWORD  dwShutdownFlags,
-	_In_     DWORD  dwReason
+	_In_	 DWORD  dwGracePeriod,
+	_In_	 DWORD  dwShutdownFlags,
+	_In_	 DWORD  dwReason
 ) {
 	DWORD ret = 0;
 	LOQ_zero("system", "uuihh", "MachineName", lpMachineName, "Message", lpMessage, "GracePeriod", dwGracePeriod, "ShutdownFlags", dwShutdownFlags, "Reason", dwReason);
@@ -255,9 +255,9 @@ HOOKDEF_NOTAIL(WINAPI, InitiateShutdownW,
 HOOKDEF_NOTAIL(WINAPI, InitiateSystemShutdownW,
 	_In_opt_ LPWSTR lpMachineName,
 	_In_opt_ LPWSTR lpMessage,
-	_In_     DWORD  dwTimeout,
-	_In_     BOOL	bForceAppsClosed,
-	_In_     BOOL	bRebootAfterShutdown
+	_In_	 DWORD  dwTimeout,
+	_In_	 BOOL	bForceAppsClosed,
+	_In_	 BOOL	bRebootAfterShutdown
 ) {
 	DWORD ret = 0;
 	LOQ_zero("system", "uuiii", "MachineName", lpMachineName, "Message", lpMessage, "Timeout", dwTimeout, "ForceAppsClosed", bForceAppsClosed, "RebootAfterShutdown", bRebootAfterShutdown);
@@ -285,9 +285,9 @@ HOOKDEF_NOTAIL(WINAPI, NtRaiseHardError,
 HOOKDEF_NOTAIL(WINAPI, InitiateSystemShutdownExW,
 	_In_opt_ LPWSTR lpMachineName,
 	_In_opt_ LPWSTR lpMessage,
-	_In_     DWORD  dwTimeout,
-	_In_     BOOL	bForceAppsClosed,
-	_In_     BOOL	bRebootAfterShutdown,
+	_In_	 DWORD  dwTimeout,
+	_In_	 BOOL	bForceAppsClosed,
+	_In_	 BOOL	bRebootAfterShutdown,
 	_In_	 DWORD	dwReason
 ) {
 	DWORD ret = 0;
@@ -334,18 +334,18 @@ HOOKDEF(BOOL, WINAPI, IsDebuggerPresent,
 }
 
 HOOKDEF(BOOL, WINAPI, LookupPrivilegeValueW,
-    __in_opt  LPWSTR lpSystemName,
-    __in      LPWSTR lpName,
-    __out     PLUID lpLuid
+	__in_opt  LPWSTR lpSystemName,
+	__in	  LPWSTR lpName,
+	__out	 PLUID lpLuid
 ) {
 
-    BOOL ret = Old_LookupPrivilegeValueW(lpSystemName, lpName, lpLuid);
-    LOQ_bool("system", "uu", "SystemName", lpSystemName, "PrivilegeName", lpName);
-    return ret;
+	BOOL ret = Old_LookupPrivilegeValueW(lpSystemName, lpName, lpLuid);
+	LOQ_bool("system", "uu", "SystemName", lpSystemName, "PrivilegeName", lpName);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtClose,
-    __in    HANDLE Handle
+	__in	HANDLE Handle
 ) {
 	NTSTATUS ret;
 	if (Handle == g_log_handle) {
@@ -354,22 +354,22 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 		return ret;
 	}
 	ret = Old_NtClose(Handle);
-    LOQ_ntstatus("system", "p", "Handle", Handle);
-    if(NT_SUCCESS(ret)) {
+	LOQ_ntstatus("system", "p", "Handle", Handle);
+	if(NT_SUCCESS(ret)) {
 		remove_file_from_log_tracking(Handle);
-        file_close(Handle);
-    }
-    return ret;
+		file_close(Handle);
+	}
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtDuplicateObject,
-	__in       HANDLE SourceProcessHandle,
-	__in       HANDLE SourceHandle,
+	__in	   HANDLE SourceProcessHandle,
+	__in	   HANDLE SourceHandle,
 	__in_opt   HANDLE TargetProcessHandle,
 	__out_opt  PHANDLE TargetHandle,
-	__in       ACCESS_MASK DesiredAccess,
-	__in       ULONG HandleAttributes,
-	__in       ULONG Options
+	__in	   ACCESS_MASK DesiredAccess,
+	__in	   ULONG HandleAttributes,
+	__in	   ULONG Options
 	) {
 	NTSTATUS ret = Old_NtDuplicateObject(SourceProcessHandle, SourceHandle, TargetProcessHandle,
 		TargetHandle, DesiredAccess, HandleAttributes, Options);
@@ -392,10 +392,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtDuplicateObject,
 }
 
 HOOKDEF(BOOL, WINAPI, SaferIdentifyLevel,
-	_In_       DWORD                  dwNumProperties,
+	_In_	   DWORD				  dwNumProperties,
 	_In_opt_   PVOID				  pCodeProperties,
-	_Out_      PVOID				  pLevelHandle,
-	_Reserved_ LPVOID                 lpReserved
+	_Out_	  PVOID				  pLevelHandle,
+	_Reserved_ LPVOID				 lpReserved
 ) {
 	BOOL ret;
 	ret = Old_SaferIdentifyLevel(dwNumProperties, pCodeProperties, pLevelHandle, lpReserved);
@@ -405,7 +405,7 @@ HOOKDEF(BOOL, WINAPI, SaferIdentifyLevel,
 
 
 HOOKDEF(NTSTATUS, WINAPI, NtMakeTemporaryObject,
-	__in     HANDLE ObjectHandle
+	__in	 HANDLE ObjectHandle
 	) {
 	NTSTATUS ret = Old_NtMakeTemporaryObject(ObjectHandle);
 	LOQ_ntstatus("system", "p", "ObjectHandle", ObjectHandle);
@@ -413,7 +413,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMakeTemporaryObject,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtMakePermanentObject,
-	__in     HANDLE ObjectHandle
+	__in	 HANDLE ObjectHandle
 	) {
 	NTSTATUS ret = Old_NtMakePermanentObject(ObjectHandle);
 	LOQ_ntstatus("system", "p", "ObjectHandle", ObjectHandle);
@@ -421,43 +421,43 @@ HOOKDEF(NTSTATUS, WINAPI, NtMakePermanentObject,
 }
 
 HOOKDEF(BOOL, WINAPI, WriteConsoleA,
-    _In_        HANDLE hConsoleOutput,
-    _In_        const VOID *lpBuffer,
-    _In_        DWORD nNumberOfCharsToWrite,
-    _Out_       LPDWORD lpNumberOfCharsWritten,
-    _Reserved_  LPVOID lpReseverd
+	_In_		HANDLE hConsoleOutput,
+	_In_		const VOID *lpBuffer,
+	_In_		DWORD nNumberOfCharsToWrite,
+	_Out_	   LPDWORD lpNumberOfCharsWritten,
+	_Reserved_  LPVOID lpReseverd
 ) {
-    BOOL ret = Old_WriteConsoleA(hConsoleOutput, lpBuffer,
-        nNumberOfCharsToWrite, lpNumberOfCharsWritten, lpReseverd);
-    LOQ_bool("system", "pS", "ConsoleHandle", hConsoleOutput,
-        "Buffer", nNumberOfCharsToWrite, lpBuffer);
-    return ret;
+	BOOL ret = Old_WriteConsoleA(hConsoleOutput, lpBuffer,
+		nNumberOfCharsToWrite, lpNumberOfCharsWritten, lpReseverd);
+	LOQ_bool("system", "pS", "ConsoleHandle", hConsoleOutput,
+		"Buffer", nNumberOfCharsToWrite, lpBuffer);
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, WriteConsoleW,
-    _In_        HANDLE hConsoleOutput,
-    _In_        const VOID *lpBuffer,
-    _In_        DWORD nNumberOfCharsToWrite,
-    _Out_       LPDWORD lpNumberOfCharsWritten,
-    _Reserved_  LPVOID lpReseverd
+	_In_		HANDLE hConsoleOutput,
+	_In_		const VOID *lpBuffer,
+	_In_		DWORD nNumberOfCharsToWrite,
+	_Out_	   LPDWORD lpNumberOfCharsWritten,
+	_Reserved_  LPVOID lpReseverd
 ) {
-    BOOL ret = Old_WriteConsoleW(hConsoleOutput, lpBuffer,
-        nNumberOfCharsToWrite, lpNumberOfCharsWritten, lpReseverd);
-    LOQ_bool("system", "pU", "ConsoleHandle", hConsoleOutput,
-        "Buffer", nNumberOfCharsToWrite, lpBuffer);
-    return ret;
+	BOOL ret = Old_WriteConsoleW(hConsoleOutput, lpBuffer,
+		nNumberOfCharsToWrite, lpNumberOfCharsWritten, lpReseverd);
+	LOQ_bool("system", "pU", "ConsoleHandle", hConsoleOutput,
+		"Buffer", nNumberOfCharsToWrite, lpBuffer);
+	return ret;
 }
 
 HOOKDEF(int, WINAPI, GetSystemMetrics,
-    _In_  int nIndex
+	_In_  int nIndex
 ) {
-    int ret = Old_GetSystemMetrics(nIndex);
+	int ret = Old_GetSystemMetrics(nIndex);
 
 	if (nIndex == SM_CXSCREEN || nIndex == SM_CXVIRTUALSCREEN || nIndex == SM_CYSCREEN ||
 		nIndex == SM_CYVIRTUALSCREEN || nIndex == SM_REMOTECONTROL || nIndex == SM_REMOTESESSION ||
 		nIndex == SM_SHUTTINGDOWN || nIndex == SM_SWAPBUTTON)
-	    LOQ_nonzero("misc", "i", "SystemMetricIndex", nIndex);
-    return ret;
+		LOQ_nonzero("misc", "i", "SystemMetricIndex", nIndex);
+	return ret;
 }
 
 typedef int (WINAPI * __GetSystemMetrics)(__in int nIndex);
@@ -480,10 +480,10 @@ static int lastx;
 static int lasty;
 
 HOOKDEF(BOOL, WINAPI, GetCursorPos,
-    _Out_ LPPOINT lpPoint
+	_Out_ LPPOINT lpPoint
 ) {
-    ENSURE_STRUCT(lpPoint, POINT);
-    BOOL ret = Old_GetCursorPos(lpPoint);
+	ENSURE_STRUCT(lpPoint, POINT);
+	BOOL ret = Old_GetCursorPos(lpPoint);
 
 	/* work around the fact that skipping sleeps prevents the human module from making the system look active */
 	if (ret && time_skipped.QuadPart != last_skipped.QuadPart) {
@@ -510,11 +510,11 @@ HOOKDEF(BOOL, WINAPI, GetCursorPos,
 	}
 
 	if (ret){
-    	    LOQ_bool("misc", "ii", "x", lpPoint != NULL ? lpPoint->x : 0,
-    			 "y", lpPoint != NULL ? lpPoint->y : 0);
+			LOQ_bool("misc", "ii", "x", lpPoint != NULL ? lpPoint->x : 0,
+				 "y", lpPoint != NULL ? lpPoint->y : 0);
 	}
 	else{
-	    LOQ_bool("misc", "ii", "x", 0, "y", 0);
+		LOQ_bool("misc", "ii", "x", 0, "y", 0);
 	}
 	return ret;
 }
@@ -529,39 +529,39 @@ HOOKDEF(DWORD, WINAPI, GetLastError,
 }
 
 HOOKDEF(BOOL, WINAPI, GetComputerNameA,
-    _Out_    LPSTR lpBuffer,
-    _Inout_  LPDWORD lpnSize
+	_Out_	LPSTR lpBuffer,
+	_Inout_  LPDWORD lpnSize
 ) {
-    BOOL ret = Old_GetComputerNameA(lpBuffer, lpnSize);
-    LOQ_bool("misc", "s", "ComputerName", lpBuffer);
-    return ret;
+	BOOL ret = Old_GetComputerNameA(lpBuffer, lpnSize);
+	LOQ_bool("misc", "s", "ComputerName", lpBuffer);
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, GetComputerNameW,
-    _Out_    LPWSTR lpBuffer,
-    _Inout_  LPDWORD lpnSize
+	_Out_	LPWSTR lpBuffer,
+	_Inout_  LPDWORD lpnSize
 ) {
-    BOOL ret = Old_GetComputerNameW(lpBuffer, lpnSize);
-    LOQ_bool("misc", "u", "ComputerName", lpBuffer);
-    return ret;
+	BOOL ret = Old_GetComputerNameW(lpBuffer, lpnSize);
+	LOQ_bool("misc", "u", "ComputerName", lpBuffer);
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, GetUserNameA,
-	_Out_    LPSTR lpBuffer,
-    _Inout_  LPDWORD lpnSize
+	_Out_	LPSTR lpBuffer,
+	_Inout_  LPDWORD lpnSize
 ) {
-    BOOL ret = Old_GetUserNameA(lpBuffer, lpnSize);
-    LOQ_bool("misc", "s", "Name", lpBuffer);
-    return ret;
+	BOOL ret = Old_GetUserNameA(lpBuffer, lpnSize);
+	LOQ_bool("misc", "s", "Name", lpBuffer);
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, GetUserNameW,
-	_Out_    LPWSTR lpBuffer,
-    _Inout_  LPDWORD lpnSize
+	_Out_	LPWSTR lpBuffer,
+	_Inout_  LPDWORD lpnSize
 ) {
-    BOOL ret = Old_GetUserNameW(lpBuffer, lpnSize);
-    LOQ_bool("misc", "u", "Name", lpBuffer);
-    return ret;
+	BOOL ret = Old_GetUserNameW(lpBuffer, lpnSize);
+	LOQ_bool("misc", "u", "Name", lpBuffer);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtLoadDriver,
@@ -600,80 +600,80 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 	NTSTATUS ret = Old_RtlDecompressBuffer(CompressionFormat, UncompressedBuffer, UncompressedBufferSize,
 		CompressedBuffer, CompressedBufferSize, FinalUncompressedSize);
 
-    if (g_config.compression || g_config.plugx) {
-        if (g_config.compression)
-            CapeMetaData->DumpType = COMPRESSION;
-        if (g_config.plugx)
-            CapeMetaData->DumpType = PLUGX_PAYLOAD;
-        if ((ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
-            DebugOutput("RtlDecompressBuffer hook: Checking for PE image(s) despite STATUS_BAD_COMPRESSION_BUFFER.\n", UncompressedBuffer, *FinalUncompressedSize);
-            if (!DumpPEsInRange(UncompressedBuffer, UncompressedBufferSize))
-            {   // If this fails let's try our own buffer
-                NTSTATUS NewRet;
-                PUCHAR CapeBuffer = NULL;
-                ULONG NewUncompressedBufferSize = UncompressedBufferSize;
-                do
-                {
-                    ULONG UncompressedSize;
+	if (g_config.compression || g_config.plugx) {
+		if (g_config.compression)
+			CapeMetaData->DumpType = COMPRESSION;
+		if (g_config.plugx)
+			CapeMetaData->DumpType = PLUGX_PAYLOAD;
+		if ((ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
+			DebugOutput("RtlDecompressBuffer hook: Checking for PE image(s) despite STATUS_BAD_COMPRESSION_BUFFER.\n", UncompressedBuffer, *FinalUncompressedSize);
+			if (!DumpPEsInRange(UncompressedBuffer, UncompressedBufferSize))
+			{   // If this fails let's try our own buffer
+				NTSTATUS NewRet;
+				PUCHAR CapeBuffer = NULL;
+				ULONG NewUncompressedBufferSize = UncompressedBufferSize;
+				do
+				{
+					ULONG UncompressedSize;
 
-                    if (CapeBuffer) {
-                        if (DumpPEsInRange(CapeBuffer, NewUncompressedBufferSize)) {
-                            DebugOutput("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
-                            break;
-                        }
-                        free(CapeBuffer);
-                    }
+					if (CapeBuffer) {
+						if (DumpPEsInRange(CapeBuffer, NewUncompressedBufferSize)) {
+							DebugOutput("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
+							break;
+						}
+						free(CapeBuffer);
+					}
 
-                    NewUncompressedBufferSize += UncompressedBufferSize;
-                    CapeBuffer = (PUCHAR)malloc(NewUncompressedBufferSize);
+					NewUncompressedBufferSize += UncompressedBufferSize;
+					CapeBuffer = (PUCHAR)malloc(NewUncompressedBufferSize);
 
-                    if (!CapeBuffer) {
-                        DebugOutput("RtlDecompressBuffer hook: Failed to allocate new buffer.\n");
-                        break;
-                    }
-                    else
-                    {
-                        DebugOutput("RtlDecompressBuffer hook: Allocated new buffer of 0x%x bytes.\n", NewUncompressedBufferSize);
-                        NewRet = Old_RtlDecompressBuffer(CompressionFormat, CapeBuffer, NewUncompressedBufferSize,
-                            CompressedBuffer, CompressedBufferSize, &UncompressedSize);
-                    }
-                }
-                // Most decompressions should succeed in under 0x10 times original uncompressed buffer size
-                while (NewRet == STATUS_BAD_COMPRESSION_BUFFER && NewUncompressedBufferSize < (UncompressedBufferSize * 0x10));
+					if (!CapeBuffer) {
+						DebugOutput("RtlDecompressBuffer hook: Failed to allocate new buffer.\n");
+						break;
+					}
+					else
+					{
+						DebugOutput("RtlDecompressBuffer hook: Allocated new buffer of 0x%x bytes.\n", NewUncompressedBufferSize);
+						NewRet = Old_RtlDecompressBuffer(CompressionFormat, CapeBuffer, NewUncompressedBufferSize,
+							CompressedBuffer, CompressedBufferSize, &UncompressedSize);
+					}
+				}
+				// Most decompressions should succeed in under 0x10 times original uncompressed buffer size
+				while (NewRet == STATUS_BAD_COMPRESSION_BUFFER && NewUncompressedBufferSize < (UncompressedBufferSize * 0x10));
 
-                if (NT_SUCCESS(NewRet)) {
-                    if (DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize))
-                        DebugOutput("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
-                }
-                else
-                    ErrorOutput("RtlDecompressBuffer hook: Failed to decompress to new buffer");
+				if (NT_SUCCESS(NewRet)) {
+					if (DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize))
+						DebugOutput("RtlDecompressBuffer hook: Dumped PE file(s) from new buffer.\n");
+				}
+				else
+					ErrorOutput("RtlDecompressBuffer hook: Failed to decompress to new buffer");
 
-                if (CapeBuffer)
-                    free(CapeBuffer);
-            }
-            LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
-                *FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
-        }
-        else if (NT_SUCCESS(ret)) {
-            DebugOutput("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x for PE image(s).\n", UncompressedBuffer, *FinalUncompressedSize);
-            DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
-            LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
-                *FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
-        }
-        else
-            LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
-                0, UncompressedBuffer, "UncompressedBufferLength", 0);
-    }
-    else {
-        if ((NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
-        //	There are samples that return STATUS_BAD_COMPRESSION_BUFFER but still continue
-            LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
-                *FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
-        }
-        else
-            LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
-                0, UncompressedBuffer, "UncompressedBufferLength", 0);
-    }
+				if (CapeBuffer)
+					free(CapeBuffer);
+			}
+			LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
+				*FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
+		}
+		else if (NT_SUCCESS(ret)) {
+			DebugOutput("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x for PE image(s).\n", UncompressedBuffer, *FinalUncompressedSize);
+			DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
+			LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
+				*FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
+		}
+		else
+			LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
+				0, UncompressedBuffer, "UncompressedBufferLength", 0);
+	}
+	else {
+		if ((NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
+		//	There are samples that return STATUS_BAD_COMPRESSION_BUFFER but still continue
+			LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
+				*FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
+		}
+		else
+			LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
+				0, UncompressedBuffer, "UncompressedBufferLength", 0);
+	}
 
 	return ret;
 }
@@ -722,21 +722,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationProcess,
 	NTSTATUS ret = Old_NtSetInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength);
 	if ((ProcessInformationClass == ProcessExecuteFlags || ProcessInformationClass == ProcessBreakOnTermination) && ProcessInformationLength == 4)
 		LOQ_ntstatus("process", "ii", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", *(int*)ProcessInformation);
-    else
+	else
 		LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
 	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
-    IN HANDLE ProcessHandle,
-    IN PROCESSINFOCLASS ProcessInformationClass,
-    OUT PVOID ProcessInformation,
-    IN ULONG ProcessInformationLength,
-    OUT PULONG ReturnLength OPTIONAL
+	IN HANDLE ProcessHandle,
+	IN PROCESSINFOCLASS ProcessInformationClass,
+	OUT PVOID ProcessInformation,
+	IN ULONG ProcessInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
 ) {
 	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
-    LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
-    return ret;
+	LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemInformation,
@@ -852,9 +852,9 @@ static char *known_object(IID *cls)
 
 HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 	_In_opt_ const GUID   *ClassGuid,
-	_In_opt_       PCSTR Enumerator,
-	_In_opt_       HWND   hwndParent,
-	_In_           DWORD  Flags
+	_In_opt_	   PCSTR Enumerator,
+	_In_opt_	   HWND   hwndParent,
+	_In_		   DWORD  Flags
 ) {
 	IID id1;
 	char idbuf[40];
@@ -874,16 +874,16 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 		else
 			LOQ_handle("misc", "s", "ClassGuid", idbuf);
 
-        set_lasterrors(&lasterror);
+		set_lasterrors(&lasterror);
 	}
 	return ret;
 }
 
 HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 	_In_opt_ const GUID   *ClassGuid,
-	_In_opt_       PCWSTR Enumerator,
-	_In_opt_       HWND   hwndParent,
-	_In_           DWORD  Flags
+	_In_opt_	   PCWSTR Enumerator,
+	_In_opt_	   HWND   hwndParent,
+	_In_		   DWORD  Flags
 ) {
 	IID id1;
 	char idbuf[40];
@@ -903,19 +903,19 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 		else
 			LOQ_handle("misc", "s", "ClassGuid", idbuf);
 
-        set_lasterrors(&lasterror);
+		set_lasterrors(&lasterror);
 	}
 	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, SetupDiGetDeviceRegistryPropertyA,
-	_In_      HDEVINFO         DeviceInfoSet,
-	_In_      PSP_DEVINFO_DATA DeviceInfoData,
-	_In_      DWORD            Property,
-	_Out_opt_ PDWORD           PropertyRegDataType,
-	_Out_opt_ PBYTE            PropertyBuffer,
-	_In_      DWORD            PropertyBufferSize,
-	_Out_opt_ PDWORD           RequiredSize
+	_In_	  HDEVINFO		 DeviceInfoSet,
+	_In_	  PSP_DEVINFO_DATA DeviceInfoData,
+	_In_	  DWORD			Property,
+	_Out_opt_ PDWORD		   PropertyRegDataType,
+	_Out_opt_ PBYTE			PropertyBuffer,
+	_In_	  DWORD			PropertyBufferSize,
+	_Out_opt_ PDWORD		   RequiredSize
 ) {
 	BOOL ret;
 	ENSURE_DWORD(PropertyRegDataType);
@@ -937,13 +937,13 @@ HOOKDEF(BOOL, WINAPI, SetupDiGetDeviceRegistryPropertyA,
 
 
 HOOKDEF(BOOL, WINAPI, SetupDiGetDeviceRegistryPropertyW,
-	_In_      HDEVINFO         DeviceInfoSet,
-	_In_      PSP_DEVINFO_DATA DeviceInfoData,
-	_In_      DWORD            Property,
-	_Out_opt_ PDWORD           PropertyRegDataType,
-	_Out_opt_ PBYTE            PropertyBuffer,
-	_In_      DWORD            PropertyBufferSize,
-	_Out_opt_ PDWORD           RequiredSize
+	_In_	  HDEVINFO		 DeviceInfoSet,
+	_In_	  PSP_DEVINFO_DATA DeviceInfoData,
+	_In_	  DWORD			Property,
+	_Out_opt_ PDWORD		   PropertyRegDataType,
+	_Out_opt_ PBYTE			PropertyBuffer,
+	_In_	  DWORD			PropertyBufferSize,
+	_Out_opt_ PDWORD		   RequiredSize
 ) {
 	BOOL ret;
 	ENSURE_DWORD(PropertyRegDataType);
@@ -964,9 +964,9 @@ HOOKDEF(BOOL, WINAPI, SetupDiGetDeviceRegistryPropertyW,
 }
 
 HOOKDEF(BOOL, WINAPI, SetupDiBuildDriverInfoList,
-	_In_    HDEVINFO         DeviceInfoSet,
+	_In_	HDEVINFO		 DeviceInfoSet,
 	_Inout_ PSP_DEVINFO_DATA DeviceInfoData,
-	_In_    DWORD            DriverType
+	_In_	DWORD			DriverType
 ) {
 	BOOL ret;
 	ret = Old_SetupDiBuildDriverInfoList(DeviceInfoSet, DeviceInfoData, DriverType);
@@ -1028,7 +1028,7 @@ HOOKDEF(DWORD, WINAPI, WNetGetProviderNameW,
 		ret = ERROR_NO_NETWORK;
 		lasterrors.Win32Error = ERROR_NO_NETWORK;
 		lasterrors.NtstatusError = STATUS_ENTRYPOINT_NOT_FOUND;
-        lasterrors.Eflags = 0;
+		lasterrors.Eflags = 0;
 	}
 	else if (ret == NO_ERROR && lpProviderName) {
 		wcscpy(lpProviderName, tmp);
@@ -1051,7 +1051,7 @@ HOOKDEF(DWORD, WINAPI, RasValidateEntryNameW,
 HOOKDEF(DWORD, WINAPI, RasConnectionNotificationW,
 	_In_ PVOID hrasconn,
 	_In_ HANDLE   hEvent,
-	_In_ DWORD    dwFlags
+	_In_ DWORD	dwFlags
 ) {
 	DWORD ret = Old_RasConnectionNotificationW(hrasconn, hEvent, dwFlags);
 	LOQ_zero("misc", "");
@@ -1060,8 +1060,8 @@ HOOKDEF(DWORD, WINAPI, RasConnectionNotificationW,
 
 HOOKDEF(BOOL, WINAPI, SystemTimeToTzSpecificLocalTime,
 	_In_opt_ LPTIME_ZONE_INFORMATION lpTimeZone,
-	_In_     LPSYSTEMTIME            lpUniversalTime,
-	_Out_    LPSYSTEMTIME            lpLocalTime
+	_In_	 LPSYSTEMTIME			lpUniversalTime,
+	_Out_	LPSYSTEMTIME			lpLocalTime
 ) {
 	BOOL ret = SystemTimeToTzSpecificLocalTime(lpTimeZone, lpUniversalTime, lpLocalTime);
 	LOQ_bool("misc", "");
@@ -1114,10 +1114,10 @@ HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 }
 
 HOOKDEF(BOOL, WINAPI, SystemParametersInfoA,
-	_In_    UINT  uiAction,
-	_In_    UINT  uiParam,
+	_In_	UINT  uiAction,
+	_In_	UINT  uiParam,
 	_Inout_ PVOID pvParam,
-	_In_    UINT  fWinIni
+	_In_	UINT  fWinIni
 ) {
 	BOOL ret = Old_SystemParametersInfoA(uiAction, uiParam, pvParam, fWinIni);
 	if (ret && (uiAction == SPI_SETDESKWALLPAPER || uiAction == SPI_GETDESKWALLPAPER))
@@ -1129,10 +1129,10 @@ HOOKDEF(BOOL, WINAPI, SystemParametersInfoA,
 }
 
 HOOKDEF(BOOL, WINAPI, SystemParametersInfoW,
-	_In_    UINT  uiAction,
-	_In_    UINT  uiParam,
+	_In_	UINT  uiAction,
+	_In_	UINT  uiParam,
 	_Inout_ PVOID pvParam,
-	_In_    UINT  fWinIni
+	_In_	UINT  fWinIni
 ) {
 	BOOL ret = Old_SystemParametersInfoW(uiAction, uiParam, pvParam, fWinIni);
 	if (ret && (uiAction == SPI_SETDESKWALLPAPER || uiAction == SPI_GETDESKWALLPAPER))
@@ -1164,32 +1164,32 @@ HOOKDEF(void, WINAPIV, memcpy,
 
 	Old_memcpy(dest, src, count);
 
-    if (count > 0xa00)
-        LOQ_void("misc", "bppi", "DestinationBuffer", count, dest, "source", src, "destination", dest, "count", count);
+	if (count > 0xa00)
+		LOQ_void("misc", "bppi", "DestinationBuffer", count, dest, "source", src, "destination", dest, "count", count);
 
 	if (g_config.plugx && !PlugXConfigDumped &&
-    (
-		count == 0xae4  ||
-		count == 0xbe4  ||
-        count == 0x150c ||
-        count == 0x1510 ||
-        count == 0x1516 ||
-        count == 0x170c ||
-		count == 0x1b18 ||
-        count == 0x1d18 ||
-        count == 0x2540 ||
-        count == 0x254c ||
-		count == 0x2d58 ||
-		count == 0x36a4 ||
-        count == 0x4ea4
-        //count > 0xa00 &&            //fuzzy matching (2560)
-		//count < 0x5000              //fuzzy matching (20480)
+	(
+		count == 0xae4  ||	// 2788
+		count == 0xbe4  ||	// 3044
+		count == 0x150c ||	// 5388
+		count == 0x1510 ||	// 5392
+		count == 0x1516 ||	// 5398
+		count == 0x170c ||	// 5900
+		count == 0x1b18 ||	// 6936
+		count == 0x1d18 ||	// 7448
+		count == 0x2540 ||	// 9536
+		count == 0x254c ||	// 9668
+		count == 0x2d58 ||	// 11608
+		count == 0x36a4 ||	// 13988
+		count == 0x4ea4		// 20132
+		//count > 0xa00 &&	//fuzzy matching (2560)
+		//count < 0x5000	//fuzzy matching (20480)
 	))
-    {
+	{
 		DebugOutput("PlugX config detected (size 0x%d), dumping.\n", count);
-        CapeMetaData->DumpType = PLUGX_CONFIG;
-        DumpMemory((BYTE*)src, count);
-    }
+		CapeMetaData->DumpType = PLUGX_CONFIG;
+		DumpMemory((BYTE*)src, count);
+	}
 	return;
 }
 
@@ -1207,16 +1207,16 @@ HOOKDEF(void, WINAPIV, srand,
 HOOKDEF(LPSTR, WINAPI, lstrcpynA,
   _Out_ LPSTR   lpString1,
   _In_  LPSTR   lpString2,
-  _In_  int     iMaxLength
+  _In_  int	 iMaxLength
 )
 {
-    LPSTR ret;
+	LPSTR ret;
 
-    ret = Old_lstrcpynA(lpString1, lpString2, iMaxLength);
+	ret = Old_lstrcpynA(lpString1, lpString2, iMaxLength);
 
 	LOQ_nonzero("misc", "u", "String", lpString1);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(int, WINAPI, lstrcmpiA,
@@ -1224,77 +1224,77 @@ HOOKDEF(int, WINAPI, lstrcmpiA,
   _In_  LPCSTR   lpString2
 )
 {
-    int ret;
+	int ret;
 
-    ret = Old_lstrcmpiA(lpString1, lpString2);
+	ret = Old_lstrcmpiA(lpString1, lpString2);
 
 	LOQ_nonzero("misc", "ss", "String1", lpString1, "String2", lpString2);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(HRSRC, WINAPI, FindResourceExA,
-    HMODULE hModule,
-    LPCSTR lpType,
-    LPCSTR lpName,
-    WORD wLanguage
+	HMODULE hModule,
+	LPCSTR lpType,
+	LPCSTR lpName,
+	WORD wLanguage
 )
 {
-    HRSRC ret = Old_FindResourceExA(hModule, lpType, lpName, wLanguage);
+	HRSRC ret = Old_FindResourceExA(hModule, lpType, lpName, wLanguage);
 
-    char type_id[8];
-    if (IS_INTRESOURCE(lpType)) {
-        snprintf(type_id, sizeof type_id, "#%hu", (WORD)lpType);
-        lpType = type_id;
-    }
+	char type_id[8];
+	if (IS_INTRESOURCE(lpType)) {
+		snprintf(type_id, sizeof type_id, "#%hu", (WORD)lpType);
+		lpType = type_id;
+	}
 
-    char name_id[8];
-    if (IS_INTRESOURCE(lpName)) {
-        snprintf(name_id, sizeof name_id, "#%hu", (WORD)lpName);
-        lpName = name_id;
-    }
+	char name_id[8];
+	if (IS_INTRESOURCE(lpName)) {
+		snprintf(name_id, sizeof name_id, "#%hu", (WORD)lpName);
+		lpName = name_id;
+	}
 
-    LOQ_handle("misc", "pssh", "Module", hModule, "Type", lpType, "Name", lpName, "Language", wLanguage);
+	LOQ_handle("misc", "pssh", "Module", hModule, "Type", lpType, "Name", lpName, "Language", wLanguage);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(HRSRC, WINAPI, FindResourceExW,
-    HMODULE hModule,
-    LPCWSTR lpType,
-    LPCWSTR lpName,
-    WORD wLanguage
+	HMODULE hModule,
+	LPCWSTR lpType,
+	LPCWSTR lpName,
+	WORD wLanguage
 )
 {
-    HRSRC ret = Old_FindResourceExW(hModule, lpType, lpName, wLanguage);
+	HRSRC ret = Old_FindResourceExW(hModule, lpType, lpName, wLanguage);
 
-    wchar_t type_id[8];
-    if (IS_INTRESOURCE(lpType)) {
-        swprintf(type_id, sizeof type_id, L"#%hu", (WORD)lpType);
-        lpType = type_id;
-    }
+	wchar_t type_id[8];
+	if (IS_INTRESOURCE(lpType)) {
+		swprintf(type_id, sizeof type_id, L"#%hu", (WORD)lpType);
+		lpType = type_id;
+	}
 
-    wchar_t name_id[8];
-    if (IS_INTRESOURCE(lpName)) {
-        swprintf(name_id, sizeof name_id, L"#%hu", (WORD)lpName);
-        lpName = name_id;
-    }
+	wchar_t name_id[8];
+	if (IS_INTRESOURCE(lpName)) {
+		swprintf(name_id, sizeof name_id, L"#%hu", (WORD)lpName);
+		lpName = name_id;
+	}
 
-    LOQ_handle("misc", "puuh", "Module", hModule, "Type", lpType, "Name", lpName, "Language", wLanguage);
+	LOQ_handle("misc", "puuh", "Module", hModule, "Type", lpType, "Name", lpName, "Language", wLanguage);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(HGLOBAL, WINAPI, LoadResource,
   _In_opt_ HMODULE hModule,
-  _In_     HRSRC   hResInfo
+  _In_	 HRSRC   hResInfo
 )
 {
-    HGLOBAL ret = Old_LoadResource(hModule, hResInfo);
+	HGLOBAL ret = Old_LoadResource(hModule, hResInfo);
 
-    LOQ_handle("misc", "pp", "Module", hModule, "ResourceInfo", hResInfo);
+	LOQ_handle("misc", "pp", "Module", hModule, "ResourceInfo", hResInfo);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(LPVOID, WINAPI, LockResource,
@@ -1305,27 +1305,27 @@ HOOKDEF(LPVOID, WINAPI, LockResource,
 
 	LOQ_nonnull("misc", "p", "ResourceData", hResData);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(DWORD, WINAPI, SizeofResource,
-    _In_opt_ HMODULE hModule,
-    _In_     HRSRC   hResInfo
+	_In_opt_ HMODULE hModule,
+	_In_	 HRSRC   hResInfo
 )
 {
 	DWORD ret = Old_SizeofResource(hModule, hResInfo);
 
 	LOQ_nonzero("misc", "pp", "ModuleHandle", hModule, "ResourceInfo", hResInfo);
 
-    return ret;
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, EnumResourceTypesExA,
-	_In_opt_ HMODULE         hModule,
-	_In_     ENUMRESTYPEPROC lpEnumFunc,
-	_In_     LONG_PTR        lParam,
-	_In_     DWORD           dwFlags,
-	_In_     LANGID          LangId
+	_In_opt_ HMODULE		 hModule,
+	_In_	 ENUMRESTYPEPROC lpEnumFunc,
+	_In_	 LONG_PTR		lParam,
+	_In_	 DWORD		   dwFlags,
+	_In_	 LANGID		  LangId
 ) {
 	BOOL ret = TRUE;
 	LOQ_bool("misc", "ppphh",
@@ -1339,11 +1339,11 @@ HOOKDEF(BOOL, WINAPI, EnumResourceTypesExA,
 }
 
 HOOKDEF(BOOL, WINAPI, EnumResourceTypesExW,
-	_In_opt_ HMODULE         hModule,
-	_In_     ENUMRESTYPEPROC lpEnumFunc,
-	_In_     LONG_PTR        lParam,
-	_In_     DWORD           dwFlags,
-	_In_     LANGID          LangId
+	_In_opt_ HMODULE		 hModule,
+	_In_	 ENUMRESTYPEPROC lpEnumFunc,
+	_In_	 LONG_PTR		lParam,
+	_In_	 DWORD		   dwFlags,
+	_In_	 LANGID		  LangId
 ) {
 	BOOL ret = TRUE;
 	LOQ_bool("misc", "ppphh",
@@ -1358,9 +1358,9 @@ HOOKDEF(BOOL, WINAPI, EnumResourceTypesExW,
 
 HOOKDEF(BOOL, WINAPI, EnumCalendarInfoA,
 	CALINFO_ENUMPROCA lpCalInfoEnumProc,
-	LCID              Locale,
-	CALID             Calendar,
-	CALTYPE           CalType
+	LCID			  Locale,
+	CALID			 Calendar,
+	CALTYPE		   CalType
 ) {
 	BOOL ret = TRUE;
 	LOQ_bool("misc", "phhh",
@@ -1374,9 +1374,9 @@ HOOKDEF(BOOL, WINAPI, EnumCalendarInfoA,
 
 HOOKDEF(BOOL, WINAPI, EnumCalendarInfoW,
 	CALINFO_ENUMPROCA lpCalInfoEnumProc,
-	LCID              Locale,
-	CALID             Calendar,
-	CALTYPE           CalType
+	LCID			  Locale,
+	CALID			 Calendar,
+	CALTYPE		   CalType
 ) {
 	BOOL ret = TRUE;
 	LOQ_bool("misc", "phhh",
@@ -1390,8 +1390,8 @@ HOOKDEF(BOOL, WINAPI, EnumCalendarInfoW,
 
 HOOKDEF(BOOL, WINAPI, EnumTimeFormatsA,
 	TIMEFMT_ENUMPROCA lpTimeFmtEnumProc,
-	LCID              Locale,
-	DWORD             dwFlags
+	LCID			  Locale,
+	DWORD			 dwFlags
 ) {
 	BOOL ret = TRUE;
 	LOQ_bool("misc", "phh",
@@ -1404,8 +1404,8 @@ HOOKDEF(BOOL, WINAPI, EnumTimeFormatsA,
 
 HOOKDEF(BOOL, WINAPI, EnumTimeFormatsW,
 	TIMEFMT_ENUMPROCA lpTimeFmtEnumProc,
-	LCID              Locale,
-	DWORD             dwFlags
+	LCID			  Locale,
+	DWORD			 dwFlags
 ) {
 	BOOL ret = TRUE;
 	LOQ_bool("misc", "phh",
@@ -1417,16 +1417,16 @@ HOOKDEF(BOOL, WINAPI, EnumTimeFormatsW,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateTransaction,
-	PHANDLE            TransactionHandle,
-	ACCESS_MASK        DesiredAccess,
+	PHANDLE			TransactionHandle,
+	ACCESS_MASK		DesiredAccess,
 	POBJECT_ATTRIBUTES ObjectAttributes,
-	LPGUID             Uow,
-	HANDLE             TmHandle,
-	ULONG              CreateOptions,
-	ULONG              IsolationLevel,
-	ULONG              IsolationFlags,
-	PLARGE_INTEGER     Timeout,
-	PUNICODE_STRING    Description
+	LPGUID			 Uow,
+	HANDLE			 TmHandle,
+	ULONG			  CreateOptions,
+	ULONG			  IsolationLevel,
+	ULONG			  IsolationFlags,
+	PLARGE_INTEGER	 Timeout,
+	PUNICODE_STRING	Description
 ) {
 	NTSTATUS ret = Old_NtCreateTransaction(TransactionHandle, DesiredAccess, ObjectAttributes, Uow, TmHandle, CreateOptions, IsolationLevel, IsolationFlags, Timeout, Description);
 	LOQ_ntstatus("misc", "PhObphhhio",
@@ -1445,11 +1445,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateTransaction,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtOpenTransaction,
-	PHANDLE            TransactionHandle,
-	ACCESS_MASK        DesiredAccess,
+	PHANDLE			TransactionHandle,
+	ACCESS_MASK		DesiredAccess,
 	POBJECT_ATTRIBUTES ObjectAttributes,
-	LPGUID             Uow,
-	HANDLE             TmHandle
+	LPGUID			 Uow,
+	HANDLE			 TmHandle
 ) {
 	NTSTATUS ret = Old_NtOpenTransaction(TransactionHandle, DesiredAccess, ObjectAttributes, Uow, TmHandle);
 	LOQ_ntstatus("misc", "PhObp",
@@ -1481,7 +1481,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCommitTransaction,
 }
 
 HOOKDEF(BOOL, WINAPI, RtlSetCurrentTransaction,
-	_In_ HANDLE     TransactionHandle
+	_In_ HANDLE	 TransactionHandle
 ) {
 	BOOL ret = Old_RtlSetCurrentTransaction(TransactionHandle);
 	LOQ_bool("misc", "p", "TransactionHandle", TransactionHandle);
@@ -1489,19 +1489,19 @@ HOOKDEF(BOOL, WINAPI, RtlSetCurrentTransaction,
 }
 
 HOOKDEF(HRESULT, WINAPI, OleConvertOLESTREAMToIStorage,
-    IN LPOLESTREAM          lpolestream,
-    OUT LPSTORAGE           pstg,
-    IN const DVTARGETDEVICE *ptd
+	IN LPOLESTREAM		  lpolestream,
+	OUT LPSTORAGE		   pstg,
+	IN const DVTARGETDEVICE *ptd
 ) {
-    void *buf = NULL; uintptr_t len = 0;
+	void *buf = NULL; uintptr_t len = 0;
 
-    HRESULT ret = Old_OleConvertOLESTREAMToIStorage(lpolestream, pstg, ptd);
+	HRESULT ret = Old_OleConvertOLESTREAMToIStorage(lpolestream, pstg, ptd);
 
 #ifndef _WIN64
-    if (lpolestream != NULL) {
-        buf = (PVOID)*((uint8_t *) lpolestream + 8);
-        len = *((uint8_t *) lpolestream + 12);
-    }
+	if (lpolestream != NULL) {
+		buf = (PVOID)*((uint8_t *) lpolestream + 8);
+		len = *((uint8_t *) lpolestream + 12);
+	}
 #endif
 
 	LOQ_bool("misc", "b", "OLE2", len, buf);
@@ -1514,10 +1514,10 @@ HOOKDEF(HANDLE, WINAPI, HeapCreate,
   _In_ SIZE_T dwMaximumSize
 )
 {
-    HANDLE ret;
-    ret = Old_HeapCreate(flOptions, dwInitialSize, dwMaximumSize);
-    LOQ_nonnull("misc", "ihh", "Options", flOptions, "InitialSize", dwInitialSize, "MaximumSize", dwMaximumSize);
-    return ret;
+	HANDLE ret;
+	ret = Old_HeapCreate(flOptions, dwInitialSize, dwMaximumSize);
+	LOQ_nonnull("misc", "ihh", "Options", flOptions, "InitialSize", dwInitialSize, "MaximumSize", dwMaximumSize);
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, FlsAlloc,
@@ -1529,7 +1529,7 @@ HOOKDEF(BOOL, WINAPI, FlsAlloc,
 }
 
 HOOKDEF(BOOL, WINAPI, FlsSetValue,
-	_In_     DWORD dwFlsIndex,
+	_In_	 DWORD dwFlsIndex,
 	_In_opt_ PVOID lpFlsData
 ) {
 	BOOL ret = Old_FlsSetValue(dwFlsIndex, lpFlsData);
@@ -1539,7 +1539,7 @@ HOOKDEF(BOOL, WINAPI, FlsSetValue,
 
 
 HOOKDEF(PVOID, WINAPI, FlsGetValue,
-	_In_     DWORD dwFlsIndex
+	_In_	 DWORD dwFlsIndex
 ) {
 	PVOID ret = Old_FlsGetValue(dwFlsIndex);
 	LOQ_nonnull("misc", "ip", "Index", dwFlsIndex, "ReturnValue", ret);
@@ -1547,7 +1547,7 @@ HOOKDEF(PVOID, WINAPI, FlsGetValue,
 }
 
 HOOKDEF(BOOL, WINAPI, FlsFree,
-	_In_     DWORD dwFlsIndex
+	_In_	 DWORD dwFlsIndex
 ) {
 	BOOL ret = Old_FlsFree(dwFlsIndex);
 	LOQ_bool("misc", "ip", "Index", dwFlsIndex);
@@ -1575,17 +1575,17 @@ HOOKDEF(VOID, WINAPI, LocalFree,
 #define MSGFLT_ADD 1
 #define MSGFLT_REMOVE 2
 HOOKDEF(BOOL, WINAPI, ChangeWindowMessageFilter,
-    UINT  message,
-    DWORD dwFlag
+	UINT  message,
+	DWORD dwFlag
 )
 {
 	BOOL ret;
-    if (dwFlag != MSGFLT_REMOVE && dwFlag != MSGFLT_ADD) {
-        ret = FALSE;
-        SetLastError(ERROR_INVALID_PARAMETER);
-    }
-    else
-        ret = Old_ChangeWindowMessageFilter(message, dwFlag);
+	if (dwFlag != MSGFLT_REMOVE && dwFlag != MSGFLT_ADD) {
+		ret = FALSE;
+		SetLastError(ERROR_INVALID_PARAMETER);
+	}
+	else
+		ret = Old_ChangeWindowMessageFilter(message, dwFlag);
 	LOQ_bool("misc", "ii", "message", message, "dwFlag", dwFlag);
 	return ret;
 }
@@ -1597,50 +1597,50 @@ HOOKDEF(LPWSTR, WINAPI, rtcEnvironBstr,
 	LPWSTR ret = Old_rtcEnvironBstr(es);
 	LOQ_bool("misc", "uu", "EnvVar", es->envstr, "EnvStr", ret);
 	if (ret && !wcsicmp(es->envstr, L"userdomain"))
-        // replace first char so it differs from computername
-        *ret = '#';
+		// replace first char so it differs from computername
+		*ret = '#';
 	return ret;
 }
 
 HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
-    DWORD idThread
+	DWORD idThread
 )
 {
-    HKL ret = Old_GetKeyboardLayout(idThread);
-    LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD_PTR)ret & 0xFFFF);
-    return ret;
+	HKL ret = Old_GetKeyboardLayout(idThread);
+	LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD_PTR)ret & 0xFFFF);
+	return ret;
 }
 
 HOOKDEF(VOID, WINAPI, RtlMoveMemory,
-    _Out_       VOID UNALIGNED *Destination,
-    _In_  const VOID UNALIGNED *Source,
-    _In_        SIZE_T         Length
+	_Out_	   VOID UNALIGNED *Destination,
+	_In_  const VOID UNALIGNED *Source,
+	_In_		SIZE_T		 Length
 )
 {
-    int ret = 0;
-    Old_RtlMoveMemory(Destination, Source, Length);
-    LOQ_void("misc", "bppi", "Destination", Length, Destination, "Source", Source, "destination", Destination, "Length", Length);
-    return;
+	int ret = 0;
+	Old_RtlMoveMemory(Destination, Source, Length);
+	LOQ_void("misc", "bppi", "Destination", Length, Destination, "Source", Source, "destination", Destination, "Length", Length);
+	return;
 }
 
 HOOKDEF(void, WINAPI, OutputDebugStringA,
-    LPCSTR lpOutputString
+	LPCSTR lpOutputString
 )
 {
-    int ret = 0;
-    Old_OutputDebugStringA(lpOutputString);
-    LOQ_void("misc", "s", "OutputString", lpOutputString);
-    return;
+	int ret = 0;
+	Old_OutputDebugStringA(lpOutputString);
+	LOQ_void("misc", "s", "OutputString", lpOutputString);
+	return;
 }
 
 HOOKDEF(void, WINAPI, OutputDebugStringW,
-    LPCWSTR lpOutputString
+	LPCWSTR lpOutputString
 )
 {
-    int ret = 0;
-    Old_OutputDebugStringW(lpOutputString);
-    LOQ_void("misc", "u", "OutputString", lpOutputString);
-    return;
+	int ret = 0;
+	Old_OutputDebugStringW(lpOutputString);
+	LOQ_void("misc", "u", "OutputString", lpOutputString);
+	return;
 }
 
 HOOKDEF(void, WINAPI, SysFreeString,
@@ -1701,8 +1701,8 @@ HOOKDEF_NOTAIL(WINAPI, rtcCreateObject2,
 }
 
 HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
-	_In_       PCWSTR DosFileName,
-	_Out_      PUNICODE_STRING NtFileName,
+	_In_	   PCWSTR DosFileName,
+	_Out_	  PUNICODE_STRING NtFileName,
 	_Out_opt_  PWSTR* FilePath,
 	_Out_opt_  VOID* DirectoryInfo
 )
@@ -1724,18 +1724,18 @@ HOOKDEF_NOTAIL(WINAPI, DownloadFile,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
-    __in        PUNICODE_STRING Name,
-    __in_opt    ULONG* Type,
-    __in_opt    PVOID Buffer,
-    __in        ULONG Length,
-    __in        ULONG* DataLength
+	__in		PUNICODE_STRING Name,
+	__in_opt	ULONG* Type,
+	__in_opt	PVOID Buffer,
+	__in		ULONG Length,
+	__in		ULONG* DataLength
 ) {
-    WCHAR VMDetection[] = L"Kernel-VMDetection-Private";
-    NTSTATUS ret = Old_NtQueryLicenseValue(Name, Type, Buffer, Length, DataLength);
-    if (NT_SUCCESS(ret) && Buffer && !wcsncmp(Name->Buffer, VMDetection, Name->Length))
-        *(PBOOL)Buffer = FALSE;
-    LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
-    return ret;
+	WCHAR VMDetection[] = L"Kernel-VMDetection-Private";
+	NTSTATUS ret = Old_NtQueryLicenseValue(Name, Type, Buffer, Length, DataLength);
+	if (NT_SUCCESS(ret) && Buffer && !wcsncmp(Name->Buffer, VMDetection, Name->Length))
+		*(PBOOL)Buffer = FALSE;
+	LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
+	return ret;
 }
 
 HOOKDEF(int, WINAPI, MultiByteToWideChar,
