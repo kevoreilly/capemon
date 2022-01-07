@@ -187,6 +187,7 @@ extern BOOL WoW64fix(void)
 	OSVERSIONINFO OSVersion;
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
+#pragma warning(suppress : 4996)
 	if (!GetVersionEx(&OSVersion))
 	{
 		ErrorOutput("WoW64fix: Failed to get OS version");

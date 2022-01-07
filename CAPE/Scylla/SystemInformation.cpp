@@ -9,6 +9,7 @@ bool SystemInformation::getSystemInformation()
 	def_GetNativeSystemInfo _GetNativeSystemInfo = 0;
 
 	osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+#pragma warning(suppress : 4996)
 	if (!GetVersionEx((OSVERSIONINFO*) &osvi))
 	{
 		return false;

@@ -436,6 +436,7 @@ BOOL YaraInit()
 	OSVERSIONINFO OSVersion;
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
+#pragma warning(suppress : 4996)
 	if (!GetVersionEx(&OSVersion))
 	{
 		ErrorOutput("YaraInit: Failed to get OS version");
