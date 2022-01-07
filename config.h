@@ -191,6 +191,9 @@ struct _g_config {
 	// YARA scans
 	int yarascan;
 
+	// AMSI dumps (Win10+)
+	int amsidump;
+
 	// Minimal hook set
 	int minhook;
 

@@ -166,6 +166,7 @@
       <BaseAddress>0x30000000</BaseAddress>
       <SetChecksum>true</SetChecksum>
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
+      <ModuleDefinitionFile>capemon.def</ModuleDefinitionFile>
     </Link>
     <PreBuildEvent>
       <Command>
@@ -203,6 +204,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="alloc.c" />
+    <ClCompile Include="CAPE\AmsiDumper.cpp" />
     <ClCompile Include="CAPE\CAPE.c" />
     <ClCompile Include="CAPE\Debugger.c" />
     <ClCompile Include="CAPE\Injection.c" />

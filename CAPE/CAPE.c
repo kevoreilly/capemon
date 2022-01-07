@@ -126,6 +126,7 @@ extern lookup_t g_caller_regions;
 #ifdef CAPE_NIRVANA
 extern void NirvanaInit();
 #endif
+extern void AmsiDumperInit(HMODULE module);
 extern void DoOutputFile(_In_ LPCTSTR lpOutputFile);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -161,15 +162,6 @@ static __inline ULONG_PTR get_stack_bottom(void)
 #else
 	return __readgsqword(0x10);
 #endif
-}
-
-// We need an export for IAT patching
-#ifndef _WIN64
-__declspec (naked dllexport) void dummy()
-#else
-__declspec(dllexport) void dummy()
-#endif
-{
 }
 
 //**************************************************************************************
@@ -2136,6 +2128,19 @@ void CAPE_init()
 		DebugOutput("Initialising Yara...\n");
 		YaraInit();
 	}
+
+	OSVERSIONINFO OSVersion;
+	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+#pragma warning(suppress : 4996)
+	if (!GetVersionEx(&OSVersion))
+	{
+		ErrorOutput("CAPE_init: Failed to get OS version");
+		return;
+	}
+
+	if (g_config.amsidump && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
+		AmsiDumperInit((HMODULE)g_our_dll_base);
 
 #ifdef _WIN64
 	DebugOutput("Monitor initialised: 64-bit capemon loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());

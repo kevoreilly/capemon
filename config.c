@@ -1046,6 +1046,13 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("In-monitor YARA scans disabled.\n");
 		}
+		else if (!stricmp(key, "amsidump")) {
+			g_config.amsidump = value[0] == '1';
+			if (g_config.amsidump)
+				DebugOutput("AMSI dumping enabled.\n");
+			else
+				DebugOutput("AMSI dumping disabled.\n");
+		}
 		else if (!stricmp(key, "minhook")) {
 			g_config.minhook = value[0] == '1';
 			if (g_config.minhook)
@@ -1141,6 +1148,7 @@ int read_config(void)
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
+	g_config.amsidump = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
@@ -1185,6 +1193,7 @@ int read_config(void)
 		g_config.caller_dump = 0;
 		g_config.api_rate_cap = 0;
 		g_config.yarascan = 0;
+		g_config.amsidump = 0;
 		g_config.bp0 = 0;
 		g_config.bp1 = 0;
 		g_config.bp2 = 0;
