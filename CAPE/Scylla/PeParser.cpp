@@ -15,7 +15,7 @@ extern "C" void ProcessDumpOutputFile(LPCTSTR lpOutputFile);
 extern "C" int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size);
 extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
 extern "C" BOOL IsAddressAccessible(PVOID Address);
-extern "C" SIZE_T ScanForAccess(PVOID Buffer, SIZE_T Size);
+extern "C" SIZE_T GetAllocationSize(PVOID Buffer);
 
 char CapeOutputPath[MAX_PATH];
 
@@ -318,11 +318,12 @@ bool PeParser::readPeHeaderFromFile(bool readSectionHeaders)
 
 bool PeParser::readPeSectionsFromProcess()
 {
-	bool retValue = true;
+	SIZE_T AllocationLimit;
 	DWORD_PTR ImageBase, readOffset = 0;
  	DWORD fileAlignment = 0, sectionAlignment = 0;
 	unsigned int NumberOfSections = getNumberOfSections();
-	SIZE_T AccessibleSize;
+	if (!NumberOfSections)
+		return false;
 
 	if (isPE32())
 	{
@@ -337,7 +338,8 @@ bool PeParser::readPeSectionsFromProcess()
 
 	listPeSection.reserve(NumberOfSections);
 
-	AccessibleSize = ScanForAccess((PVOID)moduleBaseAddress, getSectionHeaderBasedSizeOfImage());
+	ImageBase = getStandardImagebase();
+	AllocationLimit = ImageBase + GetAllocationSize((PVOID)moduleBaseAddress);
 
 	for (WORD i = 0; i < NumberOfSections; i++)
 	{
@@ -415,32 +417,27 @@ bool PeParser::readPeSectionsFromProcess()
 					listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
 				}
 			}
-			EndOfSection = EndOfPreviousSection + listPeSection[i].sectionHeader.Misc.VirtualSize;
+			EndOfSection = (DWORD)ImageBase + EndOfPreviousSection + listPeSection[i].sectionHeader.Misc.VirtualSize;
 		}
 
-		if (EndOfSection > AccessibleSize)
+		if (EndOfSection > AllocationLimit)
 		{
-			DebugOutput("PeParser: End of section %d RVA 0x%x is beyond accessible size 0x%x\n", i+1, EndOfSection, AccessibleSize);
-			return false;
+			DebugOutput("PeParser: End of section %d RVA 0x%x is beyond allocated limit 0x%x\n", i+1, EndOfSection, AllocationLimit);
+			break;
 		}
 #ifdef DEBUG_COMMENTS
-		DebugOutput("PeParser: End of section %d RVA 0x%x within accessible size 0x%x\n", i+1, EndOfSection, AccessibleSize);
+		DebugOutput("PeParser: End of section %d RVA 0x%x within allocated limit 0x%x\n", i+1, EndOfSection, AllocationLimit);
 #endif
 
 		readOffset = listPeSection[i].sectionHeader.VirtualAddress + moduleBaseAddress;
 
 		if (!readSectionFromProcess(readOffset, listPeSection[i]))
-		{
 			DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess failed offset 0x%x, section %d\n", readOffset, i+1);
-			return false;
-		}
-	}
-
 #ifdef DEBUG_COMMENTS
-	DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess success.\n");
+		else
+			DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess success, section %d\n", i+1);
 #endif
-
-	ImageBase = getStandardImagebase();
+	}
 
 	if (moduleBaseAddress && moduleBaseAddress != ImageBase)
 	{
@@ -455,10 +452,10 @@ bool PeParser::readPeSectionsFromProcess()
 	}
 #ifdef DEBUG_COMMENTS
 	else
-		DebugOutput("readPeSectionsFromProcess: No relocation needed (image base 0x%p, header 0x%p.\n", ImageBase, moduleBaseAddress);
+		DebugOutput("readPeSectionsFromProcess: No relocation needed (image base 0x%p, header 0x%p.)\n", ImageBase, moduleBaseAddress);
 #endif
 
-	return retValue;
+	return true;
 }
 
 bool PeParser::readPeSectionsFromFile()
@@ -818,7 +815,7 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 	if (!IsAddressAccessible((PVOID)currentOffset))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("PeParser: readSectionFrom: address 0x%p inaccessible (base 0x%p size 0x%x).\n", currentOffset, readOffset, readSize);
+		DebugOutput("PeParser: readSectionFrom: address 0x%p inaccessible (base 0x%p, corrected size 0x%x).\n", currentOffset, readOffset, readSize);
 #endif
 		return false;
 	}
