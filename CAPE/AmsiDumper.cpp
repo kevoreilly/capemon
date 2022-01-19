@@ -85,51 +85,42 @@ HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
 		SetCapeMetaData(AMSIBUFFER, NULL, NULL, NULL);
 		DumpMemory(contentAddress, (SIZE_T)contentSize);
     }
-    else
+    else if (contentSize)
     {
         BYTE chunk[1024];
         ULONG readSize;
 		ULONGLONG position;
+		PBYTE streamCopy = (PBYTE)malloc(contentSize);
 
-        for (position = 0; position < contentSize; position += readSize)
-        {
-            HRESULT hr = stream->Read(position, sizeof(chunk), chunk, &readSize);
-            if (FAILED(hr))
-            {
-				DebugOutput("AmsiDumper: AMSI stream read failed.\n");
+		if (streamCopy == NULL)
+		{
+			DebugOutput("AmsiDumper: Failed to allocate 0x%x bytes for stream copy.\n", contentSize);
+			goto end;
+		}
+
+		for (position = 0; position < contentSize; position += readSize)
+		{
+			HRESULT hr = stream->Read(position, sizeof(chunk), chunk, &readSize);
+			if (SUCCEEDED(hr))
+				memcpy(streamCopy + position, chunk, readSize);
+			else
+			{
+				DebugOutput("AmsiDumper: Failed to copy stream.\n");
 				goto end;
-            }
-        }
+			}
+		}
 
 		if (position)
 		{
-			SIZE_T size = (SIZE_T)position;
-			PBYTE streamCopy = (PBYTE)malloc(size);
 
-			if (streamCopy == NULL)
-			{
-				DebugOutput("AmsiDumper: Failed to allocate 0x%x bytes for stream copy.\n", size);
-				goto end;
-			}
-
-			for (position = 0; position < contentSize; position += readSize)
-			{
-				HRESULT hr = stream->Read(position, sizeof(chunk), chunk, &readSize);
-				if (SUCCEEDED(hr))
-					memcpy(streamCopy + position, chunk, readSize);
-				else
-				{
-					DebugOutput("AmsiDumper: Failed to copy stream.\n");
-					goto end;
-				}
-			}
-
-			DebugOutput("AmsiDumper: Dumping AMSI stream at 0x%p, size 0x%x", streamCopy, size);
+			DebugOutput("AmsiDumper: Dumping AMSI stream at 0x%p, size 0x%x", streamCopy, contentSize);
 			SetCapeMetaData(AMSISTREAM, NULL, NULL, NULL);
-			DumpMemory(streamCopy, size);
+			DumpMemory(streamCopy, contentSize);
 			free(streamCopy);
 		}
     }
+	else
+		DebugOutput("AmsiDumper: AMSI scan request unhandled; contentAddress & contentSize both zero.\n");
 end:
     *result = AMSI_RESULT_NOT_DETECTED;
     return S_OK;
