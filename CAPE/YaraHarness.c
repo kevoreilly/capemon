@@ -29,7 +29,6 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern void parse_config_line(char* line);
 extern BOOL DumpRegion(PVOID Address);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
-extern SIZE_T ScanForAccess(LPVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
 
