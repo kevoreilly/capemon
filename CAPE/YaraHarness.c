@@ -377,6 +377,7 @@ BOOL YaraInit()
 		HANDLE hFind = FindFirstFile(FindString, &FindFileData);
 		if (hFind != INVALID_HANDLE_VALUE)
 		{
+			unsigned int count = 0;
 			do
 			{
 				snprintf(file_name, sizeof(file_name), "%s\\%s", yara_dir, FindFileData.cFileName);
@@ -394,7 +395,12 @@ BOOL YaraInit()
 						else if (errors)
 							ScannerError(errors);
 						else
+						{
+							count++;
+#ifdef DEBUG_COMMENTS
 							DebugOutput("YaraInit: Compiled rule file %s\n", file_name);
+#endif
+						}
 
 						fclose(rule_file);
 					}
@@ -403,6 +409,8 @@ BOOL YaraInit()
 			while (FindNextFile(hFind, &FindFileData));
 
 			FindClose(hFind);
+
+			DebugOutput("YaraInit: Compiled %d rule files\n", count);
 		}
 
 		// Add 'internal' yara
