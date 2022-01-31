@@ -686,9 +686,12 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 	CurrentInjectionInfo->DontMonitor = CheckDontMonitorList(TargetProcess);
 
 	if (lpApplicationName || lpCommandLine)
+	{
 		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
-
-	DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
+		DebugOutput("CreateProcessHandler: Injection info set for new process %d: %s, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CapeMetaData->TargetProcess, CurrentInjectionInfo->ImageBase);
+	}
+	else
+		DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
 }
 
 void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
@@ -875,8 +878,6 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 {
 	DWORD Pid;
 	struct InjectionInfo *CurrentInjectionInfo;
-	PIMAGE_DOS_HEADER pDosHeader;
-	PIMAGE_NT_HEADERS pNtHeader;
 	char DevicePath[MAX_PATH];
 	unsigned int PathLength;
 	DWORD BufferSize = MAX_PATH;
@@ -927,12 +928,7 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 	// Check if we have a valid DOS and PE header at the beginning of Buffer
 	if (IsDisguisedPEHeader((PVOID)Buffer))
 	{
-		pDosHeader = (PIMAGE_DOS_HEADER)((char*)Buffer);
-
-		pNtHeader = (PIMAGE_NT_HEADERS)((char*)Buffer + pDosHeader->e_lfanew);
-
 		CurrentInjectionInfo->ImageBase = (DWORD_PTR)BaseAddress;
-
 		DebugOutput("WriteMemoryHandler: Executable binary injected into process %d (ImageBase 0x%x)\n", Pid, CurrentInjectionInfo->ImageBase);
 
 		if (CurrentInjectionInfo->ImageDumped == FALSE)
@@ -943,6 +939,8 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 
 			if (CurrentInjectionInfo->ImageDumped)
 			{
+				PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)((char*)Buffer);
+				PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((char*)Buffer + pDosHeader->e_lfanew);
 				CurrentInjectionInfo->BufferBase = (LPVOID)Buffer;
 				CurrentInjectionInfo->BufferSizeOfImage = pNtHeader->OptionalHeader.SizeOfImage;
 				DebugOutput("WriteMemoryHandler: Dumped PE image from buffer at 0x%x, SizeOfImage 0x%x.\n", Buffer, CurrentInjectionInfo->BufferSizeOfImage);
@@ -950,7 +948,6 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 			else
 			{
 				DebugOutput("WriteMemoryHandler: Failed to dump PE image from buffer, attempting raw dump.\n");
-
 				CapeMetaData->DumpType = INJECTION_SHELLCODE;
 				CapeMetaData->TargetPid = Pid;
 				if (DumpMemory((LPVOID)Buffer, NumberOfBytesWritten))
