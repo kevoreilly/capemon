@@ -566,7 +566,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
 	if (g_config.injection)
 		UnmapSectionViewHandler(BaseAddress);
 
-	ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
+	if (!prevent_module_unloading(BaseAddress))
+		ret = STATUS_SUCCESS;
+	else
+		ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
 
 	LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
 		"RegionSize", map_size);

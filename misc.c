@@ -1987,6 +1987,25 @@ BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 	return FALSE;
 }
 
+BOOLEAN prevent_module_unloading(PVOID BaseAddress) {
+	// Some code may attempt to unmap a previously mapped view of, say, ntdll
+	// e.g. Xenos dll injector (https://github.com/DarthTon/Xenos - def1c2f12307d598e42506a55f1a06ed5e652af0d260aac9572469429f10d04d)
+	wchar_t *whitelist[] = {
+		L"ntdll.dll",
+		NULL
+	};
+
+	// check against the whitelist
+	for (int i = 0; whitelist[i]; i++) {
+		// is this a whitelisted module?
+		HMODULE address = GetModuleHandleW(whitelist[i]);
+		if (address == BaseAddress)
+			return FALSE;
+	}
+
+	return TRUE;
+}
+
 void prevent_module_reloading(PVOID *BaseAddress) {
 	// prevent hook evasion via mapping system libraries (e.g. ntdll.dll) from disk
 	// this still won't stop reading the file using NtReadFile and mapping it manually

@@ -216,8 +216,8 @@ int is_stack_pivoted(void);
 
 LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
 
+BOOLEAN prevent_module_unloading(PVOID BaseAddress);
 void prevent_module_reloading(PVOID *BaseAddress);
-PVOID test_module_reloading(PVOID *BaseAddress);
 
 struct envstruct {
 	ULONG k;
