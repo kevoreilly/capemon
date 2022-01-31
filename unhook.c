@@ -274,9 +274,6 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	if (g_config.debugger)
 		DebuggerShutdown();
 
-	if (g_config.yarascan)
-		YaraShutdown();
-
 	if (g_config.procdump || g_config.procmemdump) {
 		if (!ProcessDumped) {
 			DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
@@ -289,6 +286,9 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 		DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
 	file_handle_terminate();
+
+	if (g_config.yarascan)
+		YaraShutdown();
 
 	if (g_config.tlsdump && TlsLog)
 		CloseHandle(TlsLog);
