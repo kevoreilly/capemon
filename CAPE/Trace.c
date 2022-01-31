@@ -578,6 +578,32 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		else
 			DebuggerOutput("ActionDispatcher: Cannot GoTo - target value missing.\n");
 	}
+	else if (!strnicmp(Action, "Push", 4))
+	{
+		if (Target || TargetSet)
+		{
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rsp -= sizeof(QWORD);
+			*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = Target;
+#else
+			ExceptionInfo->ContextRecord->Esp -= sizeof(DWORD);
+			*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = Target;
+#endif
+			SkipInstruction(ExceptionInfo->ContextRecord);
+			DebuggerOutput("ActionDispatcher: Pushed 0x%x\n", Target);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot push - target value missing.\n");
+	}
+	else if (!strnicmp(Action, "Pop", 3))
+	{
+#ifdef _WIN64
+		ExceptionInfo->ContextRecord->Rsp += sizeof(QWORD);
+#else
+		ExceptionInfo->ContextRecord->Esp += sizeof(DWORD);
+#endif
+		DebuggerOutput("ActionDispatcher: Popped the stack");
+	}
 	else if (!strnicmp(Action, "Ret", 3))
 	{
 		if ((unsigned int)(DWORD_PTR)Target < 10)
@@ -1457,7 +1483,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 		else
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("Trace: Stepping over %s at 0x%p\n", DecodedInstruction.mnemonic.p, CIP);
+#endif
 			ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
 			ForceStepOver = TRUE;
 		}
