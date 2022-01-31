@@ -318,6 +318,11 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			if (CapeMetaData->TargetProcess)
 			// Injection-specific format
 				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?%d;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
+			else
+			{
+				DebugOutput("Output: TargetProcess missing for dump from process %d", CapeMetaData->Pid);
+				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+			}
 		}
 		else
 			if (CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
