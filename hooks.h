@@ -2733,6 +2733,14 @@ HOOKDEF(BOOL, WINAPI, CryptHashMessage,
 	_Inout_opt_  DWORD *pcbComputedHash
 );
 
+HOOKDEF(BOOL, WINAPI, CryptDeriveKey,
+	_In_   HCRYPTPROV hProv,
+	_In_   ALG_ID Algid,
+	_In_   HCRYPTHASH hBaseData,
+	_In_   DWORD dwFlags,
+	_Out_  HCRYPTKEY *phKey
+);
+
 HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_In_	 HCRYPTKEY hKey,
 	_In_	 HCRYPTKEY hExpKey,
@@ -2740,6 +2748,10 @@ HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_In_	 DWORD dwFlags,
 	_Out_	BYTE *pbData,
 	_Inout_  DWORD *pdwDataLen
+);
+
+HOOKDEF(BOOL, WINAPI, CryptDestroyKey,
+	_In_   HCRYPTKEY hKey
 );
 
 HOOKDEF(BOOL, WINAPI, CryptGenKey,
@@ -2755,6 +2767,10 @@ HOOKDEF(BOOL, WINAPI, CryptCreateHash,
 	_In_   HCRYPTKEY hKey,
 	_In_   DWORD dwFlags,
 	_Out_  HCRYPTHASH *phHash
+);
+
+HOOKDEF(BOOL, WINAPI, CryptDestroyHash,
+	_In_   HCRYPTHASH hHash
 );
 
 HOOKDEF(BOOL, WINAPI, CryptEnumProvidersA,

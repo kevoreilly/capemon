@@ -263,6 +263,18 @@ HOOKDEF(BOOL, WINAPI, CryptHashMessage,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, CryptDeriveKey,
+	_In_   HCRYPTPROV hProv,
+	_In_   ALG_ID Algid,
+	_In_   HCRYPTHASH hBaseData,
+	_In_   DWORD dwFlags,
+	_Out_  HCRYPTKEY *phKey
+) {
+	BOOL ret = Old_CryptDeriveKey(hProv, Algid, hBaseData, dwFlags, phKey);
+	LOQ_bool("crypto", "hpp", "Algid", Algid, "BaseData", hBaseData, "CryptKey", *phKey);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_In_	 HCRYPTKEY hKey,
 	_In_	 HCRYPTKEY hExpKey,
@@ -273,7 +285,15 @@ HOOKDEF(BOOL, WINAPI, CryptExportKey,
 ) {
 	BOOL ret = Old_CryptExportKey(hKey, hExpKey, dwBlobType, dwFlags, pbData, pdwDataLen);
 	if (pbData && pdwDataLen)
-		LOQ_bool("crypto", "bihi", "Buffer", *pdwDataLen, pbData, "BlobType", dwBlobType, "Flags", dwFlags, "Length", *pdwDataLen);
+		LOQ_bool("crypto", "pbihi", "CryptKey", hKey, "Buffer", *pdwDataLen, pbData, "BlobType", dwBlobType, "Flags", dwFlags, "Length", *pdwDataLen);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, CryptDestroyKey,
+	_In_   HCRYPTKEY hKey
+) {
+	BOOL ret = Old_CryptDestroyKey(hKey);
+	LOQ_bool("crypto", "p", "CryptKey", hKey);
 	return ret;
 }
 
@@ -296,7 +316,15 @@ HOOKDEF(BOOL, WINAPI, CryptCreateHash,
 	_Out_  HCRYPTHASH *phHash
 ) {
 	BOOL ret = Old_CryptCreateHash(hProv, Algid, hKey, dwFlags, phHash);
-	LOQ_bool("crypto", "h", "Algid", Algid);
+	LOQ_bool("crypto", "hpp", "Algid", Algid, "CryptKey", hKey, "Hash object", *phHash);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, CryptDestroyHash,
+	_In_   HCRYPTHASH hHash
+) {
+	BOOL ret = Old_CryptDestroyHash(hHash);
+	LOQ_bool("crypto", "p", "CryptHash", hHash);
 	return ret;
 }
 
