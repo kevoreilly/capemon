@@ -49,7 +49,8 @@ char InternalYara[] =
 BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 {
 	char *Value, *Key, *p, *q;
-	unsigned int delta=0, ValueLength;
+	unsigned int ValueLength;
+	int delta=0;
 	if (!Line || !Identifier)
 		return FALSE;
 	p = strchr(Line, '$');
