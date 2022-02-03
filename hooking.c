@@ -213,18 +213,13 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 		if (!g_config.dump_on_apinames[i])
 			break;
 		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
-			DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
+			DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.dump_on_apinames[i], GetCurrentThreadId(), main_caller_retaddr);
 			if (main_caller_retaddr) {
-				if (!AllocationBase)
-					AllocationBase = GetHookCallerBase(hookinfo);
+				AllocationBase = GetHookCallerBase(hookinfo);
 				if (AllocationBase) {
 					if (g_config.dump_on_api_type)
 						CapeMetaData->DumpType = g_config.dump_on_api_type;
-					if (DumpImageInCurrentProcess(AllocationBase)) {
-						ModuleDumped = TRUE;
-						DebugOutput("Dump-on-API: Dumped module at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-					}
-					else if (DumpRegion(AllocationBase)) {
+					if (DumpRegion(AllocationBase)) {
 						ModuleDumped = TRUE;
 						DebugOutput("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
 					}
@@ -235,6 +230,8 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 				else
 					DebugOutput("Dump-on-API: Failed to obtain current module base address.\n");
 			}
+			else
+				DebugOutput("Dump-on-API: No valid return address.\n");
 			break;
 		}
 	}
