@@ -1005,6 +1005,12 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			{
 				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
 
+				if (!stricmp(FunctionName, "RtlAllocateHeap"))
+				{
+					ForceStepOver = TRUE;
+					FilterTrace = TRUE;
+				}
+
 				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
 				{
 					if (!g_config.trace_into_api[i])
@@ -1842,7 +1848,23 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			if (FilterTrace)
 				DebuggerOutput("\n");
 			if (FunctionName)
+			{
 				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
+
+				if (!stricmp(FunctionName, "RtlAllocateHeap"))
+				{
+					ForceStepOver = TRUE;
+					FilterTrace = TRUE;
+				}
+
+				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+				{
+					if (!g_config.trace_into_api[i])
+						break;
+					if (!stricmp(FunctionName, g_config.trace_into_api[i]))
+						StepOver = FALSE;
+				}
+			}
 			else
 				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ImageBase);
 			if (PreviousModuleName)
@@ -2127,10 +2149,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		{
 			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 				DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-#ifdef DEBUG_COMMENTS
-			else
-				DebugOutput("BreakpointCallback: Breakpoint set on return address 0x%p\n", ReturnAddress);
-#endif
 #ifndef DEBUG_COMMENTS
 			if (ForceStepOver)
 #endif
