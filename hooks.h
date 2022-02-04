@@ -708,10 +708,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtLoadKey2,
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtLoadKeyEx,
-	__in	  POBJECT_ATTRIBUTES TargetKey,
-	__in	  POBJECT_ATTRIBUTES SourceFile,
-	__in	  ULONG Flags,
-	__in_opt  HANDLE TrustClassKey
+	__in		POBJECT_ATTRIBUTES TargetKey,
+	__in		POBJECT_ATTRIBUTES SourceFile,
+	__in		ULONG Flags,
+	__in_opt  	HANDLE TrustClassKey,
+	__in_opt	HANDLE Event,
+	__in_opt	ACCESS_MASK DesiredAccess,
+	__out_opt	PVOID RootHandle,
+	__out_opt	PIO_STATUS_BLOCK IoStatusBlock
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueryKey,

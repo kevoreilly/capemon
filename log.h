@@ -152,6 +152,9 @@ do { \
 #define ENSURE_STRUCT(param, type) \
 	type _##param; memset(&_##param, 0, sizeof(_##param)); if(param == NULL) param = &_##param
 
+#define is_aligned(POINTER, BYTE_COUNT) \
+    (((uintptr_t)(const void *)(POINTER)) % (BYTE_COUNT) == 0)
+
 typedef struct _lastlog_t {
 	unsigned char *buf;
 	unsigned int len;
