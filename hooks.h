@@ -1154,9 +1154,40 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 	_Out_	LPVOID	   *ppv
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
+	__in	 HANDLE SectionHandle,
+	__in	 HANDLE ProcessHandle,
+	__inout  PVOID *BaseAddress,
+	__in	 ULONG_PTR ZeroBits,
+	__in	 SIZE_T CommitSize,
+	__inout  PLARGE_INTEGER SectionOffset,
+	__inout  PSIZE_T ViewSize,
+	__in	 UINT InheritDisposition,
+	__in	 ULONG AllocationType,
+	__in	 ULONG Win32Protect
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
+	__in	 	HANDLE SectionHandle,
+	__in	 	HANDLE ProcessHandle,
+	__inout  	PVOID *BaseAddress,
+	__inout  	PLARGE_INTEGER SectionOffset,
+	__inout  	PSIZE_T ViewSize,
+	__in	 	ULONG AllocationType,
+	__in	 	ULONG Win32Protect,
+	__inout_opt	MEM_EXTENDED_PARAMETER Parameters,
+	__in	 	ULONG ParameterCount
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
-	_In_	  HANDLE ProcessHandle,
-	_In_opt_  PVOID BaseAddress
+	__in	  HANDLE ProcessHandle,
+	__in_opt  PVOID BaseAddress
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSectionEx,
+	__in	  HANDLE ProcessHandle,
+	__in_opt  PVOID BaseAddress,
+	__in	  ULONG Flags
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtSetInformationProcess,
@@ -1181,6 +1212,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	__inout  PSIZE_T RegionSize,
 	__in	 ULONG AllocationType,
 	__in	 ULONG Protect
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
+	__in	 	HANDLE ProcessHandle,
+	__inout  	PVOID *BaseAddress,
+	__inout  	PSIZE_T RegionSize,
+	__in	 	ULONG AllocationType,
+	__in	 	ULONG PageProtection,
+	__inout_opt	MEM_EXTENDED_PARAMETER Parameters,
+	__in	 	ULONG ParameterCount
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtReadVirtualMemory,
@@ -2930,19 +2971,6 @@ HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
 
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
-);
-
-HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
-	_In_	 HANDLE SectionHandle,
-	_In_	 HANDLE ProcessHandle,
-	__inout  PVOID *BaseAddress,
-	_In_	 ULONG_PTR ZeroBits,
-	_In_	 SIZE_T CommitSize,
-	__inout  PLARGE_INTEGER SectionOffset,
-	__inout  PSIZE_T ViewSize,
-	__in	 UINT InheritDisposition,
-	__in	 ULONG AllocationType,
-	__in	 ULONG Win32Protect
 );
 
 HOOKDEF_NOTAIL(WINAPI, JsEval,

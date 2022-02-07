@@ -551,58 +551,28 @@ HOOKDEF(BOOL, WINAPI, ShellExecuteExW,
 	return ret;
 }
 
-HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
-	_In_	  HANDLE ProcessHandle,
-	_In_opt_  PVOID BaseAddress
-) {
-	SIZE_T map_size = 0; MEMORY_BASIC_INFORMATION mbi;
-	DWORD pid = pid_from_process_handle(ProcessHandle);
-	NTSTATUS ret;
-
-	if (VirtualQueryEx(ProcessHandle, BaseAddress, &mbi,
-			sizeof(mbi)) == sizeof(mbi)) {
-		map_size = mbi.RegionSize;
-	}
-	if (g_config.injection)
-		UnmapSectionViewHandler(BaseAddress);
-
-	if (!prevent_module_unloading(BaseAddress))
-		ret = STATUS_SUCCESS;
-	else
-		ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
-
-	LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"RegionSize", map_size);
-
-	return ret;
-}
-
 HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
-	_In_	 HANDLE SectionHandle,
-	_In_	 HANDLE ProcessHandle,
+	__in	 HANDLE SectionHandle,
+	__in	 HANDLE ProcessHandle,
 	__inout  PVOID *BaseAddress,
-	_In_	 ULONG_PTR ZeroBits,
-	_In_	 SIZE_T CommitSize,
+	__in	 ULONG_PTR ZeroBits,
+	__in	 SIZE_T CommitSize,
 	__inout  PLARGE_INTEGER SectionOffset,
 	__inout  PSIZE_T ViewSize,
 	__in	 UINT InheritDisposition,
 	__in	 ULONG AllocationType,
 	__in	 ULONG Win32Protect
-	) {
-	NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle,
-		BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize,
-		InheritDisposition, AllocationType, Win32Protect);
+) {
+	NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle, BaseAddress, ZeroBits,
+		CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect);
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,
-	"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+	LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
 	"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
 		if (g_config.injection)
 			MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
-		//if (g_config.unpacker)
-		//	AllocationHandler(*BaseAddress, *ViewSize, MEM_COMMIT, Win32Protect);
 		if (!g_config.single_process && pid != GetCurrentProcessId()) {
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
@@ -611,6 +581,87 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			prevent_module_reloading(BaseAddress);
 		}
 	}
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
+	__in	 	HANDLE SectionHandle,
+	__in	 	HANDLE ProcessHandle,
+	__inout  	PVOID *BaseAddress,
+	__inout  	PLARGE_INTEGER SectionOffset,
+	__inout  	PSIZE_T ViewSize,
+	__in	 	ULONG AllocationType,
+	__in	 	ULONG Win32Protect,
+	__inout_opt	MEM_EXTENDED_PARAMETER Parameters,
+	__in	 	ULONG ParameterCount
+) {
+	NTSTATUS ret = Old_NtMapViewOfSectionEx(SectionHandle, ProcessHandle, BaseAddress, SectionOffset, ViewSize,
+		AllocationType, Win32Protect, Parameters, ParameterCount);
+	DWORD pid = pid_from_process_handle(ProcessHandle);
+
+	LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+	"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+
+	if (NT_SUCCESS(ret)) {
+		if (g_config.injection)
+			MapSectionViewHandler(ProcessHandle, SectionHandle, *BaseAddress, *ViewSize);
+		if (!g_config.single_process && pid != GetCurrentProcessId()) {
+			ProcessMessage(pid, 0);
+			disable_sleep_skip();
+		}
+		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+			prevent_module_reloading(BaseAddress);
+		}
+	}
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSection,
+	__in	  HANDLE ProcessHandle,
+	__in_opt  PVOID BaseAddress
+) {
+	SIZE_T map_size = 0; MEMORY_BASIC_INFORMATION mbi;
+	DWORD pid = pid_from_process_handle(ProcessHandle);
+	NTSTATUS ret;
+
+	if (VirtualQueryEx(ProcessHandle, BaseAddress, &mbi, sizeof(mbi)) == sizeof(mbi))
+		map_size = mbi.RegionSize;
+
+	if (g_config.injection)
+		UnmapSectionViewHandler(BaseAddress);
+
+	if (!prevent_module_unloading(BaseAddress))
+		ret = STATUS_SUCCESS;
+	else
+		ret = Old_NtUnmapViewOfSection(ProcessHandle, BaseAddress);
+
+	LOQ_ntstatus("process", "ppp", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "RegionSize", map_size);
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSectionEx,
+	__in	  HANDLE ProcessHandle,
+	__in_opt  PVOID BaseAddress,
+	__in	  ULONG Flags
+) {
+	SIZE_T map_size = 0; MEMORY_BASIC_INFORMATION mbi;
+	DWORD pid = pid_from_process_handle(ProcessHandle);
+	NTSTATUS ret;
+
+	if (VirtualQueryEx(ProcessHandle, BaseAddress, &mbi, sizeof(mbi)) == sizeof(mbi))
+		map_size = mbi.RegionSize;
+
+	if (g_config.injection)
+		UnmapSectionViewHandler(BaseAddress);
+
+	if (!prevent_module_unloading(BaseAddress))
+		ret = STATUS_SUCCESS;
+	else
+		ret = Old_NtUnmapViewOfSectionEx(ProcessHandle, BaseAddress, Flags);
+
+	LOQ_ntstatus("process", "pppi", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "RegionSize", map_size, "Flags", Flags);
+
 	return ret;
 }
 
@@ -636,6 +687,31 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 
 	LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
 		"RegionSize", RegionSize, "Protection", Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
+	__in	 HANDLE ProcessHandle,
+	__inout  PVOID *BaseAddress,
+	__inout  PSIZE_T RegionSize,
+	__in	 ULONG AllocationType,
+	__in	 ULONG PageProtection,
+	__inout  MEM_EXTENDED_PARAMETER Parameters,
+	__in	 ULONG ParameterCount
+) {
+	NTSTATUS ret = Old_NtAllocateVirtualMemoryEx(ProcessHandle, BaseAddress, RegionSize, AllocationType, PageProtection, Parameters, ParameterCount);
+
+	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+		if (g_config.unpacker)
+			AllocationHandler(*BaseAddress, *RegionSize, AllocationType, PageProtection);
+
+		if (g_config.base_on_alloc)
+			DebuggerAllocationHandler(*BaseAddress, *RegionSize, PageProtection);
+	}
+
+	LOQ_ntstatus("process", "pPPhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+		"RegionSize", RegionSize, "Protection", PageProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	return ret;
 }

@@ -248,6 +248,7 @@ hook_t full_hooks[] = {
 
 	// Process Hooks
 	HOOK(ntdll, NtAllocateVirtualMemory),
+	HOOK(ntdll, NtAllocateVirtualMemoryEx),
 	HOOK(ntdll, NtReadVirtualMemory),
 	HOOK(kernel32, ReadProcessMemory),
 	HOOK(ntdll, NtWriteVirtualMemory),
@@ -269,7 +270,9 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtMakePermanentObject),
 	HOOK(ntdll, NtOpenSection),
 	HOOK(ntdll, NtMapViewOfSection),
+	HOOK(ntdll, NtMapViewOfSectionEx),
 	HOOK(ntdll, NtUnmapViewOfSection),
+	HOOK(ntdll, NtUnmapViewOfSectionEx),
 	HOOK(kernel32, WaitForDebugEvent),
 	HOOK(ntdll, DbgUiWaitStateChange),
 	HOOK(advapi32, CreateProcessWithLogonW),
