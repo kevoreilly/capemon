@@ -803,6 +803,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 ) {
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
+	DWORD OriginalNewAccessProtection = 0;
 
 	if (g_config.ntdll_protect) {
 		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
@@ -812,6 +813,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 			if (dllname && !strcmp(dllname, "ntdll.dll")) {
 				// don't allow writes, this will cause memory access violations
 				// that we are going to handle in the RtlDispatchException hook
+				OriginalNewAccessProtection = NewAccessProtection;
 				NewAccessProtection = PAGE_EXECUTE_READ;
 			}
 			if (dllname) free(dllname);
@@ -822,8 +824,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
 		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
 
-	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress,
-		NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
+	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress, NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
 	memset(&meminfo, 0, sizeof(meminfo));
 	if (NT_SUCCESS(ret) && OldAccessProtection && *OldAccessProtection == NewAccessProtection) {
@@ -831,6 +832,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
 		set_lasterrors(&lasterrors);
+	}
+
+	if (OriginalNewAccessProtection)
+	{
+		if (*OldAccessProtection == NewAccessProtection)
+			*OldAccessProtection = OriginalNewAccessProtection;
+		NewAccessProtection = OriginalNewAccessProtection;
 	}
 
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
@@ -872,13 +880,28 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 ) {
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
+	DWORD OriginalNewProtect = 0;
+
+	if (g_config.ntdll_protect) {
+		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
+			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
+			unsigned int offset;
+			char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)lpAddress, &offset);
+			if (dllname && !strcmp(dllname, "ntdll.dll")) {
+				// don't allow writes, this will cause memory access violations
+				// that we are going to handle in the RtlDispatchException hook
+				OriginalNewProtect = flNewProtect;
+				flNewProtect = PAGE_EXECUTE_READ;
+			}
+			if (dllname) free(dllname);
+		}
+	}
 
 	if (flNewProtect == PAGE_EXECUTE_READ && GetCurrentProcessId() == our_getprocessid(hProcess) &&
 		is_in_dll_range((ULONG_PTR)lpAddress))
 		restore_hooks_on_range((ULONG_PTR)lpAddress, (ULONG_PTR)lpAddress + dwSize);
 
-	ret = Old_VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect,
-		lpflOldProtect);
+	ret = Old_VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
 
 	memset(&meminfo, 0, sizeof(meminfo));
 	if (ret && lpflOldProtect && *lpflOldProtect == flNewProtect) {
@@ -886,6 +909,13 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));
 		set_lasterrors(&lasterrors);
+	}
+
+	if (OriginalNewProtect)
+	{
+		if (*lpflOldProtect == flNewProtect)
+			*lpflOldProtect = OriginalNewProtect;
+		flNewProtect = OriginalNewProtect;
 	}
 
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
