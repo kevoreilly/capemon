@@ -469,7 +469,9 @@ void GetMemoryInfo(PVOID Address)
 		return;
 	}
 
+#ifdef DEBUG_COMMENTS
 	DebugOutput("GetMemoryInfo: Address 0x%p BaseAddress 0x%p AllocationBase 0x%p AllocationProtect 0x%x RegionSize 0x%x State 0x%x Protect 0x%x Type 0x%x", Address, MemInfo.BaseAddress, MemInfo.AllocationBase, MemInfo.AllocationProtect, MemInfo.RegionSize, MemInfo.State, MemInfo.Protect, MemInfo.Type);
+#endif
 
 	return;
 }
