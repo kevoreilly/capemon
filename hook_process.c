@@ -896,9 +896,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		}
 	}
 
-	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect &&
-		GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress))
-		restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
+	memset(&meminfo, 0, sizeof(meminfo));
+	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
+		lasterror_t lasterrors;
+		get_lasterrors(&lasterrors);
+		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
+		if (meminfo.Protect == PAGE_EXECUTE_READWRITE)
+			restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
+		set_lasterrors(&lasterrors);
+	}
 
 	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress, NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
@@ -973,9 +979,15 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		}
 	}
 
-	if (flNewProtect == PAGE_EXECUTE_READ && GetCurrentProcessId() == our_getprocessid(hProcess) &&
-		is_in_dll_range((ULONG_PTR)lpAddress))
-		restore_hooks_on_range((ULONG_PTR)lpAddress, (ULONG_PTR)lpAddress + dwSize);
+	memset(&meminfo, 0, sizeof(meminfo));
+	if (flNewProtect == PAGE_EXECUTE_READ && lpAddress && dwSize && GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
+		lasterror_t lasterrors;
+		get_lasterrors(&lasterrors);
+		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));
+		if (meminfo.Protect == PAGE_EXECUTE_READWRITE)
+			restore_hooks_on_range((ULONG_PTR)lpAddress, (ULONG_PTR)lpAddress + dwSize);
+		set_lasterrors(&lasterrors);
+	}
 
 	ret = Old_VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, lpflOldProtect);
 
