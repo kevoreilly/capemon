@@ -638,7 +638,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		}
 #endif
 
-		notify_successful_load();
+		if (!g_config.tlsdump)
+			notify_successful_load();
 	}
 	else if(dwReason == DLL_PROCESS_DETACH) {
 		// in production, we shouldn't ever get called in this way since we
