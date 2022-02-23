@@ -142,7 +142,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 
-BOOL ProcessDumped, ModuleDumped, PlugXConfigDumped;
+BOOL ProcessDumped, ModuleDumped;
 PVOID ImageBase;
 static unsigned int DumpCount;
 
@@ -1491,6 +1491,25 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 	PVOID PEPointer = Buffer;
 	SIZE_T Count = 0;
 
+	if (!Size)
+		return 0;
+
+	SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+
+	if (!AccessibleSize)
+		return 0;
+
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
+
+	Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
+
+	if (!Size)
+	{
+		DebugOutput("DumpPEsInRange: Nothing to dump at 0x%p!\n", Buffer);
+		return 0;
+	}
+
 	DebugOutput("DumpPEsInRange: Scanning range 0x%p - 0x%p.\n", Buffer, (BYTE*)Buffer + Size);
 
 	__try
@@ -1516,7 +1535,7 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 }
 
 //**************************************************************************************
-int DumpMemory(PVOID Buffer, SIZE_T Size)
+int DumpMemoryRaw(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
 	DWORD dwBytesWritten;
@@ -1524,25 +1543,6 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	PVOID BufferCopy = NULL;
 	char *FullPathName = NULL;
 	int ret = 0;
-
-	if (!Size)
-		goto end;
-
-	SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
-
-	if (!AccessibleSize)
-		goto end;
-
-	if (AccessibleSize < Size)
-		Size = AccessibleSize;
-
-	Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
-
-	if (!Size)
-	{
-		DebugOutput("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
-		goto end;
-	}
 
 	BufferCopy = (PVOID)((BYTE*)malloc(Size));
 
@@ -1572,8 +1572,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 			DebugOutput("DumpMemory: Payload name exists already: %s", FullPathName);
 		else
 			ErrorOutput("DumpMemory: Could not create Payload");
-		free(FullPathName);
-		return 0;
+		goto end;
 	}
 
 	dwBytesWritten = 0;
@@ -1603,6 +1602,32 @@ end:
 		free(FullPathName);
 
 	return ret;
+}
+
+//**************************************************************************************
+int DumpMemory(PVOID Buffer, SIZE_T Size)
+//**************************************************************************************
+{
+	if (!Size)
+		return 0;
+
+	SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+
+	if (!AccessibleSize)
+		return 0;
+
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
+
+	Size = (SIZE_T)ReverseScanForNonZero(Buffer, Size);
+
+	if (!Size)
+	{
+		DebugOutput("DumpMemory: Nothing to dump at 0x%p!\n", Buffer);
+		return 0;
+	}
+
+	return DumpMemoryRaw(Buffer, Size);
 }
 
 //**************************************************************************************
@@ -2067,9 +2092,6 @@ void CAPE_post_init()
 
 	if (g_config.unpacker)
 		UnpackerInit();
-
-	if (g_config.plugx)
-		PlugXConfigDumped = FALSE;
 
 	if (g_config.upx)
 	{

@@ -42,6 +42,7 @@ BOOL TranslatePathFromDeviceToLetter(__in TCHAR *DeviceFilePath, __out TCHAR* Dr
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
+int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 int DumpMemory(PVOID Buffer, SIZE_T Size);
 int DumpCurrentProcessNewEP(PVOID NewEP);
 int DumpImageInCurrentProcessFixImports(PVOID BaseAddress, PVOID NewEP);
@@ -90,8 +91,6 @@ PVOID CallingModule;
 #define	DATA				0
 #define	EXECUTABLE			1
 #define	DLL					2
-
-#define PLUGX_SIGNATURE		0x5658	// 'XV'
 
 typedef struct CapeMetadata
 {
