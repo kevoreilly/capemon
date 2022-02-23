@@ -357,7 +357,7 @@ static int InjectDllViaQueuedAPC(HANDLE ProcessHandle, HANDLE ThreadHandle, cons
 		return 0;
 	}
 
-	DllPathLength = strlen(DllPath) + 1;
+	DllPathLength = strlen(DllPath) + 1 + sizeof(DWORD) - ((strlen(DllPath) + 1) % sizeof(DWORD));
 
 	if (DllPathLength == 0)
 	{
@@ -852,7 +852,7 @@ rebase:
 	// Two for OriginalFirstThunk, NULL, then two for FirstThunk, NULL.
 	SizeOfTables = NewSizeOfImportDescriptors + (4 * sizeof(IMAGE_THUNK_DATAXX));
 
-	NewImportDirectorySize = (DWORD)(SizeOfTables + DllPathLength + sizeof(DWORD) - (DllPathLength % sizeof(DWORD)));
+	NewImportDirectorySize = (DWORD)(SizeOfTables + DllPathLength);
 
 	// We add the size of the original NT headers which we append to the table
 	TotalSize = NewImportDirectorySize + sizeof(NtHeader);
@@ -894,7 +894,7 @@ rebase:
 	{
 		DWORD ImportsRVA, ImportsSize, NtSignature;
 		ImportsRVA = NtHeader.IMPORT_DIRECTORY.VirtualAddress;
-		ImportsSize = NtHeader.IMPORT_DIRECTORY.Size;
+		ImportsSize = NtHeader.IMPORT_DIRECTORY.Size + (DWORD)DllPathLength + (4 * sizeof(IMAGE_THUNK_DATAXX));
 
 		if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + ImportsRVA + ImportsSize, &NtSignature, sizeof(DWORD), &BytesRead) || BytesRead < sizeof(DWORD))
 			ErrorOutput("InjectDllViaIAT: Failed to check for PE header after existing import table at 0x%p", (PBYTE)BaseAddress + ImportsRVA + ImportsSize);
