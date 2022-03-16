@@ -635,6 +635,33 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 
 	}
+	else if (!strnicmp(Action, "Unwind", 6))
+	{
+		if ((unsigned int)(DWORD_PTR)Target < 10)
+		{
+			TraceOutput(CIP, DecodedInstruction);
+			if (!Target)
+				((unsigned int)(DWORD_PTR)Target)++;
+
+#ifdef _WIN64
+			DebuggerOutput("\nActionDispatcher: Unwind not yet implemented on x64\n");
+#else
+			for (unsigned int i=0; i<(unsigned int)Target; i++)
+			{
+				ExceptionInfo->ContextRecord->Eip = *(DWORD_PTR*)(ExceptionInfo->ContextRecord->Ebp + sizeof(DWORD_PTR));
+				ExceptionInfo->ContextRecord->Esp = ExceptionInfo->ContextRecord->Ebp + 2*sizeof(DWORD_PTR);
+				ExceptionInfo->ContextRecord->Ebp = *(DWORD_PTR*)ExceptionInfo->ContextRecord->Ebp;
+#ifdef DEBUG_COMMENTS
+				DebuggerOutput("\nActionDispatcher: Unwind %d: EIP -> 0x%x, ESP -> 0x%x, EBP -> 0x%x\n", i+1, ExceptionInfo->ContextRecord->Eip, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp);
+#endif
+			}
+			if ((DWORD_PTR)Target > 1)
+				DebuggerOutput("\nActionDispatcher: Unwind %d frames to 0x%p.\n", Target, ExceptionInfo->ContextRecord->Eip);
+			else
+				DebuggerOutput("\nActionDispatcher: Unwind to previous frame at 0x%p.\n", ExceptionInfo->ContextRecord->Eip);
+#endif
+		}
+	}
 	else if (!strnicmp(Action, "hooks:", 6))
 	{
 		if (*(Action + 6) == '1')
@@ -959,7 +986,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (!StepLimit || StepCount > StepLimit)
 	{
-		DebuggerOutput("\nTrace: Single-step limit reached (%d), releasing.\n", StepLimit);
+		DebuggerOutput("Trace: Single-step limit reached (%d), releasing.\n", StepLimit);
 		ClearSingleStepMode(ExceptionInfo->ContextRecord);
 		memset(&LastContext, 0, sizeof(CONTEXT));
 		TraceRunning = FALSE;
