@@ -773,14 +773,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 		"BufferLength", is_valid_address_range((ULONG_PTR)NumberOfBytesWritten, 4) ? *NumberOfBytesWritten : 0,
 		"StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
-	if (pid != GetCurrentProcessId()) {
-		if (NT_SUCCESS(ret)) {
-			if (g_config.injection)
-				WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
-			if (!g_config.single_process)
-				ProcessMessage(pid, 0);
-			disable_sleep_skip();
-		}
+	if (pid != GetCurrentProcessId() && NT_SUCCESS(ret)) {
+		if (g_config.injection)
+			WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, *NumberOfBytesWritten);
+		if (!g_config.single_process)
+			ProcessMessage(pid, 0);
+		disable_sleep_skip();
 	}
 
 	return ret;
@@ -804,14 +802,12 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 	LOQ_bool("process", "ppBhs", "ProcessHandle", hProcess, "BaseAddress", lpBaseAddress,
 		"Buffer", lpNumberOfBytesWritten, lpBuffer, "BufferLength", *lpNumberOfBytesWritten, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
-	if (pid != GetCurrentProcessId()) {
-		if (ret) {
-			if (g_config.injection)
-				WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
-			if (!g_config.single_process)
-				ProcessMessage(pid, 0);
-			disable_sleep_skip();
-		}
+	if (pid != GetCurrentProcessId() && ret) {
+		if (g_config.injection)
+			WriteMemoryHandler(hProcess, lpBaseAddress, lpBuffer, *lpNumberOfBytesWritten);
+		if (!g_config.single_process)
+			ProcessMessage(pid, 0);
+		disable_sleep_skip();
 	}
 
 	return ret;
@@ -819,9 +815,9 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 
 HOOKDEF(NTSTATUS, WINAPI, NtWow64ReadVirtualMemory64,
 	__in HANDLE ProcessHandle,
-	__in_opt LARGE_INTEGER BaseAddress,
+	__in_opt PVOID64 BaseAddress,
 	__out PVOID Buffer,
-	__in LARGE_INTEGER BufferSize,
+	__in unsigned __int64 BufferSize,
 	__out_opt PLARGE_INTEGER NumberOfBytesRead
 ) {
 	NTSTATUS ret;
@@ -840,9 +836,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64ReadVirtualMemory64,
 
 HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
 	__in HANDLE ProcessHandle,
-	__in_opt LARGE_INTEGER BaseAddress,
+	__in_opt PVOID64 BaseAddress,
 	__in PVOID Buffer,
-	__in LARGE_INTEGER BufferSize,
+	__in unsigned __int64 BufferSize,
 	__out_opt PLARGE_INTEGER NumberOfBytesWritten
 ) {
 	BOOL ret;
@@ -853,14 +849,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
 
 	pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_bool("process", "pxbhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+	LOQ_ntstatus("process", "pxbhs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
 		"Buffer", NumberOfBytesWritten->LowPart, Buffer, "BufferLength", NumberOfBytesWritten->LowPart, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
-	if (pid != GetCurrentProcessId()) {
-		if (!g_config.single_process && ret) {
+	if (pid != GetCurrentProcessId() && NT_SUCCESS(ret)) {
+		if (g_config.injection)
+			WriteMemoryHandler(ProcessHandle, BaseAddress, Buffer, NumberOfBytesWritten->LowPart);
+		if (!g_config.single_process)
 			ProcessMessage(pid, 0);
-			disable_sleep_skip();
-		}
+		disable_sleep_skip();
 	}
 
 	return ret;

@@ -1259,17 +1259,17 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 
 HOOKDEF(NTSTATUS, WINAPI, NtWow64ReadVirtualMemory64,
 	__in HANDLE ProcessHandle,
-	__in_opt LARGE_INTEGER BaseAddress,
+	__in_opt PVOID64 BaseAddress,
 	__out PVOID Buffer,
-	__in LARGE_INTEGER BufferSize,
+	__in unsigned __int64 BufferSize,
 	__out_opt PLARGE_INTEGER NumberOfBytesRead
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtWow64WriteVirtualMemory64,
 	__in HANDLE ProcessHandle,
-	__in_opt LARGE_INTEGER BaseAddress,
+	__in_opt PVOID64 BaseAddress,
 	__in PVOID Buffer,
-	__in LARGE_INTEGER BufferSize,
+	__in unsigned __int64 BufferSize,
 	__out_opt PLARGE_INTEGER NumberOfBytesWritten
 );
 
