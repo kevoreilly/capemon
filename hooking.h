@@ -155,6 +155,7 @@ hook_info_t* hook_info();
 void hook_enable();
 void hook_disable();
 int called_by_hook(void);
+int already_hooked(void);
 int addr_in_our_dll_range(void *unused, ULONG_PTR addr);
 void get_lasterrors(lasterror_t *errors);
 void set_lasterrors(lasterror_t *errors);

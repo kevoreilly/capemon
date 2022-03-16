@@ -130,10 +130,8 @@ VOID CALLBACK New_DllLoadNotification(
 	dllpath = wcschr(our_commandline, ' ');
 	if (dllpath) dllpath = wcsstr(_wcsupr(dllpath), L"C:");
 
-	if (g_config.debug) {
-		int ret = 0;
-		LOQ_void("system", "sup", "NotificationReason", NotificationReason == 1 ? "load" : "unload", "DllName", library.Buffer, "DllBase", NotificationReason == 1 ? NotificationData->Loaded.DllBase : NotificationData->Unloaded.DllBase);
-	}
+	int ret = 0;
+	LOQ_void("system", "sup", "NotificationReason", NotificationReason == 1 ? "load" : "unload", "DllName", library.Buffer, "DllBase", NotificationReason == 1 ? NotificationData->Loaded.DllBase : NotificationData->Unloaded.DllBase);
 
 	if (NotificationReason == 1) {
 		BOOL coverage_module = FALSE;
@@ -521,10 +519,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		   complete, and then did a successful createremotethread, so just do a cheap check for our hooks and fake that
 		   we loaded successfully
 		*/
-		/* Doesn't handle all hook types, modify as necessary */
-		if (!memcmp((PUCHAR)WaitForDebugEvent, "\x8b\xff\xff\x25", 4) || !memcmp((PUCHAR)WaitForDebugEvent, "\xff\x25", 2) ||
-			!memcmp((PUCHAR)WaitForDebugEvent, "\x8b\xff\xe9", 3) || !memcmp((PUCHAR)WaitForDebugEvent, "\xe9", 1) ||
-			!memcmp((PUCHAR)WaitForDebugEvent, "\xeb\xf9", 2))
+		if (already_hooked())
 			goto abort;
 
 		g_our_dll_base = (ULONG_PTR)hModule;
@@ -558,9 +553,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		get_our_process_path();
 
 		get_our_commandline();
-
-		// adds our own DLL range as well, since the hiding is done later
-		add_all_dlls_to_dll_ranges();
 
 		// read the config settings
 		if (!read_config())
@@ -620,6 +612,9 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// initialise CAPE
 		CAPE_init();
+
+		// adds our own DLL range as well, since the hiding is done later
+		add_all_dlls_to_dll_ranges();
 
 		// initialize all hooks
 		set_hooks();

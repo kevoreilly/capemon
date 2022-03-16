@@ -847,6 +847,23 @@ int hook_api(hook_t *h, int type)
 	return ret;
 }
 
+int already_hooked(void)
+{
+	unsigned char *baseaddr = (unsigned char *)GetProcAddress(GetModuleHandle("ntdll"), "KiUserExceptionDispatcher"), *RtlDispatchException;
+	int instroff = 0;
+	while (baseaddr[instroff] != 0xe8) {
+		instroff += lde(&baseaddr[instroff]);
+	}
+	RtlDispatchException = (unsigned char *)get_near_rel_target(&baseaddr[instroff]);
+
+	/* Doesn't handle all hook types, modify as necessary */
+	if (!memcmp(RtlDispatchException, "\x8b\xff\xff\x25", 4) || !memcmp(RtlDispatchException, "\xff\x25", 2) ||
+		!memcmp(RtlDispatchException, "\x8b\xff\xe9", 3) || !memcmp(RtlDispatchException, "\xe9", 1) ||
+		!memcmp(RtlDispatchException, "\xeb\xf9", 2))
+		return 1;
+	return 0;
+}
+
 int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR))
 {
 	int ret = 0;
