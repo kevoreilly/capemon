@@ -732,18 +732,31 @@ void add_all_dlls_to_dll_ranges(void)
 	LDR_DATA_TABLE_ENTRY * mod;
 	PLIST_ENTRY pHeadEntry;
 	PLIST_ENTRY pListEntry;
+	UNICODE_STRING ProcessPath;
 	PEB *peb = (PEB *)get_peb();
 
-	/* skip the base image */
 	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+	pListEntry = pHeadEntry->Flink;
+	mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+	ProcessPath.MaximumLength = ProcessPath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
+	ProcessPath.Buffer = calloc(1, ProcessPath.Length + 1);
+	memcpy(ProcessPath.Buffer, mod->FullDllName.Buffer, ProcessPath.Length);
+
+	// skip the base image
 	for(pListEntry = pHeadEntry->Flink->Flink;
 		pListEntry != pHeadEntry;
 		pListEntry = pListEntry->Flink)
 	{
 		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
-		if ((ULONG_PTR)mod->BaseAddress != base_of_dll_of_interest)
-			add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
+		// skip dlls in same directory as exe
+		if (!memcmp(ProcessPath.Buffer, mod->FullDllName.Buffer, ProcessPath.Length))
+			continue;
+		if ((ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest)
+			continue;
+		add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
+
+	free(ProcessPath.Buffer);
 }
 
 char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset)
