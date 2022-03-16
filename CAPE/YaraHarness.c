@@ -33,7 +33,7 @@ extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
 
 YR_RULES* Rules = NULL;
-BOOL YaraActivated;
+BOOL YaraActivated, YaraLogging;
 #ifdef _WIN64
 extern PVOID LdrpInvertedFunctionTableSRWLock;
 #endif
@@ -262,11 +262,13 @@ void YaraScan(PVOID Address, SIZE_T Size)
 
 	if (!Size)
 	{
-		DebugOutput("YaraScan: Nothing to scan at 0x%p!\n", Address);
+		if (YaraLogging)
+			DebugOutput("YaraScan: Nothing to scan at 0x%p!\n", Address);
 		return;
 	}
 
-	DebugOutput("YaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
+	if (YaraLogging)
+		DebugOutput("YaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
 
 	__try
 	{
@@ -440,6 +442,7 @@ BOOL YaraInit()
 	Compiler = NULL;
 
 	YaraActivated = TRUE;
+	YaraLogging = TRUE;
 
 	OSVERSIONINFO OSVersion;
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
