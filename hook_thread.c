@@ -203,15 +203,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		//if (called_by_hook() && pid == GetCurrentProcessId())
 		//	add_ignored_thread(tid);
 
-		if (pid != GetCurrentProcessId())
-			if (g_config.debugger && !called_by_hook()) {
-				DebugOutput("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
-				InitNewThreadBreakpoints(tid);
-			}
+		if (g_config.debugger && !called_by_hook() && BreakpointsSet) {
+			DebugOutput("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
+			InitNewThreadBreakpoints(tid);
+		}
 
+		if (pid != GetCurrentProcessId())
 			ProcessMessage(pid, tid);
 
-			if (!(CreateFlags & 1)) {
+		if (!(CreateFlags & 1)) {
 			lasterror_t lasterror;
 			get_lasterrors(&lasterror);
 			ResumeThread(*hThread);
