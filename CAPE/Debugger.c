@@ -656,12 +656,26 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (TraceRunning)
 	{
-		if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-			DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags);
-		else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-			DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
-		else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-			DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information[0] 0x%x, exception information[1] 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+		unsigned int RVA;
+		char *ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, &RVA);
+		if (ModuleName)
+		{
+			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x), flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x), flags 0x%x, exception information 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x), flags 0x%x, exception information[0] 0x%x, exception information[1] 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+		}
+		else
+		{
+			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
+				DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
+				DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
+				DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information[0] 0x%x, exception information[1] 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+		}
 	}
 
 	// Some other exception occurred. Pass it to next handler.
