@@ -1639,7 +1639,8 @@ BOOL DumpRegion(PVOID Address)
 	SIZE_T AccessibleSize = GetAccessibleSize(Address);
 	SIZE_T RegionSize = GetRegionSize(Address);
 
-	SetCapeMetaData(UNPACKED_PE, 0, NULL, AllocationBase);
+	if (!CapeMetaData->DumpType)
+		SetCapeMetaData(UNPACKED_PE, 0, NULL, AllocationBase);
 
 	if (DumpPEsInRange(AllocationBase, AccessibleSize))
 	{
@@ -1647,7 +1648,8 @@ BOOL DumpRegion(PVOID Address)
 		return TRUE;
 	}
 
-	SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, AllocationBase);
+	if (CapeMetaData->DumpType == UNPACKED_PE)
+		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
 
 	if (DumpMemory(AllocationBase, AccessibleSize))
 	{
@@ -1661,7 +1663,8 @@ BOOL DumpRegion(PVOID Address)
 	{
 		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size %d bytes.\n", AllocationBase, AccessibleSize);
 
-		SetCapeMetaData(UNPACKED_SHELLCODE, 0, NULL, (PVOID)BaseAddress);
+		if (CapeMetaData->DumpType == UNPACKED_SHELLCODE)
+			CapeMetaData->Address = BaseAddress;
 
 		if (DumpMemory(BaseAddress, RegionSize))
 		{
@@ -2105,14 +2108,14 @@ void CAPE_post_init()
 	}
 
 	lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
+
+	// Restore headers in case of IAT patching
+	RestoreHeaders();
 }
 
 void CAPE_init()
 {
 	char *Character;
-
-	// Restore headers in case of IAT patching
-	RestoreHeaders();
 
 	// Initialise CAPE global variables
 	//
@@ -2133,10 +2136,7 @@ void CAPE_init()
 		Character++;
 	}
 
-	// This is package (and technique) dependent:
-	CapeMetaData->DumpType = PROCDUMP;
 	ProcessDumped = FALSE;
-
 	DumpCount = 0;
 
 	// Cuckoo debug output level for development (0=none, 2=max)
