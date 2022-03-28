@@ -915,7 +915,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 
 	if (OriginalNewAccessProtection)
 	{
-		if (*OldAccessProtection == NewAccessProtection)
+		if (OldAccessProtection && *OldAccessProtection == NewAccessProtection)
 			*OldAccessProtection = OriginalNewAccessProtection;
 		NewAccessProtection = OriginalNewAccessProtection;
 	}
@@ -998,7 +998,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 
 	if (OriginalNewProtect)
 	{
-		if (*lpflOldProtect == flNewProtect)
+		if (lpflOldProtect && *lpflOldProtect == flNewProtect)
 			*lpflOldProtect = OriginalNewProtect;
 		flNewProtect = OriginalNewProtect;
 	}
