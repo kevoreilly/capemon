@@ -126,9 +126,10 @@ HOOKDEF(BOOL, WINAPI, CryptDecrypt,
 		DebugOutput("CryptDecrypt hook: Dumped Hancitor config at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
 	}
 	if (ret && g_config.dump_crypto) {
-		CapeMetaData->DumpType = DATADUMP;
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = DATADUMP;
 		DumpMemory(pbData, *pdwDataLen);
-		DebugOutput("CryptDecrypt hook: Dumped buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
+		DebugOutput("CryptDecrypt hook: Dumped decrypted buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
 	}
 	LOQ_bool("crypto", "ppBii", "CryptKey", hKey, "CryptHash", hHash,
 		"Buffer", pdwDataLen, pbData, "Length", *pdwDataLen, "Final", Final);
@@ -144,15 +145,15 @@ HOOKDEF(BOOL, WINAPI, CryptEncrypt,
 	_Inout_  DWORD *pdwDataLen,
 	_In_	 DWORD dwBufLen
 ) {
-	BOOL ret = 1;
 	if (g_config.dump_crypto) {
-		CapeMetaData->DumpType = DATADUMP;
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = DATADUMP;
 		DumpMemory(pbData, *pdwDataLen);
-		DebugOutput("CryptEncrypt hook: Dumped buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
+		DebugOutput("CryptEncrypt hook: Dumped unencrypted buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
 	}
+	BOOL ret = Old_CryptEncrypt(hKey, hHash, Final, dwFlags, pbData, pdwDataLen, dwBufLen);
 	LOQ_bool("crypto", "ppbii", "CryptKey", hKey, "CryptHash", hHash,
 		"Buffer", dwBufLen, pbData, "Length", *pdwDataLen, "Final", Final);
-	ret = Old_CryptEncrypt(hKey, hHash, Final, dwFlags, pbData, pdwDataLen, dwBufLen);
 	disable_tail_call_optimization();
 	return ret;
 }
@@ -512,6 +513,12 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 	ULONG				dwFlags
 ) {
 	NTSTATUS ret = Old_BCryptDecrypt(hKey, pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
+	if (ret && g_config.dump_crypto) {
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = DATADUMP;
+		DumpMemory(pbInput, cbInput);
+		DebugOutput("BCryptDecrypt hook: Dumped decrypted buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
+	}
 	LOQ_ntstatus("crypto", "bbhp", "Output", cbOutput, pbOutput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey);
 	return ret;
 }
@@ -528,6 +535,12 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
 	ULONG				*pcbResult,
 	ULONG				dwFlags
 ) {
+	if (g_config.dump_crypto) {
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = DATADUMP;
+		DumpMemory(pbInput, cbInput);
+		DebugOutput("BCryptEncrypt hook: Dumped unencrypted buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
+	}
 	NTSTATUS ret = Old_BCryptEncrypt(hKey, pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
 	LOQ_ntstatus("crypto", "bbhp", "Input", cbInput, pbInput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey);
 	return ret;
