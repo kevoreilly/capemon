@@ -850,6 +850,11 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "dumptype3")) {
 			g_config.dumptype3 = (unsigned int)strtoul(value, NULL, 0);
 		}
+		else if (!stricmp(key, "typestring")) {
+			memset(g_config.typestring, 0, MAX_PATH);
+			strncpy(g_config.typestring, value, strlen(value));
+			DebugOutput("Config: typestring set to %s", g_config.typestring);
+		}
 		else if (!stricmp(key, "typestring0")) {
 			memset(g_config.typestring0, 0, MAX_PATH);
 			strncpy(g_config.typestring0, value, strlen(value));

@@ -2126,6 +2126,8 @@ void CAPE_init()
 	CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
 	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
 	Character = CapeMetaData->ProcessPath;
+	if (g_config.typestring)
+		CapeMetaData->TypeString = g_config.typestring;
 
 	// It seems with CP_ACP or CP_UTF8 & WC_NO_BEST_FIT_CHARS, WideCharToMultiByte still
 	// leaves characters that encode("utf-8"... can't encode...

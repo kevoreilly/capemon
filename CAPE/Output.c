@@ -308,7 +308,12 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			CapeMetaData->ProcessPath = "Unknown path";
 		CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
 
-		if (CapeMetaData->DumpType == UNPACKED_PE || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
+		if (CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
+		{
+			CapeMetaData->DumpType = TYPE_STRING;
+			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
+		}
+		else if (CapeMetaData->DumpType == UNPACKED_PE || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
 		{
 			// Unpacker-specific format
 			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%p;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
@@ -325,13 +330,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			}
 		}
 		else
-			if (CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
-			{
-				CapeMetaData->DumpType = TYPE_STRING;
-				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
-			}
-			else
-				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
 		if (g_config.standalone)
 		{
