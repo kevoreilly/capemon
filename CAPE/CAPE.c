@@ -1639,8 +1639,10 @@ BOOL DumpRegion(PVOID Address)
 	SIZE_T AccessibleSize = GetAccessibleSize(Address);
 	SIZE_T RegionSize = GetRegionSize(Address);
 
-	if (!CapeMetaData->DumpType)
-		SetCapeMetaData(UNPACKED_PE, 0, NULL, AllocationBase);
+	CapeMetaData->Address = AllocationBase;
+
+	if (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
+		CapeMetaData->DumpType = UNPACKED_PE;
 
 	if (DumpPEsInRange(AllocationBase, AccessibleSize))
 	{
@@ -1663,8 +1665,7 @@ BOOL DumpRegion(PVOID Address)
 	{
 		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size %d bytes.\n", AllocationBase, AccessibleSize);
 
-		if (CapeMetaData->DumpType == UNPACKED_SHELLCODE)
-			CapeMetaData->Address = BaseAddress;
+		CapeMetaData->Address = BaseAddress;
 
 		if (DumpMemory(BaseAddress, RegionSize))
 		{
