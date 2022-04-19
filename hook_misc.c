@@ -184,6 +184,33 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
+	__in		HMODULE ModuleHandle,
+	__in_opt	PANSI_STRING FunctionName,
+	__in_opt	WORD Ordinal,
+	__out		PVOID *FunctionAddress,
+	__in		BOOL bValue,
+	__in		PVOID *CallbackAddress
+) {
+	NTSTATUS ret = Old_LdrGetProcedureAddressForCaller(ModuleHandle, FunctionName, Ordinal, FunctionAddress, bValue, CallbackAddress);
+
+	if (FunctionName != NULL && FunctionName->Length == 13 && FunctionName->Buffer != NULL &&
+		(!strncmp(FunctionName->Buffer, "EncodePointer", 13) || !strncmp(FunctionName->Buffer, "DecodePointer", 13)))
+		return ret;
+
+	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
+		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
+		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
+
+	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
+		!strncmp(FunctionName->Buffer, "DllMain", 7) && wcsicmp(our_process_path_w, g_config.file_of_interest)) {
+		log_flush();
+		ExitThread(0);
+	}
+
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__in		 HANDLE hDevice,
 	__in		 DWORD dwIoControlCode,

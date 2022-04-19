@@ -1549,6 +1549,15 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 	__out	   PVOID *FunctionAddress
 );
 
+HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
+	__in		HMODULE ModuleHandle,
+	__in_opt	PANSI_STRING FunctionName,
+	__in_opt	WORD Ordinal,
+	__out		PVOID *FunctionAddress,
+	__in		BOOL bValue,
+	__in		PVOID *CallbackAddress
+);
+
 HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__in		 HANDLE hDevice,
 	__in		 DWORD dwIoControlCode,
