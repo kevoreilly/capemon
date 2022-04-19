@@ -3336,3 +3336,7 @@ HOOKDEF(int, WINAPI, WideCharToMultiByte,
 	__in_opt	LPCCH	lpDefaultChar,
 	__out_opt	LPBOOL	lpUsedDefaultChar
 );
+
+HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
+	void
+);
