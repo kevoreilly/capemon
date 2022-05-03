@@ -36,6 +36,7 @@ typedef struct _INJECT_STRUCT {
 
 DWORD LengthMask[MAX_DEBUG_REGISTER_DATA_SIZE + 1] = DEBUG_REGISTER_LENGTH_MASKS;
 
+extern OSVERSIONINFO OSVersion;
 extern SYSTEM_INFO SystemInfo;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
@@ -657,24 +658,25 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (TraceRunning)
 	{
 		unsigned int RVA;
+		DWORD ThreadId = GetCurrentThreadId();
 		char *ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, &RVA);
 		if (ModuleName)
 		{
 			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x), flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x), flags 0x%x, exception information 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x), flags 0x%x, exception information[0] 0x%x, exception information[1] 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		}
 		else
 		{
 			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-				DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-				DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-				DebuggerOutput("\nException 0x%x at 0x%p, flags 0x%x, exception information[0] 0x%x, exception information[1] 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		}
 	}
 
@@ -939,11 +941,11 @@ BOOL ContextCheckDebugRegisters(PCONTEXT Context)
 	Dr7 = (PDR7)&(Context->Dr7);
 
 	DebugOutput("Checking breakpoints\n");
-	DebugOutput("Dr0 0x%x, Dr7->LEN0 %i, Dr7->RWE0 %i, Dr7->L0 %i\n", Context->Dr0, Dr7->LEN0, Dr7->RWE0, Dr7->L0);
-	DebugOutput("Dr1 0x%x, Dr7->LEN1 %i, Dr7->RWE1 %i, Dr7->L1 %i\n", Context->Dr1, Dr7->LEN1, Dr7->RWE1, Dr7->L1);
-	DebugOutput("Dr2 0x%x, Dr7->LEN2 %i, Dr7->RWE2 %i, Dr7->L2 %i\n", Context->Dr2, Dr7->LEN2, Dr7->RWE2, Dr7->L2);
-	DebugOutput("Dr3 0x%x, Dr7->LEN3 %i, Dr7->RWE3 %i, Dr7->L3 %i\n", Context->Dr3, Dr7->LEN3, Dr7->RWE3, Dr7->L3);
-	DebugOutput("Dr6 0x%x\n", Context->Dr6);
+	DebugOutput("Dr0 0x%p, Dr7->LEN0 %i, Dr7->RWE0 %i, Dr7->L0 %i\n", Context->Dr0, Dr7->LEN0, Dr7->RWE0, Dr7->L0);
+	DebugOutput("Dr1 0x%p, Dr7->LEN1 %i, Dr7->RWE1 %i, Dr7->L1 %i\n", Context->Dr1, Dr7->LEN1, Dr7->RWE1, Dr7->L1);
+	DebugOutput("Dr2 0x%p, Dr7->LEN2 %i, Dr7->RWE2 %i, Dr7->L2 %i\n", Context->Dr2, Dr7->LEN2, Dr7->RWE2, Dr7->L2);
+	DebugOutput("Dr3 0x%p, Dr7->LEN3 %i, Dr7->RWE3 %i, Dr7->L3 %i\n", Context->Dr3, Dr7->LEN3, Dr7->RWE3, Dr7->L3);
+	DebugOutput("Dr6 0x%p\n", Context->Dr6);
 
 	return TRUE;
 }
@@ -990,7 +992,7 @@ BOOL CheckDebugRegisters(HANDLE hThread, PCONTEXT pContext)
 }
 
 //**************************************************************************************
-BOOL ContextClearAllBreakpoints(PCONTEXT Context)
+BOOL ContextClearAllBreakpointsEx(PCONTEXT Context, BOOL NoSetThreadContext)
 //**************************************************************************************
 {
 	unsigned int i;
@@ -1022,6 +1024,9 @@ BOOL ContextClearAllBreakpoints(PCONTEXT Context)
 	Context->Dr7 = 0;
 
 #ifdef _WIN64
+	if (NoSetThreadContext)
+		return TRUE;
+
 	if (CurrentThreadBreakpoint->ThreadHandle == NULL)
 	{
 		DebugOutput("ContextClearAllBreakpoints: No thread handle found in breakpoints found for current thread %d.\n", GetCurrentThreadId());
@@ -1042,6 +1047,16 @@ BOOL ContextClearAllBreakpoints(PCONTEXT Context)
 #endif
 
 	return TRUE;
+}
+
+BOOL ContextClearAllBreakpoints(PCONTEXT Context)
+{
+	BOOL NoSetThreadContext = FALSE;
+
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+		NoSetThreadContext = TRUE;
+
+	return ContextClearAllBreakpointsEx(Context, NoSetThreadContext);
 }
 
 //**************************************************************************************
@@ -1106,7 +1121,7 @@ BOOL ClearAllBreakpoints()
 }
 
 //**************************************************************************************
-BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
+BOOL ContextClearBreakpointEx(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo, BOOL NoSetThreadContext)
 //**************************************************************************************
 {
 	PDWORD_PTR Dr0, Dr1, Dr2, Dr3;
@@ -1159,7 +1174,16 @@ BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
 		WoW64UnpatchBreakpoint(pBreakpointInfo->Register);
 #endif
 
+	pBreakpointInfo->Address = 0;
+	pBreakpointInfo->Size = 0;
+	pBreakpointInfo->Type = 0;
+	pBreakpointInfo->HitCount = 0;
+	//pBreakpointInfo->Callback = 0;
+
 #ifdef _WIN64
+	if (NoSetThreadContext)
+		return TRUE;
+
 	if (pBreakpointInfo->ThreadHandle == NULL)
 	{
 		DebugOutput("ContextClearBreakpoint: No thread handle found in breakpoints found for current thread %d.\n", GetCurrentThreadId());
@@ -1179,17 +1203,21 @@ BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
 #endif
 #endif
 
-	pBreakpointInfo->Address = 0;
-	pBreakpointInfo->Size = 0;
-	pBreakpointInfo->Type = 0;
-	pBreakpointInfo->HitCount = 0;
-	//pBreakpointInfo->Callback = 0;
-
 	return TRUE;
 }
 
+BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo)
+{
+	BOOL NoSetThreadContext = FALSE;
+
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+		NoSetThreadContext = TRUE;
+
+	return ContextClearBreakpointEx(Context, pBreakpointInfo, NoSetThreadContext);
+}
+
 //**************************************************************************************
-BOOL ContextClearBreakpointsInRange(PCONTEXT Context, PVOID BaseAddress, SIZE_T Size)
+BOOL ContextClearBreakpointsInRangeEx(PCONTEXT Context, PVOID BaseAddress, SIZE_T Size, BOOL NoSetThreadContext)
 //**************************************************************************************
 {
 	unsigned int Register;
@@ -1263,6 +1291,9 @@ BOOL ContextClearBreakpointsInRange(PCONTEXT Context, PVOID BaseAddress, SIZE_T 
 	}
 
 #ifdef _WIN64
+	if (NoSetThreadContext)
+		return TRUE;
+
 	if (CurrentThreadBreakpoint->ThreadHandle == NULL)
 	{
 		DebugOutput("ContextClearBreakpointsInRange: No thread handle found in breakpoints found for current thread %d.\n", GetCurrentThreadId());
@@ -1283,6 +1314,16 @@ BOOL ContextClearBreakpointsInRange(PCONTEXT Context, PVOID BaseAddress, SIZE_T 
 #endif
 
 	return TRUE;
+}
+
+BOOL ContextClearBreakpointsInRange(PCONTEXT Context, PVOID BaseAddress, SIZE_T Size)
+{
+	BOOL NoSetThreadContext = FALSE;
+
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+		NoSetThreadContext = TRUE;
+
+	return ContextClearBreakpointsInRangeEx(Context, BaseAddress, Size, NoSetThreadContext);
 }
 
 //**************************************************************************************
@@ -1712,7 +1753,12 @@ BOOL ContextSetThreadBreakpoint
 	PVOID			Callback
 )
 {
-	return ContextSetThreadBreakpointEx(Context, Register, Size, Address, Type, HitCount, Callback, FALSE);
+	BOOL NoSetThreadContext = FALSE;
+
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+		NoSetThreadContext = TRUE;
+
+	return ContextSetThreadBreakpointEx(Context, Register, Size, Address, Type, HitCount, Callback, NoSetThreadContext);
 }
 
 //**************************************************************************************
