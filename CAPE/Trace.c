@@ -92,7 +92,7 @@ VOID TraceOutputFuncName(PVOID Address, _DecodedInst DecodedInstruction, char* F
 
 VOID TraceOutputFuncAddress(PVOID Address, _DecodedInst DecodedInstruction, PVOID FuncAddress)
 {
-	DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28x", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
+	DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
 }
 
 SIZE_T StrTest(char* StrCandidate)
@@ -633,7 +633,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #endif
 			}
 		}
-
 	}
 	else if (!strnicmp(Action, "Unwind", 6))
 	{
@@ -788,7 +787,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%d.\n", Target, DumpSize);
-
 	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
@@ -796,6 +794,28 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	InstructionCount++;
 
 	return;
+}
+
+BOOL DoStepOver(PCHAR FunctionName)
+{
+	char *StepOverList[] =
+	{
+		"RtlAllocateHeap",
+		"RtlFreeHeap",
+		"LdrLockLoaderLock",
+		"LdrUnlockLoaderLock",
+		"RtlAcquirePebLock",
+		"RtlReleasePebLock",
+		NULL
+	};
+
+	for (unsigned int i = 0; StepOverList[i]; i++)
+	{
+		if (!stricmp(StepOverList[i], FunctionName))
+			return TRUE;
+	}
+
+	return FALSE;
 }
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
@@ -986,7 +1006,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (!StepLimit || StepCount > StepLimit)
 	{
-		DebuggerOutput("Trace: Single-step limit reached (%d), releasing.\n", StepLimit);
+		DebuggerOutput("\nTrace: Single-step limit reached (%d), releasing.\n", StepLimit);
 		ClearSingleStepMode(ExceptionInfo->ContextRecord);
 		memset(&LastContext, 0, sizeof(CONTEXT));
 		TraceRunning = FALSE;
@@ -1032,7 +1052,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			{
 				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase);
 
-				if (!stricmp(FunctionName, "RtlAllocateHeap"))
+				if (DoStepOver(FunctionName))
 				{
 					ForceStepOver = TRUE;
 					FilterTrace = TRUE;
@@ -1092,6 +1112,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (!strcmp(DecodedInstruction.mnemonic.p, "CALL"))
 	{
 		PCHAR ExportName;
+		PVOID CallTarget = NULL;
 		// We set this as a matter of course for calls in case we might
 		// want to step over this as a result of the call target
 		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
@@ -1103,7 +1124,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif
 		// begins with DWORD except "DWORD [E" (or "QWORD [R")
 		{
-			PVOID CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+			CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
 
 			if (!strncmp(DecodedInstruction.operands.p, "DWORD [FS:0xc0]", 15))
 			{
@@ -1142,7 +1163,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 		else if (DecodedInstruction.size > 4)
 		{
-			PVOID CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+			CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
 			__try
 			{
 				ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
@@ -1155,21 +1176,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ExportName = NULL;
 			}
 
-			if (ExportName && !strcmp(ExportName, "RtlAllocateHeap"))
-				ForceStepOver = TRUE;
-
-			if (CallTarget == &loq)
-			{
-				ExportName = "loq";
-				ForceStepOver = TRUE;
-			}
-
-			if (CallTarget == &operate_on_backtrace)
-			{
-				ExportName = "operate_on_backtrace";
-				ForceStepOver = TRUE;
-			}
-
 			if (!FilterTrace && ExportName)
 			{
 				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
@@ -1178,21 +1184,23 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			else if (!FilterTrace)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
 		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
 		{
-#ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1204,21 +1212,23 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #endif
 		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
 		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
 		{
-#ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1230,21 +1240,23 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #endif
 		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
 		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
 		{
-#ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1256,21 +1268,23 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #endif
 		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
 		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
 		{
-#ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1282,10 +1296,10 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #endif
 		}
-		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
-		{
 #ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
+		else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1296,7 +1310,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			else if (!FilterTrace || g_config.trace_all)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
+		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1306,6 +1322,62 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else if (!FilterTrace || g_config.trace_all)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);;
 #endif
 		}
 		else if (!FilterTrace || g_config.trace_all)
@@ -1313,6 +1385,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (ExportName)
 		{
+			ForceStepOver = DoStepOver(ExportName);
+
 			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
 			{
 				if (!g_config.trace_into_api[i])
@@ -1324,6 +1398,18 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 					DebuggerOutput("\nTrace: Stepping into %s\n", ExportName);
 				}
 			}
+		}
+
+		if (CallTarget == &loq)
+		{
+			ExportName = "loq";
+			ForceStepOver = TRUE;
+		}
+
+		if (CallTarget == &operate_on_backtrace)
+		{
+			ExportName = "operate_on_backtrace";
+			ForceStepOver = TRUE;
 		}
 
 		if (!StepLimit || StepCount > StepLimit || StopTrace)
@@ -1354,7 +1440,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	{
 		PCHAR ExportName = NULL;
 #ifdef _WIN64
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+		PVOID ReturnAddress = *(PVOID*)ExceptionInfo->ContextRecord->Rsp;
 
 		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [R", 8))
 		{
@@ -1496,7 +1582,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //				//ClearSingleStepMode(ExceptionInfo->ContextRecord);
 //				//ReturnAddress = NULL;
 //				//return TRUE;
-//				ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+//				PVOID ReturnAddress = *(PVOID*)ExceptionInfo->ContextRecord->Rsp;
 //				ForceStepOver = TRUE;
 //			}
 //			else
@@ -1511,7 +1597,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (inside_hook(CIP))
 		{
-			DebuggerOutput("\nTrap 'tunneling' past monitor hook code (setting StepCount = StepLimit)");
+			// skip past monitor hook code
 			StepCount = StepLimit;
 		}
 		else
@@ -1967,11 +2053,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	if (!strcmp(DecodedInstruction.mnemonic.p, "CALL"))
 	{
 		PCHAR ExportName;
+		PVOID CallTarget = NULL;
+
 		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
 
 		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
 		{
-			PVOID CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+			CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
 
 			if (!strncmp(DecodedInstruction.operands.p, "DWORD [FS:0xc0]", 15))
 			{
@@ -2007,7 +2095,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		}
 		else if (DecodedInstruction.size > 4)
 		{
-			PVOID CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+			CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
 			__try
 			{
 				ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
@@ -2031,7 +2119,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
 		{
 #ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2041,7 +2129,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			else
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2055,7 +2143,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
 		{
 #ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2065,7 +2153,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			else
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2079,7 +2167,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
 		{
 #ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2089,7 +2177,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			else
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2103,7 +2191,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
 		{
 #ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2113,7 +2201,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			else
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2127,7 +2215,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
 		{
 #ifdef _WIN64
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2137,7 +2225,55 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 			else
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 #else
-			PVOID CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
+		{
+#ifdef _WIN64
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
+		{
+#ifdef _WIN64
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				StepOver = TRUE;
+			}
+			else
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -2153,6 +2289,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 		if (ExportName)
 		{
+			ForceStepOver = DoStepOver(ExportName);
+
 			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
 			{
 				if (!g_config.trace_into_api[i])
@@ -2164,6 +2302,18 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 					DebuggerOutput("\nBreakpointCallback: Stepping into %s\n", ExportName);
 				}
 			}
+		}
+
+		if (CallTarget == &loq)
+		{
+			ExportName = "loq";
+			ForceStepOver = TRUE;
+		}
+
+		if (CallTarget == &operate_on_backtrace)
+		{
+			ExportName = "operate_on_backtrace";
+			ForceStepOver = TRUE;
 		}
 
 		if (!StepLimit || StepCount >= StepLimit || StopTrace)
@@ -2203,7 +2353,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	{
 		PCHAR ExportName;
 #ifdef _WIN64
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+		PVOID ReturnAddress = *(PVOID*)ExceptionInfo->ContextRecord->Rsp;
 
 		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [E", 8))
 		{
@@ -2332,7 +2482,7 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
 #ifdef _WIN64
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
-	ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+	PVOID ReturnAddress = *(PVOID*)ExceptionInfo->ContextRecord->Rsp;
 #else
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 	ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
