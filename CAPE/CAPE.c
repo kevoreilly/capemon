@@ -142,6 +142,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet;
 
+OSVERSIONINFO OSVersion;
 BOOL ProcessDumped, ModuleDumped;
 PVOID ImageBase;
 static unsigned int DumpCount;
@@ -1083,9 +1084,9 @@ int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size)
 
 	__try
 	{
-		for (p=Size-1; p>0; p--)
+		for (p = Size - 1; p > 0; p--)
 			if (*((char*)Buffer+p) != 0)
-				return (int)p;
+				return (int)p + 1;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -2156,7 +2157,6 @@ void CAPE_init()
 		YaraInit();
 	}
 
-	OSVERSIONINFO OSVersion;
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
 #pragma warning(suppress : 4996)
