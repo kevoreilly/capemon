@@ -677,9 +677,8 @@ DWORD randint(DWORD min, DWORD max)
 BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj)
 {
 	FILE_BASIC_INFORMATION basic_information;
-	if (NT_SUCCESS(pNtQueryAttributesFile(obj, &basic_information))) {
-		return basic_information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-	}
+	if (NT_SUCCESS(pNtQueryAttributesFile(obj, &basic_information)))
+		return (BOOL)basic_information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
 	return FALSE;
 }
 

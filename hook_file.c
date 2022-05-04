@@ -68,11 +68,13 @@ void file_init()
 
 static void add_file_to_log_tracking(HANDLE file_handle)
 {
-	file_log_t *r = lookup_add(&g_file_logs, (ULONG_PTR)file_handle, sizeof(file_log_t));
+	file_log_t *r = lookup_get(&g_file_logs, (ULONG_PTR)file_handle, NULL);
+	if (r == NULL) {
+		file_log_t *r = lookup_add(&g_file_logs, (ULONG_PTR)file_handle, sizeof(file_log_t));
 #ifdef DEBUG_COMMENTS
-	DebugOutput("add_file_to_log_tracking: Adding file handle to tracking: 0x%x", file_handle);
+		DebugOutput("add_file_to_log_tracking: Adding file handle to tracking: 0x%x", file_handle);
 #endif
-	memset(r, 0, sizeof(*r));
+	}
 }
 
 static unsigned int increment_file_log_read_count(HANDLE file_handle)
@@ -155,7 +157,6 @@ static void new_file(const UNICODE_STRING *obj)
 	const wchar_t *str = obj->Buffer;
 	unsigned int len = obj->Length / sizeof(wchar_t);
 
-
 	// maybe it's an absolute path (or a relative path with a harddisk,
 	// such as C:abc.txt)
 	if (isalpha(str[0]) != 0 && str[1] == ':') {
@@ -167,20 +168,28 @@ static void new_file(const UNICODE_STRING *obj)
 	}
 }
 
-static void cache_file(HANDLE file_handle, const wchar_t *path,
-	unsigned int length_in_chars, unsigned int attributes)
+static void cache_file(HANDLE file_handle, const wchar_t *path, unsigned int length_in_chars, unsigned int attributes)
 {
-	file_record_t *r = lookup_add(&g_files, (ULONG_PTR)file_handle,
-		sizeof(file_record_t) + length_in_chars * sizeof(wchar_t) + sizeof(wchar_t));
+	file_record_t *r;
+	lasterror_t lasterror;
 
-	memset(r, 0, sizeof(*r));
-	r->attributes = attributes;
-	r->length = length_in_chars;
+	get_lasterrors(&lasterror);
 
-	wcsncpy(r->filename, path, r->length + 1);
+	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
+	if (r == NULL) {
+		r = lookup_add(&g_files, (ULONG_PTR)file_handle, sizeof(file_record_t) + length_in_chars * sizeof(wchar_t) + sizeof(wchar_t));
+
+		memset(r, 0, sizeof(*r));
+		r->attributes = attributes;
+		r->length = length_in_chars;
+
+		wcsncpy(r->filename, path, r->length + 1);
 #ifdef DEBUG_COMMENTS
-	DebugOutput("cache_file: Adding file handle to tracking: 0x%x, %ws", file_handle, path);
+		DebugOutput("cache_file: Adding file handle to tracking: 0x%x, %ws", file_handle, path);
 #endif
+	}
+
+	set_lasterrors(&lasterror);
 }
 
 void file_write(HANDLE file_handle)
@@ -192,11 +201,10 @@ void file_write(HANDLE file_handle)
 
 	r = lookup_get(&g_files, (ULONG_PTR)file_handle, NULL);
 	if (r == NULL) {
+		r = lookup_add(&g_files, (ULONG_PTR)file_handle, sizeof(file_record_t));
 #ifdef DEBUG_COMMENTS
 		DebugOutput("file_write: Adding file handle to tracking: 0x%x", file_handle);
 #endif
-		r = lookup_add(&g_files, (ULONG_PTR)file_handle, sizeof(file_record_t));
-		memset(r, 0, sizeof(*r));
 	}
 #ifdef DEBUG_COMMENTS
 	else
@@ -377,17 +385,17 @@ static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateFile,
-	__out	 PHANDLE FileHandle,
-	__in	  ACCESS_MASK DesiredAccess,
-	__in	  POBJECT_ATTRIBUTES ObjectAttributes,
-	__out	 PIO_STATUS_BLOCK IoStatusBlock,
-	__in_opt  PLARGE_INTEGER AllocationSize,
-	__in	  ULONG FileAttributes,
-	__in	  ULONG ShareAccess,
-	__in	  ULONG CreateDisposition,
-	__in	  ULONG CreateOptions,
-	__in	  PVOID EaBuffer,
-	__in	  ULONG EaLength
+	__out		PHANDLE FileHandle,
+	__in		ACCESS_MASK DesiredAccess,
+	__in		POBJECT_ATTRIBUTES ObjectAttributes,
+	__out		PIO_STATUS_BLOCK IoStatusBlock,
+	__in_opt	PLARGE_INTEGER AllocationSize,
+	__in		ULONG FileAttributes,
+	__in		ULONG ShareAccess,
+	__in		ULONG CreateDisposition,
+	__in		ULONG CreateOptions,
+	__in		PVOID EaBuffer,
+	__in		ULONG EaLength
 ) {
 	NTSTATUS ret;
 	BOOL file_existed;
@@ -405,9 +413,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateFile,
 		"FileName", ObjectAttributes, "CreateDisposition", CreateDisposition,
 		"ShareAccess", ShareAccess, "FileAttributes", FileAttributes, "ExistedBefore", file_existed ? "yes" : "no", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	if (NT_SUCCESS(ret)) {
-		add_file_to_log_tracking(*FileHandle);
 		if ((DesiredAccess & DUMP_FILE_MASK) && !(FileAttributes & FILE_ATTRIBUTE_TEMPORARY))
 			handle_new_file(*FileHandle, ObjectAttributes);
+		add_file_to_log_tracking(*FileHandle);
 	}
 	return ret;
 }
