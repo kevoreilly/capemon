@@ -1187,8 +1187,6 @@ int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 //**************************************************************************************
 {
-	SIZE_T MinSize;
-
 	__try
 	{
 		PIMAGE_SECTION_HEADER NtSection;
@@ -1205,22 +1203,16 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 
 		NtSection = IMAGE_FIRST_SECTION(pNtHeader);
 
+		if (!NtSection)
+			return FALSE;
+
 		for (unsigned int i=0; i<pNtHeader->FileHeader.NumberOfSections; i++)
 		{
 			if (!NtSection->Misc.VirtualSize && !NtSection->SizeOfRawData)
 			{
-				DebugOutput("TestPERequirements: Possible PE image rejected due to section %d of %d, VirtualSize and SizeOfRawData are zero.\n", i+1, pNtHeader->FileHeader.NumberOfSections);
-				return FALSE;
+				DebugOutput("TestPERequirements: Section %d of %d, VirtualSize and SizeOfRawData are zero.\n", i+1, pNtHeader->FileHeader.NumberOfSections);
+				continue;
 			}
-
-			if (NtSection->Misc.VirtualSize && NtSection->SizeOfRawData && NtSection->Misc.VirtualSize > NtSection->SizeOfRawData)
-				MinSize = NtSection->SizeOfRawData;
-			else if (NtSection->Misc.VirtualSize && NtSection->SizeOfRawData && NtSection->Misc.VirtualSize <= NtSection->SizeOfRawData)
-				MinSize = NtSection->Misc.VirtualSize;
-			else if (NtSection->SizeOfRawData)
-				MinSize = NtSection->SizeOfRawData;
-			else if (NtSection->Misc.VirtualSize)
-				MinSize = NtSection->Misc.VirtualSize;
 
 			++NtSection;
 		}
