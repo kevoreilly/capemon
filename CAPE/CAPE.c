@@ -1210,7 +1210,9 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 		{
 			if (!NtSection->Misc.VirtualSize && !NtSection->SizeOfRawData)
 			{
+#ifdef DEBUG_COMMENTS
 				DebugOutput("TestPERequirements: Section %d of %d, VirtualSize and SizeOfRawData are zero.\n", i+1, pNtHeader->FileHeader.NumberOfSections);
+#endif
 				continue;
 			}
 
