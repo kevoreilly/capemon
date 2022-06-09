@@ -569,6 +569,7 @@ hook_t full_hooks[] = {
 	HOOK(ncrypt, NCryptDecrypt),
 	HOOK(ncrypt, NCryptEncrypt),
 	HOOK(bcrypt, BCryptImportKey),
+	HOOK(bcrypt, BCryptImportKeyPair),
 	HOOK(bcrypt, BCryptDecrypt),
 	HOOK(bcrypt, BCryptEncrypt),
 	// needed due to the DLL being delay-loaded in some cases

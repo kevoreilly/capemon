@@ -2934,6 +2934,16 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptImportKey,
 	ULONG				dwFlags
 );
 
+HOOKDEF(NTSTATUS, WINAPI, BCryptImportKeyPair,
+	BCRYPT_ALG_HANDLE	hAlgorithm,
+	BCRYPT_KEY_HANDLE	hImportKey,
+	LPCWSTR				pszBlobType,
+	BCRYPT_KEY_HANDLE   * phKey,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	ULONG				dwFlags
+);
+
 HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 	BCRYPT_KEY_HANDLE	hKey,
 	PUCHAR				pbInput,
