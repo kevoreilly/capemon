@@ -511,6 +511,26 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptImportKey,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, BCryptImportKeyPair,
+	BCRYPT_ALG_HANDLE	hAlgorithm,
+	BCRYPT_KEY_HANDLE	hImportKey,
+	LPCWSTR				pszBlobType,
+	BCRYPT_KEY_HANDLE   * phKey,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	ULONG				dwFlags
+) {
+	if (g_config.dump_keys) {
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = DATADUMP;
+		DumpMemoryRaw(pbInput, cbInput);
+		DebugOutput("BCryptImportKeyPair hook: Dumped ImportKey buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
+	}
+	NTSTATUS ret = Old_BCryptImportKeyPair(hAlgorithm, hImportKey, pszBlobType, phKey, pbInput, cbInput, dwFlags);
+	LOQ_ntstatus("crypto", "bhpi", "KeyBlob", cbInput, pbInput, "Flags", dwFlags, "CryptKey", *phKey, "Length", cbInput);
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 	BCRYPT_KEY_HANDLE	hKey,
 	PUCHAR				pbInput,

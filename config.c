@@ -1034,6 +1034,11 @@ void parse_config_line(char* line)
 			if (g_config.dump_crypto)
 				DebugOutput("Dumping of crypto API buffers enabled.\n");
 		}
+		else if (!stricmp(key, "dump-keys")) {
+		g_config.dump_keys = value[0] == '1';
+		if (g_config.dump_keys)
+			DebugOutput("Dumping of crypto API ImportKey buffers enabled.\n");
+		}
 		else if (!stricmp(key, "caller-dump")) {
 			g_config.caller_dump = value[0] == '1';
 			if (!g_config.caller_dump)
