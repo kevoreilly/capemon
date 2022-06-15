@@ -1,8 +1,6 @@
 name: MSBuild
 
 on:
-  push:
-    branches: [ "capemon" ]
   pull_request:
     branches: [ "capemon" ]
 
