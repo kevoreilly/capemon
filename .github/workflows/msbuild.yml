@@ -9,7 +9,7 @@ on:
 env:  
   BUILD_CONFIGURATION: Release
   SOLUTION_FILE_PATH: capemon.sln
-  
+
 permissions:
   contents: read
 
@@ -36,11 +36,11 @@ jobs:
     - name: Restore NuGet packages
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: nuget restore ${{env.SOLUTION_FILE_PATH}}
-      
+
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ matrix.platform }} ${{env.SOLUTION_FILE_PATH}}
-      
+
     - uses: actions/upload-artifact@v3
       with:
         name: capemon_release_${{ matrix.arch }}
@@ -51,6 +51,7 @@ jobs:
         path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
 
   publish:
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -58,7 +59,6 @@ jobs:
         echo "
         The rolling release triggered on \`${{ github.ref_name }}\`. [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
         " > ${{ github.workspace }}-release-body.md
-      if: github.event_name == 'push'
 
     - uses: actions/download-artifact@v3
 
@@ -69,7 +69,6 @@ jobs:
          capemon_release_x86/capemon.dll
          capemon_release_x64/capemon_x64.dll
         body_path: ${{ github.workspace }}-release-body.md
-      if: github.event_name == 'push'
 
     - run: |
         mkdir temp
@@ -81,11 +80,10 @@ jobs:
       env:
         SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
       with:
-        source-directory: 'temp'
+        source-directory: temp
         destination-github-username: kevoreilly
         destination-repository-name: capev2
         user-email: action@github.com
         user-name: Github Actions
         target-branch: master
         target-directory: analyzer/windows/dll
-      if: github.event_name == 'push'
