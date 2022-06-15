@@ -1,6 +1,8 @@
 name: MSBuild
 
 on:
+  push:
+    branches: [ "capemon" ]
   pull_request:
     branches: [ "capemon" ]
 
@@ -42,6 +44,48 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: capemon_release_${{ matrix.arch }}
-        path: |
-         D:\a\capemon\capemon\Release\capemon.dll
-         D:\a\capemon\capemon\x64\Release\capemon_x64.dll
+        path: D:\a\capemon\capemon\Release\capemon.dll
+    - uses: actions/upload-artifact@v3
+      with:
+        name: capemon_release_${{ matrix.arch }}
+        path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - run: |
+        echo "
+        The rolling release triggered on \`${{ github.ref_name }}\`. [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+        " > ${{ github.workspace }}-release-body.md
+      if: github.event_name == 'push'
+
+    - uses: actions/download-artifact@v3
+
+    - uses: softprops/action-gh-release@v1
+      with:
+        tag_name: rolling
+        files: |
+         capemon_release_x86/capemon.dll
+         capemon_release_x64/capemon_x64.dll
+        body_path: ${{ github.workspace }}-release-body.md
+      if: github.event_name == 'push'
+
+    - run: |
+        mkdir temp
+        mv capemon_release_x86/capemon.dll temp/capemon.dll
+        mv capemon_release_x64/capemon_x64.dll temp/capemon_x64.dll
+
+    - name: Push to CAPEv2 repository
+      uses: cpina/github-action-push-to-another-repository@v1.4.2
+      env:
+        SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      with:
+        source-directory: 'temp'
+        destination-github-username: kevoreilly
+        destination-repository-name: capev2
+        user-email: action@github.com
+        user-name: Github Actions
+        target-branch: master
+        target-directory: analyzer/windows/dll
+      if: github.event_name == 'push'
