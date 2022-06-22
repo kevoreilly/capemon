@@ -159,6 +159,18 @@ int hook_is_excluded(hook_t *h)
 	return 0;
 }
 
+int add_hook_exclusion(const char *apiname)
+{
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.excluded_apinames); i++) {
+		if (!g_config.excluded_apinames[i]) {
+			g_config.excluded_apinames[i] = strdup(apiname);
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 int addr_in_our_dll_range(void *unused, ULONG_PTR addr)
 {
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))

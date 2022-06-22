@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 
 extern char *our_process_name;
+extern int path_is_system(const wchar_t *path_w);
 extern int path_is_program_files(const wchar_t *path_w);
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -2310,6 +2311,68 @@ void set_hooks()
 			g_config.ntdll_protect = 0;
 			DebugOutput("Microsoft Office settings enabled.\n");
         }
+	}
+	else if (path_is_system(our_process_path_w))
+	{
+		if (!_stricmp(our_process_name, "msiexec.exe")) {
+
+			const char *excluded_apis[] = {
+				"NtAllocateVirtualMemory",
+				"SetWindowLongPtrA",
+				"SetWindowLongPtrW",
+				"NtWaitForSingleObject",
+				"NtSetTimer",
+				"NtSetTimerEx",
+				"RegOpenKeyExA",
+				"RegOpenKeyExW",
+				"RegCreateKeyExA",
+				"RegCreateKeyExW",
+				"RegDeleteKeyA",
+				"RegDeleteKeyW",
+				"RegEnumKeyW",
+				"RegEnumKeyExA",
+				"RegEnumKeyExW",
+				"RegEnumValueA",
+				"RegEnumValueW",
+				"RegSetValueExA",
+				"RegSetValueExW",
+				"RegQueryValueExA",
+				"RegQueryValueExW",
+				"RegDeleteValueA",
+				"RegDeleteValueW",
+				"RegQueryInfoKeyA",
+				"RegQueryInfoKeyW",
+				"RegCloseKey",
+				"RegNotifyChangeKeyValue",
+				"NtCreateKey",
+				"NtOpenKey",
+				"NtOpenKeyEx",
+				"NtRenameKey",
+				"NtReplaceKey",
+				"NtEnumerateKey",
+				"NtEnumerateValueKey",
+				"NtSetValueKey",
+				"NtQueryValueKey",
+				"NtQueryMultipleValueKey",
+				"NtDeleteKey",
+				"NtDeleteValueKey",
+				"NtLoadKey",
+				"NtLoadKey2",
+				"NtLoadKeyEx",
+				"NtQueryKey",
+				"NtSaveKey",
+				"NtSaveKeyEx"
+			};
+
+			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
+				if (!add_hook_exclusion(excluded_apis[i])) {
+					DebugOutput("Unable to set hook exclusion for msiexec.\n");
+					break;
+				}
+			}
+
+			DebugOutput("MsiExec hook set enabled.\n");
+		}
 	}
 
 	// Hook set selection

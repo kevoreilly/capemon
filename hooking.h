@@ -226,7 +226,8 @@ static __inline ULONG_PTR get_stack_bottom(void)
 #endif
 }
 
-extern int hook_is_excluded(hook_t *h);
+int hook_is_excluded(hook_t *h);
+int add_hook_exclusion(const char *apiname);
 
 #define HOOKDEF(return_value, calling_convention, apiname, ...) \
 	return_value (calling_convention *Old_##apiname)(__VA_ARGS__); \
