@@ -10,9 +10,6 @@ env:
   BUILD_CONFIGURATION: Release
   SOLUTION_FILE_PATH: capemon.sln
 
-permissions:
-  contents: read
-
 jobs:
   build:
     runs-on: windows-2019
@@ -45,10 +42,12 @@ jobs:
       with:
         name: capemon_release_${{ matrix.arch }}
         path: D:\a\capemon\capemon\Release\capemon.dll
+        if-no-files-found: ignore
     - uses: actions/upload-artifact@v3
       with:
         name: capemon_release_${{ matrix.arch }}
         path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
+        if-no-files-found: ignore
 
   publish:
     if: github.event_name == 'push'
