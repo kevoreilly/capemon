@@ -31,6 +31,8 @@ extern ULONG_PTR base_of_dll_of_interest;
 extern PVOID GetHookCallerBase();
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern int DoProcessDump(PVOID CallerBase);
+extern BOOL ProcessDumped;
 
 PVOID LastDllUnload;
 
@@ -127,7 +129,7 @@ extern void revalidate_all_hooks(void);
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 ) {
-	if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest)
+	if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest && g_config.procdump && !ProcessDumped)
 		DoProcessDump(GetHookCallerBase());
 
 	if (DllImageBase && DllImageBase != LastDllUnload)
@@ -261,7 +263,7 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
 			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
 			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880") || !strcmp(idbuf1, "0006F03A-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002DF01-0000-0000-C000-000000000046") ||
-			!strcmp(idbuf1, "000C101C-0000-0000-C000-000000000046"))
+			!strcmp(idbuf1, "000C101C-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00000323-0000-0000-C000-000000000046"))
 			if (!interop_sent) {
 				interop_sent = 1;
 				pipe("INTEROP:");
