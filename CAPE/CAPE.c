@@ -502,6 +502,15 @@ SIZE_T GetAccessibleSize(PVOID Address)
 		return 0;
 	}
 
+	if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+		return 0;
+
+	if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
+		return 0;
+
+	if (!MemInfo.Protect)
+		return 0;
+
 	OriginalAllocationBase = MemInfo.AllocationBase;
 	AddressOfPage = OriginalAllocationBase;
 
@@ -534,7 +543,7 @@ BOOL IsAddressAccessible(PVOID Address)
 {
 	MEMORY_BASIC_INFORMATION MemInfo;
 
-	if (!Address)
+	if (!Address || Address > (PVOID)0x7fffffffffff)
 		return 0;
 
 	if (!SystemInfo.dwPageSize)
@@ -999,7 +1008,8 @@ int ScanPageForNonZero(PVOID Address)
 SIZE_T ScanForAccess(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-	SIZE_T p;
+	SIZE_T p, AllocationSize;
+	char c;
 
 	if (!Buffer)
 	{
@@ -1007,21 +1017,32 @@ SIZE_T ScanForAccess(PVOID Buffer, SIZE_T Size)
 		return 0;
 	}
 
+	AllocationSize = GetAllocationSize(Buffer);
+	if (AllocationSize < Size)
+		Size = AllocationSize;
+
 	__try
 	{
 		for (p=0; p<Size; p++)
-		{
-			char c = *((char*)Buffer+p);
-		}
+			c = *((char*)Buffer+p);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%p\n", (char*)Buffer+p);
 		if (p)
-			return p-1;
+		{
+			DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%p, accessible size 0x%x\n", (char*)Buffer+p, p);
+			return p;
+		}
 		else
+		{
+			DebugOutput("ScanForAccess: Exception occurred reading memory address 0x%p, memory inaccessible\n", (char*)Buffer+p);
 			return 0;
+		}
 	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ScanForAccess: Read memory address 0x%p, byte 0x%x\n", (char*)Buffer+p, c);
+#endif
 
 	return p;
 }
@@ -1875,7 +1896,7 @@ int DoProcessDump(PVOID CallerBase)
 				NewImageBase = NULL;
 		}
 
-		if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)))
+		if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)) && MemInfo.BaseAddress)
 		{
 			DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
 
@@ -1895,7 +1916,7 @@ int DoProcessDump(PVOID CallerBase)
 		}
 #ifdef DEBUG_COMMENTS
 		else
-			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", ImageBase);
 #endif
 		if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
 		{
@@ -1987,6 +2008,7 @@ int DoProcessDump(PVOID CallerBase)
 				DebugOutput("DoProcessDump: Error allocating memory for copy of region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
 				goto out;
 			}
+			DebugOutput("DoProcessDump: About to copy region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
 			__try
 			{
 				memcpy(TempBuffer, MemInfo.BaseAddress, MemInfo.RegionSize);
@@ -2086,8 +2108,14 @@ void CAPE_post_init()
 		NirvanaInit{);
 #endif
 
-	if (g_config.debugger && !g_config.base_on_apiname[0])
-		SetInitialBreakpoints(GetModuleHandle(NULL));
+	if (g_config.debugger && InitialiseDebugger())
+	{
+		DebugOutput("Post-init: Debugger initialised.\n");
+		if (!g_config.base_on_apiname[0])
+			SetInitialBreakpoints(GetModuleHandle(NULL));
+	}
+	else
+		DebugOutput("Post-init: Failed to initialise debugger.\n");
 
 	if (g_config.unpacker)
 		UnpackerInit();
