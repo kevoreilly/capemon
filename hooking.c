@@ -105,7 +105,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 			DebugOutput("caller_dispatch: Scanning calling region at 0x%p...\n", AllocationBase);
 		char ModulePath[MAX_PATH];
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-		if (g_config.yarascan && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
+		if (g_config.yarascan)
 			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
 		if (g_config.unpacker) {
 			PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
