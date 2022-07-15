@@ -34,8 +34,10 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context);
 extern void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context);
 extern void ResumeThreadHandler(DWORD Pid);
+extern void CreateRemoteThreadHandler(DWORD Pid);
 extern void NtContinueHandler(PCONTEXT ThreadContext);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName);
 extern BOOL BreakpointsSet;
 
 static lookup_t g_ignored_threads;
@@ -92,8 +94,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-	if (pid != GetCurrentProcessId())
+	if (pid != GetCurrentProcessId()) {
+		CreateRemoteThreadHandler(pid);
 		ProcessMessage(pid, tid);
+	}
 
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
@@ -117,8 +121,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 
-	if (pid != GetCurrentProcessId())
+	if (pid != GetCurrentProcessId()) {
+		CreateRemoteThreadHandler(pid);
 		ProcessMessage(pid, tid);
+	}
 
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
@@ -151,12 +157,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 		//	add_ignored_thread(tid);
 
 		if (g_config.debugger && !called_by_hook() && BreakpointsSet) {
+#ifdef DEBUG_COMMENTS
 			DebugOutput("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
+#endif
 			InitNewThreadBreakpoints(tid);
 		}
 
-		if (pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId()) {
+			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, tid);
+		}
 
 		if (CreateSuspended == FALSE) {
 			lasterror_t lasterror;
@@ -203,13 +213,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		//if (called_by_hook() && pid == GetCurrentProcessId())
 		//	add_ignored_thread(tid);
 
-		if (g_config.debugger && !called_by_hook() && BreakpointsSet) {
+		if (pid != GetCurrentProcessId()) {
+			CreateRemoteThreadHandler(pid);
+			ProcessMessage(pid, tid);
+		}
+		else if (g_config.debugger && !called_by_hook()) {
+#ifdef DEBUG_COMMENTS
 			DebugOutput("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
+#endif
 			InitNewThreadBreakpoints(tid);
 		}
-
-		if (pid != GetCurrentProcessId())
-			ProcessMessage(pid, tid);
 
 		if (!(CreateFlags & 1)) {
 			lasterror_t lasterror;
@@ -429,12 +442,28 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	HANDLE ret;
 	ENSURE_DWORD(lpThreadId);
 
-	ret = Old_CreateThread(lpThreadAttributes, dwStackSize,
-		lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
+	unsigned int DllRVA;
+	PCHAR FunctionName = NULL;
+	char *ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &DllRVA);
+	if (ModuleName)
+	{
+		__try
+		{
+			FunctionName = ScyllaGetExportNameByAddress(lpStartAddress, NULL);
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			FunctionName = NULL;
+		}
+	}
+
+	ret = Old_CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
 
 	if (ret != NULL) {
 		if (g_config.debugger && !called_by_hook()) {
+#ifdef DEBUG_COMMENTS
 			DebugOutput("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
+#endif
 			InitNewThreadBreakpoints(*lpThreadId);
 		}
 
@@ -445,13 +474,18 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 			set_lasterrors(&lasterror);
 		}
 
-		LOQ_nonnull("threading", "pphI", "StartRoutine", lpStartAddress, "Parameter", lpParameter,
-			"CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
-
+		if (!ModuleName)
+			LOQ_nonnull("threading", "pphI", "StartRoutine", lpStartAddress, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
+		else {
+			if (FunctionName)
+				LOQ_nonnull("threading", "pssphI", "StartRoutine", lpStartAddress, "ModuleName", ModuleName, "FunctionName", FunctionName, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
+			else
+				LOQ_nonnull("threading", "psphI", "StartRoutine", lpStartAddress, "ModuleName", ModuleName, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
+		}
 		disable_sleep_skip();
 	}
 	else
-		LOQ_nonnull("threading", "pphI", "StartRoutine", lpStartAddress, "Parameter", lpParameter,
+		LOQ_nonnull("threading", "pph", "StartRoutine", lpStartAddress, "Parameter", lpParameter,
 			"CreationFlags", dwCreationFlags);
 
 	return ret;
@@ -476,10 +510,14 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 		lpThreadId);
 
 	if (ret != NULL) {
-		if (pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId()) {
+			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, *lpThreadId);
+		}
 		else if (g_config.debugger && !called_by_hook()) {
+#ifdef DEBUG_COMMENTS
 			DebugOutput("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
+#endif
 			InitNewThreadBreakpoints(*lpThreadId);
 		}
 
@@ -525,10 +563,14 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 
 	if (NT_SUCCESS(ret) && ClientId && ThreadHandle) {
 		DWORD tid = tid_from_thread_handle(ThreadHandle);
-		if (pid != GetCurrentProcessId())
+		if (pid != GetCurrentProcessId()) {
+			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, tid);
+		}
 		else if (g_config.debugger && !called_by_hook()) {
+#ifdef DEBUG_COMMENTS
 			DebugOutput("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
+#endif
 			InitNewThreadBreakpoints(tid);
 		}
 		if (CreateSuspended == FALSE && is_valid_address_range((ULONG_PTR)ThreadHandle, 4)) {
