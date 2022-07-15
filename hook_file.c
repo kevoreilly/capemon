@@ -34,7 +34,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define UNILEN(x) (sizeof(x) / sizeof(wchar_t) - 1)
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern HANDLE DebuggerLog;
 
 BOOL files_dumped, dropped_limit_reached;
 unsigned int dropped_count;
@@ -349,12 +348,6 @@ void file_handle_terminate()
 		}
 	}
 
-	if (g_config.debugger)
-	{
-		CloseHandle(DebuggerLog);
-		DebuggerLog = NULL;
-	}
-
 	files_dumped = TRUE;
 
 #ifdef DEBUG_COMMENTS
@@ -365,6 +358,8 @@ void file_handle_terminate()
 
 static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
 {
+	if (!wcslen(g_config.w_analyzer))
+		return FALSE;
 	wchar_t path[MAX_PATH_PLUS_TOLERANCE];
 	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
 	if (absolutepath) {
