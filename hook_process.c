@@ -47,6 +47,7 @@ extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
 extern void DebuggerShutdown();
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName);
 
 extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
@@ -1150,17 +1151,24 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 			ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
 			unsigned int offset;
 			char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
+			char *function_name = ScyllaGetExportNameByAddress((PVOID)ExceptionRecord->ExceptionInformation[1], NULL);
 			if (dllname && !strcmp(dllname, "ntdll.dll")) {
 				free(dllname);
 				// if trying to write to ntdll.dll, then just skip the instruction
 				if (!ntdll_protect_logged) {
 					ntdll_protect_logged = TRUE;
 #ifdef _WIN64
-					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
+					if (function_name)
+						DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (%s - 0x%x - 0x%x)\n", Context->Rip, function_name, ExceptionRecord->ExceptionInformation[1], offset);
+					else
+						DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (x%x - 0x%x)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
 				}
 				Context->Rip += lde((void*)Context->Rip);
 #else
-					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
+					if (function_name)
+						DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (%s - 0x%x - 0x%x)\n", Context->Eip, function_name, ExceptionRecord->ExceptionInformation[1], offset);
+					else
+						DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (0x%x - 0x%x)\n", Context->Eip, ExceptionRecord->ExceptionInformation[1], offset);
 				}
 				Context->Eip += lde((void*)Context->Eip);
 #endif
