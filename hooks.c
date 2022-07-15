@@ -87,6 +87,9 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
@@ -482,6 +485,8 @@ hook_t full_hooks[] = {
 	HOOK(advapi32, OpenServiceW),
 	HOOK(advapi32, StartServiceA),
 	HOOK(advapi32, StartServiceW),
+	HOOK(sechost, StartServiceA),
+	HOOK(sechost, StartServiceW),
 	HOOK(advapi32, ControlService),
 	HOOK(advapi32, DeleteService),
 
@@ -610,6 +615,9 @@ hook_t min_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
 
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
@@ -672,6 +680,8 @@ hook_t min_hooks[] = {
 
 	HOOK(advapi32, StartServiceA),
 	HOOK(advapi32, StartServiceW),
+	HOOK(sechost, StartServiceA),
+	HOOK(sechost, StartServiceW),
 
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
@@ -731,6 +741,9 @@ hook_t office_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
@@ -1248,6 +1261,9 @@ hook_t ie_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
@@ -1721,6 +1737,9 @@ hook_t firefox_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
@@ -2269,6 +2288,8 @@ void set_hooks()
 	DWORD our_tid = GetCurrentThreadId();
 	DWORD our_pid = GetCurrentProcessId();
 
+	BOOL TestHooks = FALSE;
+
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
 	if (!GetVersionEx(&OSVersion))
@@ -2316,9 +2337,13 @@ void set_hooks()
 	else if (path_is_system(our_process_path_w))
 	{
 		if (!_stricmp(our_process_name, "msiexec.exe")) {
-
 			const char *excluded_apis[] = {
 				"NtAllocateVirtualMemory",
+				"NtProtectVirtualMemory",
+				"VirtualProtectEx",
+				"CryptDecodeMessage",
+				"CryptDecryptMessage",
+				"NtCreateThreadEx",
 				"SetWindowLongPtrA",
 				"SetWindowLongPtrW",
 				"NtWaitForSingleObject",
@@ -2371,13 +2396,35 @@ void set_hooks()
 					break;
 				}
 			}
-
-			DebugOutput("MsiExec hook set enabled.\n");
+			g_config.ntdll_protect = 0;
+			g_config.yarascan = 0;
+			g_config.msi = 1;
+			DebugOutput("MsiExec hook set enabled\n");
+		}
+		else if (!_stricmp(our_process_name, "services.exe")) {
+			g_config.yarascan = 0;
+			g_config.caller_dump = 0;
+			g_config.injection = 0;
+			g_config.minhook = 1;
+			DebugOutput("services.exe hook set enabled\n");
+		}
+		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch")) {
+			g_config.yarascan = 0;
+			g_config.caller_dump = 0;
+			g_config.injection = 0;
+			g_config.minhook = 1;
+			DebugOutput("DCOM service hook set enabled\n");
 		}
 	}
 
 	// Hook set selection
-	if (g_config.tlsdump) {
+	if (TestHooks) {
+		DebugOutput("Test hook set enabled");
+		hooks = test_hooks;
+		hooks_size = sizeof(test_hooks);
+		hooks_arraysize = ARRAYSIZE(test_hooks);
+	}
+	else if (g_config.tlsdump) {
 		hooks = tls_hooks;
 		hooks_size = sizeof(tls_hooks);
 		hooks_arraysize = ARRAYSIZE(tls_hooks);

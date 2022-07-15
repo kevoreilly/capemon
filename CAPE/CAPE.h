@@ -34,6 +34,7 @@ PVOID GetAllocationBase(PVOID Address);
 SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
 SIZE_T GetAccessibleSize(PVOID Address);
+PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);

@@ -30,6 +30,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
+extern PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
 
 PVOID LdrpInvertedFunctionTableSRWLock;
 
@@ -953,8 +954,18 @@ int hook_api(hook_t *h, int type)
 			addr = (unsigned char *)get_olescript_parsescripttext_addr(hmod);
 		else if (!strcmp(h->funcname, "CDocument_write"))
 			addr = (unsigned char *)get_cdocument_write_addr(hmod);
-		else
+		else if (!wcscmp(h->library, L"combase")) {
+			PVOID getprocaddr = (PVOID)GetProcAddress(hmod, h->funcname);
+			addr = (unsigned char *)GetExportAddress(hmod, (PCHAR)h->funcname);
+			if (addr && (PVOID)addr != getprocaddr)
+				DebugOutput("hook_api: combase::%s export address 0x%p differs from GetProcAddress -> 0x%p\n", h->funcname, addr, getprocaddr);
+		}
+		else {
+			PVOID exportaddr = GetExportAddress(hmod, (PCHAR)h->funcname);
 			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+			if (exportaddr && (PVOID)addr != exportaddr)
+				DebugOutput("hook_api: Warning - %s export address 0x%p differs from GetProcAddress -> 0x%p\n", h->funcname, exportaddr, addr);
+		}
 
 		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
 			DWORD timestamp = GetTimeStamp(hmod);

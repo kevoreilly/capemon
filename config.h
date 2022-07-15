@@ -212,6 +212,9 @@ struct _g_config {
 	// Internet Explorer hook set
 	int iexplore;
 
+	// MSI hook set
+	int msi;
+
 	// Allow scans/dumps with loader lock held
 	int loaderlock_scans;
 

@@ -138,6 +138,48 @@ void pipe(char* Buffer, SIZE_T Length)
 	return;
 }
 
+int CopyConfig(DWORD ProcessId, char *DllName)
+{
+	char config_fname[MAX_PATH], analyzer_path[MAX_PATH], system_fname[MAX_PATH];
+	FILE *fp;
+
+	// look for the config in monitor directory
+	strncpy(analyzer_path, DllName, strlen(DllName));
+	PathRemoveFileSpec(analyzer_path); // remove filename
+	snprintf(config_fname, MAX_PATH, "%s\\%u.ini", analyzer_path, ProcessId);
+
+	fp = fopen(config_fname, "r");
+
+	// for debugging purposes
+	if (fp == NULL) {
+		memset(config_fname, 0, sizeof(config_fname));
+		snprintf(config_fname, MAX_PATH, "%s\\config.ini", analyzer_path);
+		fp = fopen(config_fname, "r");
+		if (fp == NULL)
+			return 0;
+	}
+
+	if (fp == NULL)
+	{
+		ErrorOutput("Loader: Failed to read config file %s", config_fname);
+		return 0;
+	}
+
+	fclose(fp);
+
+	memset(system_fname, 0, sizeof(system_fname));
+	snprintf(system_fname, MAX_PATH, "C:\\%u.ini", ProcessId);
+	if (!CopyFile(config_fname, system_fname, 0))
+	{
+		ErrorOutput("Loader: Failed to copy config file %s to system path %s", config_fname, system_fname);
+		return 0;
+	}
+
+	DebugOutput("Loader: Copied config file %s to system path %s", config_fname, system_fname);
+
+	return 1;
+}
+
 int ReadConfig(DWORD ProcessId, char *DllName)
 {
 	char Buffer[MAX_PATH], config_fname[MAX_PATH], analyzer_path[MAX_PATH];
@@ -1103,8 +1145,35 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 
 	if (ProcessHandle == NULL)
 	{
-		ErrorOutput("InjectDll: Failed to open process");
 		RetVal = 0;
+		if (GetLastError() == ERROR_ACCESS_DENIED)
+		{
+			// On Win10+ this could mean the target process is PPL (e.g. services.exe)
+			// Try injecting with PPLinject (https://github.com/twinwave-security/PPLinject)
+#ifdef _WIN64
+			char PPLinject[] = "PPLinject64.exe";
+#else
+			char PPLinject[] = "PPLinject.exe";
+#endif
+			char CommandLine[BUFSIZE];
+			PROCESS_INFORMATION pi;
+			STARTUPINFOEX sie = {sizeof(sie)};
+#ifdef DEBUG_COMMENTS
+			if (strlen(LogPipe))
+				sprintf_s(CommandLine, sizeof(CommandLine)-1, "%s -d %d %s %s", PPLinject, ProcessId, DllPath, LogPipe);
+			else
+#endif
+				sprintf_s(CommandLine, sizeof(CommandLine)-1, "%s %d %s", PPLinject, ProcessId, DllPath);
+			CopyConfig(ProcessId, (PCHAR)DllPath);
+			if (!CreateProcess(NULL, CommandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &sie.StartupInfo, &pi))
+				DebugOutput("Loader: Failed to open process, PPLinject launch failed\n");
+			else
+			{
+				DebugOutput("Loader: Unable to open process, launched: %s\n", CommandLine);
+				RetVal = 1;
+			}
+		}
+		else ErrorOutput("InjectDll: Failed to open process");
 		goto out;
 	}
 
@@ -1500,7 +1569,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			return 0;
 		}
 
-		if (__argc > 4)
+		if (__argc > 3)
 		{
 			if (!_strnicmp(__argv[3], "ep", 2) && GetNtHeaders(PayloadBuffer))
 				Offset = (unsigned int)GetNtHeaders(PayloadBuffer)->OptionalHeader.AddressOfEntryPoint;

@@ -538,6 +538,62 @@ SIZE_T GetAccessibleSize(PVOID Address)
 }
 
 //**************************************************************************************
+PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
+//**************************************************************************************
+{
+	PIMAGE_DOS_HEADER DosHeader;
+	PIMAGE_NT_HEADERS NtHeader;
+	PIMAGE_EXPORT_DIRECTORY ImageExportDirectory;
+
+	if (!ModuleBase || !FunctionName)
+		return NULL;
+
+	if (!IsAddressAccessible(ModuleBase))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetExportAddress: 0x%p inaccessible\n", ModuleBase);
+#endif
+		return NULL;
+	}
+
+	if (*(WORD*)ModuleBase != IMAGE_DOS_SIGNATURE)
+		return NULL;
+
+	DosHeader = (PIMAGE_DOS_HEADER)ModuleBase;
+	NtHeader = (PIMAGE_NT_HEADERS)((PBYTE)DosHeader + DosHeader->e_lfanew);
+
+	if (!IsAddressAccessible(NtHeader))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetExportAddress: NT headers at 0x%p inaccessible\n", NtHeader);
+#endif
+		return NULL;
+	}
+
+	if (*(DWORD*)NtHeader != IMAGE_NT_SIGNATURE)
+		return NULL;
+
+	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(DWORD_PTR)(NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+
+	if (!ImageExportDirectory)
+		return NULL;
+
+	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + (DWORD_PTR)ImageExportDirectory);
+
+	for (unsigned int i = 0; i < ImageExportDirectory->NumberOfNames; i++)
+	{
+		PCHAR ExportName = NULL;
+		if (ImageExportDirectory->AddressOfNames)
+			unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
+			ExportName = (PCHAR)((PBYTE)ModuleBase + NameRVA[i]);
+		if (IsAddressAccessible(ExportName) && !strncmp(ExportName, FunctionName, strlen(FunctionName)))
+			return (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+	}
+
+	return NULL;
+}
+
+//**************************************************************************************
 BOOL IsAddressAccessible(PVOID Address)
 //**************************************************************************************
 {

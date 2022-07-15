@@ -180,6 +180,7 @@ void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify);
 
 extern char *our_process_path;
 extern wchar_t *our_process_path_w;
+extern wchar_t *our_commandline;
 
 BOOLEAN is_valid_address_range(ULONG_PTR start, DWORD len);
 

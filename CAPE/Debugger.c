@@ -2370,7 +2370,8 @@ BOOL InitialiseDebugger(void)
 
 #ifndef _WIN64
 	// Ensure wow64 patch is installed if needed
-	WoW64fix();
+	if (!g_config.msi)
+		WoW64fix();
 #endif
 
 	g_config.debugger = 1;
