@@ -3350,3 +3350,7 @@ HOOKDEF(int, WINAPI, WideCharToMultiByte,
 HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 );
+
+HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
+	__in HMODULE hLibModule
+);

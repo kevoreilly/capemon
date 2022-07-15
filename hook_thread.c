@@ -618,3 +618,11 @@ HOOKDEF(BOOL, WINAPI, SwitchToThread,
 	//return ret;
 	return TRUE;
 }
+
+HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
+	__in HMODULE hLibModule
+) {
+	BOOL ret = Old_DisableThreadLibraryCalls(hLibModule);
+	LOQ_bool("threading", "p", "Module", hLibModule);
+	return ret;
+}
