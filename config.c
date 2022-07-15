@@ -1141,6 +1141,7 @@ int read_config(void)
 	}
 
 	// config defaults
+	g_config.debugger = 1;
 	g_config.force_sleepskip = -1;
 #ifdef _WIN64
 	g_config.hook_type = HOOK_JMP_INDIRECT;
