@@ -373,7 +373,7 @@ BOOL YaraInit()
 
 		char FindString[MAX_PATH];
 		WIN32_FIND_DATA FindFileData;
-		sprintf(FindString, "%s\\*.yar*", yara_dir);
+		sprintf(FindString, "%s\\*.yar", yara_dir);
 #ifdef DEBUG_COMMENTS
 		DebugOutput("YaraInit: Yara search string: %s", FindString);
 #endif
@@ -414,6 +414,11 @@ BOOL YaraInit()
 			FindClose(hFind);
 
 			DebugOutput("YaraInit: Compiled %d rule files\n", count);
+		}
+		else
+		{
+			DebugOutput("YaraInit: Found no Yara rules in %s\n", yara_dir);
+			goto exit;
 		}
 
 		// Add 'internal' yara
