@@ -47,8 +47,15 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 	if (g_config.disable_logging)
 		return;
 
+	TCHAR *Character = DebugBuffer;
 	memset(DebugBuffer, 0, MAX_PATH*sizeof(CHAR));
 	_vsntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, lpOutputString, args);
+	while (*Character)
+	{   // Restrict to ASCII range
+		if (*Character < 0x0a || *Character > 0x7E)
+			*Character = 0x3F;  // '?'
+		Character++;
+	}
 	if (g_config.standalone)
 		OutputDebugString(DebugBuffer);
 	else
@@ -360,11 +367,12 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 	va_list args;
 	char *FullPathName, *OutputFilename, *Character;
 
+	if (g_config.no_logs > 1 || StopTrace)
+		return;
+
 	va_start(args, lpOutputString);
 
-	if (g_config.no_logs > 1)
-		return;
-	else if (g_config.no_logs)
+	if (g_config.no_logs)
 	{
 		OutputString(lpOutputString, args);
 		va_end(args);
@@ -387,7 +395,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
 	free(OutputFilename);
 
-	if (!DebuggerLog && !StopTrace)
+	if (!DebuggerLog)
 	{
 		time_t Time;
 		CHAR TimeBuffer[64];
@@ -396,7 +404,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
 		if (DebuggerLog == INVALID_HANDLE_VALUE)
 		{
-			ErrorOutput("DebuggerOutput: Unable to open debugger logfile %s.\n", FullPathName);
+			ErrorOutput("DebuggerOutput: Unable to open debugger logfile %s", FullPathName);
 			return;
 		}
 		DebugOutput("DebuggerOutput: Debugger logfile %s.\n", FullPathName);
@@ -408,11 +416,6 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 		WriteFile(DebuggerLog, DebuggerLine, (DWORD)strlen(DebuggerLine), (LPDWORD)&LastWriteLength, NULL);
 		while (*lpOutputString == 0x0a)
 			lpOutputString++;
-	}
-	else if (StopTrace)
-	{
-		va_end(args);
-		return;
 	}
 
 	memset(DebuggerLine, 0, MAX_PATH*sizeof(CHAR));
