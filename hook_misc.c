@@ -1086,7 +1086,7 @@ HOOKDEF(void, WINAPI, GlobalMemoryStatus,
 	BOOL ret = TRUE;
 	Old_GlobalMemoryStatus(lpBuffer);
 	if (!g_config.no_stealth && lpBuffer->dwTotalPhys < 0x80000000)
-		lpBuffer->dwTotalPhys = 0x200000000;
+		lpBuffer->dwTotalPhys = (SIZE_T)0x200000000;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->dwTotalPhys / (1024 * 1024));
 }
 
