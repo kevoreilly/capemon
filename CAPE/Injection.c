@@ -261,7 +261,7 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 				free(SectionName);
 				break;
 			}
-		free(SectionName);
+			free(SectionName);
 		}
 
 		PreviousSectionView = CurrentSectionView;
@@ -285,6 +285,7 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 
 		CurrentSectionView = CurrentSectionView->NextSectionView;
 		CurrentSectionView->SectionHandle = SectionHandle;
+
 		if (LocalView)
 		{
 			CurrentSectionView->LocalView = LocalView;
@@ -354,7 +355,7 @@ void DumpSectionViewsForPid(DWORD Pid)
 	PINJECTIONSECTIONVIEW CurrentSectionView;
 	DWORD BufferSize = MAX_PATH;
 	LPVOID PEPointer = NULL;
-	BOOL Dumped = FALSE;
+	BOOL Dumped;
 
 	if (Pid == GetCurrentProcessId())
 		return;
@@ -375,11 +376,14 @@ void DumpSectionViewsForPid(DWORD Pid)
 	{
 		if (CurrentInjectionInfo->MapDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
 		{
-			DebugOutput("DumpSectionViewsForPid: Shared section view found with pid %d, local address 0x%p.\n", Pid, CurrentSectionView->LocalView);
+			SIZE_T AccessibleSize = GetAccessibleSize(CurrentSectionView->LocalView);
+
+			DebugOutput("DumpSectionViewsForPid: Shared section view found with pid %d, size %d (accessible %d), local address 0x%p.\n", Pid, CurrentSectionView->ViewSize, AccessibleSize, CurrentSectionView->LocalView);
 
 			PEPointer = CurrentSectionView->LocalView;
+			Dumped = FALSE;
 
-			while (ScanForDisguisedPE(PEPointer, CurrentSectionView->ViewSize - ((DWORD_PTR)PEPointer - (DWORD_PTR)CurrentSectionView->LocalView), &PEPointer))
+			while (AccessibleSize && ScanForDisguisedPE(PEPointer, AccessibleSize - ((DWORD_PTR)PEPointer - (DWORD_PTR)CurrentSectionView->LocalView), &PEPointer))
 			{
 				DebugOutput("DumpSectionViewsForPid: Dumping PE image from shared section view, local address 0x%p.\n", PEPointer);
 
@@ -397,7 +401,7 @@ void DumpSectionViewsForPid(DWORD Pid)
 				((BYTE*)PEPointer)++;
 			}
 
-			if (Dumped == FALSE)
+			if (AccessibleSize && Dumped == FALSE)
 			{
 				DebugOutput("DumpSectionViewsForPid: no PE file found in shared section view, attempting raw dump.\n");
 
@@ -405,7 +409,7 @@ void DumpSectionViewsForPid(DWORD Pid)
 
 				CapeMetaData->TargetPid = Pid;
 
-				Dumped = DumpMemory(CurrentSectionView->LocalView, CurrentSectionView->ViewSize);
+				Dumped = DumpMemory(CurrentSectionView->LocalView, AccessibleSize);
 
 				if (Dumped)
 					DebugOutput("DumpSectionViewsForPid: Dumped shared section view.");
