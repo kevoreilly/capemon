@@ -146,6 +146,8 @@ VOID CALLBACK New_DllLoadNotification(
 			DebugOutput("The module loaded at 0x%p has been selected for coverage: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
 			if (g_config.debugger)
 				SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
+			if (g_config.yarascan)
+				YaraScan((PVOID)base_of_dll_of_interest, NotificationData->Loaded.SizeOfImage);
 		}
 		else if ((g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) ||
 			(path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && dllpath && !wcsnicmp(dllpath, library.Buffer, wcslen(library.Buffer)))) {
