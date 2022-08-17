@@ -91,15 +91,10 @@ void parse_config_line(char* line)
 					ensure_absolute_ascii_path(tmp, value);
 					g_config.file_of_interest = ascii_to_unicode_dup(tmp);
 					free(tmp);
-					// if the file of interest is our own executable, then don't do any special handling
-					if (wcsicmp(our_process_path_w, g_config.file_of_interest))
-						g_config.suspend_logging = TRUE;
 				}
-				else {
+				else
 					// is a URL
 					g_config.url_of_interest = ascii_to_unicode_dup(value);
-					g_config.suspend_logging = TRUE;
-				}
 			}
 		}
 		else if (!strcmp(key, "referrer")) {
@@ -998,14 +993,6 @@ void parse_config_line(char* line)
 			g_config.injection = value[0] == '1';
 			if (g_config.injection)
 				DebugOutput("Capture of injected payloads enabled.\n");
-		}
-		else if (!stricmp(key, "combo")) {
-			if (value[0] == '1') {
-				DebugOutput("Combined payload extractions enabled.\n");
-				g_config.compression = 1;
-				g_config.unpacker = 1;
-				g_config.injection = 1;
-			}
 		}
 		else if (!stricmp(key, "dump-config-region")) {
 			g_config.dump_config_region = value[0] == '1';
