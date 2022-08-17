@@ -25,6 +25,7 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define REGISTRY_VALUE_SIZE_MIN 1024
 
 void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 PVOID GetHookCallerBase();
