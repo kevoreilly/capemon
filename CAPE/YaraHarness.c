@@ -44,6 +44,7 @@ char InternalYara[] =
 	"rule RtlInsertInvertedFunctionTable"
 	"{strings:$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
 	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
+	"$10_0_10240_16384 = {48 8D 0D [4] 48 8B E8 E8 [4] 33 C9 E8 [4] 8B 15 [4] 3B 15 [4] 0F 84}"
 	"condition:uint16(0) == 0x5a4d and any of them}";
 
 BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
@@ -189,7 +190,7 @@ int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_da
 #ifdef _WIN64
 					if (!strcmp(Rule->identifier, "RtlInsertInvertedFunctionTable"))
 					{
-						if (!strcmp(String->identifier, "$10_0_19041_662") || !strcmp(String->identifier, "$10_0_18362_1350"))
+						if (!strcmp(String->identifier, "$10_0_19041_662") || !strcmp(String->identifier, "$10_0_18362_1350") || !strcmp(String->identifier, "$10_0_10240_16384"))
 						{
 							PVOID RtlInsertInvertedFunctionTable = (PVOID)((PBYTE)user_data + Match->offset);
 							LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
@@ -416,16 +417,12 @@ BOOL YaraInit()
 			DebugOutput("YaraInit: Compiled %d rule files\n", count);
 		}
 		else
-		{
 			DebugOutput("YaraInit: Found no Yara rules in %s\n", yara_dir);
-			goto exit;
-		}
 
 		// Add 'internal' yara
 		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)
-		{
 			DebugOutput("YaraInit: Failed to add internal yara rules.\n", compiled_rules);
-		}
+
 		Result = yr_compiler_get_rules(Compiler, &Rules);
 
 		if (Result != ERROR_SUCCESS)
