@@ -1908,7 +1908,10 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		return;
 	}
 
-	if (IsDotNetImage(MemInfo.BaseAddress))
+	char ModulePath[MAX_PATH];
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
+
+	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
 	{
 		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
 
@@ -2048,8 +2051,8 @@ int DoProcessDump(PVOID CallerBase)
 			continue;
 		}
 
-		//if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase && !is_in_dll_range((ULONG_PTR)Address))
-		//	DumpInterestingRegions(MemInfo);
+		if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase && !is_in_dll_range((ULONG_PTR)Address))
+			DumpInterestingRegions(MemInfo);
 
 		if (g_config.procmemdump && !is_in_dll_range((ULONG_PTR)Address))
 		{
@@ -2064,7 +2067,7 @@ int DoProcessDump(PVOID CallerBase)
 				DebugOutput("DoProcessDump: Error allocating memory for copy of region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
 				goto out;
 			}
-			DebugOutput("DoProcessDump: About to copy region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
+
 			__try
 			{
 				memcpy(TempBuffer, MemInfo.BaseAddress, MemInfo.RegionSize);
