@@ -96,26 +96,86 @@ VOID TraceOutputFuncAddress(PVOID Address, _DecodedInst DecodedInstruction, PVOI
 	DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
 }
 
-SIZE_T StrTest(char* StrCandidate)
+SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
 {
-	char* Character = (char*)StrCandidate;
-    __try
-    {
-        if (Character)
-        {
-            while (*Character)
-            {   // Restrict to ASCII range
-                if (*Character < 0x0a || *Character > 0x7E)
-                    break;
-                Character++;
-            }
-        }
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        ;
-    }
-    return (SIZE_T)(Character - StrCandidate);
+	if (!IsAddressAccessible((PVOID)StrCandidate))
+        return 0;
+
+	SIZE_T Count;
+	if (!ReadProcessMemory(GetCurrentProcess(), StrCandidate, OutputBuffer, BufferSize, &Count))
+	{
+		DebugOutput("StrTest: ReadProcessMemory bombed on 0x%p", StrCandidate);
+		return 0;
+	}
+	PCHAR Character = (PCHAR)OutputBuffer;
+	Count = 0;
+	while (*Character)
+	{
+		if (Count == BufferSize)
+			break;
+		// Restrict to ASCII range
+		if ((unsigned int)*Character < 0x0a || (unsigned int)*Character > 0x7E)
+		{
+			*Character = 0;
+			break;
+		}
+		if (*Character == 0x0d)
+			*Character = 0x20;
+		Character++;
+		Count++;
+	}
+    return Count;
+}
+
+SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
+{
+	if (!IsAddressAccessible((PVOID)StrCandidate))
+        return 0;
+
+	SIZE_T Count;
+	if (!ReadProcessMemory(GetCurrentProcess(), StrCandidate, OutputBuffer, BufferSize, &Count))
+	{
+		DebugOutput("StrTestW: ReadProcessMemory bombed on 0x%p", StrCandidate);
+		return 0;
+	}
+	PWCHAR Character = (PWCHAR)OutputBuffer;
+	Count = 0;
+	while (*Character)
+	{
+		if (Count == BufferSize)
+			break;
+		// Restrict to ASCII range
+		if ((unsigned int)*Character < 0x0a || (unsigned int)*Character > 0x7E)
+		{
+			*Character = 0;
+			break;
+		}
+		if (*Character == 0x0d)
+			*Character = 0x20;
+		Character++;
+		Count++;
+	}
+    return Count;
+}
+
+void StringCheck(PVOID PossibleString)
+{
+	char OutputBuffer[MAX_PATH] = "";
+	WCHAR OutputBufferW[MAX_PATH] = L"";
+
+	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
+	if (Size > 32)
+		DebuggerOutput(" \"%.32s...\"", (PCHAR)OutputBuffer);
+	else if (Size > 3)
+		DebuggerOutput(" \"%.32s\"", (PCHAR)OutputBuffer);
+	else
+	{
+		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
+		if (Size > 32)
+			DebuggerOutput(" L\"%.32ws...\"", (PWCHAR)OutputBufferW);
+		else if (Size > 3)
+			DebuggerOutput(" L\"%.32ws\"", (PWCHAR)OutputBufferW);
+	}
 }
 
 PVOID GetRegister(PCONTEXT Context, char* RegString)
@@ -707,7 +767,8 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #ifndef _WIN64
 	else if (!strnicmp(Action, "Print:", 6))
 	{
-		if (Target && StrTest((char*)Target))
+		char OutputBuffer[MAX_PATH] = "";
+		if (Target && StrTest((char*)Target, OutputBuffer, MAX_PATH))
 			DebuggerOutput("ActionDispatcher: Print 0x%p -> %s\n", Target, Target);
 		else
 			DebuggerOutput("ActionDispatcher: Nothing to print at 0x%p\n", Target);
@@ -929,95 +990,179 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
 		if (LastContext.Rax != ExceptionInfo->ContextRecord->Rax)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RAX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rax);
+		{
+			DebuggerOutput(" RAX=%#I64x", ExceptionInfo->ContextRecord->Rax);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rax);
+		}
 
 		if (LastContext.Rbx != ExceptionInfo->ContextRecord->Rbx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbx);
+		{
+			DebuggerOutput(" RBX=%#I64x", ExceptionInfo->ContextRecord->Rbx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbx);
+		}
 
 		if (LastContext.Rcx != ExceptionInfo->ContextRecord->Rcx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RCX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rcx);
+		{
+			DebuggerOutput(" RCX=%#I64x", ExceptionInfo->ContextRecord->Rcx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rcx);
+		}
 
 		if (LastContext.Rdx != ExceptionInfo->ContextRecord->Rdx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdx);
+		{
+			DebuggerOutput(" RDX=%#I64x", ExceptionInfo->ContextRecord->Rdx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdx);
+		}
 
 		if (LastContext.Rsi != ExceptionInfo->ContextRecord->Rsi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsi);
+		{
+			DebuggerOutput(" RSI=%#I64x", ExceptionInfo->ContextRecord->Rsi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsi);
+		}
 
 		if (LastContext.Rdi != ExceptionInfo->ContextRecord->Rdi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdi);
+		{
+			DebuggerOutput(" RDI=%#I64x", ExceptionInfo->ContextRecord->Rdi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdi);
+		}
 
 		if (LastContext.Rsp != ExceptionInfo->ContextRecord->Rsp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSP=%#I64x *RSP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsp, *(QWORD*)ExceptionInfo->ContextRecord->Rsp);
+		{
+			DebuggerOutput(" RSP=%#I64x", ExceptionInfo->ContextRecord->Rsp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsp);
+			DebuggerOutput(" *RSP=%#I64x", *(QWORD*)ExceptionInfo->ContextRecord->Rsp);
+			StringCheck((PVOID)*(QWORD*)ExceptionInfo->ContextRecord->Rsp);
+		}
 
 		if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbp);
+		{
+			DebuggerOutput(" RBP=%#I64x", ExceptionInfo->ContextRecord->Rbp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbp);
+		}
 
 		if (LastContext.R8 != ExceptionInfo->ContextRecord->R8)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R8=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R8);
+		{
+			DebuggerOutput(" R8=%#I64x", ExceptionInfo->ContextRecord->R8);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R8);
+		}
 
 		if (LastContext.R9 != ExceptionInfo->ContextRecord->R9)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R9=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R9);
+		{
+			DebuggerOutput(" R9=%#I64x", ExceptionInfo->ContextRecord->R9);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R9);
+		}
 
 		if (LastContext.R10 != ExceptionInfo->ContextRecord->R10)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R10=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R10);
+		{
+			DebuggerOutput(" R10=%#I64x", ExceptionInfo->ContextRecord->R10);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R10);
+		}
 
 		if (LastContext.R11 != ExceptionInfo->ContextRecord->R11)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R11=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R11);
+		{
+			DebuggerOutput(" R11=%#I64x", ExceptionInfo->ContextRecord->R11);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R11);
+		}
 
 		if (LastContext.R12 != ExceptionInfo->ContextRecord->R12)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R12=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R12);
+		{
+			DebuggerOutput(" R12=%#I64x", ExceptionInfo->ContextRecord->R12);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R12);
+		}
 
 		if (LastContext.R13 != ExceptionInfo->ContextRecord->R13)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R13=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R13);
+		{
+			DebuggerOutput(" R13=%#I64x", ExceptionInfo->ContextRecord->R13);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R13);
+		}
 
 		if (LastContext.R14 != ExceptionInfo->ContextRecord->R14)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R14=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R14);
+		{
+			DebuggerOutput(" R14=%#I64x", ExceptionInfo->ContextRecord->R14);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R14);
+		}
 
 		if (LastContext.R15 != ExceptionInfo->ContextRecord->R15)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R15=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R15);
+		{
+			DebuggerOutput(" R15=%#I64x", ExceptionInfo->ContextRecord->R15);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R15);
+		}
 
 		if (LastContext.Xmm0.Low != ExceptionInfo->ContextRecord->Xmm0.Low)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.Low);
+		{
+			DebuggerOutput(" Xmm0.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm0.Low);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.Low);
+		}
 
 		if (LastContext.Xmm0.High != ExceptionInfo->ContextRecord->Xmm0.High)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.High);
+		{
+			DebuggerOutput(" Xmm0.High=%#I64x", ExceptionInfo->ContextRecord->Xmm0.High);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.High);
+		}
 
 		if (LastContext.Xmm1.Low != ExceptionInfo->ContextRecord->Xmm1.Low)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.Low);
+		{
+			DebuggerOutput(" Xmm1.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm1.Low);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.Low);
+		}
 
 		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
+		{
+			DebuggerOutput(" Xmm1.High=%#I64x", ExceptionInfo->ContextRecord->Xmm1.High);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.High);
+		}
 #else
 	if (!FilterTrace)
 	{
-		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-
 		if (LastContext.Eax != ExceptionInfo->ContextRecord->Eax)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EAX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Eax);
+		{
+			DebuggerOutput(" EAX=0x%x", ExceptionInfo->ContextRecord->Eax);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Eax);
+		}
 
 		if (LastContext.Ebx != ExceptionInfo->ContextRecord->Ebx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebx);
+		{
+			DebuggerOutput(" EBX=0x%x", ExceptionInfo->ContextRecord->Ebx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebx);
+		}
 
 		if (LastContext.Ecx != ExceptionInfo->ContextRecord->Ecx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ECX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ecx);
+		{
+			DebuggerOutput(" ECX=0x%x", ExceptionInfo->ContextRecord->Ecx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ecx);
+		}
 
 		if (LastContext.Edx != ExceptionInfo->ContextRecord->Edx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edx);
+		{
+			DebuggerOutput(" EDX=0x%x", ExceptionInfo->ContextRecord->Edx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edx);
+		}
 
 		if (LastContext.Esi != ExceptionInfo->ContextRecord->Esi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esi);
+		{
+			DebuggerOutput(" ESI=0x%x", ExceptionInfo->ContextRecord->Esi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esi);
+		}
 
 		if (LastContext.Edi != ExceptionInfo->ContextRecord->Edi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edi);
+		{
+			DebuggerOutput(" EDI=0x%x", ExceptionInfo->ContextRecord->Edi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edi);
+		}
 
 		if (LastContext.Esp != ExceptionInfo->ContextRecord->Esp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESP=0x%x *ESP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esp, *(DWORD*)ExceptionInfo->ContextRecord->Esp);
+		{
+			DebuggerOutput(" ESP=0x%x", ExceptionInfo->ContextRecord->Esp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esp);
+			DebuggerOutput(" *ESP=0x%x", *(DWORD*)ExceptionInfo->ContextRecord->Esp);
+			StringCheck((PVOID)*(DWORD*)ExceptionInfo->ContextRecord->Esp);
+		}
 
 		if (LastContext.Ebp != ExceptionInfo->ContextRecord->Ebp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebp);
+		{
+			DebuggerOutput(" EBP=0x%x", ExceptionInfo->ContextRecord->Ebp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebp);
+		}
 #endif
-
-		DebuggerOutput(DebuggerBuffer);
 	}
 
 	if (!FilterTrace)
@@ -1531,7 +1676,8 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
 	}
-	else if (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 4))
+	//else if (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 4) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
+	else if (!strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
 	{
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
@@ -1866,95 +2012,179 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
 
 		if (LastContext.Rax != ExceptionInfo->ContextRecord->Rax)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RAX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rax);
+		{
+			DebuggerOutput(" RAX=%#I64x", ExceptionInfo->ContextRecord->Rax);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rax);
+		}
 
 		if (LastContext.Rbx != ExceptionInfo->ContextRecord->Rbx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbx);
+		{
+			DebuggerOutput(" RBX=%#I64x", ExceptionInfo->ContextRecord->Rbx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbx);
+		}
 
 		if (LastContext.Rcx != ExceptionInfo->ContextRecord->Rcx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RCX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rcx);
+		{
+			DebuggerOutput(" RCX=%#I64x", ExceptionInfo->ContextRecord->Rcx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rcx);
+		}
 
 		if (LastContext.Rdx != ExceptionInfo->ContextRecord->Rdx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDX=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdx);
+		{
+			DebuggerOutput(" RDX=%#I64x", ExceptionInfo->ContextRecord->Rdx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdx);
+		}
 
 		if (LastContext.Rsi != ExceptionInfo->ContextRecord->Rsi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsi);
+		{
+			DebuggerOutput(" RSI=%#I64x", ExceptionInfo->ContextRecord->Rsi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsi);
+		}
 
 		if (LastContext.Rdi != ExceptionInfo->ContextRecord->Rdi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RDI=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rdi);
+		{
+			DebuggerOutput(" RDI=%#I64x", ExceptionInfo->ContextRecord->Rdi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdi);
+		}
 
 		if (LastContext.Rsp != ExceptionInfo->ContextRecord->Rsp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RSP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rsp);
+		{
+			DebuggerOutput(" RSP=%#I64x", ExceptionInfo->ContextRecord->Rsp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsp);
+			DebuggerOutput(" *RSP=%#I64x", *(QWORD*)ExceptionInfo->ContextRecord->Rsp);
+			StringCheck((PVOID)*(QWORD*)ExceptionInfo->ContextRecord->Rsp);
+		}
 
 		if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s RBP=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Rbp);
+		{
+			DebuggerOutput(" RBP=%#I64x", ExceptionInfo->ContextRecord->Rbp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbp);
+		}
 
 		if (LastContext.R8 != ExceptionInfo->ContextRecord->R8)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R8=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R8);
+		{
+			DebuggerOutput(" R8=%#I64x", ExceptionInfo->ContextRecord->R8);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R8);
+		}
 
 		if (LastContext.R9 != ExceptionInfo->ContextRecord->R9)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R9=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R9);
+		{
+			DebuggerOutput(" R9=%#I64x", ExceptionInfo->ContextRecord->R9);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R9);
+		}
 
 		if (LastContext.R10 != ExceptionInfo->ContextRecord->R10)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R10=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R10);
+		{
+			DebuggerOutput(" R10=%#I64x", ExceptionInfo->ContextRecord->R10);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R10);
+		}
 
 		if (LastContext.R11 != ExceptionInfo->ContextRecord->R11)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R11=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R11);
+		{
+			DebuggerOutput(" R11=%#I64x", ExceptionInfo->ContextRecord->R11);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R11);
+		}
 
 		if (LastContext.R12 != ExceptionInfo->ContextRecord->R12)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R12=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R12);
+		{
+			DebuggerOutput(" R12=%#I64x", ExceptionInfo->ContextRecord->R12);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R12);
+		}
 
 		if (LastContext.R13 != ExceptionInfo->ContextRecord->R13)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R13=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R13);
+		{
+			DebuggerOutput(" R13=%#I64x", ExceptionInfo->ContextRecord->R13);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R13);
+		}
 
 		if (LastContext.R14 != ExceptionInfo->ContextRecord->R14)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R14=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R14);
+		{
+			DebuggerOutput(" R14=%#I64x", ExceptionInfo->ContextRecord->R14);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R14);
+		}
 
 		if (LastContext.R15 != ExceptionInfo->ContextRecord->R15)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s R15=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->R15);
+		{
+			DebuggerOutput(" R15=%#I64x", ExceptionInfo->ContextRecord->R15);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->R15);
+		}
 
 		if (LastContext.Xmm0.Low != ExceptionInfo->ContextRecord->Xmm0.Low)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.Low);
+		{
+			DebuggerOutput(" Xmm0.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm0.Low);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.Low);
+		}
 
 		if (LastContext.Xmm0.High != ExceptionInfo->ContextRecord->Xmm0.High)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm0.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm0.High);
+		{
+			DebuggerOutput(" Xmm0.High=%#I64x", ExceptionInfo->ContextRecord->Xmm0.High);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.High);
+		}
 
 		if (LastContext.Xmm1.Low != ExceptionInfo->ContextRecord->Xmm1.Low)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.Low=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.Low);
+		{
+			DebuggerOutput(" Xmm1.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm1.Low);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.Low);
+		}
 
 		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s Xmm1.High=%#I64x", DebuggerBuffer, ExceptionInfo->ContextRecord->Xmm1.High);
+		{
+			DebuggerOutput(" Xmm1.High=%#I64x", ExceptionInfo->ContextRecord->Xmm1.High);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.High);
+		}
 #else
 	if (!FilterTrace)
 	{
-		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-
 		if (LastContext.Eax != ExceptionInfo->ContextRecord->Eax)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EAX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Eax);
+		{
+			DebuggerOutput(" EAX=0x%x", ExceptionInfo->ContextRecord->Eax);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Eax);
+		}
 
 		if (LastContext.Ebx != ExceptionInfo->ContextRecord->Ebx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebx);
+		{
+			DebuggerOutput(" EBX=0x%x", ExceptionInfo->ContextRecord->Ebx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebx);
+		}
 
 		if (LastContext.Ecx != ExceptionInfo->ContextRecord->Ecx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ECX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ecx);
+		{
+			DebuggerOutput(" ECX=0x%x", ExceptionInfo->ContextRecord->Ecx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ecx);
+		}
 
 		if (LastContext.Edx != ExceptionInfo->ContextRecord->Edx)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDX=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edx);
+		{
+			DebuggerOutput(" EDX=0x%x", ExceptionInfo->ContextRecord->Edx);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edx);
+		}
 
 		if (LastContext.Esi != ExceptionInfo->ContextRecord->Esi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esi);
+		{
+			DebuggerOutput(" ESI=0x%x", ExceptionInfo->ContextRecord->Esi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esi);
+		}
 
 		if (LastContext.Edi != ExceptionInfo->ContextRecord->Edi)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EDI=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Edi);
+		{
+			DebuggerOutput(" EDI=0x%x", ExceptionInfo->ContextRecord->Edi);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edi);
+		}
 
 		if (LastContext.Esp != ExceptionInfo->ContextRecord->Esp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s ESP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Esp);
+		{
+			DebuggerOutput(" ESP=0x%x", ExceptionInfo->ContextRecord->Esp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esp);
+			DebuggerOutput(" *ESP=0x%x", *(DWORD*)ExceptionInfo->ContextRecord->Esp);
+			StringCheck((PVOID)*(DWORD*)ExceptionInfo->ContextRecord->Esp);
+		}
 
 		if (LastContext.Ebp != ExceptionInfo->ContextRecord->Ebp)
-			_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "%s EBP=0x%x", DebuggerBuffer, ExceptionInfo->ContextRecord->Ebp);
+		{
+			DebuggerOutput(" EBP=0x%x", ExceptionInfo->ContextRecord->Ebp);
+			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebp);
+		}
 #endif
-
-		DebuggerOutput(DebuggerBuffer);
 	}
 
 	if (!FilterTrace)
