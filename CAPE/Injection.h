@@ -60,10 +60,16 @@ typedef struct InjectionInfo
 } INJECTIONINFO, *PINJECTIONINFO;
 
 struct InjectionInfo *InjectionInfoList;
+struct InjectionSectionView *SectionViewList;
 
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId);
 PINJECTIONINFO GetInjectionInfoFromHandle(HANDLE ProcessHandle);
 PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId);
 BOOL DropInjectionInfo(HANDLE ProcessHandle);
-
-struct InjectionSectionView *SectionViewList;
+void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
+void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
+void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
+void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
+void UnmapSectionViewHandler(PVOID BaseAddress);
+void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
+void TerminateHandler();

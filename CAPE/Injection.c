@@ -416,6 +416,8 @@ void DumpSectionViewsForPid(DWORD Pid)
 				else
 					DebugOutput("DumpSectionViewsForPid: Failed to dump shared section view.");
 			}
+
+			CurrentInjectionInfo->MapDetected = FALSE;
 		}
 
 		//DropSectionView(CurrentSectionView);
@@ -796,6 +798,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 	else if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
 	{
 		CurrentInjectionInfo->MapDetected = TRUE;
+		CurrentInjectionInfo->ProcessHandle = ProcessHandle;
 		CurrentSectionView = GetSectionView(SectionHandle);
 
 		if (!CurrentSectionView)
@@ -1095,9 +1098,11 @@ void TerminateHandler()
 {
 	PINJECTIONINFO CurrentInjectionInfo = InjectionInfoList;
 
-	while (CurrentInjectionInfo && CurrentInjectionInfo->ProcessHandle && CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->ProcessId)
+	while (CurrentInjectionInfo && CurrentInjectionInfo->ProcessHandle && CurrentInjectionInfo->ProcessId)
 	{
-		if (CurrentInjectionInfo->MapDetected && !CurrentInjectionInfo->ImageDumped)
+		DumpSectionViewsForPid(CurrentInjectionInfo->ProcessId);
+
+		if (CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->MapDetected && !CurrentInjectionInfo->ImageDumped)
 		{
 			CapeMetaData->DumpType = INJECTION_PE;
 			CapeMetaData->TargetPid = CurrentInjectionInfo->ProcessId;

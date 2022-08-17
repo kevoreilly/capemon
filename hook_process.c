@@ -29,16 +29,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
+#include "CAPE\Injection.h"
 #include "CAPE\Unpacker.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
-extern void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
-extern void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
-extern void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
-extern void UnmapSectionViewHandler(PVOID BaseAddress);
-extern void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
@@ -472,6 +467,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 			LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 		}
 	}
+
+	if (process_shutting_down && g_config.injection)
+		TerminateHandler();
 
 	if (process_shutting_down && g_config.unpacker) {
 		DebugOutput("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
@@ -1179,7 +1177,7 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 		}
 	}
 
-	if (g_config.log_exceptions && !((ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) && !(g_config.debugger && (ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP || ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION || ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION))) {
+	if (g_config.log_exceptions && !((ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) && !(g_config.debugger && SingleStepHandler && (ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP || ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION || ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION))) {
 		int ret = 0;
 		if (!ExceptionRecord->NumberParameters && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
 			LOQ_void("system", "ppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags);
