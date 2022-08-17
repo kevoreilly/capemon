@@ -101,6 +101,7 @@ extern "C" {
 BOOL DebuggerInitialised;
 
 LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
+SINGLE_STEP_HANDLER SingleStepHandler;
 PVOID CAPEExceptionFilterHandle;
 PEXCEPTION_ROUTINE SEH_TopLevelHandler;
 LPTOP_LEVEL_EXCEPTION_FILTER OriginalExceptionHandler;

@@ -62,7 +62,6 @@ extern HANDLE DebuggerLog;
 
 DWORD MainThreadId;
 struct ThreadBreakpoints *MainThreadBreakpointList;
-SINGLE_STEP_HANDLER SingleStepHandler;
 GUARD_PAGE_HANDLER GuardPageHandler;
 unsigned int TrapIndex, DepthCount;
 PVOID _KiUserExceptionDispatcher;
