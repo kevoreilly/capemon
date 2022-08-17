@@ -128,7 +128,10 @@ VOID CALLBACK New_DllLoadNotification(
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
 	dllname = get_dll_basename(&library);
 	dllpath = wcschr(our_commandline, ' ');
-	if (dllpath) dllpath = wcsstr(_wcsupr(dllpath), L"C:");
+	if (dllpath && wcsstr(dllpath, L"C:"))
+		dllpath = wcsstr(dllpath, L"C:");
+	else if (dllpath && wcsstr(dllpath, L"c:"))
+		dllpath = wcsstr(dllpath, L"c:");
 
 	int ret = 0;
 	if (!g_config.tlsdump)
