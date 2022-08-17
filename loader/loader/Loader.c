@@ -30,7 +30,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
-BOOL DisableIATPatching;
+BOOL DisableIATPatching, FirstProcess;
 
 void pipe(char* Buffer, SIZE_T Length);
 
@@ -244,8 +244,11 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 				else
 					DebugOutput("Loader: IAT patching enabled.\n");
 			}
-	   }
+			else if (!strcmp(key, "first-process"))
+				FirstProcess = Value[0] == '1';
+		}
 	}
+
 
 	fclose(fp);
 
@@ -959,7 +962,8 @@ rebase:
 		else if (!ScanForNonZero(pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR)))
 		{
 			DebugOutput("InjectDllViaIAT: Blank import descriptor, aborting IAT patch.\n");
-			RetVal = 1; // we bail but don't fail
+			if (!FirstProcess)
+				RetVal = 1; // we bail but don't fail
 			goto out;
 		}
 	}
