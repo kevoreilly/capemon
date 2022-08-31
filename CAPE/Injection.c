@@ -636,6 +636,18 @@ BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 		L"c:\\windows\\splwow64.exe",
 	};
 
+	if (g_config.firefox && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe"))
+		return TRUE;
+
+	if (g_config.chrome && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"))
+		return TRUE;
+
+	if (g_config.edge && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"))
+		return TRUE;
+
+	if (g_config.iexplore && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Internet Explorer\\iexplore.exe"))
+		return TRUE;
+
 	if (!g_config.file_of_interest || !g_config.suspend_logging)
 		return FALSE;
 

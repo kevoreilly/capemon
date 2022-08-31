@@ -209,6 +209,12 @@ struct _g_config {
 	// Mozilla Firefox hook set
 	int firefox;
 
+	// Google Chrome hook set
+	int chrome;
+
+	// Microsoft Edge hook set
+	int edge;
+
 	// Internet Explorer hook set
 	int iexplore;
 
