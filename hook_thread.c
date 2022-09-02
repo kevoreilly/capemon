@@ -189,17 +189,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
-	OUT	 PHANDLE hThread,
-	IN	  ACCESS_MASK DesiredAccess,
-	IN	  PVOID ObjectAttributes,
-	IN	  HANDLE ProcessHandle,
-	IN	  LPTHREAD_START_ROUTINE lpStartAddress,
-	IN	  PVOID lpParameter,
-	IN	  DWORD CreateFlags,
-	IN	  LONG StackZeroBits,
-	IN	  LONG SizeOfStackCommit,
-	IN	  LONG SizeOfStackReserve,
-	OUT	 PVOID lpBytesBuffer
+	OUT	PHANDLE hThread,
+	IN	ACCESS_MASK DesiredAccess,
+	IN	PVOID ObjectAttributes,
+	IN	HANDLE ProcessHandle,
+	IN	LPTHREAD_START_ROUTINE lpStartAddress,
+	IN	PVOID lpParameter,
+	IN	ULONG CreateFlags,
+	IN	SIZE_T StackZeroBits,
+	IN	SIZE_T SizeOfStackCommit,
+	IN	SIZE_T SizeOfStackReserve,
+	OUT	PVOID lpBytesBuffer
 ) {
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 
