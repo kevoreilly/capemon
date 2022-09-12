@@ -1109,7 +1109,9 @@ BOOL ClearAllBreakpoints()
 
 		if (!GetThreadContext(CurrentThreadBreakpoints->ThreadHandle, &Context))
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("ClearAllBreakpoints: Error getting thread context (thread %d, handle 0x%x).\n", CurrentThreadBreakpoints->ThreadId, CurrentThreadBreakpoints->ThreadHandle);
+#endif
 			return FALSE;
 		}
 

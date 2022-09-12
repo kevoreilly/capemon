@@ -2169,7 +2169,9 @@ void CAPE_post_init()
 
 	if (g_config.debugger && InitialiseDebugger())
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Debugger initialised.\n");
+#endif
 		if (!g_config.base_on_apiname[0])
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 	}
