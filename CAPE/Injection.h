@@ -31,6 +31,7 @@ typedef struct InjectionSectionView
 	PVOID	LocalView;
 	SIZE_T	ViewSize;
 	int		TargetProcessId;
+	BOOL	MapDetected;
 	wchar_t	*SectionName;
 	struct InjectionSectionView *NextSectionView;
 } INJECTIONSECTIONVIEW, *PINJECTIONSECTIONVIEW;
@@ -48,7 +49,6 @@ typedef struct InjectionInfo
 	DWORD			InitialThreadId;
 	DWORD_PTR		ImageBase;
 	DWORD_PTR		EntryPoint;
-	BOOL			MapDetected;
 	BOOL			ImageDumped;
 	LPVOID			BufferBase;
 	LPVOID			StackPointer;

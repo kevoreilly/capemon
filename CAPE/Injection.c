@@ -351,7 +351,7 @@ BOOL DropSectionView(PINJECTIONSECTIONVIEW SectionView)
 void DumpSectionViewsForPid(DWORD Pid)
 //**************************************************************************************
 {
-	struct InjectionInfo *CurrentInjectionInfo;
+	struct InjectionInfo *InjectionInfo;
 	PINJECTIONSECTIONVIEW CurrentSectionView;
 	DWORD BufferSize = MAX_PATH;
 	LPVOID PEPointer = NULL;
@@ -360,9 +360,9 @@ void DumpSectionViewsForPid(DWORD Pid)
 	if (Pid == GetCurrentProcessId())
 		return;
 
-	CurrentInjectionInfo = GetInjectionInfo(Pid);
+	InjectionInfo = GetInjectionInfo(Pid);
 
-	if (CurrentInjectionInfo == NULL)
+	if (InjectionInfo == NULL)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("DumpSectionViewsForPid: No injection info for pid %d.\n", Pid);
@@ -374,7 +374,9 @@ void DumpSectionViewsForPid(DWORD Pid)
 
 	while (CurrentSectionView)
 	{
-		if (CurrentInjectionInfo->MapDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
+		DebugOutput("DumpSectionViewsForPid: MapDetected %d pid %d LocalView 0x%x.\n", CurrentSectionView->MapDetected, CurrentSectionView->TargetProcessId, CurrentSectionView->LocalView);
+
+		if (CurrentSectionView->MapDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
 		{
 			SIZE_T AccessibleSize = GetAccessibleSize(CurrentSectionView->LocalView);
 
@@ -416,11 +418,10 @@ void DumpSectionViewsForPid(DWORD Pid)
 				else
 					DebugOutput("DumpSectionViewsForPid: Failed to dump shared section view.");
 			}
-
-			CurrentInjectionInfo->MapDetected = FALSE;
 		}
 
 		//DropSectionView(CurrentSectionView);
+		CurrentSectionView->MapDetected = FALSE;
 
 		CurrentSectionView = CurrentSectionView->NextSectionView;
 	}
@@ -809,7 +810,6 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 	}
 	else if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
 	{
-		CurrentInjectionInfo->MapDetected = TRUE;
 		CurrentInjectionInfo->ProcessHandle = ProcessHandle;
 		CurrentSectionView = GetSectionView(SectionHandle);
 
@@ -818,8 +818,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 
 		if (CurrentSectionView)
 		{
+			CurrentSectionView->MapDetected = TRUE;
 			CurrentSectionView->TargetProcessId = Pid;
-			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
+			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to existing target process %d.\n", SectionHandle, Pid);
 		}
 		else
 			DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
@@ -830,7 +831,6 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 
 		if (CurrentInjectionInfo)
 		{
-			CurrentInjectionInfo->MapDetected = TRUE;
 			CurrentInjectionInfo->ProcessHandle = ProcessHandle;
 			CurrentInjectionInfo->ProcessId = Pid;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
@@ -855,8 +855,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 
 			if (CurrentSectionView)
 			{
+				CurrentSectionView->MapDetected = TRUE;
 				CurrentSectionView->TargetProcessId = Pid;
-				DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
+				DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to new target process %d.\n", SectionHandle, Pid);
 			}
 			else
 			{
@@ -1114,7 +1115,7 @@ void TerminateHandler()
 	{
 		DumpSectionViewsForPid(CurrentInjectionInfo->ProcessId);
 
-		if (CurrentInjectionInfo->ImageBase && CurrentInjectionInfo->MapDetected && !CurrentInjectionInfo->ImageDumped)
+		if (CurrentInjectionInfo->ImageBase && !CurrentInjectionInfo->ImageDumped)
 		{
 			CapeMetaData->DumpType = INJECTION_PE;
 			CapeMetaData->TargetPid = CurrentInjectionInfo->ProcessId;

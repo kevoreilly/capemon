@@ -27,6 +27,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "ignore.h"
 #include "CAPE\CAPE.h"
+#include "CAPE\Injection.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
 
@@ -385,6 +386,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 	LOQ_ntstatus("system", "p", "Handle", Handle);
 	if(NT_SUCCESS(ret)) {
 		remove_file_from_log_tracking(Handle);
+		DumpSectionViewsForHandle(Handle);
 		file_close(Handle);
 	}
 	return ret;

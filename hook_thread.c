@@ -386,10 +386,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret;
 	ENSURE_ULONG(SuspendCount);
-	if (g_config.injection)
-		ResumeThreadHandler(pid);
-	if (pid != GetCurrentProcessId())
+	if (pid != GetCurrentProcessId()) {
+		if (g_config.injection)
+			ResumeThreadHandler(pid);
 		pipe("RESUME:%d,%d", pid, tid);
+	}
 
 	ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
 	LOQ_ntstatus("threading", "pIi", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ProcessId", pid);
