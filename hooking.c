@@ -40,7 +40,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #endif
 #define HOOK_TIME_SAMPLE 100
 #define HOOK_RATE_LIMIT 0x100
-#define HOOK_LIMIT 0x10000
+#define HOOK_LIMIT 5000
 
 static lookup_t g_hook_info;
 lookup_t g_caller_regions;
