@@ -33,11 +33,6 @@ void lookup_init(lookup_t *d)
 	InitializeCriticalSection(&d->cs);
 }
 
-void lookup_init_no_cs(lookup_t *d)
-{
-	d->root = NULL;
-}
-
 void lookup_free(lookup_t *d)
 {
 	// TODO

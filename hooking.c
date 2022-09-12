@@ -55,7 +55,6 @@ extern BOOLEAN g_dll_main_complete;
 
 void hook_init()
 {
-	lookup_init_no_cs(&g_hook_info);
 	lookup_init(&g_caller_regions);
 }
 
@@ -92,7 +91,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
 	if (!AllocationBase)
 		return;
-	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
+	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
 		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 		if (g_config.base_on_caller)
