@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <mswsock.h>
 #include "ntapi.h"
 #include <tlhelp32.h>
+#include <ncrypt.h>
 
 //
 // File Hooks
@@ -1035,6 +1036,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	__in	  ACCESS_MASK DesiredAccess,
 	__in	  POBJECT_ATTRIBUTES ObjectAttributes,
 	__in_opt  PCLIENT_ID ClientId
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtOpenProcessToken,
+	__in HANDLE ProcessHandle,
+	__in ACCESS_MASK DesiredAccess,
+	__out PHANDLE TokenHandle
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
@@ -3287,27 +3294,66 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
 	__in		ULONG* DataLength
 );
 
-HOOKDEF(NTSTATUS, WINAPI, PRF,
-	void *unk1,
-	uintptr_t unk2,
-	uint8_t *buf1,
-	uintptr_t buf1_length,
-	const char *type,
-	uint32_t type_length,
-	uint8_t *buf2,
-	uint32_t buf2_length,
-	uint8_t *buf3,
-	uint32_t buf3_length
+HOOKDEF(NTSTATUS, WINAPI, SslGenerateMasterKey,
+	_In_	NCRYPT_PROV_HANDLE	hSslProvider,
+	_In_	NCRYPT_KEY_HANDLE	hPrivateKey,
+	_In_	NCRYPT_KEY_HANDLE	hPublicKey,
+	_Out_	NCRYPT_KEY_HANDLE	*phMasterKey,
+	_In_	DWORD				dwProtocol,
+	_In_	DWORD				dwCipherSuite,
+	_In_	PNCryptBufferDesc	pParameterList,
+	_Out_	PBYTE				pbOutput,
+	_In_	DWORD				cbOutput,
+	_Out_	DWORD				*pcbResult,
+	_In_	DWORD				dwFlags
 );
 
-HOOKDEF(NTSTATUS, WINAPI, Ssl3GenerateKeyMaterial,
-	uintptr_t unk1,
-	uint8_t *secret,
-	uintptr_t secret_length,
-	uint8_t *seed,
-	uintptr_t seed_length,
-	void *unk2,
-	uintptr_t unk3
+HOOKDEF(NTSTATUS, WINAPI, SslImportMasterKey,
+	_In_	NCRYPT_PROV_HANDLE	hSslProvider,
+	_In_	NCRYPT_KEY_HANDLE	hPrivateKey,
+	_Out_	NCRYPT_KEY_HANDLE	*phMasterKey,
+	_In_	DWORD				dwProtocol,
+	_In_	DWORD				dwCipherSuite,
+	_In_	PNCryptBufferDesc	pParameterList,
+	_In_	PBYTE				pbEncryptedKey,
+	_In_	DWORD				cbEncryptedKey,
+	_In_	DWORD				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, SslHashHandshake,
+	_In_	NCRYPT_PROV_HANDLE	hSslProvider,
+	_Inout_	NCRYPT_HASH_HANDLE	hHandshakeHash,
+	_Out_	PBYTE				pbInput,
+	_In_	DWORD				cbInput,
+	_In_	DWORD				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, SslExpandTrafficKeys,
+	_In_		NCRYPT_PROV_HANDLE	hSslProvider,
+	_In_		NCRYPT_KEY_HANDLE	hBaseKey,
+	_In_		NCRYPT_HASH_HANDLE	hHashValue,
+	_Out_opt_	NCRYPT_KEY_HANDLE	*phClientTrafficKey,
+	_Out_opt_	NCRYPT_KEY_HANDLE	*phServerTrafficKey,
+	_In_opt_	PNCryptBufferDesc	pParameterList,
+	_In_		DWORD				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, SslExpandExporterMasterKey,
+	_In_		NCRYPT_PROV_HANDLE	hSslProvider,
+	_In_		NCRYPT_KEY_HANDLE	hBaseKey,
+	_In_		NCRYPT_HASH_HANDLE	hHashValue,
+	_Out_		NCRYPT_KEY_HANDLE	*phExporterMasterKey,
+	_In_opt_	PNCryptBufferDesc	pParameterList,
+	_In_		DWORD				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, SslGenerateSessionKeys,
+	_In_	NCRYPT_PROV_HANDLE	hSslProvider,
+	_In_	NCRYPT_KEY_HANDLE	hMasterKey,
+	_Out_	NCRYPT_KEY_HANDLE	*phReadKey,
+	_Out_	NCRYPT_KEY_HANDLE	*phWriteKey,
+	_In_	PNCryptBufferDesc	pParameterList,
+	_In_	DWORD				dwFlags
 );
 
 HOOKDEF(BOOL, WINAPI, SwitchToThread,

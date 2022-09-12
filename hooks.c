@@ -701,27 +701,10 @@ hook_t zero_hooks[] = {
 };
 
 hook_t tls_hooks[] = {
-#ifdef _WIN64
-	HOOK_FUNCRVA(ncrypt, PRF, 0x4a5bdfd4, 0x4bc0),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x4a5bdfd4, 0xe100),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x5c2680c4, 0x4be0),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c2680c4, 0xd690),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e1def, 0x4be0),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e1def, 0xd690),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e240c, 0x4be0),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e240c, 0xd690),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x54d04091, 0x4ca0),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x54d04091, 0xe250),
-#else
-	HOOK_FUNCRVA(ncrypt, PRF, 0x4a5bda79, 0x81d5),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x4a5bda79, 0x255be),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x5c267e35, 0x8099),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c267e35, 0x25efe),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x5c6e218b, 0x8099),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x5c6e218b, 0x25efe),
-	HOOK_FUNCRVA(ncrypt, PRF, 0x54d03c01, 0x8195),
-	HOOK_FUNCRVA(ncrypt, Ssl3GenerateKeyMaterial, 0x54d03c01, 0x257be),
-#endif
+	HOOK(ncrypt, SslGenerateMasterKey),
+	HOOK(ncrypt, SslImportMasterKey),
+	HOOK(ncrypt, SslGenerateSessionKeys),
+	HOOK(ncrypt, SslHashHandshake),
 };
 
 hook_t office_hooks[] = {
