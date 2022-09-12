@@ -69,7 +69,7 @@ static void add_file_to_log_tracking(HANDLE file_handle)
 {
 	file_log_t *r = lookup_get(&g_file_logs, (ULONG_PTR)file_handle, NULL);
 	if (r == NULL) {
-		file_log_t *r = lookup_add(&g_file_logs, (ULONG_PTR)file_handle, sizeof(file_log_t));
+		r = lookup_add(&g_file_logs, (ULONG_PTR)file_handle, sizeof(file_log_t));
 #ifdef DEBUG_COMMENTS
 		DebugOutput("add_file_to_log_tracking: Adding file handle to tracking: 0x%x", file_handle);
 #endif
