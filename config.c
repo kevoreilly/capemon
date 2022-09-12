@@ -383,15 +383,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else {
-					g_config.bp1 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-					if (g_config.bp1) {
-						g_config.break_on_apiname_set = TRUE;
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.bp1 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
 			else if (!_strnicmp(value, "zero", 4)) {
@@ -452,15 +452,15 @@ void parse_config_line(char* line)
 					g_config.debugger = 1;
 					DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 				}
-				else {
-					g_config.bp2 = (PVOID)(DWORD_PTR)strtoul(p+2, NULL, 0);
-					if (g_config.bp2) {
-						g_config.break_on_apiname_set = TRUE;
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.bp2 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
 						DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
-						DebugOutput("Config: Failed to get address for function %s::%s.\n", g_config.break_on_modname, g_config.break_on_apiname);
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
 				}
 			}
 			else if (!_strnicmp(value, "zero", 4)) {
@@ -705,6 +705,22 @@ void parse_config_line(char* line)
 				g_config.debugger = 1;
 				DebugOutput("Config: br3 set to 0x%x (break-on-return)\n", g_config.br3);
 			}
+		}
+		else if (!stricmp(key, "count0")) {
+			g_config.count0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Count for breakpoint 0 set to %d\n", g_config.count0);
+		}
+		else if (!stricmp(key, "count1")) {
+			g_config.count1 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Count for breakpoint 1 set to %d\n", g_config.count1);
+		}
+		else if (!stricmp(key, "count2")) {
+			g_config.count2 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Count for breakpoint 2 set to %d\n", g_config.count2);
+		}
+		else if (!stricmp(key, "count3")) {
+			g_config.count3 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
+			DebugOutput("Config: Count for breakpoint 3 set to %d\n", g_config.count3);
 		}
 		else if (!stricmp(key, "hc0")) {
 			g_config.hc0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);

@@ -237,6 +237,8 @@ struct _g_config {
 	BOOLEAN zerobp4, zerobp5, zerobp6, zerobp7;
 	// break-on-return: brX
 	PVOID br0, br1, br2, br3;
+	// count
+	unsigned int count0, count1, count2, count3;
 	// Hit count
 	unsigned int hc0, hc1, hc2, hc3;
 	// Dump type

@@ -1947,6 +1947,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 				DebuggerOutput("Breakpoint 0 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
                 TraceDepthCount = 0;
                 StepCount = 0;
+				if (g_config.count0)
+					StepLimit = g_config.count0;
 				break;
 			}
 
@@ -1955,6 +1957,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 				DebuggerOutput("Breakpoint 1 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
                 TraceDepthCount = 0;
                 StepCount = 0;
+				if (g_config.count1)
+					StepLimit = g_config.count1;
 				break;
 			}
 
@@ -1963,6 +1967,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 				DebuggerOutput("Breakpoint 2 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
                 TraceDepthCount = 0;
                 StepCount = 0;
+				if (g_config.count2)
+					StepLimit = g_config.count2;
 				break;
 			}
 
@@ -1971,6 +1977,8 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 				DebuggerOutput("Breakpoint 3 hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
                 TraceDepthCount = 0;
                 StepCount = 0;
+				if (g_config.count3)
+					StepLimit = g_config.count3;
 				break;
 			}
 		}
