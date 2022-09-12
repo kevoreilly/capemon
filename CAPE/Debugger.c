@@ -142,8 +142,9 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 	{
 		if (CurrentThreadBreakpoints->ThreadHandle && GetThreadId(CurrentThreadBreakpoints->ThreadHandle) == ThreadId)
 		{
-			//It already exists - shouldn't happen
+#ifdef DEBUG_COMMENTS
 			DebugOutput("CreateThreadBreakpoints error: found an existing thread breakpoint list for ThreadId 0x%x\n", ThreadId);
+#endif
 			return NULL;
 		}
 
@@ -223,7 +224,9 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId)
 
 	if (NewThreadBreakpoints == NULL)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("InitNewThreadBreakpoints: Cannot create new thread breakpoints.\n");
+#endif
 		return FALSE;
 	}
 
@@ -2057,10 +2060,13 @@ BOOL SetThreadBreakpoint
 	}
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetThreadBreakpoint: bp set with register %d, hit count %d\n", Register, HitCount);
+	if (RetVal)
+		DebugOutput("SetThreadBreakpoint: bp set at 0x%p with register %d, hit count %d, thread %d\n", Address, Register, HitCount, ThreadId);
+	else
+		DebugOutput("SetThreadBreakpoint: Failed to set bp at 0x%p with register %d, hit count %d, thread %d\n", Address, Register, HitCount, ThreadId);
 #endif
 
-	return TRUE;
+	return RetVal;
 }
 
 //**************************************************************************************
