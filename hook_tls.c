@@ -15,6 +15,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+// Inspired by https://b.poc.fun/decrypting-schannel-tls-part-1 - thanks to Webpentest & SolidLab
+
 #include <stdio.h>
 #include "hooking.h"
 #include "lookup.h"
@@ -106,11 +108,13 @@ BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* 
 
 void ExtractMasterKey(NCRYPT_KEY_HANDLE	hMasterKey, char* ClientRandomRepr, char* ServerRandomRepr)
 {
+	if (!hMasterKey || !ClientRandomRepr || !ServerRandomRepr)
+		return;
 	PBYTE p5lss = *(PBYTE*)(hMasterKey+0x10);
-	if (*(PDWORD)(p5lss+4) == 0x73736c35) {
+	if (p5lss && *(PDWORD)(p5lss+4) == 0x73736c35) {
 		char MasterSecretRepr[48*2+1] = "";
 		HexEncode(MasterSecretRepr, p5lss+0x1c, 48);
-		if (strcmp("", MasterSecretRepr)) {
+		if (strcmp("", MasterSecretRepr) && strcmp("", ClientRandomRepr) && strcmp("", ServerRandomRepr)) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("client_random: %s, server_random: %s, master_secret: %s", ClientRandomRepr, ServerRandomRepr, MasterSecretRepr);
 #endif
