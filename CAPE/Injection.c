@@ -186,24 +186,8 @@ PINJECTIONSECTIONVIEW GetSectionView(HANDLE SectionHandle)
 
 	while (CurrentSectionView)
 	{
-		wchar_t *SectionName;
-
 		if (CurrentSectionView->SectionHandle == SectionHandle)
 			return CurrentSectionView;
-
-		SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
-
-		if (SectionName)
-		{
-			path_from_handle(SectionHandle, SectionViewList->SectionName, MAX_UNICODE_PATH);
-			if ((!wcscmp(CurrentSectionView->SectionName, SectionName)))
-			{
-				DebugOutput("GetSectionView: New section handle for existing named section %ws.\n", SectionHandle, SectionName);
-				free(SectionName);
-				return CurrentSectionView;
-			}
-		free(SectionName);
-		}
 
 		CurrentSectionView = CurrentSectionView->NextSectionView;
 	}
@@ -232,37 +216,19 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 		memset(SectionViewList, 0, sizeof(struct InjectionSectionView));
 
 		SectionViewList->SectionHandle = SectionHandle;
-		SectionViewList->SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
 		if (LocalView)
 		{
 			SectionViewList->LocalView = LocalView;
 			SectionViewList->ViewSize = ViewSize;
 		}
-		if (SectionViewList->SectionName)
-			path_from_handle(SectionHandle, SectionViewList->SectionName, MAX_UNICODE_PATH);
 	}
 
 	CurrentSectionView = SectionViewList;
 
 	while (CurrentSectionView)
 	{
-		wchar_t *SectionName;
-
 		if ((CurrentSectionView->SectionHandle) == SectionHandle)
 			break;
-
-		SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
-		if (SectionName)
-		{
-			path_from_handle(SectionHandle, SectionViewList->SectionName, MAX_UNICODE_PATH);
-			if ((!wcscmp(CurrentSectionView->SectionName, SectionName)))
-			{
-				DebugOutput("AddSectionView: New section handle for existing named section %ws.\n", SectionHandle, SectionName);
-				free(SectionName);
-				break;
-			}
-			free(SectionName);
-		}
 
 		PreviousSectionView = CurrentSectionView;
 		CurrentSectionView = CurrentSectionView->NextSectionView;
@@ -291,8 +257,6 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 			CurrentSectionView->LocalView = LocalView;
 			CurrentSectionView->ViewSize = ViewSize;
 		}
-		CurrentSectionView->SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
-		path_from_handle(SectionHandle, CurrentSectionView->SectionName, MAX_UNICODE_PATH);
 	}
 
 	return CurrentSectionView;
@@ -374,7 +338,9 @@ void DumpSectionViewsForPid(DWORD Pid)
 
 	while (CurrentSectionView)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("DumpSectionViewsForPid: MapDetected %d pid %d LocalView 0x%x.\n", CurrentSectionView->MapDetected, CurrentSectionView->TargetProcessId, CurrentSectionView->LocalView);
+#endif
 
 		if (CurrentSectionView->MapDetected && CurrentSectionView->TargetProcessId == Pid && CurrentSectionView->LocalView)
 		{
@@ -534,24 +500,8 @@ void DumpSectionViewsForHandle(HANDLE SectionHandle)
 
 	while (CurrentSectionView)
 	{
-		wchar_t *SectionName;
-
 		if (CurrentSectionView->SectionHandle == SectionHandle)
 			break;
-
-		SectionName = malloc(MAX_UNICODE_PATH * sizeof(wchar_t));
-
-		if (SectionName)
-		{
-			path_from_handle(SectionHandle, SectionViewList->SectionName, MAX_UNICODE_PATH);
-			if ((!wcscmp(CurrentSectionView->SectionName, SectionName)))
-			{
-				DebugOutput("DumpSectionViewsForHandle: New section handle for existing named section %ws.\n", SectionHandle, SectionName);
-				free(SectionName);
-				break;
-			}
-			free(SectionName);
-		}
 
 		CurrentSectionView = CurrentSectionView->NextSectionView;
 	}

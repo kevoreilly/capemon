@@ -32,7 +32,6 @@ typedef struct InjectionSectionView
 	SIZE_T	ViewSize;
 	int		TargetProcessId;
 	BOOL	MapDetected;
-	wchar_t	*SectionName;
 	struct InjectionSectionView *NextSectionView;
 } INJECTIONSECTIONVIEW, *PINJECTIONSECTIONVIEW;
 
