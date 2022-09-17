@@ -293,7 +293,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue && Old_GetSystemTimeAsFileTime) {
+		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
 			if (h->hook_disabled)
 				return 0;
 			h->counter++;
@@ -302,7 +302,10 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 				h->hook_disabled = 1;
 				return 0;
 			}
-			Old_GetSystemTimeAsFileTime(&ft);
+			if (Old_GetSystemTimeAsFileTime)
+				Old_GetSystemTimeAsFileTime(&ft);
+			else
+				GetSystemTimeAsFileTime(&ft);
 			if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
 				h->rate_counter++;
 				if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
