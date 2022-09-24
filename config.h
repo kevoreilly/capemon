@@ -102,8 +102,10 @@ struct _g_config {
 	// Disable hook content
 	int disable_hook_content;
 
-	// Disable api hooks that spam
+	// Disable api hooks based on excessive rate
 	unsigned int api_rate_cap;
+	// Disable api hooks based on excessive count
+	unsigned int api_cap;
 
 	// server ip and port
 	//unsigned int host_ip;

@@ -188,7 +188,7 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Exception logging disabled.\n");
 		}
-		else if (!stricmp(key, "log-breakpoints")) {
+		else if (!stricmp(key, "log-breakpoints") || !stricmp(key, "log-bps")) {
 			g_config.log_breakpoints = value[0] == '1';
 			if (g_config.log_breakpoints)
 				DebugOutput("Breakpoint logging to behavior log enabled.\n");
@@ -1030,7 +1030,12 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "api-rate-cap")) {
 			g_config.api_rate_cap = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.api_rate_cap)
-				DebugOutput("API spam prevention enabled (%d).\n", g_config.api_rate_cap);
+				DebugOutput("API rate cap set to %d.\n", g_config.api_rate_cap);
+		}
+		else if (!stricmp(key, "api-cap")) {
+			g_config.api_cap = (unsigned int)strtoul(value, NULL, 10);
+			if (g_config.api_cap)
+				DebugOutput("API cap set to %d.\n", g_config.api_cap);
 		}
 		else if (!stricmp(key, "dump-crypto")) {
 			g_config.dump_crypto = value[0] == '1';
@@ -1159,6 +1164,7 @@ int read_config(void)
 	g_config.injection = 1;
 	g_config.compression = 1;
 	g_config.caller_dump = 1;
+	g_config.api_cap = 5000;
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
