@@ -1434,6 +1434,21 @@ void set_hooks()
 			g_config.minhook = 1;
 			DebugOutput("DCOM service hook set enabled\n");
 		}
+		else if (!_stricmp(our_process_name, "wscript.exe")) {
+			const char *excluded_apis[] = {
+				"memcpy",
+				"LoadResource",
+				"LockResource",
+				"SizeofResource",
+			};
+			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
+				if (!add_hook_exclusion(excluded_apis[i])) {
+					DebugOutput("Unable to set hook exclusion for wscript\n");
+					break;
+				}
+			}
+			DebugOutput("wscript hook set enabled\n");
+		}
 	}
 
 	// Hook set selection
