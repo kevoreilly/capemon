@@ -1115,7 +1115,7 @@ BOOL srw_lock_held()
 static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigned int count)
 {
 	/* derived from http://www.nynaeve.net/Code/StackWalk64.cpp */
-	CONTEXT ctx;
+	__declspec(align(64)) CONTEXT ctx;
 	DWORD64 imgbase;
 	PRUNTIME_FUNCTION runfunc;
 	KNONVOLATILE_CONTEXT_POINTERS nvctx;
