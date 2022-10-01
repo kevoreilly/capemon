@@ -694,8 +694,8 @@ HOOKDEF(void, WINAPI, GetSystemInfo,
 
 	Old_GetSystemInfo(lpSystemInfo);
 
-	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors == 1)
-		lpSystemInfo->dwNumberOfProcessors = 2;
+	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < 4)
+		lpSystemInfo->dwNumberOfProcessors = 4;
 
 	LOQ_void("misc", "");
 
