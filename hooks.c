@@ -1226,6 +1226,98 @@ hook_t office_hooks[] = {
 	HOOK(cryptsp, CryptImportKey),
 };
 
+hook_t ie_hooks[] = {
+	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
+	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
+	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
+	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+
+	HOOK_SPECIAL(ole32, CoCreateInstance),
+	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
+	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(urlmon, IsValidURL),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
+
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
+	HOOK(ntdll, NtCreateProcess),
+	HOOK(ntdll, NtCreateProcessEx),
+	HOOK(ntdll, RtlCreateUserProcess),
+	HOOK(advapi32, CreateProcessWithLogonW),
+	HOOK(advapi32, CreateProcessWithTokenW),
+
+	HOOK(shell32, ShellExecuteExW),
+
+	//HOOK(ntdll, NtAllocateVirtualMemory),
+	//HOOK(ntdll, NtWriteVirtualMemory),
+	//HOOK(ntdll, NtWow64WriteVirtualMemory64),
+	//HOOK(ntdll, NtMapViewOfSection),
+	//HOOK(ntdll, NtUnmapViewOfSection),
+	//HOOK(kernel32, WriteProcessMemory),
+
+	HOOK(ntdll, NtContinue),
+	HOOK(ntdll, NtQueueApcThread),
+	HOOK(ntdll, NtQueueApcThreadEx),
+	HOOK(ntdll, NtCreateThread),
+	//HOOK(ntdll, NtCreateThreadEx),
+	HOOK(ntdll, NtSetContextThread),
+	HOOK(ntdll, NtSuspendThread),
+	//HOOK(ntdll, RtlCreateUserThread),
+	HOOK(kernel32, CreateRemoteThread),
+	HOOK(user32, SendNotifyMessageA),
+	HOOK(user32, SendNotifyMessageW),
+	HOOK(user32, SetWindowLongA),
+	HOOK(user32, SetWindowLongW),
+	HOOK(user32, SetWindowLongPtrA),
+	HOOK(user32, SetWindowLongPtrW),
+
+	HOOK(user32, SetWindowsHookExA),
+	HOOK(user32, SetWindowsHookExW),
+
+	HOOK(ntdll, NtCreateFile),
+	//HOOK(ntdll, NtOpenFile),
+	HOOK(ntdll, NtSetInformationFile),
+	HOOK(ntdll, NtQueryAttributesFile),
+	HOOK(kernel32, DeleteFileA),
+	HOOK(kernel32, DeleteFileW),
+	HOOK(ntdll, NtDeleteFile),
+	HOOK(kernel32, CopyFileA),
+	HOOK(kernel32, CopyFileW),
+	HOOK_NOTAIL_ALT(kernel32, CopyFileExW, 6),
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
+	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
+
+	HOOK(ntdll, NtClose),
+	HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, NtResumeProcess),
+	HOOK(ntdll, NtTerminateProcess),
+
+	HOOK(ntdll, NtDuplicateObject),
+
+	HOOK_SPECIAL(kernel32, GetSystemTimeAsFileTime),
+
+	HOOK(advapi32, StartServiceA),
+	HOOK(advapi32, StartServiceW),
+	HOOK(sechost, StartServiceA),
+	HOOK(sechost, StartServiceW),
+
+	HOOK(urlmon, URLDownloadToFileW),
+	HOOK(urlmon, URLDownloadToCacheFileW),
+	HOOK(ole32, CLSIDFromProgID),
+	HOOK(advapi32, RegOpenKeyExA),
+	HOOK(advapi32, RegOpenKeyExW),
+	HOOK(ntdll, NtOpenKeyEx),
+	HOOK(advapi32, RegEnumValueW),
+
+#ifndef _WIN64
+	HOOK(shlwapi, UrlCanonicalizeW),
+#endif
+};
+
 hook_t browser_hooks[] = {
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
@@ -1478,7 +1570,12 @@ void set_hooks()
 		hooks_size = sizeof(office_hooks);
 		hooks_arraysize = ARRAYSIZE(office_hooks);
 	}
-	else if (g_config.chrome || g_config.firefox || g_config.edge || g_config.iexplore) {
+	else if (g_config.iexplore) {
+		hooks = ie_hooks;
+		hooks_size = sizeof(ie_hooks);
+		hooks_arraysize = ARRAYSIZE(ie_hooks);
+	}
+	else if (g_config.chrome || g_config.firefox || g_config.edge) {
 		hooks = browser_hooks;
 		hooks_size = sizeof(browser_hooks);
 		hooks_arraysize = ARRAYSIZE(browser_hooks);
