@@ -767,7 +767,11 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
 	{
+#ifdef _WIN64
+		char our_dll_name[] = "capemon_x64.dll";
+#else
 		char our_dll_name[] = "capemon.dll";
+#endif
 		char *buf = calloc(1, strlen(our_dll_name) + 1);
 		if (buf == NULL)
 			return NULL;
@@ -1787,12 +1791,12 @@ PCHAR get_exe_basename(PCHAR ModulePath)
 	return NULL;
 }
 
-PWCHAR get_dll_basename(PUNICODE_STRING library)
+PWCHAR get_dll_basename(PWCHAR ModulePath)
 {
 	PWCHAR dllname, end, start, start2;
-	end = wcsrchr(library->Buffer, L'.');
-	start = wcsrchr(library->Buffer, L'\\');
-	start2 = wcsrchr(library->Buffer, L'/');
+	end = wcsrchr(ModulePath, L'.');
+	start = wcsrchr(ModulePath, L'\\');
+	start2 = wcsrchr(ModulePath, L'/');
 	if (end && !wcsicmp(end, L".dll"))
 		*end = L'\0';
 	if (start2 && start2 > start)
@@ -1800,7 +1804,7 @@ PWCHAR get_dll_basename(PUNICODE_STRING library)
 	else if (start && start > start2)
 		dllname = start + 1;
 	else
-		dllname = library->Buffer;
+		dllname = ModulePath;
 	return dllname;
 }
 

@@ -126,7 +126,7 @@ VOID CALLBACK New_DllLoadNotification(
 {
 	PWCHAR dllname, dllpath;
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
-	dllname = get_dll_basename(&library);
+	dllname = get_dll_basename(library.Buffer);
 	dllpath = wcschr(our_commandline, ' ');
 	if (dllpath && wcsstr(dllpath, L"C:"))
 		dllpath = wcsstr(dllpath, L"C:");

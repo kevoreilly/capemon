@@ -175,7 +175,7 @@ int is_wow64_fs_redirection_disabled(void);
 void set_dll_of_interest(ULONG_PTR BaseAddress);
 
 PCHAR get_exe_basename(PCHAR ModulePath);
-PWCHAR get_dll_basename(PUNICODE_STRING library);
+PWCHAR get_dll_basename(PWCHAR ModulePath);
 void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify);
 
 extern char *our_process_path;
