@@ -164,17 +164,17 @@ void StringCheck(PVOID PossibleString)
 	WCHAR OutputBufferW[MAX_PATH] = L"";
 
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
-	if (Size > 32)
-		DebuggerOutput(" \"%.32s...\"", (PCHAR)OutputBuffer);
+	if (Size > 64)
+		DebuggerOutput(" \"%.64s...\"", (PCHAR)OutputBuffer);
 	else if (Size > 3)
-		DebuggerOutput(" \"%.32s\"", (PCHAR)OutputBuffer);
+		DebuggerOutput(" \"%.64s\"", (PCHAR)OutputBuffer);
 	else
 	{
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
-		if (Size > 32)
-			DebuggerOutput(" L\"%.32ws...\"", (PWCHAR)OutputBufferW);
+		if (Size > 64)
+			DebuggerOutput(" L\"%.64ws...\"", (PWCHAR)OutputBufferW);
 		else if (Size > 3)
-			DebuggerOutput(" L\"%.32ws\"", (PWCHAR)OutputBufferW);
+			DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
 	}
 }
 
@@ -347,7 +347,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	// This could be further optimised per action but this is safe at least
 	ReDisassemble = TRUE;
 
-	PVOID Target = NULL;
+	PVOID Target = NULL, TargetArg = NULL;
 	BOOL TargetSet = FALSE;
 #ifdef _WIN64
 	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
@@ -367,28 +367,36 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			{
 				Target = GetProcAddress(Module, q+2);
 				CloseHandle(Module);
-			}
-			else
-				DebuggerOutput("ActionDispatcher: Failed to get base for target module (%s).\n", p+1);
-			if (!Target)
-			{
-				char *endptr;
-				errno = 0;
-				Target = (PVOID)(DWORD_PTR)strtoul(q+2, &endptr, 0);
-				if (errno || endptr == q+2)
-					DebuggerOutput("ActionDispatcher: Failed to get target: %s.\n", p+1);
-				else
+				if (!Target)
 				{
-					TargetSet = TRUE;
+					char *endptr;
+					errno = 0;
+					Target = (PVOID)(DWORD_PTR)strtoul(q+2, &endptr, 0);
+					if (errno || endptr == q+2)
+						DebuggerOutput("ActionDispatcher: Failed to get target: %s.\n", p+1);
+					else
+					{
+						TargetSet = TRUE;
 #ifdef DEBUG_COMMENTS
+						DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
+#endif
+					}
+				}
+#ifdef DEBUG_COMMENTS
+				else
 					DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
 #endif
-				}
 			}
-#ifdef DEBUG_COMMENTS
-			else
-				DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
-#endif
+			*q = '\0';
+			Target = GetRegister(ExceptionInfo->ContextRecord, p+1);
+			*q = ':';
+			if (Target)
+			{
+				TargetSet = TRUE;
+				TargetArg = GetRegister(ExceptionInfo->ContextRecord, q+2);
+			}
+			//else
+			//	DebuggerOutput("ActionDispatcher: Failed to get base for target module (%s).\n", p+1);
 		}
 		else {
 			HANDLE Module = GetModuleHandle(p+1);
@@ -816,7 +824,23 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		else
 			DebuggerOutput("ActionDispatcher: Failed to set dump size.\n");
 	}
-	else if (!strnicmp(Action, "Dump:", 5))
+	else if (!strnicmp(Action, "SetDump:", 8))
+	{
+		if (Target && !TargetArg)
+		{
+			DumpAddress = Target;
+			DebuggerOutput("SetDump: Dump address set to 0x%p.\n", Target);
+		}
+		else if (Target && TargetArg)
+		{
+			DumpAddress = Target;
+			DumpSize = (SIZE_T)TargetArg;
+			DebuggerOutput("SetDump: Dump address set to 0x%p, size 0x%x\n", DumpAddress, DumpSize);
+		}
+		else
+			DebuggerOutput("SetDump: Failed to set dump address.\n");
+	}
+	else if (!stricmp(Action, "Dump") || !strnicmp(Action, "Dump:", 5))
 	{
 		if (g_config.dumptype0)
 			CapeMetaData->DumpType = g_config.dumptype0;
@@ -855,6 +879,15 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				DumpSize = (SIZE_T)(DWORD_PTR)strtoul(p+1, NULL, 0);
 		}
 
+		if (!Target && DumpAddress)
+			Target = DumpAddress;
+
+		if (TargetArg)
+		{
+			DumpSize = (SIZE_T)TargetArg;
+			DebuggerOutput("ActionDispatcher: Dump size set to 0x%x\n", DumpSize);
+		}
+
 		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Target, DumpSize))
 		{
 			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
@@ -867,6 +900,8 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%d.\n", Target, DumpSize);
+		DumpAddress = 0;
+		DumpSize = 0;
 	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
@@ -2842,9 +2877,9 @@ BOOL BreakpointOnReturn(PVOID Address)
 
 BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 {
-	PVOID Callback;
-	DWORD_PTR BreakpointVA;
-	unsigned int Type, HitCount;
+	PVOID Callback = NULL;
+	DWORD_PTR BreakpointVA = 0;
+	unsigned int Type = 0, HitCount = 0;
 
 	if (g_config.file_offsets)
 	{
@@ -2935,8 +2970,8 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 
 BOOL SetInitialBreakpoints(PVOID ImageBase)
 {
-	DWORD_PTR BreakpointVA;
-	DWORD Register;
+	DWORD_PTR BreakpointVA = 0;
+	DWORD Register = 0;
 
 	if (BreakpointsHit)
 		return TRUE;
