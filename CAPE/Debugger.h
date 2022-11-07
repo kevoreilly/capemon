@@ -138,7 +138,7 @@ BOOL FlipSignFlag(PCONTEXT Context);
 BOOL SetCarryFlag(PCONTEXT Context);
 BOOL ClearCarryFlag(PCONTEXT Context);
 BOOL FlipCarryFlag(PCONTEXT Context);
-PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId);
+PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle);
 
 // Get
 BOOL GetNextAvailableBreakpoint(DWORD ThreadId, int* Register);
@@ -160,7 +160,7 @@ BOOL ClearAllBreakpoints();
 BOOL ClearSingleStepMode(PCONTEXT Context);
 
 // Misc
-BOOL InitNewThreadBreakpoints(DWORD ThreadId);
+BOOL InitNewThreadBreakpoints(DWORD ThreadId, HANDLE Handle);
 BOOL InitialiseDebugger(void);
 BOOL ResumeFromBreakpoint(PCONTEXT Context);
 void OutputThreadBreakpoints(DWORD ThreadId);

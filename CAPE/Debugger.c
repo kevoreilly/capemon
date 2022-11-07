@@ -113,7 +113,7 @@ HANDLE GetThreadHandle(DWORD ThreadId)
 }
 
 //**************************************************************************************
-PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
+PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 //**************************************************************************************
 {
 	unsigned int Register;
@@ -173,12 +173,13 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 	}
 
-	if (ThreadId == GetCurrentThreadId())
+	if (Handle)
+		CurrentThreadBreakpoints->ThreadHandle = Handle;
+	else if (ThreadId == GetCurrentThreadId())
 	{
 		if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &CurrentThreadBreakpoints->ThreadHandle, 0, FALSE, DUPLICATE_SAME_ACCESS) == 0)
 		{
 			DebugOutput("CreateThreadBreakpoints: Failed to duplicate thread handle.\n");
-			free(CurrentThreadBreakpoints);
 			return NULL;
 		}
 	}
@@ -189,7 +190,6 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 		if (CurrentThreadBreakpoints->ThreadHandle == NULL)
 		{
 			DebugOutput("CreateThreadBreakpoints: Failed to open thread and get a handle.\n");
-			free(CurrentThreadBreakpoints);
 			return NULL;
 		}
 	}
@@ -208,10 +208,10 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId)
 }
 
 //**************************************************************************************
-BOOL InitNewThreadBreakpoints(DWORD ThreadId)
+BOOL InitNewThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 //**************************************************************************************
 {
-	PTHREADBREAKPOINTS NewThreadBreakpoints;
+	PTHREADBREAKPOINTS NewThreadBreakpoints = NULL;
 	BOOL ThreadBreakpointsSet = FALSE;
 
 	if (MainThreadBreakpointList == NULL)
@@ -220,7 +220,7 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId)
 		return FALSE;
 	}
 
-	NewThreadBreakpoints = CreateThreadBreakpoints(ThreadId);
+	NewThreadBreakpoints = CreateThreadBreakpoints(ThreadId, Handle);
 
 	if (NewThreadBreakpoints == NULL)
 	{
@@ -271,11 +271,8 @@ void OutputThreadBreakpoints(DWORD ThreadId)
 	PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
 
 	if (!ThreadBreakpoints)
-		ThreadBreakpoints = CreateThreadBreakpoints(ThreadId);
-
-	if (!ThreadBreakpoints)
 	{
-		DebugOutput("OutputThreadBreakpoints: Unable to create breakpoints for thread %d.\n", ThreadId);
+		DebugOutput("OutputThreadBreakpoints: No breakpoints for thread %d.\n", ThreadId);
 		return;
 	}
 
@@ -332,7 +329,7 @@ BOOL ContextGetNextAvailableBreakpoint(PCONTEXT Context, int* Register)
 	if (CurrentThreadBreakpoints == NULL)
 	{
 		DebugOutput("ContextGetNextAvailableBreakpoint: Creating new thread breakpoints for thread %d.\n", GetCurrentThreadId());
-		CurrentThreadBreakpoints = CreateThreadBreakpoints(GetCurrentThreadId());
+		CurrentThreadBreakpoints = CreateThreadBreakpoints(GetCurrentThreadId(), NULL);
 	}
 
 	if (CurrentThreadBreakpoints == NULL)
@@ -2014,7 +2011,7 @@ BOOL SetThreadBreakpoint
 	if (CurrentThreadBreakpoints == NULL)
 	{
 		DebugOutput("SetThreadBreakpoint: Creating new thread breakpoints for thread %d.\n", ThreadId);
-		CurrentThreadBreakpoints = CreateThreadBreakpoints(ThreadId);
+		CurrentThreadBreakpoints = CreateThreadBreakpoints(ThreadId, NULL);
 	}
 
 	if (CurrentThreadBreakpoints == NULL)
@@ -2097,7 +2094,7 @@ BOOL SetBreakpoint
 	if (CurrentThreadBreakpoints == NULL)
 	{
 		DebugOutput("SetBreakpoint: Creating new thread breakpoints for thread %d.\n", CurrentThreadId);
-		CurrentThreadBreakpoints = CreateThreadBreakpoints(CurrentThreadId);
+		CurrentThreadBreakpoints = CreateThreadBreakpoints(CurrentThreadId, NULL);
 	}
 
 	if (CurrentThreadBreakpoints == NULL)
@@ -2225,13 +2222,7 @@ BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register)
 
 	if (CurrentThreadBreakpoints == NULL)
 	{
-		DebugOutput("ClearThreadBreakpoint: Creating new thread breakpoints for thread %d.\n", ThreadId);
-		CurrentThreadBreakpoints = CreateThreadBreakpoints(ThreadId);
-	}
-
-	if (CurrentThreadBreakpoints == NULL)
-	{
-		DebugOutput("ClearThreadBreakpoint: Cannot create new thread breakpoints.\n");
+		DebugOutput("ClearThreadBreakpoint: No thread breakpoints for thread %d\n", ThreadId);
 		return FALSE;
 	}
 
@@ -2310,7 +2301,7 @@ BOOL SetNextAvailableBreakpoint
 	if (CurrentThreadBreakpoints == NULL)
 	{
 		DebugOutput("SetNextAvailableBreakpoint: Creating new thread breakpoints for thread %d.\n", ThreadId);
-		CurrentThreadBreakpoints = CreateThreadBreakpoints(ThreadId);
+		CurrentThreadBreakpoints = CreateThreadBreakpoints(ThreadId, NULL);
 	}
 
 	if (CurrentThreadBreakpoints == NULL)
@@ -2345,7 +2336,7 @@ BOOL InitialiseDebugger(void)
 		return FALSE;
 	}
 
-	MainThreadBreakpointList = CreateThreadBreakpoints(MainThreadId);
+	MainThreadBreakpointList = CreateThreadBreakpoints(MainThreadId, NULL);
 
 	if (MainThreadBreakpointList == NULL)
 	{
@@ -2406,6 +2397,8 @@ void DebuggerShutdown()
 {
 	StopTrace = TRUE;
 	if (DebuggerLog) {
+		if (TraceRunning)
+			DebuggerOutput("\nDebuggerShutdown for process %d", GetCurrentProcessId());
 		CloseHandle(DebuggerLog);
 		DebuggerLog = NULL;
 	}
