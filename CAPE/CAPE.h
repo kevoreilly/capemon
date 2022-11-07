@@ -113,9 +113,9 @@ struct CapeMetadata *CapeMetaData;
 BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
 enum {
-	PROCDUMP = 0,
+	PROCDUMP = 1,
 
-	COMPRESSION = 1,
+	COMPRESSION = 2,
 
 	INJECTION_PE = 3,
 	INJECTION_SHELLCODE	= 4,
