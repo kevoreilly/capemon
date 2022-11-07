@@ -562,12 +562,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in	 ULONG AllocationType,
 	__in	 ULONG Win32Protect
 ) {
+	char *ModuleName = NULL;
+	unsigned int DllRVA;
+
 	NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle, BaseAddress, ZeroBits,
 		CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect);
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-	"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &DllRVA);
+
+	if (!ModuleName)
+		LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+			"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	else
+		LOQ_ntstatus("process", "ppPspPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+			"ModuleName", ModuleName, "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
 		if (g_config.injection)
@@ -876,20 +885,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	NTSTATUS ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 	DWORD OriginalNewAccessProtection = 0;
+	unsigned int DllRVA;
+	PCHAR FunctionName = NULL;
+	char *ModuleName = NULL;
+	if (BaseAddress)
+		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &DllRVA);
+	if (ModuleName)
+		FunctionName = ScyllaGetExportNameByAddress(*BaseAddress, NULL);
 
-	if (g_config.ntdll_protect) {
-		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
-			GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
-			unsigned int offset;
-			char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &offset);
-			if (dllname && !strcmp(dllname, "ntdll.dll")) {
+	if (g_config.ntdll_protect && NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
+			GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress) &&
+			ModuleName && !strcmp(ModuleName, "ntdll.dll")) {
 				// don't allow writes, this will cause memory access violations
 				// that we are going to handle in the RtlDispatchException hook
 				OriginalNewAccessProtection = NewAccessProtection;
 				NewAccessProtection = PAGE_EXECUTE_READ;
-			}
-			if (dllname) free(dllname);
-		}
 	}
 
 	memset(&meminfo, 0, sizeof(meminfo));
@@ -940,12 +950,25 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 			"OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no", "IsStack", "yes");
 	}
 	else {
-		LOQ_ntstatus("process", "pPPhhHs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-			"NumberOfBytesProtected", NumberOfBytesToProtect,
-			"MemoryType", meminfo.Type,
-			"NewAccessProtection", NewAccessProtection,
-			"OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+		if (!ModuleName)
+			LOQ_ntstatus("process", "pPPhhHs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+				"NumberOfBytesProtected", NumberOfBytesToProtect, "MemoryType", meminfo.Type, "NewAccessProtection", NewAccessProtection,
+				"OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+		else {
+			if (FunctionName)
+				LOQ_ntstatus("process", "pPssPhhHs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "ModuleName", ModuleName,
+					"FunctionName", FunctionName, "NumberOfBytesProtected", NumberOfBytesToProtect, "MemoryType", meminfo.Type, 
+					"NewAccessProtection", NewAccessProtection, "OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+			else
+				LOQ_ntstatus("process", "pPsPhhHs", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "ModuleName", ModuleName,
+					"NumberOfBytesProtected", NumberOfBytesToProtect, "MemoryType", meminfo.Type, "NewAccessProtection", NewAccessProtection,
+					"OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+		}
 	}
+
+	if (ModuleName)
+		free(ModuleName);
+
 	return ret;
 }
 
@@ -959,20 +982,20 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 	DWORD OriginalNewProtect = 0;
+	unsigned int DllRVA;
+	PCHAR FunctionName = NULL;
+	char *ModuleName = NULL;
+	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)lpAddress, &DllRVA);
+	if (ModuleName)
+		FunctionName = ScyllaGetExportNameByAddress(lpAddress, NULL);
 
-	if (g_config.ntdll_protect) {
-		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
-			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
-			unsigned int offset;
-			char *dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)lpAddress, &offset);
-			if (dllname && !strcmp(dllname, "ntdll.dll")) {
+	if (g_config.ntdll_protect && flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
+			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress) &&
+			ModuleName && !strcmp(ModuleName, "ntdll.dll")) {
 				// don't allow writes, this will cause memory access violations
 				// that we are going to handle in the RtlDispatchException hook
 				OriginalNewProtect = flNewProtect;
 				flNewProtect = PAGE_EXECUTE_READ;
-			}
-			if (dllname) free(dllname);
-		}
 	}
 
 	memset(&meminfo, 0, sizeof(meminfo));
@@ -1020,9 +1043,24 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 			"Size", dwSize, "MemType", meminfo.Type, "Protection", flNewProtect, "OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no", "IsStack", "yes");
 	}
 	else {
-		LOQ_bool("process", "ppphhHs", "ProcessHandle", hProcess, "Address", lpAddress,
-			"Size", dwSize, "MemType", meminfo.Type, "Protection", flNewProtect, "OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+		if (!ModuleName)
+			LOQ_bool("process", "ppphhHs", "ProcessHandle", hProcess, "Address", lpAddress, "Size", dwSize, "MemType", meminfo.Type, 
+				"Protection", flNewProtect, "OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+		else {
+			if (FunctionName)
+				LOQ_bool("process", "ppssphhHs", "ProcessHandle", hProcess, "Address", lpAddress, "ModuleName", ModuleName, 
+					"FunctionName", FunctionName, "Size", dwSize, "MemType", meminfo.Type, "Protection", flNewProtect, 
+					"OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+			else
+				LOQ_bool("process", "ppsphhHs", "ProcessHandle", hProcess, "Address", lpAddress, "ModuleName", ModuleName, 
+					"Size", dwSize, "MemType", meminfo.Type, "Protection", flNewProtect, "OldProtection", lpflOldProtect,
+					"StackPivoted", is_stack_pivoted() ? "yes" : "no");
+		}
 	}
+
+	if (ModuleName)
+		free(ModuleName);
+
 	return ret;
 }
 
@@ -1151,7 +1189,6 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 			char *dllname = convert_address_to_dll_name_and_offset(ExceptionRecord->ExceptionInformation[1], &offset);
 			char *function_name = ScyllaGetExportNameByAddress((PVOID)ExceptionRecord->ExceptionInformation[1], NULL);
 			if (dllname && !strcmp(dllname, "ntdll.dll")) {
-				free(dllname);
 				// if trying to write to ntdll.dll, then just skip the instruction
 				if (!ntdll_protect_logged) {
 					ntdll_protect_logged = TRUE;
