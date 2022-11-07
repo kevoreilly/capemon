@@ -573,21 +573,23 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (*(DWORD*)NtHeader != IMAGE_NT_SIGNATURE)
 		return NULL;
 
-	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)(DWORD_PTR)(NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
-
-	if (!ImageExportDirectory)
+	if (!NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress)
 		return NULL;
 
-	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + (DWORD_PTR)ImageExportDirectory);
+	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + (DWORD_PTR)NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+
+	if (!ImageExportDirectory->AddressOfNames)
+		return NULL;
+
+	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
 
 	for (unsigned int i = 0; i < ImageExportDirectory->NumberOfNames; i++)
 	{
-		PCHAR ExportName = NULL;
-		if (ImageExportDirectory->AddressOfNames)
-			unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
-			ExportName = (PCHAR)((PBYTE)ModuleBase + NameRVA[i]);
-		if (IsAddressAccessible(ExportName) && !strncmp(ExportName, FunctionName, strlen(FunctionName)))
-			return (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+		if (NameRVA[i])
+		{
+			if (!strcmp((PCHAR)((PBYTE)ModuleBase + NameRVA[i]), FunctionName))
+				return (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+		}
 	}
 
 	return NULL;
