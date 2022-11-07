@@ -181,7 +181,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			CapeMetaData->ProcessPath = "Unknown path";
 		CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
 
-		if (CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
+		if (!CapeMetaData->DumpType && CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
 		{
 			CapeMetaData->DumpType = TYPE_STRING;
 			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
@@ -221,6 +221,8 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 	}
 	else
 		DebugOutput("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
+
+	CapeMetaData->DumpType = 0;
 
 	return;
 }
