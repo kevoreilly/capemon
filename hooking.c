@@ -197,10 +197,10 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 	main_caller_retaddr = hookinfo->main_caller_retaddr;
 	parent_caller_retaddr = hookinfo->parent_caller_retaddr;
 
-	if (g_config.debugger)
+	if (g_config.debugger && DebuggerInitialised)
 	{
 		DWORD CurrentThreadId = GetCurrentThreadId();
-		InitNewThreadBreakpoints(CurrentThreadId);
+		InitNewThreadBreakpoints(CurrentThreadId, NULL);
 		for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
 			if (!g_config.base_on_apiname[i])
 				break;
