@@ -92,16 +92,28 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	char *module_name = NULL, *function_name = NULL;
+	unsigned int offset;
 	NTSTATUS ret;
 
-	if (pid != GetCurrentProcessId()) {
-		CreateRemoteThreadHandler(pid);
+	if (pid != GetCurrentProcessId())
 		ProcessMessage(pid, tid);
-	}
 
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
-	LOQ_ntstatus("threading", "iip", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle);
+	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)ApcRoutine, &offset);
+	if (module_name)
+		function_name = ScyllaGetExportNameByAddress((PVOID)ApcRoutine, NULL);
+
+	if (function_name && module_name)
+		LOQ_ntstatus("threading", "iipss", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name);
+	else if (module_name)
+		LOQ_ntstatus("threading", "iips", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
+	else
+		LOQ_ntstatus("threading", "iip", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
+
+	if (module_name)
+		free(module_name);
 
 	if (NT_SUCCESS(ret))
 		disable_sleep_skip();
@@ -119,16 +131,28 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	char *module_name = NULL, *function_name = NULL;
+	unsigned int offset;
 	NTSTATUS ret;
 
-	if (pid != GetCurrentProcessId()) {
-		CreateRemoteThreadHandler(pid);
+	if (pid != GetCurrentProcessId())
 		ProcessMessage(pid, tid);
-	}
 
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
-	LOQ_ntstatus("threading", "iip", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle);
+	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)ApcRoutine, &offset);
+	if (module_name)
+		function_name = ScyllaGetExportNameByAddress((PVOID)ApcRoutine, NULL);
+
+	if (function_name && module_name)
+		LOQ_ntstatus("threading", "iippss", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name);
+	else if (module_name)
+		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
+	else
+		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
+
+	if (module_name)
+		free(module_name);
 
 	if (NT_SUCCESS(ret))
 		disable_sleep_skip();
@@ -160,7 +184,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
 #endif
-			InitNewThreadBreakpoints(tid);
+			InitNewThreadBreakpoints(tid, *ThreadHandle);
 		}
 
 		if (pid != GetCurrentProcessId()) {
@@ -202,11 +226,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 	OUT	PVOID lpBytesBuffer
 ) {
 	DWORD pid = pid_from_process_handle(ProcessHandle);
+	char *module_name = NULL, *function_name = NULL;
+	unsigned int offset;
 
 	NTSTATUS ret = Old_NtCreateThreadEx(hThread, DesiredAccess,
 		ObjectAttributes, ProcessHandle, lpStartAddress, lpParameter,
 		CreateFlags | 1, StackZeroBits, SizeOfStackCommit, SizeOfStackReserve,
 		lpBytesBuffer);
+
+	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &offset);
+	if (module_name)
+		function_name = ScyllaGetExportNameByAddress((PVOID)*lpStartAddress, NULL);
 
 	if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(*hThread);
@@ -221,7 +251,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
 #endif
-			InitNewThreadBreakpoints(tid);
+			InitNewThreadBreakpoints(tid, *hThread);
 		}
 
 		if (!(CreateFlags & 1)) {
@@ -231,15 +261,35 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 			set_lasterrors(&lasterror);
 		}
 
-		LOQ_ntstatus("threading", "Ppphii", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
-			"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
-			"ProcessId", pid);
+		if (function_name && module_name)
+			LOQ_ntstatus("threading", "Ppphiiss", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
+				"ProcessId", pid, "Module", module_name, "Name", function_name);
+		else if (module_name)
+			LOQ_ntstatus("threading", "Ppphiis", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
+				"ProcessId", pid, "Module", module_name);
+		else
+			LOQ_ntstatus("threading", "Ppphii", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
+				"ProcessId", pid);
 
 		disable_sleep_skip();
 	}
-	else
-		LOQ_ntstatus("threading", "Ppph", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
-			"StartAddress", lpStartAddress, "CreateFlags", CreateFlags);
+	else {
+		if (function_name && module_name)
+			LOQ_ntstatus("threading", "Ppphss", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "Module", module_name, "Name", function_name);
+		else if (module_name)
+			LOQ_ntstatus("threading", "Ppphs", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "Module", module_name);
+		else
+			LOQ_ntstatus("threading", "Ppph", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags);
+	}
+
+	if (module_name)
+		free(module_name);
 
 	return ret;
 }
@@ -444,19 +494,11 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	ENSURE_DWORD(lpThreadId);
 
 	unsigned int DllRVA;
-	PCHAR FunctionName = NULL;
-	char *ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &DllRVA);
-	if (ModuleName)
-	{
-		__try
-		{
-			FunctionName = ScyllaGetExportNameByAddress(lpStartAddress, NULL);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER)
-		{
-			FunctionName = NULL;
-		}
-	}
+	char *module_name = NULL, *function_name = NULL;
+
+	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &DllRVA);
+	if (module_name)
+		function_name = ScyllaGetExportNameByAddress(lpStartAddress, NULL);
 
 	ret = Old_CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
 
@@ -465,7 +507,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
 #endif
-			InitNewThreadBreakpoints(*lpThreadId);
+			InitNewThreadBreakpoints(*lpThreadId, ret);
 		}
 
 		if (!(dwCreationFlags & CREATE_SUSPENDED)) {
@@ -475,19 +517,22 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 			set_lasterrors(&lasterror);
 		}
 
-		if (!ModuleName)
+		if (!module_name)
 			LOQ_nonnull("threading", "pphI", "StartRoutine", lpStartAddress, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
 		else {
-			if (FunctionName)
-				LOQ_nonnull("threading", "pssphI", "StartRoutine", lpStartAddress, "ModuleName", ModuleName, "FunctionName", FunctionName, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
+			if (function_name)
+				LOQ_nonnull("threading", "pssphI", "StartRoutine", lpStartAddress, "ModuleName", module_name, "FunctionName", function_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
 			else
-				LOQ_nonnull("threading", "psphI", "StartRoutine", lpStartAddress, "ModuleName", ModuleName, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
+				LOQ_nonnull("threading", "psphI", "StartRoutine", lpStartAddress, "ModuleName", module_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
 		}
 		disable_sleep_skip();
 	}
 	else
 		LOQ_nonnull("threading", "pph", "StartRoutine", lpStartAddress, "Parameter", lpParameter,
 			"CreationFlags", dwCreationFlags);
+
+	if (module_name)
+		free(module_name);
 
 	return ret;
 }
@@ -519,7 +564,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
 #endif
-			InitNewThreadBreakpoints(*lpThreadId);
+			InitNewThreadBreakpoints(*lpThreadId, ret);
 		}
 
 		if (!(dwCreationFlags & CREATE_SUSPENDED)) {
@@ -572,7 +617,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
 #endif
-			InitNewThreadBreakpoints(tid);
+			InitNewThreadBreakpoints(tid, ThreadHandle);
 		}
 		if (CreateSuspended == FALSE && is_valid_address_range((ULONG_PTR)ThreadHandle, 4)) {
 			lasterror_t lasterror;
