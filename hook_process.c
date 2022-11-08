@@ -589,6 +589,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			prevent_module_reloading(BaseAddress);
 		}
 	}
+
+	if (ModuleName)
+		free(ModuleName);
+
 	return ret;
 }
 
