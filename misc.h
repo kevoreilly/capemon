@@ -61,6 +61,10 @@ typedef NTSTATUS(WINAPI *_NtMapViewOfSection)(
 	__in	 UINT InheritDisposition,
 	__in	 ULONG AllocationType,
 	__in	 ULONG Win32Protect);
+typedef NTSTATUS(WINAPI *_RtlEqualUnicodeString)(
+	const PUNICODE_STRING String1,
+	const PUNICODE_STRING String2,
+	BOOLEAN CaseInSensitive);
 typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA {
 	ULONG Flags;
 	const PUNICODE_STRING FullDllName;

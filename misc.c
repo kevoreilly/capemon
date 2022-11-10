@@ -39,6 +39,7 @@ static _NtQueryObject pNtQueryObject;
 static _NtQueryKey pNtQueryKey;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
+static _RtlEqualUnicodeString pRtlEqualUnicodeString;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
@@ -64,6 +65,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pLdrRegisterDllNotification = GetProcAddress(ntdllbase, "LdrRegisterDllNotification");
 	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
 	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
+	*(FARPROC *)&pRtlEqualUnicodeString = GetProcAddress(ntdllbase, "RtlEqualUnicodeString");
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
 }
@@ -742,13 +744,13 @@ void add_all_dlls_to_dll_ranges(void)
 	memcpy(ProcessPath.Buffer, mod->FullDllName.Buffer, ProcessPath.Length);
 
 	// skip the base image
-	for(pListEntry = pHeadEntry->Flink->Flink;
+	for (pListEntry = pHeadEntry->Flink->Flink;
 		pListEntry != pHeadEntry;
 		pListEntry = pListEntry->Flink)
 	{
 		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 		// skip dlls in same directory as exe
-		if (!memcmp(ProcessPath.Buffer, mod->FullDllName.Buffer, ProcessPath.Length))
+		if (pRtlEqualUnicodeString(&ProcessPath, &mod->FullDllName, FALSE))
 			continue;
 		if ((ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest)
 			continue;
