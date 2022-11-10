@@ -178,7 +178,13 @@ int addr_in_our_dll_range(void *unused, ULONG_PTR addr)
 
 static int __called_by_hook(ULONG_PTR stack_pointer, ULONG_PTR frame_pointer)
 {
-	return operate_on_backtrace(stack_pointer, frame_pointer, NULL, addr_in_our_dll_range);
+	int ret = operate_on_backtrace(stack_pointer, frame_pointer, NULL, addr_in_our_dll_range);
+
+	// if exception operating on backtrace or LdrpInvertedFunctionTableSRWLock held, prevent recursion
+	if (ret == -1)
+		return 1;
+
+	return ret;
 }
 
 int called_by_hook(void)

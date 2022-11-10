@@ -1112,7 +1112,7 @@ BOOL srw_lock_held()
 	return FALSE;
 }
 
-static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigned int count)
+static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigned int count)
 {
 	/* derived from http://www.nynaeve.net/Code/StackWalk64.cpp */
 	__declspec(align(64)) CONTEXT ctx;
@@ -1124,7 +1124,7 @@ static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace
 	unsigned int frame;
 
 	if (srw_lock_held())
-		return 0;
+		return -1;
 
 	__try
 	{
@@ -1149,17 +1149,15 @@ static unsigned int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		return 0;
+		return -1;
 	}
 }
 
 int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(void *, ULONG_PTR))
 {
-	int ret = 0;
 	PVOID backtrace[HOOK_BACKTRACE_DEPTH];
 	lasterror_t lasterror;
-	WORD frames;
-	WORD i;
+	int i, frames, ret = -1;
 
 	get_lasterrors(&lasterror);
 
