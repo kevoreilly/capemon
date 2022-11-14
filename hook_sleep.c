@@ -597,39 +597,6 @@ HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 	return;
 }
 
-WAITORTIMERCALLBACK HookedCallback;
-
-typedef VOID(CALLBACK *_WaitOrTimerCallback)(
-  _In_ PVOID	lpParameter,
-  _In_ BOOLEAN	TimerOrWaitFired
-);
-
-VOID CALLBACK WaitOrTimerCallbackHook(
-  _In_	PVOID   lpParameter,
-  _In_	BOOLEAN TimerOrWaitFired
-)
-{
-	if (!HookedCallback) {
-		DebugOutput("Timer callback hook: error, HookedCallback NULL.\n");
-		return;
-	}
-
-	if (g_config.debugger) {
-		DWORD tid = GetCurrentThreadId();
-		DebugOutput("Timer callback hook: Initialising breakpoints for thread %d.\n", tid);
-		InitNewThreadBreakpoints(tid, NULL);
-	}
-
-	_WaitOrTimerCallback pWaitOrTimerCallback;
-	*(FARPROC*)&pWaitOrTimerCallback = (FARPROC)HookedCallback;
-	pWaitOrTimerCallback(lpParameter, TimerOrWaitFired);
-
-	int ret = 0;
-	LOQ_void("system", "p", "Callback", HookedCallback);
-
-	HookedCallback = NULL;
-}
-
 HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
   _Out_		PHANDLE				phNewTimer,
   _In_opt_	HANDLE				TimerQueue,
@@ -639,15 +606,7 @@ HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
   _In_		DWORD				Period,
   _In_		ULONG				Flags
 ) {
-	BOOL ret;
-
-	if (Callback && !HookedCallback) {
-		HookedCallback = Callback;
-		ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, &WaitOrTimerCallbackHook, Parameter, DueTime, Period, Flags);
-	}
-	else
-		ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
-
+	BOOL ret = Old_CreateTimerQueueTimer(phNewTimer, TimerQueue, Callback, Parameter, DueTime, Period, Flags);
 	LOQ_bool("system", "Pphhiii", "phNewTimer", phNewTimer, "TimerQueue", TimerQueue, "Callback", Callback, "Parameter", Parameter, "DueTime", DueTime, "Period", Period, "Flags", Flags);
 	return ret;
 }
