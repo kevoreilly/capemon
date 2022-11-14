@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 
 extern char *our_process_name;
+extern int path_is_system(const wchar_t *path_w);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
@@ -733,14 +734,14 @@ void add_all_dlls_to_dll_ranges(void)
 	LDR_DATA_TABLE_ENTRY * mod;
 	PLIST_ENTRY pHeadEntry;
 	PLIST_ENTRY pListEntry;
-	UNICODE_STRING ProcessPath;
+	UNICODE_STRING ProcessPath, ModulePath;
 	PEB *peb = (PEB *)get_peb();
 
 	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
 	pListEntry = pHeadEntry->Flink;
 	mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 	ProcessPath.MaximumLength = ProcessPath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
-	ProcessPath.Buffer = calloc(1, ProcessPath.Length + 1);
+	ProcessPath.Buffer = calloc(ProcessPath.Length/sizeof(WCHAR) + 1, sizeof(WCHAR));
 	memcpy(ProcessPath.Buffer, mod->FullDllName.Buffer, ProcessPath.Length);
 
 	// skip the base image
@@ -750,10 +751,16 @@ void add_all_dlls_to_dll_ranges(void)
 	{
 		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
 		// skip dlls in same directory as exe
-		if (pRtlEqualUnicodeString(&ProcessPath, &mod->FullDllName, FALSE))
-			continue;
-		if ((ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest)
-			continue;
+		if (!path_is_system(ProcessPath.Buffer)) {
+			ModulePath.MaximumLength = ModulePath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
+			ModulePath.Buffer = calloc(ModulePath.Length/sizeof(WCHAR) + 1, sizeof(WCHAR));
+			memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length);
+			if (pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
+				free(ModulePath.Buffer);
+				continue;
+			}
+			free(ModulePath.Buffer);
+		}
 		add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
 
