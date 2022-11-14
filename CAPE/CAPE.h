@@ -56,6 +56,8 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size);
 int ScanPageForNonZero(PVOID Address);
 int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
 int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
+PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax);
+PCHAR GetExportNameByAddress(PVOID Address);
 int IsDisguisedPEHeader(PVOID Buffer);
 int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);

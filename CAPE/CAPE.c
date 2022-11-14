@@ -1263,6 +1263,36 @@ int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 }
 
 //**************************************************************************************
+PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax)
+//**************************************************************************************
+{
+	if (!Address)
+		return NULL;
+
+	PVOID ImageBase = GetAllocationBase(Address);
+	PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)ImageBase + (ULONG)((PIMAGE_DOS_HEADER)ImageBase)->e_lfanew);
+	PIMAGE_EXPORT_DIRECTORY ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)ImageBase + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	PDWORD AddressOfNames = (PDWORD)((PUCHAR)ImageBase + ExportDirectory->AddressOfNames);
+	PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)ImageBase + ExportDirectory->AddressOfFunctions);
+	PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)ImageBase + ExportDirectory->AddressOfNameOrdinals);
+
+	for (unsigned int j = 0; j < ExportDirectory->NumberOfFunctions; j++)
+	{
+		if ((PUCHAR)Address - (PUCHAR)ImageBase > AddressOfFunctions[AddressOfNameOrdinals[j]] && (PUCHAR)Address - (PUCHAR)ImageBase - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
+			return (PCHAR)ImageBase + AddressOfNames[j];
+	}
+
+    return NULL;
+}
+
+//**************************************************************************************
+PCHAR GetExportNameByAddress(PVOID Address)
+//**************************************************************************************
+{
+	return ScanForExport(Address, 0);
+}
+
+//**************************************************************************************
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 //**************************************************************************************
 {
@@ -2178,12 +2208,14 @@ void CAPE_post_init()
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 	}
 	else
+#ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Failed to initialise debugger.\n");
+#endif
 
 	if (g_config.unpacker)
 		UnpackerInit();
 
-	if (g_config.upx)
+	if (!g_config.debugger && g_config.upx)
 	{
 		CapeMetaData->DumpType = UPX;
 		g_config.procdump = 0;
