@@ -615,7 +615,9 @@ BOOL IsAddressAccessible(PVOID Address)
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
+#ifdef DEBUG_COMMENTS
 		ErrorOutput("IsAddressAccessible: unable to query memory address 0x%p", Address);
+#endif
 		return 0;
 	}
 
@@ -1278,7 +1280,8 @@ PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax)
 
 	for (unsigned int j = 0; j < ExportDirectory->NumberOfFunctions; j++)
 	{
-		if ((PUCHAR)Address - (PUCHAR)ImageBase > AddressOfFunctions[AddressOfNameOrdinals[j]] && (PUCHAR)Address - (PUCHAR)ImageBase - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
+		if ((PUCHAR)Address - (PUCHAR)ImageBase > (int)AddressOfFunctions[AddressOfNameOrdinals[j]]
+		&& (PUCHAR)Address - (PUCHAR)ImageBase - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
 			return (PCHAR)ImageBase + AddressOfNames[j];
 	}
 

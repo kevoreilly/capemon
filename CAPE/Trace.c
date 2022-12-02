@@ -104,7 +104,9 @@ SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
 	SIZE_T Count;
 	if (!ReadProcessMemory(GetCurrentProcess(), StrCandidate, OutputBuffer, BufferSize, &Count))
 	{
-		DebugOutput("StrTest: ReadProcessMemory bombed on 0x%p", StrCandidate);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("StrTest: ReadProcessMemory failed on string candidate at 0x%p", StrCandidate);
+#endif
 		return 0;
 	}
 	PCHAR Character = (PCHAR)OutputBuffer;
@@ -135,7 +137,9 @@ SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
 	SIZE_T Count;
 	if (!ReadProcessMemory(GetCurrentProcess(), StrCandidate, OutputBuffer, BufferSize, &Count))
 	{
-		DebugOutput("StrTestW: ReadProcessMemory bombed on 0x%p", StrCandidate);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("StrTestW: ReadProcessMemory failed on string candidate at 0x%p", StrCandidate);
+#endif
 		return 0;
 	}
 	PWCHAR Character = (PWCHAR)OutputBuffer;
