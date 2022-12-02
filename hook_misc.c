@@ -1758,6 +1758,14 @@ HOOKDEF(int, WINAPI, WideCharToMultiByte,
 	return Old_WideCharToMultiByte(CodePage, dwFlags, lpWideCharStr, cchWideChar, lpMultiByteStr, cbMultiByte, lpDefaultChar, lpUsedDefaultChar);
 }
 
+HOOKDEF(LPSTR, WINAPI, GetCommandLineA,
+	void
+) {
+	LPSTR ret = Old_GetCommandLineA();
+	LOQ_nonnull("misc", "s", "CommandLine", ret);
+	return ret;
+}
+
 HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 ) {
