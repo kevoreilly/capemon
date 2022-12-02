@@ -725,6 +725,11 @@ int hook_api(hook_t *h, int type)
 		addr += 4;
 	}
 
+	// e.g. GetCommandLine APIs
+	if (!memcmp(addr, "\xeb\x05\x90\x90\x90\x90\x90", 7))
+		// step over the jump and the nops
+		addr += 7;
+
 	// windows 7 has a DLL called kernelbase.dll which basically acts
 	// as a layer between the program and kernel32 (and related?) it
 	// allows easy hotpatching of a set of functions which is why
