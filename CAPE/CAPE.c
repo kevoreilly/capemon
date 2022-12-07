@@ -2210,7 +2210,7 @@ void CAPE_post_init()
 		if (!g_config.base_on_apiname[0])
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 	}
-	else
+	else if (g_config.debugger)
 #ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Failed to initialise debugger.\n");
 #endif
