@@ -685,8 +685,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	__in	 ULONG AllocationType,
 	__in	 ULONG Protect
 ) {
-	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress,
-		ZeroBits, RegionSize, AllocationType, Protect);
+	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
 		if (g_config.unpacker)
@@ -1173,7 +1172,7 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 				if (!ntdll_protect_logged) {
 					ntdll_protect_logged = TRUE;
 #ifdef _WIN64
-					DebugOutput("RtlDispatchException: skipped instruction at 0x%x writing to ntdll (x%x - 0x%x)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
+					DebugOutput("RtlDispatchException: skipped instruction at 0x%p writing to ntdll (0x%p - 0x%p)\n", Context->Rip, ExceptionRecord->ExceptionInformation[1], offset);
 				}
 				Context->Rip += lde((void*)Context->Rip);
 #else
@@ -1181,6 +1180,9 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 				}
 				Context->Eip += lde((void*)Context->Eip);
 #endif
+				int ret = 0;
+				if (g_config.log_exceptions)
+					LOQ_void("system", "pppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionRecord->ExceptionInformation[0]);
 				return TRUE;
 			}
 			if (dllname)
