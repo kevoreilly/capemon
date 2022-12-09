@@ -51,7 +51,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
 		if (pid != GetCurrentProcessId())
-			ProcessMessage(pid, dwThreadId);
+			ProcessMessage(pid, 0);
 	}
 
 	ret = Old_SetWindowsHookExA(idHook, lpfn, hMod, dwThreadId);
@@ -72,7 +72,7 @@ HOOKDEF(HHOOK, WINAPI, SetWindowsHookExW,
 	if (hMod && lpfn && dwThreadId) {
 		DWORD pid = get_pid_by_tid(dwThreadId);
 		if (pid != GetCurrentProcessId())
-			ProcessMessage(pid, dwThreadId);
+			ProcessMessage(pid, 0);
 	}
 
 	ret = Old_SetWindowsHookExW(idHook, lpfn, hMod, dwThreadId);

@@ -180,7 +180,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 
 		if (pid != GetCurrentProcessId()) {
 			CreateRemoteThreadHandler(pid);
-			ProcessMessage(pid, tid);
+			ProcessMessage(pid, 0);
 		}
 
 		if (CreateSuspended == FALSE) {
@@ -234,7 +234,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 
 		if (pid != GetCurrentProcessId()) {
 			CreateRemoteThreadHandler(pid);
-			ProcessMessage(pid, tid);
+			ProcessMessage(pid, 0);
 		}
 		else if (g_config.debugger && !called_by_hook()) {
 #ifdef DEBUG_COMMENTS
@@ -377,7 +377,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	//if (g_config.injection)
 	SetThreadContextHandler(pid, Context);
 	if (pid != GetCurrentProcessId())
-		ProcessMessage(pid, tid);
+		ProcessMessage(pid, 0);
 
 	return ret;
 }
@@ -402,7 +402,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	}
 	else {
 		if (pid != GetCurrentProcessId())
-			ProcessMessage(pid, tid);
+			ProcessMessage(pid, 0);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 		LOQ_ntstatus("threading", "pLii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
@@ -535,7 +535,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 	if (ret != NULL) {
 		if (pid != GetCurrentProcessId()) {
 			CreateRemoteThreadHandler(pid);
-			ProcessMessage(pid, *lpThreadId);
+			ProcessMessage(pid, 0);
 		}
 		else if (g_config.debugger && !called_by_hook()) {
 #ifdef DEBUG_COMMENTS
@@ -588,7 +588,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 		DWORD tid = tid_from_thread_handle(ThreadHandle);
 		if (pid != GetCurrentProcessId()) {
 			CreateRemoteThreadHandler(pid);
-			ProcessMessage(pid, tid);
+			ProcessMessage(pid, 0);
 		}
 		else if (g_config.debugger && !called_by_hook()) {
 #ifdef DEBUG_COMMENTS
