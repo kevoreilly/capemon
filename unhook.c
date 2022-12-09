@@ -290,7 +290,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	if (g_config.yarascan)
 		YaraShutdown();
 
-	if (g_config.tlsdump && TlsLog)
+	if (TlsLog && TlsLog != INVALID_HANDLE_VALUE)
 		CloseHandle(TlsLog);
 
 	g_terminate_event_handle = OpenEventA(EVENT_MODIFY_STATE, FALSE, g_config.terminate_event_name);

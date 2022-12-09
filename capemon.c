@@ -419,7 +419,7 @@ next:
 	return EXCEPTION_CONTINUE_SEARCH;
 }
 
-static void notify_successful_load(void)
+void notify_successful_load(void)
 {
 	// notify analyzer.py that we've loaded
 	pipe("LOADED:%d", GetCurrentProcessId());
@@ -521,10 +521,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		DWORD pids[MAX_PROTECTED_PIDS];
 		unsigned int length = sizeof(pids);
 
-		/* we can sometimes be injected twice into a process, say if we queued up an APC that we timed out waiting to
-		   complete, and then did a successful createremotethread, so just do a cheap check for our hooks and fake that
-		   we loaded successfully
-		*/
+		// we can sometimes be injected multiple times into a process
 		if (already_hooked())
 			goto abort;
 

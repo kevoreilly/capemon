@@ -32,6 +32,8 @@ extern PVOID GetHookCallerBase();
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern int DoProcessDump(PVOID CallerBase);
+extern void set_hooks();
+extern void notify_successful_load(void);
 extern BOOL ProcessDumped;
 
 PVOID LastDllUnload;
@@ -60,11 +62,7 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 
 	get_lasterrors(&lasterror);
 
-	/* Workaround for the case where we're being loaded twice in the same process
-	Logging the load could confuse a novice analyst into thinking there's unusual
-	activity when there's not, so hide it
-	*/
-	if (!called_by_hook() && wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
+	if (!g_config.tlsdump && !called_by_hook() && wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
 		if (g_config.file_of_interest && g_config.suspend_logging) {
 			wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
 			ensure_absolute_unicode_path(absolutename, library.Buffer);
@@ -96,6 +94,16 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 
 	}
 	else {
+		// Don't log attempts to load monitor twice
+		if (g_config.tlsdump) {
+			// lsass injected a second time - switch to 'normal' mode
+			g_config.tlsdump = 0;
+			if (read_config()) {
+				log_init(g_config.debug || g_config.standalone);
+				set_hooks();
+				notify_successful_load();
+			}
+		}
 		ret = 1;
 	}
 

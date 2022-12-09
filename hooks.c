@@ -702,6 +702,7 @@ hook_t zero_hooks[] = {
 };
 
 hook_t tls_hooks[] = {
+	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),	// allows monitor reload to trigger switch from tlsdump to 'normal' mode
 	HOOK(ncrypt, SslGenerateMasterKey),
 	HOOK(ncrypt, SslImportMasterKey),
 	HOOK(ncrypt, SslGenerateSessionKeys),
