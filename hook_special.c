@@ -93,7 +93,7 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 		}
 
 	}
-	else {
+	else if (!wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
 		// Don't log attempts to load monitor twice
 		if (g_config.tlsdump) {
 			// lsass injected a second time - switch to 'normal' mode
