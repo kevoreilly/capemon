@@ -58,6 +58,7 @@ extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue;
 extern PVOID BreakOnNtContinueCallback;
 extern int StepOverRegister;
+extern int process_shutting_down;
 extern HANDLE DebuggerLog;
 
 DWORD MainThreadId;
@@ -660,9 +661,11 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif
 	}
 
+	// Exceptions in capemon
 	if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
-		// This is an exception in capemon
-		DebugOutput("CAPEExceptionFilter: Exception 0x%x caught at RVA 0x%x in capemon caught accessing 0x%x (expected in memory scans), passing to next handler.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, (BYTE*)ExceptionInfo->ExceptionRecord->ExceptionAddress - g_our_dll_base, ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+		// Filter STATUS_GUARD_PAGE_VIOLATION upon process termination as it occurs routinely in process dump full memory scan
+		if (!(process_shutting_down && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION))
+			DebugOutput("CAPEExceptionFilter: Exception 0x%x accessing 0x%x caught at RVA 0x%x in capemon (expected in memory scans), passing to next handler.\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], (BYTE*)ExceptionInfo->ExceptionRecord->ExceptionAddress - g_our_dll_base);
 
 	if (TraceRunning)
 	{
