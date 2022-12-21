@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
 //#define DEBUG_COMMENTS
+#define BUFSIZE 512
 #include <stdio.h>
 #include "..\ntapi.h"
 #include <psapi.h>
@@ -28,6 +29,11 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Debugger.h"
 #include "CAPE.h"
 #include "Injection.h"
+#include "Shlwapi.h"
+
+#pragma comment(lib, "shlwapi.lib")
+#pragma warning(push )
+#pragma warning(disable : 4996)
 
 extern _NtMapViewOfSection pNtMapViewOfSection;
 extern _NtUnmapViewOfSection pNtUnmapViewOfSection;
@@ -36,6 +42,9 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void TestDebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern PVOID get_process_image_base(HANDLE process_handle);
+extern wchar_t *our_dll_path_w;
+extern void hook_disable();
+extern void hook_enable();
 
 //**************************************************************************************
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId)
@@ -1106,5 +1115,75 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 		return;
 	}
 
-	pipe("PROCESS:0:%d,%d", ProcessId, ThreadId);
+	if (g_config.standalone)
+	{
+		BOOL Wow64Process;
+		HANDLE ProcessHandle;
+		PROCESS_INFORMATION ProcInfo;
+		WCHAR CommandLine[BUFSIZE], LoaderPath[BUFSIZE], Loader[BUFSIZE], MonitorPath[BUFSIZE];
+		WCHAR Loader64[] = L"loader_x64.exe";
+		WCHAR Loader32[] = L"loader.exe";
+
+		STARTUPINFOEXW StartupInfoEx = {sizeof(StartupInfoEx)};
+		wcsncpy(LoaderPath, our_dll_path_w, wcslen(our_dll_path_w));
+		PathRemoveFileSpecW(LoaderPath); // remove dll name
+
+		if (!CurrentInjectionInfo || !CurrentInjectionInfo->ProcessHandle)
+		{
+			ProcessHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ProcessId);
+			if (!ProcessHandle)
+			{
+				DebugOutput("ProcessMessage: Unable to open handle to process %d (standalone mode)", ProcessId);
+				return;
+			}
+		}
+		else
+			ProcessHandle = CurrentInjectionInfo->ProcessHandle;
+
+		if (!IsWow64Process(ProcessHandle, &Wow64Process))
+		{
+			ErrorOutput("ProcessMessage: IsWow64Process failed for process %d (standalone mode)", ProcessId);
+			return;
+		}
+
+		if (Wow64Process)
+		{
+#ifdef _WIN64
+			swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader32);
+			swprintf(MonitorPath, BUFSIZE, L"%ws\\%ws", LoaderPath, L"capemon.dll");
+			swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, MonitorPath);
+#else
+			swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader64);
+			swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, our_dll_path_w);
+#endif
+		}
+		else
+		{
+#ifdef _WIN64
+			swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader64);
+			swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, our_dll_path_w);
+#else
+			GetSystemInfo(&SystemInfo);
+			if (SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
+			{
+				swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader64);
+				swprintf(MonitorPath, BUFSIZE, L"%ws\\%ws", LoaderPath, L"capemon_x64.dll");
+				swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, MonitorPath);
+			}
+			else
+			{
+				swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader32);
+				swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, our_dll_path_w);
+			}
+#endif
+	}
+		hook_disable();
+		if (CreateProcessW(NULL, CommandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &StartupInfoEx.StartupInfo, &ProcInfo))
+			DebugOutput("ProcessMessage: Injected monitor into process %d (standalone mode)", ProcessId);
+		else
+			DebugOutput("ProcessMessage: Failed to inject monitor into process %d (standalone mode)", ProcessId);
+		hook_enable();
+	}
+	else
+		pipe("PROCESS:0:%d,%d", ProcessId, ThreadId);
 }
