@@ -70,8 +70,8 @@ void parse_config_line(char* line)
 				ARRAYSIZE(g_config.logserver));
 		}
 		else if (!strcmp(key, "results")) {
-			strncpy(g_config.results, value,
-				ARRAYSIZE(g_config.results) - 1);
+			memset(g_config.results, 0, MAX_PATH);
+			strncpy(g_config.results, value, ARRAYSIZE(g_config.results) - 1);
 			for (i = 0; i < ARRAYSIZE(g_config.results); i++)
 				g_config.w_results[i] = (wchar_t)(unsigned short)g_config.results[i];
 		}
@@ -102,8 +102,7 @@ void parse_config_line(char* line)
 			g_config.referrer = strdup(value);
 		}
 		else if (!strcmp(key, "analyzer")) {
-			strncpy(g_config.analyzer, value,
-				ARRAYSIZE(g_config.analyzer)-1);
+			strncpy(g_config.analyzer, value, ARRAYSIZE(g_config.analyzer)-1);
 			for (i = 0; i < ARRAYSIZE(g_config.analyzer); i++)
 				g_config.w_analyzer[i] = (wchar_t)(unsigned short)g_config.analyzer[i];
 			wcscpy(g_config.dllpath, g_config.w_analyzer);
@@ -111,8 +110,7 @@ void parse_config_line(char* line)
 				wcscat(g_config.dllpath, L"\\dll\\");
 		}
 		else if (!strcmp(key, "shutdown-mutex")) {
-			strncpy(g_config.shutdown_mutex, value,
-				ARRAYSIZE(g_config.shutdown_mutex));
+			strncpy(g_config.shutdown_mutex, value, ARRAYSIZE(g_config.shutdown_mutex));
 		}
 		else if (!strcmp(key, "first-process")) {
 			g_config.first_process = value[0] == '1';
@@ -169,8 +167,7 @@ void parse_config_line(char* line)
 			g_config.force_flush = atoi(value);
 		}
 		else if (!strcmp(key, "terminate-event")) {
-			strncpy(g_config.terminate_event_name, value,
-				ARRAYSIZE(g_config.terminate_event_name));
+			strncpy(g_config.terminate_event_name, value, ARRAYSIZE(g_config.terminate_event_name));
 		}
 		else if (!strcmp(key, "no-stealth")) {
 			g_config.no_stealth = value[0] == '1';
@@ -1122,13 +1119,14 @@ void parse_config_line(char* line)
 
 int read_config(void)
 {
-	char buf[32768], config_fname[MAX_PATH], analyzer_path[MAX_PATH];
+	char buf[32768], config_fname[MAX_PATH];
 	FILE *fp;
 
 	// look for the config in monitor directory
-	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(analyzer_path); // remove filename
-	sprintf(config_fname, "%s\\%u.ini", analyzer_path, GetCurrentProcessId());
+	memset(g_config.analyzer, 0, MAX_PATH);
+	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
+	PathRemoveFileSpec(g_config.analyzer); // remove filename
+	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
 
 	fp = fopen(config_fname, "r");
 
@@ -1142,7 +1140,7 @@ int read_config(void)
 	// for debugging purposes
 	if (fp == NULL) {
 		memset(config_fname, 0, sizeof(config_fname));
-		sprintf(config_fname, "%s\\config.ini", analyzer_path);
+		sprintf(config_fname, "%s\\config.ini", g_config.analyzer);
 		fp = fopen(config_fname, "r");
 		if (fp == NULL)
 			return 0;
@@ -1172,24 +1170,26 @@ int read_config(void)
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
-	memset(g_config.results, 0, MAX_PATH);
-	memset(g_config.analyzer, 0, MAX_PATH);
+	strcpy(g_config.results, g_config.analyzer);
+
 	memset(g_config.pythonpath, 0, MAX_PATH);
 	memset(g_config.w_results, 0, sizeof(WCHAR)*MAX_PATH);
 	memset(g_config.w_analyzer, 0, sizeof(WCHAR)*MAX_PATH);
 	memset(g_config.w_pythonpath, 0, sizeof(WCHAR)*MAX_PATH);
 
 	memset(buf, 0, sizeof(buf));
-	while (fgets(buf, sizeof(buf), fp) != NULL)
-	{
-		// cut off the newline
-		char *p = strchr(buf, '\r');
-		if (p != NULL) *p = 0;
-		p = strchr(buf, '\n');
-		if (p != NULL) *p = 0;
+	if (fp) {
+		while (fgets(buf, sizeof(buf), fp) != NULL) {
+			// cut off the newline
+			char *p = strchr(buf, '\r');
+			if (p != NULL) *p = 0;
+			p = strchr(buf, '\n');
+			if (p != NULL) *p = 0;
 
-		parse_config_line(buf);
+			parse_config_line(buf);
+		}
 	}
+	else g_config.standalone = 1;
 
 	/* don't suspend logging if this isn't the first process or if we want all the logs */
 	if (!g_config.first_process || g_config.full_logs)
@@ -1232,6 +1232,8 @@ int read_config(void)
 		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
 	}
 
-	fclose(fp);
+	if (fp)
+		fclose(fp);
+
 	return 1;
 }
