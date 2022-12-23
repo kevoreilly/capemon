@@ -603,7 +603,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 	__inout  	PSIZE_T ViewSize,
 	__in	 	ULONG AllocationType,
 	__in	 	ULONG Win32Protect,
-	__inout_opt	MEM_EXTENDED_PARAMETER Parameters,
+	__inout_opt	MEM_EXTENDED_PARAMETER *Parameters,
 	__in	 	ULONG ParameterCount
 ) {
 	NTSTATUS ret = Old_NtMapViewOfSectionEx(SectionHandle, ProcessHandle, BaseAddress, SectionOffset, ViewSize,
@@ -707,7 +707,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
 	__inout  PSIZE_T RegionSize,
 	__in	 ULONG AllocationType,
 	__in	 ULONG PageProtection,
-	__inout  MEM_EXTENDED_PARAMETER Parameters,
+	__inout  MEM_EXTENDED_PARAMETER *Parameters,
 	__in	 ULONG ParameterCount
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemoryEx(ProcessHandle, BaseAddress, RegionSize, AllocationType, PageProtection, Parameters, ParameterCount);
