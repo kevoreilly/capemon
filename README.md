@@ -5,7 +5,7 @@ Much of the functionality of CAPE is contained within the monitor; the CAPE debu
 capemon is derived from cuckoomon-modified from spender-sandbox (https://github.com/spender-sandbox/cuckoomon-modified) from which it inherits the API hooking engine. It also includes a PE dumping engine and import reconstruction derived from Scylla (https://github.com/NtQuery/Scylla), WOW64Ext Library from ReWolf (http://blog.rewolf.pl/) and W64oWoW64 from George Nicolaou. 
 
 ## How to compile capemon
-At the time of writing, capemon is compiled using Microsoft Visual Studio 2017.
+At the time of writing, capemon is compiled using Microsoft Visual Studio 2022.
 
 Upon compilation, copy the capemon binaries (`capemon.dll` or `capemon_x64.dll`) into your [CAPEv2](https://github.com/kevoreilly/CAPEv2) directory so the modified libraries are used during analysis. The specific path is: `CAPEv2/analyzer/windows/dll/`. If required, the loader binaries (`loader.exe` or `loader_x64.exe`) should be copied to `CAPEv2/analyzer/windows/bin/`.
 
