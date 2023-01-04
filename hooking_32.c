@@ -882,7 +882,7 @@ int already_hooked(void)
 
 int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR))
 {
-	int ret = 0;
+	int ret = -1;
 
 	ULONG_PTR top = get_stack_top();
 	ULONG_PTR bottom = get_stack_bottom();
@@ -912,7 +912,7 @@ int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		return 0;
+		return -1;
 	}
 }
 #endif
