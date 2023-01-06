@@ -169,9 +169,6 @@ struct _g_config {
 	// for PlugX config & payload extraction
 	int plugx;
 
-	// for Hancitor config & payload extraction
-	int hancitor;
-
 	// dynamic upx unpacker
 	int upx;
 

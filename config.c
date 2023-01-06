@@ -1103,15 +1103,6 @@ void parse_config_line(char* line)
 			if (g_config.plugx)
 				DebugOutput("PlugX package enabled.\n");
 		}
-		else if (!stricmp(key, "hancitor")) {
-			g_config.hancitor = value[0] == '1';
-			if (g_config.hancitor) {
-				g_config.dump_on_apinames[0] = "InternetCrackUrlA";
-				g_config.dump_on_api_type = HANCITOR_PAYLOAD;
-				g_config.procdump = 0;
-				DebugOutput("Hancitor config & payload extraction enabled.\n");
-			}
-		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
 	}

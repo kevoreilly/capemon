@@ -120,11 +120,6 @@ HOOKDEF(BOOL, WINAPI, CryptDecrypt,
 ) {
 	BOOL ret = Old_CryptDecrypt(hKey, hHash, Final, dwFlags, pbData,
 		pdwDataLen);
-	if (ret && g_config.hancitor) {
-		CapeMetaData->DumpType = HANCITOR_CONFIG;
-		DumpMemoryRaw(pbData, *pdwDataLen);
-		DebugOutput("CryptDecrypt hook: Dumped Hancitor config at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
-	}
 	if (ret && g_config.dump_crypto) {
 		if (!CapeMetaData->DumpType)
 			CapeMetaData->DumpType = DATADUMP;

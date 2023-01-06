@@ -638,7 +638,6 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 	if ((NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
 		if (g_config.compression || g_config.plugx) {
 			DebugOutput("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x.\n", UncompressedBuffer, *FinalUncompressedSize);
-			CapeMetaData->DumpType = COMPRESSION;
 			if (g_config.yarascan)
 				YaraScan(UncompressedBuffer, *FinalUncompressedSize);
 			if (*(WORD*)UncompressedBuffer == PLUGX_SIGNATURE) {
@@ -651,16 +650,16 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 					LONG e_lfanew = *(LONG*)(PEImage + FIELD_OFFSET(IMAGE_DOS_HEADER, e_lfanew));
 					if (*(DWORD*)(PEImage + e_lfanew) == PLUGX_SIGNATURE)
 						*(DWORD*)(PEImage + e_lfanew) = IMAGE_NT_SIGNATURE;
-					CapeMetaData->DumpType = PLUGX_PAYLOAD;
+					CapeMetaData->TypeString = "PlugX Payload";
 					DumpPEsInRange(PEImage, *FinalUncompressedSize);
 					free(PEImage);
 				}
 			}
-			else {
-				if (g_config.plugx)
-					CapeMetaData->DumpType = PLUGX_PAYLOAD;
-				CompressedPE = DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
-			}
+			else if (g_config.plugx)
+				CapeMetaData->TypeString = "PlugX Payload";
+			else
+				CapeMetaData->DumpType = COMPRESSION;
+			CompressedPE = DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
 		}
 	}
 
@@ -1176,7 +1175,7 @@ HOOKDEF(void, WINAPIV, memcpy,
 	))
 	{
 		DebugOutput("PlugX config detected (size 0x%d), dumping.\n", count);
-		CapeMetaData->DumpType = PLUGX_CONFIG;
+		CapeMetaData->TypeString = "PlugX Config";
 		DumpMemoryRaw((BYTE*)src, count);
 		PlugXConfigDumped = TRUE;
 	}

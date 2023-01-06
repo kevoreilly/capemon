@@ -674,7 +674,7 @@ BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVO
 			return FALSE;
 		}
 	}
-	else if (DumpType == UNPACKED_PE || DumpType == UNPACKED_SHELLCODE || DumpType == URSNIF_PAYLOAD)
+	else if (DumpType == UNPACKED_PE || DumpType == UNPACKED_SHELLCODE)
 	{
 		if (!Address)
 		{
