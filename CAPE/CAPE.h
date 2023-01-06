@@ -136,5 +136,3 @@ enum {
 
 	UPX = 0x1000
 };
-
-HANDLE EvilGrabRegHandle;
