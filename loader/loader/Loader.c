@@ -1081,11 +1081,20 @@ rebase:
 	// If IAT zero, set it to section that contains original import table to prevent LdrpSnapIAT failure
 	if (NtHeader.IAT_DIRECTORY.VirtualAddress == 0)
 	{
-		NtHeader.IAT_DIRECTORY.VirtualAddress = ImportsSection.VirtualAddress;
-		if (ImportsSection.Misc.VirtualSize)
-			NtHeader.IAT_DIRECTORY.Size = ImportsSection.Misc.VirtualSize;
+		if (ImportsSection.VirtualAddress)
+		{
+			NtHeader.IAT_DIRECTORY.VirtualAddress = ImportsSection.VirtualAddress;
+			if (ImportsSection.Misc.VirtualSize)
+				NtHeader.IAT_DIRECTORY.Size = ImportsSection.Misc.VirtualSize;
+			else
+				NtHeader.IAT_DIRECTORY.Size = ImportsSection.SizeOfRawData;
+		}
+		// Required for Win10+ 
 		else
-			NtHeader.IAT_DIRECTORY.Size = ImportsSection.SizeOfRawData;
+		{
+			NtHeader.IAT_DIRECTORY.VirtualAddress = pImageDescriptor->FirstThunk;
+			NtHeader.IAT_DIRECTORY.Size = sizeof(IMAGE_THUNK_DATAXX);
+		}
 	}
 
 	// Now set the import table directory entry to point to the new table
