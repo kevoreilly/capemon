@@ -404,7 +404,7 @@ static int find_capemon_addrs(void *unused, ULONG_PTR addr)
 
 static int _operate_on_backtrace(ULONG_PTR retaddr, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR))
 {
-	int ret;
+	int ret = 0;
 
 	while (_ebp)
 	{
@@ -425,7 +425,7 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 	hook_disable();
 
 	while (1) {
-		char msg[16384];
+		char msg[MAX_PATH];
 		char *dllname;
 		unsigned int off = 0;
 		int i;
@@ -439,7 +439,7 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 		ctx.ContextFlags = CONTEXT_FULL;
 		GetThreadContext((HANDLE)param, &ctx);
 		dllname = convert_address_to_dll_name_and_offset(ctx.Eip, &off);
-		sprintf(msg, "INFO: PID %u thread: %p EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx\n", GetCurrentProcessId(), param, dllname ? dllname : "", off, ctx.Eip, ctx.Eax, ctx.Ebx, ctx.Ecx, ctx.Edx, ctx.Esi, ctx.Edi, ctx.Ebp, ctx.Esp);
+		_snprintf_s(msg, MAX_PATH, _TRUNCATE, "INFO: PID %u thread: %p EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx\n", GetCurrentProcessId(), param, dllname ? dllname : "", off, ctx.Eip, ctx.Eax, ctx.Ebx, ctx.Ecx, ctx.Edx, ctx.Esi, ctx.Edi, ctx.Ebp, ctx.Esp);
 
 		_operate_on_backtrace(ctx.Eip, ctx.Ebp, NULL, find_capemon_addrs);
 

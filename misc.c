@@ -53,6 +53,9 @@ void resolve_runtime_apis(void)
 {
 	HMODULE ntdllbase = GetModuleHandle("ntdll");
 
+	if (!ntdllbase)
+		return;
+
 	*(FARPROC *)&pNtDelayExecution = GetProcAddress(ntdllbase, "NtDelayExecution");
 	*(FARPROC *)&pNtQuerySystemInformation = GetProcAddress(ntdllbase, "NtQuerySystemInformation");
 	*(FARPROC *)&pNtQueryInformationProcess = GetProcAddress(ntdllbase, "NtQueryInformationProcess");
@@ -662,6 +665,9 @@ DWORD random()
 {
 	DWORD ret, realret;
 	lasterror_t lasterror;
+
+	if (!pRtlGenRandom)
+		return 0;
 
 	get_lasterrors(&lasterror);
 
@@ -1395,9 +1401,11 @@ static PSID GetSID(void)
 			CloseHandle(token);
 			return NULL;
 		}
+		CloseHandle(token);
+		return userinfo->User.Sid;
 	}
 	CloseHandle(token);
-	return userinfo->User.Sid;
+	return NULL;
 }
 
 void hkcu_init(void)
@@ -1477,7 +1485,11 @@ void specialname_map_init(void)
 		}
 	}
 
-	GetWindowsDirectoryA(buf, MAX_PATH);
+	if (!GetWindowsDirectoryA(buf, MAX_PATH)) {
+		DebugOutput("specialname_map_init: Unable to query Windows directory");
+		return;
+	}
+
 	g_targetnames_a[idx] = strdup("\\systemroot");
 	g_specialnames_a[idx] = strdup(buf);
 	idx++;

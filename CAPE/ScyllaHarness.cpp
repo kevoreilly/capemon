@@ -68,7 +68,7 @@ void ScyllaInit(HANDLE hProcess)
 extern "C" DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase)
 //**************************************************************************************
 {
-	DWORD_PTR EntryPointVA;
+	DWORD_PTR EntryPointVA = 0;
 
 	PeParser * peFile = 0;
 
@@ -104,6 +104,9 @@ DWORD SafeGetDword(PVOID Address)
 //**************************************************************************************
 {
 	DWORD RetVal = NULL;
+
+	if (!Address)
+		return NULL;
 
 	__try
 	{
@@ -149,14 +152,14 @@ bool isIATOutsidePeImage (DWORD_PTR addressIAT)
 extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR NewEP, BOOL FixImports)
 //**************************************************************************************
 {
-	SIZE_T SectionBasedSizeOfImage;
+	SIZE_T SectionBasedSizeOfImage = 0;
 	PeParser *peFile = 0;
 	DWORD_PTR entrypoint = NULL;
 
-	bool isAfter;
-	DWORD sizeIAT;
-	DWORD_PTR addressIAT;
-	BOOL IAT_Found, AdvancedIATSearch = FALSE;
+	bool isAfter = 0;
+	DWORD sizeIAT = 0;
+	DWORD_PTR addressIAT = 0;
+	BOOL IAT_Found = FALSE;
 
 	IATSearch iatSearch;
 	ApiReader apiReader;
@@ -208,8 +211,8 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	}
 	else
 	{
-		PBYTE PEImage;
-		PIMAGE_NT_HEADERS pNtHeader;
+		PBYTE PEImage = NULL;
+		PIMAGE_NT_HEADERS pNtHeader = NULL;
 		PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)ModuleBase;
 
 		if (IsDisguisedPEHeader((LPVOID)ModuleBase) && *(WORD*)pDosHeader != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
@@ -225,6 +228,9 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			}
 
 			PEImage = (BYTE*)calloc(MemInfo.RegionSize, sizeof(BYTE));
+			if (!PEImage)
+				goto fail;
+
 			memcpy(PEImage, MemInfo.BaseAddress, MemInfo.RegionSize);
 
 			if (!pDosHeader->e_lfanew)
@@ -426,9 +432,9 @@ fail:
 extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 //**************************************************************************************
 {
-	DWORD_PTR PointerToLastSection, entrypoint = 0;
+	DWORD_PTR PointerToLastSection = 0, entrypoint = 0;
 	PeParser * peFile = 0;
-	unsigned int SizeOfLastSection, NumberOfSections = 0;
+	unsigned int SizeOfLastSection = 0, NumberOfSections = 0;
 
 	NativeWinApi::initialize();
 
@@ -536,7 +542,7 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 {
 	PeParser * peFile = 0;
 	unsigned int NumberOfSections = 0;
-	SIZE_T SectionBasedFileSize, SectionBasedImageSize;
+	SIZE_T SectionBasedFileSize = 0, SectionBasedImageSize = 0;
 
 	NativeWinApi::initialize();
 
@@ -605,7 +611,7 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 {
 	PeParser * peFile = 0;
 	unsigned int NumberOfSections = 0;
-	DWORD SectionBasedFileSize;
+	DWORD SectionBasedFileSize = 0;
 
 	NativeWinApi::initialize();
 
@@ -728,9 +734,9 @@ extern "C" PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZ
 //**************************************************************************************
 {
 	ApiReader apiReader;
-	ApiInfo* apiInfo;
+	ApiInfo* apiInfo = NULL;
 	unsigned int ModuleIndex = 0;
-	bool dummy;
+	bool dummy = 0;
 
 	ScyllaInit(NULL);
 

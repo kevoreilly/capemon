@@ -136,7 +136,6 @@ extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR Ne
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern PVOID GetReturnAddress(hook_info_t *hookinfo);
-extern PVOID CallingModule;
 extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
@@ -213,7 +212,7 @@ PVOID GetReturnAddress(hook_info_t *hookinfo)
 PVOID GetHookCallerBase()
 //**************************************************************************************
 {
-	PVOID ReturnAddress, AllocationBase;
+	PVOID ReturnAddress = NULL, AllocationBase;
 	hook_info_t *hookinfo = hook_info();
 
 	if (hookinfo->main_caller_retaddr)
@@ -232,8 +231,7 @@ PVOID GetHookCallerBase()
 		if (AllocationBase)
 		{
 			DebugOutput("GetHookCallerBase: thread %d, return address 0x%p, allocation base 0x%p.\n", ThreadId, ReturnAddress, AllocationBase);
-			CallingModule = AllocationBase;
-			return CallingModule;
+			return AllocationBase;
 			// Base-dependent breakpoints can be activated now
 		}
 	}
@@ -261,16 +259,18 @@ void PrintHexBytes(__in char* TextBuffer, __in BYTE* HexBuffer, __in unsigned in
 }
 
 //*********************************************************************************************************************************
-BOOL TranslatePathFromDeviceToLetter(__in char *DeviceFilePath, __out char* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize)
+PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath)
 //*********************************************************************************************************************************
 {
 	char DriveStrings[BUFSIZE];
 	DriveStrings[0] = '\0';
 
-	if (DriveLetterFilePath == NULL || *lpdwBufferSize < MAX_PATH)
+	PCHAR DriveLetterFilePath = (PCHAR)malloc(MAX_PATH);
+
+	if (!DriveLetterFilePath)
 	{
-		*lpdwBufferSize = MAX_PATH;
-		return FALSE;
+		DebugOutput("TranslatePathFromDeviceToLetter: Unable to allocate buffer for DriveLetterFilePath");
+		return NULL;
 	}
 
 	if (GetLogicalDriveStrings(BUFSIZE-1, DriveStrings))
@@ -278,7 +278,7 @@ BOOL TranslatePathFromDeviceToLetter(__in char *DeviceFilePath, __out char* Driv
 		char DeviceName[MAX_PATH];
 		char szDrive[3] = " :";
 		BOOL FoundDevice = FALSE;
-		char* p = DriveStrings;
+		PCHAR p = DriveStrings;
 
 		do
 		{
@@ -310,10 +310,10 @@ BOOL TranslatePathFromDeviceToLetter(__in char *DeviceFilePath, __out char* Driv
 	else
 	{
 		ErrorOutput("TranslatePathFromDeviceToLetter: GetLogicalDriveStrings failed");
-		return FALSE;
+		return NULL;
 	}
 
-	return TRUE;
+	return DriveLetterFilePath;
 }
 
 //**************************************************************************************
@@ -502,7 +502,7 @@ SIZE_T GetAccessibleSize(PVOID Address)
 		return 0;
 	}
 
-	if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+	if (!(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
 		return 0;
 
 	if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
@@ -524,7 +524,7 @@ SIZE_T GetAccessibleSize(PVOID Address)
 			return 0;
 		}
 
-		if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+		if (!(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
 			break;
 
 		if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
@@ -621,7 +621,7 @@ BOOL IsAddressAccessible(PVOID Address)
 		return 0;
 	}
 
-	if (!MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+	if (!(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
 		return FALSE;
 
 	if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
@@ -721,7 +721,7 @@ BOOL MapFile(HANDLE hFile, unsigned char **Buffer, DWORD* FileSize)
 
 	if (SetFilePointer(hFile, 0, 0, FILE_BEGIN))
 	{
-		 ErrorOutput("MapFile: Failed to set file pointer");
+		ErrorOutput("MapFile: Failed to set file pointer");
 		return FALSE;
 	}
 
@@ -743,8 +743,8 @@ BOOL MapFile(HANDLE hFile, unsigned char **Buffer, DWORD* FileSize)
 		ErrorOutput("MapFile: Unexpected size read in");
 		free(Buffer);
 		return FALSE;
-
 	}
+
 	else if (dwBytesRead == 0)
 	{
 		ErrorOutput("MapFile: No data read from file");
@@ -824,7 +824,7 @@ char* GetName()
 		return 0;
 	}
 
-	sprintf_s(OutputFilename, MAX_PATH*sizeof(char), "%d_%d%d%d%d%d%d%d%d", GetCurrentProcessId(), abs(random * Time.wMilliseconds), Time.wSecond, Time.wMinute, Time.wHour, Time.wDay, Time.wDayOfWeek, Time.wMonth, Time.wYear);
+	sprintf_s(OutputFilename, MAX_PATH*sizeof(char), "%u_%d%u%u%u%u%u%u%u", GetCurrentProcessId(), abs(random * Time.wMilliseconds), Time.wSecond, Time.wMinute, Time.wHour, Time.wDay, Time.wDayOfWeek, Time.wMonth, Time.wYear);
 
 	PathAppend(FullPathName, OutputFilename);
 
@@ -892,7 +892,7 @@ double GetEntropy(PUCHAR Buffer)
 	unsigned long TotalCounts[256];
 	double p, lp, Entropy = 0;
 	double log_2 = log((double)2);
-	SIZE_T Length;
+	SIZE_T Length = 0;
 	unsigned int i;
 
 	if (!Buffer)
@@ -1271,18 +1271,18 @@ PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax)
 	if (!Address)
 		return NULL;
 
-	PVOID ImageBase = GetAllocationBase(Address);
-	PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)ImageBase + (ULONG)((PIMAGE_DOS_HEADER)ImageBase)->e_lfanew);
-	PIMAGE_EXPORT_DIRECTORY ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)ImageBase + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
-	PDWORD AddressOfNames = (PDWORD)((PUCHAR)ImageBase + ExportDirectory->AddressOfNames);
-	PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)ImageBase + ExportDirectory->AddressOfFunctions);
-	PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)ImageBase + ExportDirectory->AddressOfNameOrdinals);
+	PVOID Base = GetAllocationBase(Address);
+	PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)Base + (ULONG)((PIMAGE_DOS_HEADER)Base)->e_lfanew);
+	PIMAGE_EXPORT_DIRECTORY ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)Base + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	PDWORD AddressOfNames = (PDWORD)((PUCHAR)Base + ExportDirectory->AddressOfNames);
+	PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)Base + ExportDirectory->AddressOfFunctions);
+	PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)Base + ExportDirectory->AddressOfNameOrdinals);
 
 	for (unsigned int j = 0; j < ExportDirectory->NumberOfFunctions; j++)
 	{
-		if ((PUCHAR)Address - (PUCHAR)ImageBase > (int)AddressOfFunctions[AddressOfNameOrdinals[j]]
-		&& (PUCHAR)Address - (PUCHAR)ImageBase - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
-			return (PCHAR)ImageBase + AddressOfNames[j];
+		if ((PUCHAR)Address - (PUCHAR)Base > (int)AddressOfFunctions[AddressOfNameOrdinals[j]]
+		&& (PUCHAR)Address - (PUCHAR)Base - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
+			return (PCHAR)Base + AddressOfNames[j];
 	}
 
     return NULL;
@@ -1411,7 +1411,7 @@ int IsDotNetImage(PVOID Buffer)
 			return 0;
 #endif
 
-		if (pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress || pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress)
+		if (pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress || pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].Size)
 			return 1;
 
 	}
@@ -1646,7 +1646,7 @@ int DumpMemoryRaw(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
 	DWORD dwBytesWritten;
-	HANDLE hOutputFile;
+	HANDLE hOutputFile = NULL;
 	PVOID BufferCopy = NULL;
 	char *FullPathName = NULL;
 	int ret = 0;
@@ -1695,7 +1695,8 @@ int DumpMemoryRaw(PVOID Buffer, SIZE_T Size)
 end:
 	if (BufferCopy)
 		free(BufferCopy);
-	CloseHandle(hOutputFile);
+	if (hOutputFile && hOutputFile != INVALID_HANDLE_VALUE)
+		CloseHandle(hOutputFile);
 
 	if (ret)
 	{
@@ -1964,8 +1965,8 @@ int DoProcessDump(PVOID CallerBase)
 {
 	PUCHAR Address;
 	MEMORY_BASIC_INFORMATION MemInfo;
-	HANDLE FileHandle;
-	char *FullDumpPath, *OutputFilename;
+	HANDLE FileHandle = NULL;
+	char *FullDumpPath = NULL, *OutputFilename = NULL;
 	PVOID NewImageBase = NULL;
 
 	DWORD ThreadId = GetCurrentThreadId();
@@ -2055,7 +2056,7 @@ int DoProcessDump(PVOID CallerBase)
 
 		OutputFilename = (char*)malloc(MAX_PATH);
 
-		sprintf_s(OutputFilename, MAX_PATH, "%d.dmp", CapeMetaData->Pid);
+		sprintf_s(OutputFilename, MAX_PATH, "%u.dmp", CapeMetaData->Pid);
 
 		PathAppend(FullDumpPath, OutputFilename);
 
@@ -2105,7 +2106,8 @@ int DoProcessDump(PVOID CallerBase)
 
 			__try
 			{
-				memcpy(TempBuffer, MemInfo.BaseAddress, MemInfo.RegionSize);
+				if (MemInfo.BaseAddress)
+					memcpy(TempBuffer, MemInfo.BaseAddress, MemInfo.RegionSize);
 				WriteFile(FileHandle, &BufferAddress, sizeof(BufferAddress), &BytesWritten, NULL);
 				WriteFile(FileHandle, &(DWORD)MemInfo.RegionSize, sizeof(DWORD), &BytesWritten, NULL);
 				WriteFile(FileHandle, &MemInfo.State, sizeof(MemInfo.State), &BytesWritten, NULL);
@@ -2138,7 +2140,8 @@ out:
 		if (FileHandle)
 		{
 			CloseHandle(FileHandle);
-			DoOutputFile(FullDumpPath);
+			if (FullDumpPath)
+				DoOutputFile(FullDumpPath);
 			DebugOutput("DoProcessDump: Full process memory dump saved to file: %s.\n", FullDumpPath);
 		}
 		if (OutputFilename)

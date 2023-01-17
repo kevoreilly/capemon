@@ -102,7 +102,7 @@ void ErrorOutput(_In_ LPCTSTR lpOutputString, ...)
 	_vsntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, lpOutputString, args);
 
 	memset(ErrorBuffer, 0, MAX_PATH*sizeof(CHAR));
-	_sntprintf_s(ErrorBuffer, MAX_PATH, _TRUNCATE, "Error %d (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, (char*)lpMsgBuf);
+	_sntprintf_s(ErrorBuffer, MAX_PATH, _TRUNCATE, "Error %u (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, (char*)lpMsgBuf);
 	if (g_config.standalone)
 		OutputDebugString(ErrorBuffer);
 	else
@@ -157,7 +157,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 			CapeMetaData->ModulePath = CapeMetaData->ProcessPath;
 
 		// This metadata format is specific to process dumps
-		_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+		_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
 		memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
 		_sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
@@ -167,7 +167,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		{
 			char OutputBuffer[BUFFER_SIZE];
 			memset(OutputBuffer, 0, BUFFER_SIZE*sizeof(char));
-			_snprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_DUMP:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
+			_snprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_DUMP:%s|%u|%u|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
 			pipe(OutputBuffer, strlen(OutputBuffer));
 		}
 	}
@@ -184,26 +184,26 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		if (!CapeMetaData->DumpType && CapeMetaData->TypeString && strlen(CapeMetaData->TypeString))
 		{
 			CapeMetaData->DumpType = TYPE_STRING;
-			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
+			_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TypeString);
 		}
 		else if (CapeMetaData->DumpType == UNPACKED_PE || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
 		{
 			// Unpacker-specific format
-			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?0x%p;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
+			_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?0x%p;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->Address);
 		}
 		else if (CapeMetaData->DumpType == INJECTION_PE || CapeMetaData->DumpType == INJECTION_SHELLCODE)
 		{
 			if (CapeMetaData->TargetProcess)
 			// Injection-specific format
-				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?%s;?%d;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
+				_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?%s;?%u;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath, CapeMetaData->TargetProcess, CapeMetaData->TargetPid);
 			else
 			{
 				DebugOutput("Output: TargetProcess missing for dump from process %d", CapeMetaData->Pid);
-				_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+				_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 			}
 		}
 		else
-			_snprintf_s(MetadataString, BufferSize, BufferSize, "%d;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
+			_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
 		if (g_config.standalone)
 		{
@@ -215,14 +215,19 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		{
 			char OutputBuffer[BUFFER_SIZE];
 			memset(OutputBuffer, 0, BUFFER_SIZE*sizeof(char));
-			_sntprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_CAPE:%s|%d|%d|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
+			_sntprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_CAPE:%s|%u|%u|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
 			pipe(OutputBuffer, strlen(OutputBuffer));
 		}
 	}
 	else
 		DebugOutput("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
 
-	CapeMetaData->DumpType = 0;
+	if (CapeMetaData)
+	{
+		CapeMetaData->DumpType = 0;
+		if (CapeMetaData->TargetProcess)
+			free(CapeMetaData->TargetProcess);
+	}
 
 	return;
 }
@@ -256,7 +261,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 		return;
 	}
 
-	sprintf_s(OutputFilename, MAX_PATH, "%d.log", GetCurrentProcessId());
+	sprintf_s(OutputFilename, MAX_PATH, "%u.log", GetCurrentProcessId());
 
 	PathAppend(FullPathName, OutputFilename);
 

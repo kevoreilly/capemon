@@ -26,8 +26,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef __NTAPI_H__
 #define __NTAPI_H__
 
-typedef LONG NTSTATUS;
-
 #define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

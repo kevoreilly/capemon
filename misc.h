@@ -146,10 +146,6 @@ wchar_t *get_full_keyvalue_pathA(HKEY registry, const char *in, PKEY_NAME_INFORM
 wchar_t *get_full_keyvalue_pathW(HKEY registry, const wchar_t *in, PKEY_NAME_INFORMATION keybuf, unsigned int len);
 wchar_t *get_full_keyvalue_pathUS(HKEY registry, const PUNICODE_STRING in, PKEY_NAME_INFORMATION keybuf, unsigned int len);
 
-// imported but for some doesn't show up when #including string.h etc
-int wcsnicmp(const wchar_t *a, const wchar_t *b, size_t len);
-int wcsicmp(const wchar_t *a, const wchar_t *b);
-
 int is_shutting_down();
 
 // Define MAX_PATH plus tolerance for windows "tolerance"

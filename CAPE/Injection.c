@@ -16,7 +16,6 @@ You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
 //#define DEBUG_COMMENTS
-#define BUFSIZE 512
 #include <stdio.h>
 #include "..\ntapi.h"
 #include <psapi.h>
@@ -120,7 +119,7 @@ PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId)
 		CurrentInjectionInfo = CurrentInjectionInfo->NextInjectionInfo;
 	}
 
-	if (!CurrentInjectionInfo)
+	if (!CurrentInjectionInfo && PreviousInjectionInfo)
 	{
 		// We haven't found it in the linked list, so create a new one
 		CurrentInjectionInfo = PreviousInjectionInfo;
@@ -243,7 +242,7 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 		CurrentSectionView = CurrentSectionView->NextSectionView;
 	}
 
-	if (!CurrentSectionView)
+	if (!CurrentSectionView && PreviousSectionView)
 	{
 		// We haven't found it in the linked list, so create a new one
 		CurrentSectionView = PreviousSectionView;
@@ -326,7 +325,6 @@ void DumpSectionViewsForPid(DWORD Pid)
 {
 	struct InjectionInfo *InjectionInfo;
 	PINJECTIONSECTIONVIEW CurrentSectionView;
-	DWORD BufferSize = MAX_PATH;
 	LPVOID PEPointer = NULL;
 	BOOL Dumped;
 
@@ -408,7 +406,6 @@ void DumpSectionViewsForPid(DWORD Pid)
 void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
 //**************************************************************************************
 {
-	DWORD BufferSize = MAX_PATH;
 	LPVOID PEPointer = NULL;
 	BOOL Dumped = FALSE;
 
@@ -466,7 +463,7 @@ void DumpSectionView(PINJECTIONSECTIONVIEW SectionView)
 
 		DebugOutput("DumpSectionView: About to remap section with handle 0x%x, size 0x%x.\n", SectionView->SectionHandle, SectionView->ViewSize);
 
-		NTSTATUS ret = pNtMapViewOfSection(SectionView->SectionHandle, NtCurrentProcess(), &BaseAddress, 0, 0, 0, &ViewSize, ViewUnmap, 0, PAGE_READWRITE);
+		NTSTATUS ret = pNtMapViewOfSection(SectionView->SectionHandle, NtCurrentProcess(), &BaseAddress, 0, 0, NULL, &ViewSize, ViewUnmap, 0, PAGE_READWRITE);
 
 		if (NT_SUCCESS(ret))
 		{
@@ -632,7 +629,7 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 
 	if (CurrentInjectionInfo == NULL)
 	{
-		DebugOutput("CreateProcessHandler: Failed to create injection info for new process %d, ImageBase: 0x%p", lpProcessInformation->dwProcessId, CurrentInjectionInfo->ImageBase);
+		DebugOutput("CreateProcessHandler: Failed to create injection info for new process %d", lpProcessInformation->dwProcessId);
 		return;
 	}
 
@@ -675,7 +672,6 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 {
 	struct InjectionInfo *CurrentInjectionInfo;
-	DWORD BufferSize = MAX_PATH;
 	char DevicePath[MAX_PATH];
 	unsigned int PathLength;
 
@@ -687,35 +683,37 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 	if (CurrentInjectionInfo == NULL)
 	{   // First call for this process, create new info
 		CurrentInjectionInfo = CreateInjectionInfo(Pid);
-
-		DebugOutput("OpenProcessHandler: Injection info created for Pid %d, handle 0x%x.\n", Pid, ProcessHandle);
-
-		if (CurrentInjectionInfo == NULL)
+		if (CurrentInjectionInfo)
 		{
-			DebugOutput("OpenProcessHandler: Error - cannot create new injection info.\n");
-		}
-		else
-		{
+			DebugOutput("OpenProcessHandler: Injection info created for Pid %d, handle 0x%x.\n", Pid, ProcessHandle);
+
 			CurrentInjectionInfo->ProcessHandle = ProcessHandle;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
-			CapeMetaData->TargetProcess = (char*)malloc(BufferSize);
 
 			CurrentInjectionInfo->ImageBase = (DWORD_PTR)get_process_image_base(ProcessHandle);
 
 			if (CurrentInjectionInfo->ImageBase)
 				DebugOutput("OpenProcessHandler: Image base for process %d (handle 0x%x): 0x%p.\n", Pid, ProcessHandle, CurrentInjectionInfo->ImageBase);
 
-			PathLength = GetProcessImageFileName(ProcessHandle, DevicePath, BufferSize);
+			PathLength = GetProcessImageFileName(ProcessHandle, DevicePath, MAX_PATH);
 
-			if (!PathLength)
+			if (PathLength)
 			{
-				DebugOutput("OpenProcessHandler: Handle insufficient to obtain target process name.\n");
-				_snprintf(CapeMetaData->TargetProcess, BufferSize, "Unable to obtain target process name");
+				CapeMetaData->TargetProcess = TranslatePathFromDeviceToLetter(DevicePath);
+				if (!CapeMetaData->TargetProcess)
+					ErrorOutput("OpenProcessHandler: Error translating target process path");
 			}
-			else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
-				ErrorOutput("OpenProcessHandler: Error translating target process path");
+			else
+			{
+				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				if (CapeMetaData->TargetProcess)
+					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
+				ErrorOutput("OpenProcessHandler: Error obtaining target process name");
+			}
 		}
+		else
+			DebugOutput("OpenProcessHandler: Error - cannot create new injection info.\n");
 	}
 	else if (CurrentInjectionInfo->ImageBase == (DWORD_PTR)NULL)
 	{
@@ -732,7 +730,6 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 	PINJECTIONSECTIONVIEW CurrentSectionView;
 	char DevicePath[MAX_PATH];
 	unsigned int PathLength;
-	DWORD BufferSize = MAX_PATH;
 
 	DWORD Pid = pid_from_process_handle(ProcessHandle);
 
@@ -794,21 +791,26 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			CurrentInjectionInfo->ProcessId = Pid;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
-			CapeMetaData->TargetProcess = (char*)malloc(BufferSize);
 			CurrentInjectionInfo->ImageBase = (DWORD_PTR)get_process_image_base(ProcessHandle);
 
 			if (CurrentInjectionInfo->ImageBase)
 				DebugOutput("MapSectionViewHandler: Image base for process %d (handle 0x%x): 0x%p.\n", Pid, ProcessHandle, CurrentInjectionInfo->ImageBase);
 
-			PathLength = GetProcessImageFileName(ProcessHandle, DevicePath, BufferSize);
+			PathLength = GetProcessImageFileName(ProcessHandle, DevicePath, MAX_PATH);
 
-			if (!PathLength)
+			if (PathLength)
 			{
-				ErrorOutput("MapSectionViewHandler: Error obtaining target process name");
-				_snprintf(CapeMetaData->TargetProcess, BufferSize, "Error obtaining target process name");
+				CapeMetaData->TargetProcess = TranslatePathFromDeviceToLetter(DevicePath);
+				if (!CapeMetaData->TargetProcess)
+					ErrorOutput("MapSectionViewHandler: Error translating target process path");
 			}
-			else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
-				ErrorOutput("MapSectionViewHandler: Error translating target process path");
+			else
+			{
+				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				if (CapeMetaData->TargetProcess)
+					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
+				ErrorOutput("MapSectionViewHandler: Error obtaining target process name");
+			}
 
 			CurrentSectionView = GetSectionView(SectionHandle);
 
@@ -859,7 +861,6 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 	struct InjectionInfo *CurrentInjectionInfo;
 	char DevicePath[MAX_PATH];
 	unsigned int PathLength;
-	DWORD BufferSize = MAX_PATH;
 
 	Pid = pid_from_process_handle(ProcessHandle);
 
@@ -882,26 +883,31 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 			CurrentInjectionInfo->ProcessId = Pid;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
-			CapeMetaData->TargetProcess = (char*)malloc(BufferSize);
 
 			CurrentInjectionInfo->ImageBase = (DWORD_PTR)get_process_image_base(ProcessHandle);
 
 			if (CurrentInjectionInfo->ImageBase)
 				DebugOutput("WriteMemoryHandler: Image base for process %d (handle 0x%x): 0x%p.\n", Pid, ProcessHandle, CurrentInjectionInfo->ImageBase);
 
-			PathLength = GetProcessImageFileName(ProcessHandle, DevicePath, BufferSize);
+			PathLength = GetProcessImageFileName(ProcessHandle, DevicePath, MAX_PATH);
 
-			if (!PathLength)
+			if (PathLength)
 			{
-				ErrorOutput("WriteMemoryHandler: Error obtaining target process name");
-				_snprintf(CapeMetaData->TargetProcess, BufferSize, "Error obtaining target process name");
+				CapeMetaData->TargetProcess = TranslatePathFromDeviceToLetter(DevicePath);
+				if (!CapeMetaData->TargetProcess)
+					ErrorOutput("WriteMemoryHandler: Error translating target process path");
 			}
-			else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
-				ErrorOutput("WriteMemoryHandler: Error translating target process path");
+			else
+			{
+				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				if (CapeMetaData->TargetProcess)
+					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
+				ErrorOutput("WriteMemoryHandler: Error obtaining target process name");
+			}
 		}
 	}
 
-	if (CurrentInjectionInfo->ProcessId != Pid)
+	if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
 		return;
 
 	// Check if we have a valid DOS and PE header at the beginning of Buffer
@@ -972,7 +978,6 @@ void DuplicationHandler(HANDLE SourceHandle, HANDLE TargetHandle)
 	PINJECTIONSECTIONVIEW CurrentSectionView;
 	char DevicePath[MAX_PATH];
 	unsigned int PathLength;
-	DWORD BufferSize = MAX_PATH;
 
 	DWORD Pid = pid_from_process_handle(TargetHandle);
 
@@ -1021,22 +1026,27 @@ void DuplicationHandler(HANDLE SourceHandle, HANDLE TargetHandle)
 			CurrentInjectionInfo->ProcessId = Pid;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
-			CapeMetaData->TargetProcess = (char*)malloc(BufferSize);
 
 			CurrentInjectionInfo->ImageBase = (DWORD_PTR)get_process_image_base(SourceHandle);
 
 			if (CurrentInjectionInfo->ImageBase)
 				DebugOutput("DuplicationHandler: Image base for process %d (handle 0x%x): 0x%p.\n", Pid, SourceHandle, CurrentInjectionInfo->ImageBase);
 
-			PathLength = GetProcessImageFileName(SourceHandle, DevicePath, BufferSize);
+			PathLength = GetProcessImageFileName(SourceHandle, DevicePath, MAX_PATH);
 
-			if (!PathLength)
+			if (PathLength)
 			{
-				ErrorOutput("DuplicationHandler: Error obtaining target process name");
-				_snprintf(CapeMetaData->TargetProcess, BufferSize, "Error obtaining target process name");
+				CapeMetaData->TargetProcess = TranslatePathFromDeviceToLetter(DevicePath);
+				if (!CapeMetaData->TargetProcess)
+					ErrorOutput("DuplicationHandler: Error translating target process path");
 			}
-			else if (!TranslatePathFromDeviceToLetter(DevicePath, CapeMetaData->TargetProcess, &BufferSize))
-				ErrorOutput("DuplicationHandler: Error translating target process path");
+			else
+			{
+				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				if (CapeMetaData->TargetProcess)
+					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
+				ErrorOutput("DuplicationHandler: Error obtaining target process name");
+			}
 
 			CurrentSectionView = AddSectionView(SourceHandle, NULL, 0);
 
@@ -1120,12 +1130,12 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 		BOOL Wow64Process;
 		HANDLE ProcessHandle;
 		PROCESS_INFORMATION ProcInfo;
-		WCHAR CommandLine[BUFSIZE], LoaderPath[BUFSIZE], Loader[BUFSIZE], MonitorPath[BUFSIZE];
+		WCHAR CommandLine[MAX_PATH], LoaderPath[MAX_PATH], Loader[MAX_PATH], MonitorPath[MAX_PATH];
 		WCHAR Loader64[] = L"loader_x64.exe";
 		WCHAR Loader32[] = L"loader.exe";
 
 		STARTUPINFOEXW StartupInfoEx = {sizeof(StartupInfoEx)};
-		wcsncpy(LoaderPath, our_dll_path_w, wcslen(our_dll_path_w));
+		wcsncpy(LoaderPath, our_dll_path_w, wcslen(our_dll_path_w)+1);
 		PathRemoveFileSpecW(LoaderPath); // remove dll name
 
 		if (!CurrentInjectionInfo || !CurrentInjectionInfo->ProcessHandle)
@@ -1149,37 +1159,41 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 		if (Wow64Process)
 		{
 #ifdef _WIN64
-			swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader32);
-			swprintf(MonitorPath, BUFSIZE, L"%ws\\%ws", LoaderPath, L"capemon.dll");
-			swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, MonitorPath);
+			swprintf(Loader, MAX_PATH, L"%ws\\%ws", LoaderPath, Loader32);
+			swprintf(MonitorPath, MAX_PATH, L"%ws\\%ws", LoaderPath, L"capemon.dll");
+			swprintf_s(CommandLine, MAX_PATH, L"%s inject %u %u %s", Loader, ProcessId, ThreadId, MonitorPath);
 #else
-			swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader64);
-			swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, our_dll_path_w);
+			swprintf(Loader, MAX_PATH, L"%ws\\%ws", LoaderPath, Loader64);
+			swprintf_s(CommandLine, MAX_PATH, L"%s inject %u %u %s", Loader, ProcessId, ThreadId, our_dll_path_w);
 #endif
 		}
 		else
 		{
 #ifdef _WIN64
-			swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader64);
-			swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, our_dll_path_w);
+			swprintf(Loader, MAX_PATH, L"%ws\\%ws", LoaderPath, Loader64);
+			swprintf_s(CommandLine, MAX_PATH, L"%s inject %u %u %s", Loader, ProcessId, ThreadId, our_dll_path_w);
 #else
 			GetSystemInfo(&SystemInfo);
 			if (SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
 			{
-				swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader64);
-				swprintf(MonitorPath, BUFSIZE, L"%ws\\%ws", LoaderPath, L"capemon_x64.dll");
-				swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, MonitorPath);
+				swprintf(Loader, MAX_PATH, L"%ws\\%ws", LoaderPath, Loader64);
+				swprintf(MonitorPath, MAX_PATH, L"%ws\\%ws", LoaderPath, L"capemon_x64.dll");
+				swprintf_s(CommandLine, MAX_PATH, L"%s inject %u %u %s", Loader, ProcessId, ThreadId, MonitorPath);
 			}
 			else
 			{
-				swprintf(Loader, BUFSIZE, L"%ws\\%ws", LoaderPath, Loader32);
-				swprintf_s(CommandLine, sizeof(CommandLine)-1, L"%s inject %d %d %s", Loader, ProcessId, ThreadId, our_dll_path_w);
+				swprintf(Loader, MAX_PATH, L"%ws\\%ws", LoaderPath, Loader32);
+				swprintf_s(CommandLine, MAX_PATH, L"%s inject %u %u %s", Loader, ProcessId, ThreadId, our_dll_path_w);
 			}
 #endif
 	}
 		hook_disable();
 		if (CreateProcessW(NULL, CommandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &StartupInfoEx.StartupInfo, &ProcInfo))
-			DebugOutput("ProcessMessage: Injected monitor into process %d (standalone mode)", ProcessId);
+		{
+			DebugOutput("ProcessMessage: Injected monitor into process %u (standalone mode)", ProcessId);
+			CloseHandle(ProcInfo.hProcess);
+			CloseHandle(ProcInfo.hThread);
+		}
 		else
 			DebugOutput("ProcessMessage: Failed to inject monitor into process %d (standalone mode)", ProcessId);
 		hook_enable();

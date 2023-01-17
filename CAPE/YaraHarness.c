@@ -340,7 +340,7 @@ BOOL YaraInit()
 	BOOL Result = FALSE, RulesCompiled = FALSE;
 	int flags = 0;
 
-	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path));
+	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path)+1);
 	if (!g_config.standalone)
 		PathRemoveFileSpec(analyzer_path);
 	PathRemoveFileSpec(analyzer_path);

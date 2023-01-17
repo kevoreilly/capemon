@@ -1345,7 +1345,7 @@ BOOL set_hooks_dll(const wchar_t *library)
 	BOOL ret = FALSE;
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
 		if (!wcsicmp((hooks+i)->library, library)) {
-			BOOL ret = TRUE;
+			ret = TRUE;
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
 		}
@@ -1396,7 +1396,7 @@ void set_hooks()
 	BOOL Wow64Process;
 	OSVERSIONINFO OSVersion;
 	THREADENTRY32 threadInfo;
-	DWORD i, old_protect, num_suspended_threads = 0;
+	DWORD old_protect, num_suspended_threads = 0;
 	PHANDLE suspended_threads = (PHANDLE)calloc(4096, sizeof(HANDLE));
 	DWORD our_tid = GetCurrentThreadId();
 	DWORD our_pid = GetCurrentProcessId();
@@ -1610,7 +1610,7 @@ void set_hooks()
 		}
 	} while (Thread32Next(hSnapShot, &threadInfo));
 
-	for (i = 0; i < hooks_arraysize; i++) {
+	for (unsigned int i = 0; i < hooks_arraysize; i++) {
 #ifndef _WIN64
 		if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6) {
 			if (Wow64Process == FALSE) {
@@ -1624,7 +1624,7 @@ void set_hooks()
 			pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
 	}
 
-	for (i = 0; i < num_suspended_threads; i++) {
+	for (unsigned int i = 0; i < num_suspended_threads; i++) {
 		ResumeThread(suspended_threads[i]);
 		CloseHandle(suspended_threads[i]);
 	}

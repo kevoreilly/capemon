@@ -81,7 +81,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 
 	if (newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
-		FILETIME ft;
 		GetSystemTimeAsFileTime(&ft);
 
 		newint.HighPart = ft.dwHighDateTime;

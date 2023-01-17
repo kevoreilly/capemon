@@ -170,7 +170,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 	LOQ_ntstatus("process", "PphOhhl", "ProcessHandle", ProcessHandle, "ParentHandle", ParentProcess, "DesiredAccess", DesiredAccess,
 		"FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
 	if (!g_config.single_process && NT_SUCCESS(ret)) {
-		DWORD pid = pid_from_process_handle(*ProcessHandle);
 		ProcessMessage(pid, 0);
 		disable_sleep_skip();
 	}
@@ -914,7 +913,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	ret = Old_NtProtectVirtualMemory(ProcessHandle, BaseAddress, NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (NT_SUCCESS(ret) && OldAccessProtection && *OldAccessProtection == NewAccessProtection) {
+	if (NT_SUCCESS(ret) && BaseAddress && OldAccessProtection && *OldAccessProtection == NewAccessProtection) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
@@ -928,7 +927,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		NewAccessProtection = OriginalNewAccessProtection;
 	}
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && BaseAddress && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
 	{
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
 		if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))

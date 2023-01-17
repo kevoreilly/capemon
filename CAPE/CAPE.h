@@ -40,7 +40,7 @@ BOOL IsAddressAccessible(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
 double GetEntropy(PUCHAR Buffer);
-BOOL TranslatePathFromDeviceToLetter(__in TCHAR *DeviceFilePath, __out TCHAR* DriveLetterFilePath, __inout LPDWORD lpdwBufferSize);
+PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
@@ -66,7 +66,6 @@ BOOL DumpStackRegion(void);
 BOOL ProcessDumped, ModuleDumped;
 
 SYSTEM_INFO SystemInfo;
-PVOID CallingModule;
 
 //
 // MessageId: STATUS_SUCCESS

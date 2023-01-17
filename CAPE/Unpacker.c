@@ -302,7 +302,7 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, SIZE_T RegionSize, ULONG Protect)
 
 	TrackedRegion = GetTrackedRegion(Address);
 
-	if (!TrackedRegion)
+	if (!TrackedRegion && PreviousTrackedRegion)
 	{
 		// We haven't found it in the linked list, so create a new one
 		TrackedRegion = PreviousTrackedRegion;
@@ -808,7 +808,7 @@ unsigned int DumpPEsInTrackedRegion(PTRACKEDREGION TrackedRegion)
 {
 	PTRACKEDREGION CurrentTrackedRegion;
 	unsigned int PEsDumped;
-	BOOL TrackedRegionFound;
+	BOOL TrackedRegionFound = FALSE;
 	PVOID BaseAddress;
 	SIZE_T Size;
 
@@ -1117,7 +1117,7 @@ void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, PULONG O
 //**************************************************************************************
 {
 	//DWORD EntryPoint;
-	BOOL NewRegion;
+	BOOL NewRegion = FALSE;
 	SIZE_T TrackedRegionSize;
 	PTRACKEDREGION TrackedRegion = NULL;
 
@@ -2501,7 +2501,7 @@ BOOL PEPointerWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
 	if (TrackedRegion == NULL)
 	{
-		DebugOutput("PEPointerWriteCallback: unable to locate address 0x%p in tracked region at 0x%p.\n", pBreakpointInfo->Address, TrackedRegion->AllocationBase);
+		DebugOutput("PEPointerWriteCallback: unable to locate address 0x%p in tracked regions.\n", pBreakpointInfo->Address);
 		return FALSE;
 	}
 
@@ -2750,7 +2750,7 @@ BOOL BaseAddressWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION
 
 	if (TrackedRegion == NULL)
 	{
-		DebugOutput("BaseAddressWriteCallback: unable to locate address 0x%p in tracked region at 0x%p.\n", pBreakpointInfo->Address, TrackedRegion->AllocationBase);
+		DebugOutput("BaseAddressWriteCallback: unable to locate address 0x%p in tracked regions.\n", pBreakpointInfo->Address);
 		return FALSE;
 	}
 

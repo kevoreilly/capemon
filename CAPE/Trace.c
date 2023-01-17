@@ -879,7 +879,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		if (strlen(DumpSizeString))
 		{
 			DumpSize = (SIZE_T)GetRegister(ExceptionInfo->ContextRecord, DumpSizeString);
-			if (!DumpSize)
+			if (!DumpSize && p)
 				DumpSize = (SIZE_T)(DWORD_PTR)strtoul(p+1, NULL, 0);
 		}
 
@@ -943,8 +943,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	unsigned int DllRVA;
 	PVOID BranchTarget;
 
+	StopTrace = FALSE;
 	TraceRunning = TRUE;
-	BOOL StepOver = FALSE, ForceStepOver = FALSE, StopTrace = FALSE;
+	BOOL StepOver = FALSE, ForceStepOver = FALSE;
 
 	_DecodeType DecodeType;
 	_DecodeResult Result;
@@ -1874,7 +1875,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-	PVOID DumpAddress, CIP;
+	PVOID CIP;
 	_DecodeType DecodeType;
 	_DecodeResult Result;
 	_OffsetType Offset = 0;
@@ -1917,10 +1918,10 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 		{
 #ifdef _WIN64
 			DumpSize = ExceptionInfo->ContextRecord->Rax;
-			DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Rbx;
+			PVOID Address = (PVOID)ExceptionInfo->ContextRecord->Rbx;
 #else
 			DumpSize = ExceptionInfo->ContextRecord->Eax;
-			DumpAddress = (PVOID)ExceptionInfo->ContextRecord->Ebx;
+			PVOID Address = (PVOID)ExceptionInfo->ContextRecord->Ebx;
 #endif
 			if (g_config.dumptype0)
 				CapeMetaData->DumpType = g_config.dumptype0;
@@ -1931,10 +1932,10 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 			else
 				CapeMetaData->DumpType = UNPACKED_PE;
 
-			if (DumpAddress && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(DumpAddress, DumpSize))
-				DebugOutput("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", DumpAddress, DumpSize);
+			if (Address && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Address, DumpSize))
+				DebugOutput("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", Address, DumpSize);
 			else
-				DebugOutput("StepOutCallback: Failed to dump region at 0x%p.\n", DumpAddress);
+				DebugOutput("StepOutCallback: Failed to dump region at 0x%p.\n", Address);
 		}
 	}
 

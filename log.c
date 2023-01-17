@@ -960,7 +960,7 @@ buffer_log:
 void announce_netlog()
 {
 	char protoname[32];
-	sprintf(protoname, "BSON %d\n", GetCurrentProcessId());
+	sprintf(protoname, "BSON %u\n", GetCurrentProcessId());
 	//sprintf(protoname+5, "logs/%lu.bson\n", GetCurrentProcessId());
 	log_raw_direct(protoname, strlen(protoname));
 }

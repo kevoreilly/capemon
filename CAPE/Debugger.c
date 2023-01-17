@@ -156,7 +156,7 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 	}
 
-	if (!CurrentThreadBreakpoints)
+	if (!CurrentThreadBreakpoints && PreviousThreadBreakpoint)
 	{
 		// We haven't found it in the linked list, so create a new one
 		CurrentThreadBreakpoints = PreviousThreadBreakpoint;
@@ -173,6 +173,9 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 
 		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 	}
+
+	if (!CurrentThreadBreakpoints)
+		return NULL;
 
 	if (Handle)
 		CurrentThreadBreakpoints->ThreadHandle = Handle;
@@ -534,7 +537,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				DebugOutput("CAPEExceptionFilter: Clearing breakpoint %d due to hit count.\n", pBreakpointInfo->Register);
 #endif
 				ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
-				ApplyQueuedBreakpoints(ExceptionInfo->ContextRecord, pBreakpointInfo);
+				//ApplyQueuedBreakpoints(ExceptionInfo->ContextRecord, pBreakpointInfo);
 			}
 		}
 

@@ -37,7 +37,6 @@ DWORD64 lpNewJumpLocation;
 
 DWORD64 pfnKiUserExceptionDispatcher;
 DWORD64 pfnNtSetContextThread;
-DWORD64 pfnWow64PrepareForException;
 
 //**************************************************************************************
 extern BOOL WoW64PatchBreakpoint(unsigned int Register)

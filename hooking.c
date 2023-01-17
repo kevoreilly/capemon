@@ -212,7 +212,7 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 				break;
 			if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
 				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], CurrentThreadId, main_caller_retaddr);
-				AllocationBase = GetHookCallerBase(hookinfo);
+				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
 					BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
 					if (BreakpointsSet)
@@ -233,7 +233,7 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
 			DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.dump_on_apinames[i], GetCurrentThreadId(), main_caller_retaddr);
 			if (main_caller_retaddr) {
-				AllocationBase = GetHookCallerBase(hookinfo);
+				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
 					if (g_config.dump_on_api_type)
 						CapeMetaData->DumpType = g_config.dump_on_api_type;
