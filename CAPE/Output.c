@@ -222,12 +222,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 	else
 		DebugOutput("No CAPE metadata (or wrong type) for file: %s\n", lpOutputFile);
 
-	if (CapeMetaData)
-	{
-		CapeMetaData->DumpType = 0;
-		if (CapeMetaData->TargetProcess)
-			free(CapeMetaData->TargetProcess);
-	}
+	CapeMetaData->DumpType = 0;
 
 	return;
 }
