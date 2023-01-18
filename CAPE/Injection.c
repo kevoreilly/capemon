@@ -639,14 +639,20 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 	CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 	CurrentInjectionInfo->ImageDumped = FALSE;
 
-	CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
 	memset(TargetProcess, 0, MAX_PATH*sizeof(WCHAR));
 
 	if (lpApplicationName)
-		_snwprintf(TargetProcess, MAX_PATH, L"%s", lpApplicationName);
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("CreateProcessHandler: using lpApplicationName: %ws.\n", lpApplicationName);
+#endif
+		_snwprintf(TargetProcess, MAX_PATH, L"%ws", lpApplicationName);
+	}
 	else if (lpCommandLine)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("CreateProcessHandler: using lpCommandLine: %ws.\n", lpCommandLine);
+#endif
 		if (*lpCommandLine == L'\"')
 			wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine+1, (rsize_t)((wcschr(lpCommandLine+1, '\"') - lpCommandLine)-1));
 		else
@@ -662,8 +668,14 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 
 	if (lpApplicationName || lpCommandLine)
 	{
-		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
-		DebugOutput("CreateProcessHandler: Injection info set for new process %d: %s, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CapeMetaData->TargetProcess, CurrentInjectionInfo->ImageBase);
+		CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+		if (CapeMetaData->TargetProcess)
+		{
+			WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
+			DebugOutput("CreateProcessHandler: Injection info set for new process %d: %s, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CapeMetaData->TargetProcess, CurrentInjectionInfo->ImageBase);
+		}
+		else
+			DebugOutput("CreateProcessHandler: Failed to allocate memory for target process name.\n");
 	}
 	else
 		DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
