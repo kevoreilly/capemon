@@ -495,6 +495,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	return ret;
 }
 
+// We typically don't want WER to spawn werfault.exe in the sandbox
+#define ALLOW_WER 0
+
+HOOKDEF(NTSTATUS, WINAPI,  RtlReportSilentProcessExit,
+	__in_opt  HANDLE ProcessHandle,
+	__in	  NTSTATUS ExitStatus
+)
+{
+	NTSTATUS ret = 0;
+	DWORD pid = pid_from_process_handle(ProcessHandle);
+	if (ALLOW_WER)
+		ret = Old_RtlReportSilentProcessExit(ProcessHandle, ExitStatus);
+	return ret;
+}
+
 extern void file_write(HANDLE file_handle);
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateSection,

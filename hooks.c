@@ -267,6 +267,7 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, RtlCreateUserProcess),
 	HOOK(ntdll, NtOpenProcess),
 	HOOK(ntdll, NtTerminateProcess),
+	HOOK(ntdll, RtlReportSilentProcessExit),
 	HOOK(ntdll, NtResumeProcess),
 	HOOK(ntdll, NtCreateSection),
 	HOOK(ntdll, NtDuplicateObject),
@@ -674,6 +675,7 @@ hook_t min_hooks[] = {
 	HOOK(ntdll, NtResumeThread),
 	HOOK(ntdll, NtResumeProcess),
 	HOOK(ntdll, NtTerminateProcess),
+	HOOK(ntdll, RtlReportSilentProcessExit),
 
 	HOOK(ntdll, NtDuplicateObject),
 
@@ -905,6 +907,7 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, RtlCreateUserProcess),
 	HOOK(ntdll, NtOpenProcess),
 	HOOK(ntdll, NtTerminateProcess),
+	HOOK(ntdll, RtlReportSilentProcessExit),
 	HOOK(ntdll, NtResumeProcess),
 	HOOK(ntdll, NtCreateSection),
 	HOOK(ntdll, NtDuplicateObject),
@@ -1297,6 +1300,7 @@ hook_t ie_hooks[] = {
 	HOOK(ntdll, NtResumeThread),
 	HOOK(ntdll, NtResumeProcess),
 	HOOK(ntdll, NtTerminateProcess),
+	HOOK(ntdll, RtlReportSilentProcessExit),
 
 	HOOK(ntdll, NtDuplicateObject),
 
