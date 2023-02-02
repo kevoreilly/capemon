@@ -642,8 +642,13 @@ void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 		pNTHeader64 = (PIMAGE_NT_HEADERS64)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
 
 		// data in slack
-		SlackData = (BYTE*)pDosHeader + pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNTHeader32->FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * (pNTHeader32->FileHeader.NumberOfSections));
-		SizeOfSlackData = ReverseScanForNonZero(SlackData, (BYTE*)pDosHeader + readSize - SlackData);
+		DWORD SlackOffset = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNTHeader32->FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * (pNTHeader32->FileHeader.NumberOfSections)); 
+		if (readSize > SlackOffset)
+		{
+			SlackData = (BYTE*)pDosHeader + SlackOffset;
+			SizeOfSlackData = readSize - SlackOffset;
+			SizeOfSlackData = ReverseScanForNonZero(SlackData, SizeOfSlackData);
+		}
 	}
 }
 
@@ -941,6 +946,9 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 		dwWriteSize = sizeof(IMAGE_DOS_HEADER);
 		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pDosHeader))
 		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("PeParser: savePeFileToDisk: Failure to write DOS header.\n");
+#endif
 			retValue = false;
 		}
 		dwFileOffset += dwWriteSize;
@@ -952,6 +960,9 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			dwWriteSize = dosStubSize;
 			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pDosStub))
 			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("PeParser: savePeFileToDisk: Failure to write DOS stub.\n");
+#endif
 				retValue = false;
 			}
 			dwFileOffset += dwWriteSize;
@@ -959,16 +970,15 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
 		//PE header
 		if (isPE32())
-		{
 			dwWriteSize = sizeof(IMAGE_NT_HEADERS32);
-		}
 		else
-		{
 			dwWriteSize = sizeof(IMAGE_NT_HEADERS64);
-		}
 
 		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pNTHeader32))
 		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("PeParser: savePeFileToDisk: Failure to write PE header.\n");
+#endif
 			retValue = false;
 		}
 		dwFileOffset += dwWriteSize;
@@ -980,6 +990,9 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 		{
 			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, &listPeSection[i].sectionHeader))
 			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("PeParser: savePeFileToDisk: Failure to write section headers (size 0x%x bytes).\n", dwWriteSize);
+#endif
 				retValue = false;
 				break;
 			}
@@ -991,7 +1004,12 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 		{
 			dwWriteSize = (DWORD)SizeOfSlackData;
 			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, SlackData))
+			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("PeParser: savePeFileToDisk: Failure to write header slack (size 0x%x bytes).\n", dwWriteSize);
+#endif
 				retValue = false;
+			}
 			dwFileOffset += dwWriteSize;
 		}
 
@@ -1007,6 +1025,9 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
 				if (!writeZeroMemoryToFile(hFile, dwFileOffset, dwWriteSize))
 				{
+#ifdef DEBUG_COMMENTS
+					DebugOutput("PeParser: savePeFileToDisk: Failure to write padding prior to section %d.\n", i+1);
+#endif
 					retValue = false;
 					break;
 				}
@@ -1022,6 +1043,7 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 #endif
 				if (!ProcessAccessHelp::writeMemoryToFile(hFile, listPeSection[i].sectionHeader.PointerToRawData, dwWriteSize, listPeSection[i].data))
 				{
+					DebugOutput("PeParser: savePeFileToDisk: Failure to write section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
 					retValue = false;
 					break;
 				}
@@ -1035,6 +1057,7 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 
 					if (!writeZeroMemoryToFile(hFile, dwFileOffset, dwWriteSize))
 					{
+						DebugOutput("PeParser: savePeFileToDisk: Failure to write padding to section %d.\n", i+1);
 						retValue = false;
 						break;
 					}
@@ -1053,6 +1076,9 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			dwWriteSize = overlaySize;
 			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, overlayData))
 			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("PeParser: savePeFileToDisk: Failure to write ovrelay data.\n");
+#endif
 				retValue = false;
 			}
 			dwFileOffset += dwWriteSize;
@@ -1066,7 +1092,12 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 		// If only headers are written, fail
 		// (this will allow a subsequent 'raw' memory dump)
 		if (!SectionDataWritten)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("PeParser: savePeFileToDisk: No section data written!\n");
+#endif
 			return false;
+		}
 
 		if (!newFile)
 		{
@@ -1275,7 +1306,12 @@ bool PeParser::savePeFileToHandle(HANDLE FileHandle)
 	// If only headers are written, fail
 	// (this will allow a subsequent 'raw' memory dump)
 	if (!SectionDataWritten)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("PeParser: savePeFileToHandle: No section data written!\n");
+#endif
 		return false;
+	}
 
 	return retValue;
 }

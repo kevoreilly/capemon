@@ -230,7 +230,9 @@ PVOID GetHookCallerBase()
 
 		if (AllocationBase)
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("GetHookCallerBase: thread %d, return address 0x%p, allocation base 0x%p.\n", ThreadId, ReturnAddress, AllocationBase);
+#endif
 			return AllocationBase;
 			// Base-dependent breakpoints can be activated now
 		}
@@ -1960,7 +1962,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 }
 
 //**************************************************************************************
-int DoProcessDump(PVOID CallerBase)
+int DoProcessDump()
 //**************************************************************************************
 {
 	PUCHAR Address;
@@ -1991,21 +1993,21 @@ int DoProcessDump(PVOID CallerBase)
 				NewImageBase = NULL;
 		}
 
-		if (VirtualQuery(ImageBase, &MemInfo, sizeof(MemInfo)) && MemInfo.BaseAddress)
+		if (IsAddressAccessible(ImageBase))
 		{
-			DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", MemInfo.BaseAddress);
+			DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", ImageBase);
 
 			CapeMetaData->DumpType = PROCDUMP;
 			__try
 			{
 				if (g_config.import_reconstruction)
-					ProcessDumped = DumpImageInCurrentProcessFixImports(MemInfo.BaseAddress, 0);
+					ProcessDumped = DumpImageInCurrentProcessFixImports(ImageBase, 0);
 				else
-					ProcessDumped = DumpImageInCurrentProcess(MemInfo.BaseAddress);
+					ProcessDumped = DumpImageInCurrentProcess(ImageBase);
 			}
 			__except(EXCEPTION_EXECUTE_HANDLER)
 			{
-				DebugOutput("DoProcessDump: Failed to dump main process image at 0x%p.\n", MemInfo.BaseAddress);
+				DebugOutput("DoProcessDump: Failed to dump main process image at 0x%p.\n", ImageBase);
 				goto out;
 			}
 		}
@@ -2013,7 +2015,7 @@ int DoProcessDump(PVOID CallerBase)
 		else
 			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", ImageBase);
 #endif
-		if (NewImageBase && VirtualQuery(NewImageBase, &MemInfo, sizeof(MemInfo)))
+		if (NewImageBase && IsAddressAccessible(NewImageBase))
 		{
 			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
 
@@ -2038,8 +2040,8 @@ int DoProcessDump(PVOID CallerBase)
 
 		if (!ProcessDumped)
 		{
-			DebugOutput("DoProcessDump: Attempting raw dump of Imagebase at 0x%p.\n", MemInfo.BaseAddress);
-			ProcessDumped = DumpMemory(MemInfo.BaseAddress, MemInfo.RegionSize);
+			DebugOutput("DoProcessDump: Attempting raw dump of Imagebase at 0x%p.\n", ImageBase);
+			ProcessDumped = DumpMemory(ImageBase, GetAccessibleSize(ImageBase));
 		}
 	}
 

@@ -31,7 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
-extern int DoProcessDump(PVOID CallerBase);
+extern int DoProcessDump();
 extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
 extern void ProcessTrackedRegions();
@@ -277,7 +277,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	if (g_config.procdump || g_config.procmemdump) {
 		if (!ProcessDumped) {
 			DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
-			DoProcessDump(NULL);
+			DoProcessDump();
 		}
 		else
 			DebugOutput("Terminate Event: Process %d has already been dumped(!)\n", ProcessId);

@@ -47,7 +47,7 @@ extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
 extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 extern void file_handle_terminate();
-extern int DoProcessDump(PVOID CallerBase);
+extern int DoProcessDump();
 extern PVOID GetHookCallerBase();
 extern BOOL ProcessDumped;
 extern HANDLE DebuggerLog;
@@ -484,7 +484,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 
 	if (process_shutting_down && g_config.procdump && !ProcessDumped) {
 		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-		DoProcessDump(GetHookCallerBase());
+		DoProcessDump();
 	}
 
 	if (Pid)

@@ -24,14 +24,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "misc.h"
 #include "config.h"
+#include "CAPE\CAPE.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
 extern ULONG_PTR base_of_dll_of_interest;
-extern PVOID GetHookCallerBase();
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
-extern int DoProcessDump(PVOID CallerBase);
 extern void set_hooks();
 extern void notify_successful_load(void);
 extern BOOL ProcessDumped;
@@ -138,7 +137,14 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 ) {
 	if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest && g_config.procdump && !ProcessDumped)
-		DoProcessDump(GetHookCallerBase());
+	{
+		DebugOutput("Target DLL unloading from 0x%p, dumping\n", DllImageBase);
+		CapeMetaData->DumpType = PROCDUMP;
+		if (g_config.import_reconstruction)
+			DumpImageInCurrentProcessFixImports(DllImageBase, 0);
+		else
+			DumpImageInCurrentProcess(DllImageBase);
+	}
 
 	if (DllImageBase && DllImageBase != LastDllUnload)
 	{
