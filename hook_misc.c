@@ -33,11 +33,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define STATUS_BAD_COMPRESSION_BUFFER ((NTSTATUS)0xC0000242L)
 
-LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
-
+extern char *our_process_name;
+extern int path_is_system(const wchar_t *path_w);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+
+LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 BOOL PlugXConfigDumped, CompressedPE;
+DWORD ExportAddress;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	__in  int idHook,
@@ -172,6 +175,11 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 		(!strncmp(FunctionName->Buffer, "EncodePointer", 13) || !strncmp(FunctionName->Buffer, "DecodePointer", 13)))
 		return ret;
 
+	if (ExportAddress && Ordinal == 1 && path_is_system(our_process_path_w) && !_stricmp(our_process_name, "rundll32.exe")) {
+		*FunctionAddress = (PVOID)((PBYTE)ModuleHandle + ExportAddress);
+		DebugOutput("LdrGetProcedureAddress: Patched export address to 0x%p", *FunctionAddress);
+	}
+
 	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
 		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
@@ -198,6 +206,11 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
 	if (FunctionName != NULL && FunctionName->Length == 13 && FunctionName->Buffer != NULL &&
 		(!strncmp(FunctionName->Buffer, "EncodePointer", 13) || !strncmp(FunctionName->Buffer, "DecodePointer", 13)))
 		return ret;
+
+	if (ExportAddress && Ordinal == 1 && path_is_system(our_process_path_w) && !_stricmp(our_process_name, "rundll32.exe")) {
+		*FunctionAddress = (PVOID)((PBYTE)ModuleHandle + ExportAddress);
+		DebugOutput("LdrGetProcedureAddress: Patched export address to 0x%p", *FunctionAddress);
+	}
 
 	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,

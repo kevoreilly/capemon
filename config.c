@@ -46,6 +46,7 @@ extern char *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char *procname0;
 extern char DumpSizeString[MAX_PATH];
 extern SIZE_T DumpSize;
+extern DWORD ExportAddress;
 
 void parse_config_line(char* line)
 {
@@ -291,6 +292,10 @@ void parse_config_line(char* line)
 			g_config.file_offsets = value[0] == '1';
 			if (g_config.file_offsets)
 				DebugOutput("Breakpoints interpreted as file offsets.\n");
+		}
+		else if (!stricmp(key, "export")) {
+			ExportAddress = strtoul(value, NULL, 0);
+			DebugOutput("Config: Export address set to 0x%x", ExportAddress);
 		}
 		else if (!stricmp(key, "bp0")) {
 			p = strchr(value, ':');
