@@ -1192,7 +1192,7 @@ wchar_t *get_full_keyvalue_pathW(HKEY registry, const wchar_t *in, PKEY_NAME_INF
 wchar_t *get_full_keyvalue_pathUS(HKEY registry, const PUNICODE_STRING in, PKEY_NAME_INFORMATION keybuf, unsigned int len)
 {
 	wchar_t *ret;
-	if (in && in->Length) {
+	if (in && in->Buffer && in->Length) {
 		unsigned int newlen = get_encoded_unicode_string_len(in->Buffer, in->Length);
 		wchar_t *incpy = malloc(newlen + (1 * sizeof(wchar_t)));
 		copy_encoded_unicode_string(incpy, in->Buffer, in->Length, newlen);
