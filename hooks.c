@@ -1525,12 +1525,12 @@ void set_hooks()
 			g_config.minhook = 1;
 			DebugOutput("services.exe hook set enabled\n");
 		}
-		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch")) {
+		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs")) {
 			g_config.yarascan = 0;
 			g_config.caller_dump = 0;
 			g_config.injection = 0;
 			g_config.minhook = 1;
-			DebugOutput("DCOM service hook set enabled\n");
+			DebugOutput("Service host hook set enabled\n");
 		}
 		else if (!_stricmp(our_process_name, "wscript.exe")) {
 			const char *excluded_apis[] = {
