@@ -185,8 +185,9 @@ void log_flush()
 	// actually initialized, so avoid any nastiness on trying to use unitialized
 	// critical sections
 
-	// ok to nest these
-	EnterCriticalSection(&g_mutex);
+	if (!TryEnterCriticalSection(&g_mutex))
+		return;
+
 	if (lastlog.buf) {
 		log_raw_direct(lastlog.buf, lastlog.len);
 		free(lastlog.buf);
@@ -332,7 +333,8 @@ static void log_large_buffer(const char *buf, size_t length) {
 
 void set_special_api(DWORD API, BOOLEAN deleteLastLog)
 {
-	EnterCriticalSection(&g_mutex);
+	if (!TryEnterCriticalSection(&g_mutex))
+		return;
 	special_api_triggered = TRUE;
 	last_api_logged = API;
 	delete_last_log = deleteLastLog;
@@ -362,7 +364,8 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	EnterCriticalSection(&g_mutex);
+	if (!TryEnterCriticalSection(&g_mutex))
+		goto exit;
 
 	if (!special_api_triggered)
 		last_api_logged = API_OTHER;
@@ -948,7 +951,7 @@ buffer_log:
 
 	bson_destroy( g_bson );
 	LeaveCriticalSection(&g_mutex);
-
+exit:
 	if (g_config.force_flush == 2)
 		log_flush();
 
