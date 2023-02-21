@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include "ntapi.h"
 #include <tlhelp32.h>
+#include <psapi.h>
 #include "hooking.h"
 #include "log.h"
 #include "pipe.h"
@@ -37,7 +38,7 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
-extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, PULONG OldProtect);
+extern void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtect);
 extern void FreeHandler(PVOID BaseAddress);
 extern void ProcessTrackedRegion();
 extern void DebuggerShutdown();
@@ -468,13 +469,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 
 	if (process_shutting_down && g_config.injection)
 		TerminateHandler();
-
-	if (process_shutting_down && g_config.unpacker) {
-		DebugOutput("NtTerminateProcess hook: Processing tracked regions before shutdown (process %d).\n", GetCurrentProcessId());
-		g_terminate_event_handle = NULL;	// This tells ProcessTrackedRegions it's the final time
-		ProcessTrackedRegions();
-		ClearAllBreakpoints();
-	}
 
 	if (process_shutting_down && g_config.debugger)
 	{
@@ -944,14 +938,19 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 
 	if (NT_SUCCESS(ret) && BaseAddress && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
 	{
+		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
-		if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+		if (g_config.unpacker && !MappedModule)
+			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
+		if (g_config.caller_regions)
 		{
-			DebugOutput("NtProtectVirtualMemory: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
-			lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+			if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			{
+				DebugOutput("NtProtectVirtualMemory: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
+				lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+			}
 		}
-		if (g_config.unpacker)
-			ProtectionHandler(*BaseAddress, *NumberOfBytesToProtect, NewAccessProtection, OldAccessProtection);
 	}
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
@@ -1029,14 +1028,19 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 
 	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
 	{
+		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(lpAddress);
-		if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+		if (g_config.unpacker && !MappedModule)
+			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
+		if (g_config.caller_regions)
 		{
-			DebugOutput("VirtualProtectEx: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
-			lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+			if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			{
+				DebugOutput("VirtualProtectEx: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
+				lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+			}
 		}
-		if (g_config.unpacker)
-			ProtectionHandler(lpAddress, dwSize, flNewProtect, lpflOldProtect);
 	}
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && GetCurrentProcessId() == our_getprocessid(hProcess) &&

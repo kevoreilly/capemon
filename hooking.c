@@ -85,40 +85,56 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 
 static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
-	if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+	if (g_config.tlsdump || !stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+		return;
+	if (!g_config.unpacker && !g_config.caller_regions)
 		return;
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-	if (!AllocationBase)
+	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
 		return;
-	if (!hookinfo->main_caller_retaddr && g_dll_main_complete && AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0)) {
-		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
-		if (g_config.base_on_caller)
-			SetInitialBreakpoints((PVOID)AllocationBase);
-		if (!g_config.loaderlock_scans && loader_lock_held()) {
-			DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p skipped as loader lock held.\n", AllocationBase);
+	PTRACKEDREGION TrackedRegion = NULL;
+	if (g_config.unpacker)
+	{
+		TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+		if (TrackedRegion && (TrackedRegion->CallerDetected || TrackedRegion->PagesDumped))
+			return;	
+		if (!TrackedRegion)
+			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
+		if (!TrackedRegion) {
+			DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 			return;
 		}
-		else if (loader_lock_held())
-			DebugOutput("caller_dispatch: Scanning calling region at 0x%p...\n", AllocationBase);
-		char ModulePath[MAX_PATH];
-		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+		TrackedRegion->CallerDetected = TRUE;
+		DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+	}
+	if (g_config.caller_regions) {
+		if (lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			return;
+		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
+		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+	}
+	if (g_config.base_on_caller)
+		SetInitialBreakpoints((PVOID)AllocationBase);
+	if (!g_config.loaderlock_scans && loader_lock_held()) {
+		DebugOutput("caller_dispatch: Scans and dumps of calling region at 0x%p skipped as loader lock held.\n", AllocationBase);
+		return;
+	}
+	else if (loader_lock_held())
+		DebugOutput("caller_dispatch: Scanning calling region at 0x%p...\n", AllocationBase);
+	char ModulePath[MAX_PATH];
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
+	if (g_config.unpacker)
+		ProcessTrackedRegion(TrackedRegion);
+	else if (g_config.caller_regions) {
 		if (g_config.yarascan)
 			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-		if (g_config.unpacker) {
-			PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)addr);
-			if (TrackedRegion) {
-				TrackedRegion->CanDump = 1;
-				ProcessTrackedRegion(TrackedRegion);
-			}
-		}
-		else if (g_config.caller_dump && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
+		if (!MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
 			DumpRegion((PVOID)addr);
-		else if (MappedModule)
-			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
-		else
-			DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
 	}
+	else if (MappedModule)
+		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
+	else
+		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
 }
 
 static int set_caller_info(void *_hook_info, ULONG_PTR addr)

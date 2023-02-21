@@ -649,7 +649,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 		*FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
 
 	if ((NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
-		if (g_config.compression || g_config.plugx) {
+		if (g_config.unpacker || g_config.plugx) {
 			DebugOutput("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x.\n", UncompressedBuffer, *FinalUncompressedSize);
 			if (g_config.yarascan)
 				YaraScan(UncompressedBuffer, *FinalUncompressedSize);

@@ -152,11 +152,13 @@ HANDLE GetThreadHandle(DWORD ThreadId);
 
 // Clear
 BOOL ClearBreakpoint(int Register);
+BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register);
 BOOL ClearBreakpointsInRange(PVOID BaseAddress, SIZE_T Size);
-BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
+BOOL ClearBreakpointsInRegion(PVOID BaseAddress);
+BOOL ClearAllBreakpoints();
+BOOL ContextClearBreakpoint(PCONTEXT Context, int Register);
 BOOL ContextClearCurrentBreakpoint(PCONTEXT Context);
 BOOL ContextClearAllBreakpoints(PCONTEXT Context);
-BOOL ClearAllBreakpoints();
 BOOL ClearSingleStepMode(PCONTEXT Context);
 
 // Misc

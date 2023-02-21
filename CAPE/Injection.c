@@ -1096,21 +1096,6 @@ void TerminateHandler()
 	{
 		DumpSectionViewsForPid(CurrentInjectionInfo->ProcessId);
 
-		if (CurrentInjectionInfo->ImageBase && !CurrentInjectionInfo->ImageDumped)
-		{
-			CapeMetaData->DumpType = INJECTION_PE;
-			CapeMetaData->TargetPid = CurrentInjectionInfo->ProcessId;
-
-			DebugOutput("TerminateHandler: Dumping hollowed process %d, image base 0x%p.\n", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
-
-			CurrentInjectionInfo->ImageDumped = DumpProcess(CurrentInjectionInfo->ProcessHandle, (PVOID)CurrentInjectionInfo->ImageBase, (PVOID)CurrentInjectionInfo->EntryPoint, FALSE);
-
-			if (CurrentInjectionInfo->ImageDumped)
-				DebugOutput("TerminateHandler: Dumped PE image.\n");
-			else
-				DebugOutput("TerminateHandler: Failed to dump PE image.\n");
-		}
-
 		CurrentInjectionInfo = CurrentInjectionInfo->NextInjectionInfo;
 	}
 }

@@ -164,8 +164,8 @@ VOID CALLBACK New_DllLoadNotification(
 			DebugOutput("Target DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
 			if (g_config.yarascan)
 				YaraScan((PVOID)base_of_dll_of_interest, NotificationData->Loaded.SizeOfImage);
-			if (g_config.unpacker)
-				UnpackerDllInit((PVOID)base_of_dll_of_interest);
+			//if (g_config.unpacker)
+			//	UnpackerDllInit((PVOID)base_of_dll_of_interest);
 			else if (g_config.debugger && !g_config.base_on_apiname[0])
 			{
 				BreakpointsHit = FALSE;
