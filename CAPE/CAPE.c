@@ -1723,13 +1723,11 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 
 		for (unsigned int i=0; i<pNtHeader->FileHeader.NumberOfSections; i++)
 		{
-			if (!NtSection->Misc.VirtualSize && !NtSection->SizeOfRawData)
-			{
-#ifdef DEBUG_COMMENTS
-				DebugOutput("TestPERequirements: Section %d of %d, VirtualSize and SizeOfRawData are zero.\n", i+1, pNtHeader->FileHeader.NumberOfSections);
-#endif
-				continue;
-			}
+			if ((NtSection->PointerToRawData > PE_MAX_SIZE) || (NtSection->SizeOfRawData) > PE_MAX_SIZE)
+				return FALSE;
+
+			if ((NtSection->VirtualAddress > PE_MAX_SIZE) || (NtSection->Misc.VirtualSize) > PE_MAX_SIZE)
+				return FALSE;
 
 			++NtSection;
 		}
@@ -2156,7 +2154,7 @@ BOOL DumpRegion(PVOID Address)
 		CapeMetaData->DumpType = UNPACKED_PE;
 
 	// If PEs in range but not at AllocationBase dump as shellcode
-	if (DumpPEsInRange(AllocationBase, AccessibleSize) && IsDisguisedPEHeader(AllocationBase))
+	if (DumpPEsInRange(AllocationBase, AccessibleSize) && (IsDisguisedPEHeader(AllocationBase)) > 0)
 	{
 		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
 		return TRUE;
