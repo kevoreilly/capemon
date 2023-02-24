@@ -35,14 +35,14 @@ extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DoTraceOutput(PVOID Address);
 
+extern int path_is_system(const wchar_t *path_w);
 extern unsigned int address_is_in_stack(PVOID Address);
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern PVOID ImageBase;
+extern wchar_t *our_process_path_w;
 extern char *our_process_name;
-extern char *our_process_path;
 extern BOOL TraceRunning;
-
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern int WINAPI enter_hook(ULONG_PTR *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip);
 extern void hook_disable();
@@ -134,9 +134,10 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 	}
 	else
 	{
-//#ifdef DEBUG_COMMENTS
-		DebugOutput("AllocationHandler: Adding allocation to tracked region list: 0x%p, size: 0x%x.\n", BaseAddress, RegionSize);
-//#endif
+		if (TraceRunning)
+			DebuggerOutput("AllocationHandler: Adding allocation to tracked region list: 0x%p, size: 0x%x.\n", BaseAddress, RegionSize);
+		else
+			DebugOutput("AllocationHandler: Adding allocation to tracked region list: 0x%p, size: 0x%x.\n", BaseAddress, RegionSize);
 		TrackedRegion = AddTrackedRegion(BaseAddress, Protect);
 	}
 
@@ -211,9 +212,10 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 
 	if (!TrackedRegion)
 	{
-//#ifdef DEBUG_COMMENTS
-		DebugOutput("ProtectionHandler: Adding region at 0x%p to tracked regions.\n", Address);
-//#endif
+		if (TraceRunning)
+			DebuggerOutput("ProtectionHandler: Adding region at 0x%p to tracked regions.\n", Address);
+		else
+			DebugOutput("ProtectionHandler: Adding region at 0x%p to tracked regions.\n", Address);
 		TrackedRegion = AddTrackedRegion(Address, Protect);
 		NewRegion = TRUE;
 	}
@@ -285,8 +287,6 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 		else
 			DebugOutput("ProtectionHandler: No PE images found in region at 0x%p.\n", TrackedRegion->AllocationBase);
 #endif
-		//if (!(Protect & WRITABLE_FLAGS))
-		// dump shellcode?
 	}
 #ifdef DEBUG_COMMENTS
 	else
@@ -1559,50 +1559,12 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 	return TRUE;	// this should set TrackedRegion->BreakpointsSet in calling function
 }
 
-void UnpackerDllInit(PVOID DllBase)
-{
-	// We remove exe (rundll32) image from tracked regions
-	if (!DropTrackedRegion(GetTrackedRegion(GetModuleHandle(NULL))))
-		DebugOutput("UnpackerDllInit: Error removing exe image base from tracked regions.\n");
-
-	ImageBase = DllBase;
-
-	// We add the dll image to tracked regions
-	PTRACKEDREGION TrackedRegion = GetTrackedRegion(DllBase);
-	if (!TrackedRegion)
-	{
-		DebugOutput("UnpackerDllInit: Adding target dll image base to tracked regions.\n");
-		TrackedRegion = AddTrackedRegion(DllBase, 0);
-	}
-	else
-		TrackedRegion->PagesDumped = FALSE;
-}
-
 void UnpackerInit()
 {
-	// Start the debugger
 	if (!InitialiseDebugger())
 		DebugOutput("UnpackerInit: Failed to initialise debugger.\n");
 
-	if (!_strnicmp(our_process_path, "c:\\windows\\sys", 14) && !_strnicmp(our_process_name, "rundll32", 8))
-	{
-		DebugOutput("UnpackerInit: Skipping rundll32 module.\n");
-		return;
-	}
-
-//	// We add the 'main' image and monitor to tracked regions
-//	CapeMetaData->DumpType = UNPACKED_PE;
-//	PTRACKEDREGION TrackedRegion = AddTrackedRegion(GetModuleHandle(NULL), 0);
-//	if (TrackedRegion)
-//	{
-//#ifdef DEBUG_COMMENTS
-//		DebugOutput("UnpackerInit: Adding main image base to tracked regions.\n");
-//#endif
-//		TrackedRegion->PagesDumped = TRUE;
-//	}
-//	else
-//		DebugOutput("UnpackerInit: Error adding main image base to tracked regions.\n");
-
+	// Add the monitor to tracked regions
 	PTRACKEDREGION TrackedRegion = AddTrackedRegion((PVOID)g_our_dll_base, 0);
 	if (TrackedRegion)
 	{
@@ -1614,4 +1576,18 @@ void UnpackerInit()
 	}
 	else
 		DebugOutput("UnpackerInit: Error adding monitor image base to tracked regions.\n");
+
+	// Add the 'main' image
+	CapeMetaData->DumpType = UNPACKED_PE;
+	TrackedRegion = AddTrackedRegion(GetModuleHandle(NULL), 0);
+	if (TrackedRegion)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("UnpackerInit: Adding main image base to tracked regions.\n");
+#endif
+		TrackedRegion->PagesDumped = TRUE;
+	}
+	else
+		DebugOutput("UnpackerInit: Error adding main image base to tracked regions.\n");
+
 }
