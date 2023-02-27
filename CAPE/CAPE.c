@@ -997,8 +997,18 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (!ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)))
 		return;
 
-	if (TrackedRegion->PagesDumped && TrackedRegion->Entropy && (fabs(TrackedRegion->Entropy - GetPEEntropy(TrackedRegion->AllocationBase)) < (double)ENTROPY_DELTA))
-		return;
+	if (TrackedRegion->PagesDumped)
+	{
+		// Allow a big enough change in entropy to trigger another dump
+		if (TrackedRegion->Entropy)
+		{
+			double Entropy = GetPEEntropy(TrackedRegion->AllocationBase);
+			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
+				return;
+		}
+		else
+			return;
+	}
 
 	// Suppress exceptions from scans/dumps in debugger log
 	BOOL TraceIsRunning = TraceRunning;

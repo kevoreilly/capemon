@@ -123,7 +123,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		DebugOutput("caller_dispatch: Scanning calling region at 0x%p...\n", AllocationBase);
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-	if (g_config.unpacker)
+	if (!MappedModule && g_config.unpacker)
 		ProcessTrackedRegion(TrackedRegion);
 	else if (g_config.caller_regions) {
 		if (g_config.yarascan)
