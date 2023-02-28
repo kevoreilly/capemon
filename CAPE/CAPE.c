@@ -1000,7 +1000,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->PagesDumped)
 	{
 		// Allow a big enough change in entropy to trigger another dump
-		if (TrackedRegion->Entropy)
+		if (TrackedRegion->EntryPoint && TrackedRegion->Entropy)
 		{
 			double Entropy = GetPEEntropy(TrackedRegion->AllocationBase);
 			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
@@ -1298,13 +1298,13 @@ double GetPEEntropy(PUCHAR Buffer)
 	double log_2 = log((double)2);
 	SIZE_T Length = 0;
 	unsigned int i;
-	
+
 	if (!Buffer)
 	{
 		DebugOutput("GetPEEntropy: Error - no address supplied.\n");
 		return 0;
 	}
-	
+
 	if (!IsAddressAccessible(Buffer))
 	{
 		DebugOutput("GetPEEntropy: Error - Supplied address inaccessible: 0x%p\n", Buffer);
@@ -1313,35 +1313,39 @@ double GetPEEntropy(PUCHAR Buffer)
 
 	if (IsDisguisedPEHeader((PVOID)Buffer) <= 0)
 		return 0;
-	
+
 	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
-	
+
 	__try
 	{
 		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
 			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
-	
+
 		if (pNtHeader && TestPERequirements(pNtHeader))
 			Length = pNtHeader->OptionalHeader.SizeOfImage;
-	
+
 		if (!Length)
 			return 0;
-	
+
+		SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+		if (AccessibleSize < Length)
+			Length = AccessibleSize;
+
 		memset(TotalCounts, 0, sizeof(TotalCounts));
-	
+
 		for (i = 0; i < Length; i++)
 		{
 			TotalCounts[Buffer[i]]++;
 		}
-	
+
 		for (i = 0; i < 256; i++)
 		{
 			if (TotalCounts[i] == 0) continue;
-	
+
 			p = 1.0 * TotalCounts[i] / Length;
-	
+
 			lp = log(p)/log_2;
-	
+
 			Entropy -= p * lp;
 		}
 	}
@@ -1350,7 +1354,7 @@ double GetPEEntropy(PUCHAR Buffer)
 		DebugOutput("GetPEEntropy: Exception occurred attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
 		return 0;
 	}
-	
+
 	return Entropy;
 }
 

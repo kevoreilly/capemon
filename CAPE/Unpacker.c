@@ -1578,8 +1578,7 @@ void UnpackerInit()
 		DebugOutput("UnpackerInit: Error adding monitor image base to tracked regions.\n");
 
 	// Add the 'main' image
-	CapeMetaData->DumpType = UNPACKED_PE;
-	TrackedRegion = AddTrackedRegion(GetModuleHandle(NULL), 0);
+	TrackedRegion = AddTrackedRegion(ImageBase, 0);
 	if (TrackedRegion)
 	{
 #ifdef DEBUG_COMMENTS
