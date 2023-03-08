@@ -1207,28 +1207,6 @@ hook_t office_hooks[] = {
 	HOOK(ncrypt, NCryptImportKey),
 	HOOK(ncrypt, NCryptDecrypt),
 	HOOK(ncrypt, NCryptEncrypt),
-	// needed due to the DLL being delay-loaded in some cases
-	HOOK(cryptsp, CryptAcquireContextA),
-	HOOK(cryptsp, CryptAcquireContextW),
-	HOOK(cryptsp, CryptProtectData),
-	HOOK(cryptsp, CryptUnprotectData),
-	HOOK(cryptsp, CryptProtectMemory),
-	HOOK(cryptsp, CryptUnprotectMemory),
-	HOOK(cryptsp, CryptDecrypt),
-	HOOK(cryptsp, CryptEncrypt),
-	HOOK(cryptsp, CryptHashData),
-	HOOK(cryptsp, CryptDecodeMessage),
-	HOOK(cryptsp, CryptDecryptMessage),
-	HOOK(cryptsp, CryptEncryptMessage),
-	HOOK(cryptsp, CryptHashMessage),
-	HOOK(cryptsp, CryptExportKey),
-	HOOK(cryptsp, CryptGenKey),
-	HOOK(cryptsp, CryptCreateHash),
-	HOOK(cryptsp, CryptEnumProvidersA),
-	HOOK(cryptsp, CryptEnumProvidersW),
-	HOOK(cryptsp, CryptHashSessionKey),
-	HOOK(cryptsp, CryptGenRandom),
-	HOOK(cryptsp, CryptImportKey),
 };
 
 hook_t ie_hooks[] = {
