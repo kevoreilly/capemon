@@ -65,8 +65,6 @@ typedef struct _DR7
 #define EXECUTABLE_FLAGS (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)
 #define WRITABLE_FLAGS (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY | PAGE_WRITECOMBINE)
 
-#define EXTRACTION_MIN_SIZE 0x1001
-
 typedef struct BreakpointInfo
 {
 	HANDLE			ThreadHandle;
@@ -152,11 +150,13 @@ HANDLE GetThreadHandle(DWORD ThreadId);
 
 // Clear
 BOOL ClearBreakpoint(int Register);
+BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register);
 BOOL ClearBreakpointsInRange(PVOID BaseAddress, SIZE_T Size);
-BOOL ContextClearBreakpoint(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo);
+BOOL ClearBreakpointsInRegion(PVOID BaseAddress);
+BOOL ClearAllBreakpoints();
+BOOL ContextClearBreakpoint(PCONTEXT Context, int Register);
 BOOL ContextClearCurrentBreakpoint(PCONTEXT Context);
 BOOL ContextClearAllBreakpoints(PCONTEXT Context);
-BOOL ClearAllBreakpoints();
 BOOL ClearSingleStepMode(PCONTEXT Context);
 
 // Misc

@@ -130,10 +130,9 @@ struct _g_config {
 	int log_exceptions;
 
 	// behavioural payload extraction options
-	int compression;
 	int unpacker;
 	int injection;
-	int caller_dump;
+	int caller_regions;
 
 	// should we dump each process on exit/analysis timeout?
 	int procdump;

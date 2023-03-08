@@ -96,6 +96,32 @@ VOID TraceOutputFuncAddress(PVOID Address, _DecodedInst DecodedInstruction, PVOI
 	DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
 }
 
+void DoTraceOutput(PVOID Address)
+{
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	DecodeType = Decode64Bits;
+#else
+	DecodeType = Decode32Bits;
+#endif
+
+	if (!Address)
+		return;
+
+	Result = distorm_decode(Offset, (const unsigned char*)Address, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	if (!DecodedInstruction.size)
+		return;
+
+	TraceOutput(Address, DecodedInstruction);
+	DebuggerOutput("\n");
+}
+
 SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
 {
 	if (!IsAddressAccessible((PVOID)StrCandidate))
@@ -1975,7 +2001,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 #ifdef DEBUG_COMMENTS
 		DebugOutput("BreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
 #endif
-		ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+		ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
 		StepOverRegister = 0;
 	}
 	else for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)

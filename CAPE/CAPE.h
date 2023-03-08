@@ -19,7 +19,7 @@ extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
-#define PE_MAX_SIZE	 ((ULONG)0x77000000)
+#define PE_MAX_SIZE	 ((ULONG)0x20000000)
 #define PE_MIN_SIZE	 ((ULONG)0x1000)
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
@@ -39,7 +39,7 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
-double GetEntropy(PUCHAR Buffer);
+double GetPEEntropy(PUCHAR Buffer);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
@@ -66,6 +66,7 @@ BOOL DumpStackRegion(void);
 BOOL ProcessDumped, ModuleDumped;
 
 SYSTEM_INFO SystemInfo;
+PVOID CallingModule;
 
 //
 // MessageId: STATUS_SUCCESS
@@ -135,3 +136,37 @@ enum {
 
 	UPX = 0x1000
 };
+
+typedef struct TrackedRegion
+{
+	PVOID						AllocationBase;
+	PVOID						ProtectAddress;
+	MEMORY_BASIC_INFORMATION	MemInfo;
+	BOOL						Committed;
+	BOOL						PagesDumped;
+	BOOL						CallerDetected;
+	BOOL						CanDump;
+	DWORD						EntryPoint;
+	double						Entropy;
+	SIZE_T						MinPESize;
+	PVOID						ExecBp;
+	unsigned int				ExecBpRegister;
+	PVOID						MagicBp;
+	unsigned int				MagicBpRegister;
+	BOOL						BreakpointsSet;
+	BOOL						BreakpointsSaved;
+	struct ThreadBreakpoints	*TrackedRegionBreakpoints;
+	struct TrackedRegion		*NextTrackedRegion;
+} TRACKEDREGION, *PTRACKEDREGION;
+
+struct TrackedRegion *TrackedRegionList;
+
+PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect);
+PTRACKEDREGION GetTrackedRegion(PVOID Address);
+BOOL DropTrackedRegion(PTRACKEDREGION TrackedRegion);
+BOOL IsInTrackedRegion(PTRACKEDREGION TrackedRegion, PVOID Address);
+BOOL IsInTrackedRegions(PVOID Address);
+BOOL ContextClearTrackedRegion(PCONTEXT Context, PTRACKEDREGION TrackedRegion);
+void ClearTrackedRegion(PTRACKEDREGION TrackedRegion);
+void ProcessImageBase(PTRACKEDREGION TrackedRegion);
+void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);

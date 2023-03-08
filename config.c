@@ -992,15 +992,12 @@ void parse_config_line(char* line)
 			if (g_config.branch_trace)
 				DebugOutput("Branch tracing enabled.\n");
 		}
-		else if (!stricmp(key, "compression")) {
-			g_config.compression = value[0] == '1';
-			if (g_config.compression)
-				DebugOutput("Capture of compressed payloads enabled.\n");
-		}
 		else if (!stricmp(key, "unpacker")) {
-			g_config.unpacker = value[0] == '1';
-			if (g_config.unpacker)
-				DebugOutput("Auto-unpacking of payloads enabled.\n");
+			g_config.unpacker = (unsigned int)strtoul(value, NULL, 10);;
+			if (g_config.unpacker == 1)
+				DebugOutput("Passive unpacking of payloads enabled\n");
+			else if (g_config.unpacker == 2)
+				DebugOutput("Active unpacking of payloads enabled\n");
 		}
 		else if (!stricmp(key, "injection")) {
 			g_config.injection = value[0] == '1';
@@ -1045,9 +1042,11 @@ void parse_config_line(char* line)
 				DebugOutput("Dumping of crypto API ImportKey buffers enabled.\n");
 		}
 		else if (!stricmp(key, "caller-dump")) {
-			g_config.caller_dump = value[0] == '1';
-			if (!g_config.caller_dump)
-				DebugOutput("Dumping of caller regions disabled.\n");
+			g_config.caller_regions = value[0] == '1';
+			if (g_config.caller_regions)
+				DebugOutput("Dumps & scans of caller regions enabled.\n");
+			else
+				DebugOutput("Dumps & scans of caller regions disabled.\n");
 		}
 		else if (!stricmp(key, "upx")) {
 			g_config.upx = value[0] == '1';
@@ -1151,8 +1150,7 @@ int read_config(void)
 	g_config.procmemdump = 0;
 	g_config.dropped_limit = 0;
 	g_config.injection = 1;
-	g_config.compression = 1;
-	g_config.caller_dump = 1;
+	g_config.unpacker = 1;
 	g_config.api_cap = 5000;
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
@@ -1200,8 +1198,7 @@ int read_config(void)
 		g_config.procmemdump = 0;
 		g_config.dropped_limit = DROPPED_LIMIT;
 		g_config.injection = 0;
-		g_config.compression = 0;
-		g_config.caller_dump = 0;
+		g_config.unpacker = 0;
 		g_config.api_rate_cap = 0;
 		g_config.yarascan = 0;
 		g_config.amsidump = 0;

@@ -45,6 +45,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #include "CAPE.h"
 #include "Debugger.h"
+#include "Unpacker.h"
 #include "YaraHarness.h"
 #include "..\alloc.h"
 #include "..\pipe.h"
@@ -119,6 +120,7 @@ extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
+extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern lookup_t g_caller_regions;
@@ -136,10 +138,11 @@ extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR Ne
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern PVOID GetReturnAddress(hook_info_t *hookinfo);
+extern PVOID CallingModule;
 extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
-extern BOOL BreakpointsSet;
+extern BOOL BreakpointsSet, TraceRunning;
 
 OSVERSIONINFO OSVersion;
 BOOL ProcessDumped, ModuleDumped;
@@ -636,6 +639,405 @@ BOOL IsAddressAccessible(PVOID Address)
 }
 
 //**************************************************************************************
+BOOL IsInTrackedRegion(PTRACKEDREGION TrackedRegion, PVOID Address)
+//**************************************************************************************
+{
+	if (Address == NULL)
+	{
+		DebugOutput("IsInTrackedRegion: NULL passed as address argument - error.\n");
+		return FALSE;
+	}
+
+	if (TrackedRegion == NULL)
+	{
+		DebugOutput("IsInTrackedRegion: NULL passed as tracked region argument - error.\n");
+		return FALSE;
+	}
+
+	if ((DWORD_PTR)Address >= (DWORD_PTR)TrackedRegion->AllocationBase && (DWORD_PTR)Address < ((DWORD_PTR)TrackedRegion->AllocationBase + (DWORD_PTR)GetAccessibleSize(TrackedRegion->AllocationBase)))
+		return TRUE;
+
+	return FALSE;
+}
+
+//**************************************************************************************
+BOOL IsInTrackedRegions(PVOID Address)
+//**************************************************************************************
+{
+	PTRACKEDREGION CurrentTrackedRegion = TrackedRegionList;
+
+	if (Address == NULL)
+	{
+		DebugOutput("IsInTrackedRegions: NULL passed as argument - error.\n");
+		return FALSE;
+	}
+
+	if (TrackedRegionList == NULL)
+		return FALSE;
+
+	while (CurrentTrackedRegion)
+	{
+		if ((DWORD_PTR)Address >= (DWORD_PTR)CurrentTrackedRegion->AllocationBase && (DWORD_PTR)Address < ((DWORD_PTR)CurrentTrackedRegion->AllocationBase + (DWORD_PTR)GetAccessibleSize(CurrentTrackedRegion->AllocationBase)))
+			return TRUE;
+
+		CurrentTrackedRegion = CurrentTrackedRegion->NextTrackedRegion;
+	}
+
+	return FALSE;
+}
+
+//**************************************************************************************
+PTRACKEDREGION GetTrackedRegion(PVOID Address)
+//**************************************************************************************
+{
+	PTRACKEDREGION CurrentTrackedRegion;
+
+	if (Address == NULL)
+		return NULL;
+
+	if (TrackedRegionList == NULL)
+		return NULL;
+
+	CurrentTrackedRegion = TrackedRegionList;
+
+	while (CurrentTrackedRegion)
+	{
+		if (GetAllocationBase(Address) == CurrentTrackedRegion->AllocationBase)
+			return CurrentTrackedRegion;
+
+		CurrentTrackedRegion = CurrentTrackedRegion->NextTrackedRegion;
+	}
+
+	return NULL;
+}
+
+//**************************************************************************************
+PTRACKEDREGION CreateTrackedRegion()
+//**************************************************************************************
+{
+	if (TrackedRegionList)
+		return TrackedRegionList;
+
+	PTRACKEDREGION FirstTrackedRegion = ((struct TrackedRegion*)malloc(sizeof(struct TrackedRegion)));
+
+	if (FirstTrackedRegion == NULL)
+	{
+		DebugOutput("CreateTrackedRegion: failed to allocate memory for initial tracked region list.\n");
+		return NULL;
+	}
+
+	memset(FirstTrackedRegion, 0, sizeof(struct TrackedRegion));
+
+	TrackedRegionList = FirstTrackedRegion;
+
+	//DebugOutput("CreateTrackedRegion: Tracked region list created at 0x%p.\n", TrackedRegionList);
+
+	return TrackedRegionList;
+}
+
+//**************************************************************************************
+PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
+//**************************************************************************************
+{
+	BOOL PageAlreadyTracked = FALSE;
+	unsigned int NumberOfTrackedRegions = 0;
+	PTRACKEDREGION TrackedRegion, PreviousTrackedRegion = NULL;
+
+	if (!Address)
+		return NULL;
+
+	if (TrackedRegionList == NULL)
+		CreateTrackedRegion();
+
+	TrackedRegion = TrackedRegionList;
+
+	while (TrackedRegion)
+	{
+		NumberOfTrackedRegions++;
+		PreviousTrackedRegion = TrackedRegion;
+		TrackedRegion = TrackedRegion->NextTrackedRegion;
+	}
+
+	if (NumberOfTrackedRegions > 10)
+		DebugOutput("AddTrackedRegion: DEBUG Warning - number of tracked regions %d.\n", NumberOfTrackedRegions);
+
+	if (GetPageAddress(Address) == GetPageAddress(TrackedRegionList))
+	{
+		DebugOutput("AddTrackedRegion: Warning - attempting to track the page (0x%p) containing the tracked region list at 0x%p.\n", Address, TrackedRegionList);
+		return NULL;
+	}
+
+	TrackedRegion = GetTrackedRegion(Address);
+
+	if (!TrackedRegion && PreviousTrackedRegion)
+	{
+		// We haven't found it in the linked list, so create a new one
+		TrackedRegion = PreviousTrackedRegion;
+
+		TrackedRegion->NextTrackedRegion = ((struct TrackedRegion*)malloc(sizeof(struct TrackedRegion)));
+
+		if (TrackedRegion->NextTrackedRegion == NULL)
+		{
+			DebugOutput("AddTrackedRegion: Failed to allocate new tracked region struct.\n");
+			return NULL;
+		}
+
+		TrackedRegion = TrackedRegion->NextTrackedRegion;
+
+		memset(TrackedRegion, 0, sizeof(struct TrackedRegion));
+#ifdef DEBUG_COMMENTS
+		DebugOutput("AddTrackedRegion: Created new tracked region for address 0x%p.\n", Address);
+#endif
+	}
+	else
+	{
+		PageAlreadyTracked = TRUE;
+#ifdef DEBUG_COMMENTS
+		DebugOutput("AddTrackedRegion: Region at 0x%p already in tracked region 0x%p - updating.\n", Address, TrackedRegion->AllocationBase);
+#endif
+	}
+
+	if (!VirtualQuery(Address, &TrackedRegion->MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+		ErrorOutput("AddTrackedRegion: unable to query memory region 0x%p", Address);
+		return NULL;
+	}
+
+	TrackedRegion->AllocationBase = TrackedRegion->MemInfo.AllocationBase;
+
+	if (Address != TrackedRegion->AllocationBase)
+		TrackedRegion->ProtectAddress = Address;
+
+	if (Protect)
+		TrackedRegion->MemInfo.Protect = Protect;
+
+	// If the region is a PE image
+	TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
+	if (TrackedRegion->EntryPoint)
+	{
+		TrackedRegion->Entropy = GetPEEntropy((PUCHAR)TrackedRegion->AllocationBase);
+#ifdef DEBUG_COMMENTS
+		if (!TrackedRegion->Entropy)
+			DebugOutput("AddTrackedRegion: GetPEEntropy failed.");
+#endif
+
+		TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
+		if (TrackedRegion->MinPESize)
+			DebugOutput("AddTrackedRegion: Min PE size 0x%x", TrackedRegion->MinPESize);
+		//else
+		//	DebugOutput("AddTrackedRegion: GetMinPESize failed");
+#ifdef DEBUG_COMMENTS
+		if (!PageAlreadyTracked)
+			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions: EntryPoint 0x%x, Entropy %e\n", TrackedRegion->AllocationBase, TrackedRegion->EntryPoint, TrackedRegion->Entropy);
+#endif
+
+	}
+#ifdef DEBUG_COMMENTS
+	else if (!PageAlreadyTracked)
+		DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions.\n", TrackedRegion->AllocationBase);
+#endif
+
+	return TrackedRegion;
+}
+
+//**************************************************************************************
+BOOL DropTrackedRegion(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	PTRACKEDREGION CurrentTrackedRegion, PreviousTrackedRegion;
+
+	if (TrackedRegion == NULL)
+	{
+		DebugOutput("DropTrackedRegion: NULL passed as argument - error.\n");
+		return FALSE;
+	}
+
+	PreviousTrackedRegion = NULL;
+
+	if (TrackedRegionList == NULL)
+	{
+		DebugOutput("DropTrackedRegion: failed to obtain initial tracked region list.\n");
+		return FALSE;
+	}
+
+	CurrentTrackedRegion = TrackedRegionList;
+
+	while (CurrentTrackedRegion)
+	{
+		DebugOutput("DropTrackedRegion: CurrentTrackedRegion 0x%x, AllocationBase 0x%x.\n", CurrentTrackedRegion, CurrentTrackedRegion->AllocationBase);
+
+		if (CurrentTrackedRegion == TrackedRegion)
+		{
+			// Clear any breakpoints in this region
+			//if (g_config.unpacker > 1)
+			//	ClearBreakpointsInRegion(TrackedRegion->AllocationBase);
+
+			// Unlink this from the list and free the memory
+			if (PreviousTrackedRegion && CurrentTrackedRegion->NextTrackedRegion)
+			{
+				DebugOutput("DropTrackedRegion: removed region at 0x%p from tracked region list.\n", TrackedRegion->AllocationBase);
+				PreviousTrackedRegion->NextTrackedRegion = CurrentTrackedRegion->NextTrackedRegion;
+			}
+			else if (PreviousTrackedRegion && CurrentTrackedRegion->NextTrackedRegion == NULL)
+			{
+				DebugOutput("DropTrackedRegion: removed region at 0x%p from the end of the tracked region list.\n", TrackedRegion->AllocationBase);
+				PreviousTrackedRegion->NextTrackedRegion = NULL;
+			}
+			else if (!PreviousTrackedRegion)
+			{
+				DebugOutput("DropTrackedRegion: removed region at 0x%p from the head of the tracked region list.\n", TrackedRegion->AllocationBase);
+				TrackedRegionList = NULL;
+			}
+
+			free(CurrentTrackedRegion);
+
+			return TRUE;
+		}
+
+		PreviousTrackedRegion = CurrentTrackedRegion;
+		CurrentTrackedRegion = CurrentTrackedRegion->NextTrackedRegion;
+	}
+
+	DebugOutput("DropTrackedRegion: failed to find tracked region in list.\n");
+
+	return FALSE;
+}
+
+//**************************************************************************************
+void ClearTrackedRegion(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	if (!TrackedRegion->AllocationBase)
+		DebugOutput("ClearTrackedRegion: Error, AllocationBase zero.\n");
+
+	if (g_config.unpacker > 1 && TrackedRegion->BreakpointsSet && ClearBreakpointsInRegion(TrackedRegion->AllocationBase))
+		TrackedRegion->BreakpointsSet = FALSE;
+
+	CapeMetaData->Address = NULL;
+
+	return;
+}
+
+//**************************************************************************************
+BOOL ContextClearTrackedRegion(PCONTEXT Context, PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	ClearTrackedRegion(TrackedRegion);
+
+	if (!ContextClearAllBreakpoints(Context))
+	{
+		DebugOutput("ContextClearTrackedRegion: Failed to clear breakpoints.\n");
+		return FALSE;
+	}
+
+	if (g_config.unpacker > 1)
+		ClearAllBreakpoints();
+
+	return TRUE;
+}
+
+//**************************************************************************************
+void ProcessImageBase(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	DWORD EntryPoint;
+	SIZE_T MinPESize;
+	double Entropy;
+
+	if (!TrackedRegion)
+		return;
+
+	if (TrackedRegion->AllocationBase != GetModuleHandle(NULL) && TrackedRegion->AllocationBase != ImageBase)
+		return;
+
+	if (g_config.yarascan)
+		YaraScan(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase));
+
+	EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
+	MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
+	Entropy = GetPEEntropy(TrackedRegion->AllocationBase);
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ProcessImageBase: EP 0x%p image base 0x%p size 0x%x entropy %e.\n", EntryPoint, TrackedRegion->AllocationBase, MinPESize, Entropy);
+#endif
+	if (TrackedRegion->EntryPoint && (TrackedRegion->EntryPoint != EntryPoint))
+		DebugOutput("ProcessImageBase: Modified entry point (0x%p) detected at image base 0x%p - dumping.\n", EntryPoint, TrackedRegion->AllocationBase);
+	else if (TrackedRegion->MinPESize && TrackedRegion->MinPESize != MinPESize)
+		DebugOutput("ProcessImageBase: Modified PE size detected at image base 0x%p - new size 0x%x.\n", TrackedRegion->AllocationBase, MinPESize);
+	else if (TrackedRegion->Entropy && fabs(TrackedRegion->Entropy - Entropy) > (double)ENTROPY_DELTA)
+		DebugOutput("ProcessImageBase: Modified image detected at image base 0x%p - new entropy %e.\n", TrackedRegion->AllocationBase, Entropy);
+	else
+		return;
+
+	TrackedRegion->EntryPoint = EntryPoint;
+	TrackedRegion->MinPESize = MinPESize;
+	TrackedRegion->Entropy = Entropy;
+
+	SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
+
+	DumpImageInCurrentProcess(TrackedRegion->AllocationBase);
+}
+
+//**************************************************************************************
+void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	if (!TrackedRegion || !TrackedRegion->AllocationBase)
+		return;
+
+	if (TrackedRegion->AllocationBase == ImageBase || TrackedRegion->AllocationBase == (PVOID)base_of_dll_of_interest)
+	{
+		ProcessImageBase(TrackedRegion);
+		return;
+	}
+
+	if (!TrackedRegion->CanDump && !TrackedRegion->CallerDetected && g_terminate_event_handle)
+		return;
+
+	if (!ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)))
+		return;
+
+	if (TrackedRegion->PagesDumped)
+	{
+		// Allow a big enough change in entropy to trigger another dump
+		if (TrackedRegion->EntryPoint && TrackedRegion->Entropy)
+		{
+			double Entropy = GetPEEntropy(TrackedRegion->AllocationBase);
+			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
+				return;
+		}
+		else
+			return;
+	}
+
+	// Suppress exceptions from scans/dumps in debugger log
+	BOOL TraceIsRunning = TraceRunning;
+	TraceRunning = FALSE;
+
+	if (g_config.yarascan)
+		YaraScan(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase));
+
+	TrackedRegion->PagesDumped = DumpRegion(TrackedRegion->AllocationBase);
+
+	if (TrackedRegion->PagesDumped)
+	{
+		if (TraceIsRunning)
+			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", TrackedRegion->AllocationBase);
+		else
+			DebugOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", TrackedRegion->AllocationBase);
+		ClearTrackedRegion(TrackedRegion);
+	}
+	else
+	{
+		if (TraceIsRunning)
+			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", TrackedRegion->AllocationBase);
+		else
+			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", TrackedRegion->AllocationBase);
+	}
+
+}
+
+//**************************************************************************************
 BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address)
 //**************************************************************************************
 {
@@ -886,7 +1288,7 @@ BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffe
 }
 
 //**************************************************************************************
-double GetEntropy(PUCHAR Buffer)
+double GetPEEntropy(PUCHAR Buffer)
 //**************************************************************************************
 {
 	PIMAGE_DOS_HEADER pDosHeader;
@@ -899,7 +1301,13 @@ double GetEntropy(PUCHAR Buffer)
 
 	if (!Buffer)
 	{
-		DebugOutput("GetEntropy: Error - no address supplied.\n");
+		DebugOutput("GetPEEntropy: Error - no address supplied.\n");
+		return 0;
+	}
+
+	if (!IsAddressAccessible(Buffer))
+	{
+		DebugOutput("GetPEEntropy: Error - Supplied address inaccessible: 0x%p\n", Buffer);
 		return 0;
 	}
 
@@ -918,6 +1326,10 @@ double GetEntropy(PUCHAR Buffer)
 
 		if (!Length)
 			return 0;
+
+		SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+		if (AccessibleSize < Length)
+			Length = AccessibleSize;
 
 		memset(TotalCounts, 0, sizeof(TotalCounts));
 
@@ -939,7 +1351,7 @@ double GetEntropy(PUCHAR Buffer)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("GetEntropy: Exception occurred attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
+		DebugOutput("GetPEEntropy: Exception occurred attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
 		return 0;
 	}
 
@@ -1120,6 +1532,9 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size)
 		DebugOutput("ScanForNonZero: Error - Supplied address zero.\n");
 		return 0;
 	}
+
+	if (!IsAddressAccessible(Buffer))
+		return 0;
 
 	__try
 	{
@@ -1322,13 +1737,11 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 
 		for (unsigned int i=0; i<pNtHeader->FileHeader.NumberOfSections; i++)
 		{
-			if (!NtSection->Misc.VirtualSize && !NtSection->SizeOfRawData)
-			{
-#ifdef DEBUG_COMMENTS
-				DebugOutput("TestPERequirements: Section %d of %d, VirtualSize and SizeOfRawData are zero.\n", i+1, pNtHeader->FileHeader.NumberOfSections);
-#endif
-				continue;
-			}
+			if ((NtSection->PointerToRawData > PE_MAX_SIZE) || (NtSection->SizeOfRawData) > PE_MAX_SIZE)
+				return FALSE;
+
+			if ((NtSection->VirtualAddress > PE_MAX_SIZE) || (NtSection->Misc.VirtualSize) > PE_MAX_SIZE)
+				return FALSE;
 
 			++NtSection;
 		}
@@ -1525,7 +1938,7 @@ DWORD GetEntryPoint(PVOID Address)
 		return 0;
 	}
 
-	if (IsDisguisedPEHeader(Address) <= 0)
+	if (!IsAddressAccessible(Address) || IsDisguisedPEHeader(Address) <= 0)
 		return 0;
 
 	pDosHeader = (PIMAGE_DOS_HEADER)Address;
@@ -1754,7 +2167,8 @@ BOOL DumpRegion(PVOID Address)
 	if (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
 		CapeMetaData->DumpType = UNPACKED_PE;
 
-	if (DumpPEsInRange(AllocationBase, AccessibleSize))
+	// If PEs in range but not at AllocationBase dump as shellcode
+	if (DumpPEsInRange(AllocationBase, AccessibleSize) && (IsDisguisedPEHeader(AllocationBase)) > 0)
 	{
 		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
 		return TRUE;
@@ -1773,7 +2187,9 @@ BOOL DumpRegion(PVOID Address)
 	}
 	else
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("DumpRegion: Failed to dump entire allocation from 0x%p size %d bytes.\n", AllocationBase, AccessibleSize);
+#endif
 
 		CapeMetaData->Address = BaseAddress;
 
@@ -2215,13 +2631,10 @@ void CAPE_post_init()
 		if (!g_config.base_on_apiname[0])
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 	}
-	else if (g_config.debugger)
 #ifdef DEBUG_COMMENTS
+	else if (g_config.debugger)
 		DebugOutput("Post-init: Failed to initialise debugger.\n");
 #endif
-
-	if (g_config.unpacker)
-		UnpackerInit();
 
 	if (!g_config.debugger && g_config.upx)
 	{
@@ -2234,7 +2647,11 @@ void CAPE_post_init()
 		UPXInitialBreakpoints(GetModuleHandle(NULL));
 	}
 
-	lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
+	if (g_config.unpacker)
+		UnpackerInit();
+
+	if (g_config.caller_regions)
+		lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
 
 	// Restore headers in case of IAT patching
 	RestoreHeaders();

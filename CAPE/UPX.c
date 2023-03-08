@@ -246,7 +246,7 @@ BOOL StackReadCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTE
 		return FALSE;
 	}
 
-	ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo);
+	ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
 
 	LastContext = *ExceptionInfo->ContextRecord;
 

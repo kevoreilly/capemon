@@ -34,7 +34,6 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
-extern void ProcessTrackedRegions();
 extern void DebuggerShutdown();
 extern HANDLE DebuggerLog, TlsLog;
 
@@ -263,13 +262,6 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	WaitForSingleObject(g_terminate_event_handle, INFINITE);
 
 	CloseHandle(g_terminate_event_handle);
-
-	if (g_config.unpacker) {
-		g_config.unpacker = FALSE;
-		DebugOutput("Terminate Event: Processing tracked regions before shutdown (process %d).\n", ProcessId);
-		ProcessTrackedRegions();
-		ClearAllBreakpoints();
-	}
 
 	if (g_config.debugger)
 		DebuggerShutdown();

@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include "ntapi.h"
 #include "hooking.h"
+#include "hooks.h"
 #include "log.h"
 #include "pipe.h"
 #include "config.h"
@@ -166,7 +167,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 
 	if (newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
-		GetSystemTimeAsFileTime(&ft);
+		if (Old_GetSystemTimeAsFileTime)
+			Old_GetSystemTimeAsFileTime(&ft);
+		else
+			GetSystemTimeAsFileTime(&ft);
 
 		newint.HighPart = ft.dwHighDateTime;
 		newint.LowPart = ft.dwLowDateTime;
@@ -178,7 +182,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 	interval = -newint.QuadPart;
 	milli = (unsigned long)(interval / 10000);
 
-	GetSystemTimeAsFileTime(&ft);
+	if (Old_GetSystemTimeAsFileTime)
+		Old_GetSystemTimeAsFileTime(&ft);
+	else
+		GetSystemTimeAsFileTime(&ft);
 	li.HighPart = ft.dwHighDateTime;
 	li.LowPart = ft.dwLowDateTime;
 
