@@ -42,6 +42,7 @@ extern void TestDebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern PVOID get_process_image_base(HANDLE process_handle);
 extern wchar_t *our_dll_path_w;
+extern char *our_process_name;
 extern void hook_disable();
 extern void hook_enable();
 
@@ -603,6 +604,9 @@ BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 		return TRUE;
 
 	if (g_config.iexplore && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Internet Explorer\\iexplore.exe"))
+		return TRUE;
+
+	if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k WerSvcGroup"))
 		return TRUE;
 
 	if (!g_config.file_of_interest || !g_config.suspend_logging)
