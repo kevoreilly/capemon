@@ -1576,17 +1576,4 @@ void UnpackerInit()
 	}
 	else
 		DebugOutput("UnpackerInit: Error adding monitor image base to tracked regions.\n");
-
-	// Add the 'main' image
-	TrackedRegion = AddTrackedRegion(ImageBase, 0);
-	if (TrackedRegion)
-	{
-#ifdef DEBUG_COMMENTS
-		DebugOutput("UnpackerInit: Adding main image base to tracked regions.\n");
-#endif
-		TrackedRegion->PagesDumped = TRUE;
-	}
-	else
-		DebugOutput("UnpackerInit: Error adding main image base to tracked regions.\n");
-
 }
