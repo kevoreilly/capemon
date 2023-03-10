@@ -398,7 +398,6 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 	char idbuf2[40];
 	hook_info_t saved_hookinfo;
 	OLECHAR *resolv = NULL;
-	DWORD newctx = dwClsContext;
 
 	get_lasterrors(&lasterror);
 
@@ -418,18 +417,15 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	set_lasterrors(&lasterror);
 
-	if (newctx & (CLSCTX_INPROC_HANDLER | CLSCTX_INPROC_SERVER))
-		newctx &= (CLSCTX_INPROC_HANDLER | CLSCTX_INPROC_SERVER);
-
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
-	ret = Old_CoGetClassObject(rclsid, newctx, pServerInfo, riid, ppv);
+	ret = Old_CoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
 
 	get_lasterrors(&lasterror);
 
 	pProgIDFromCLSID(&id1, &resolv);
 
-	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", newctx, "riid", idbuf2, "ProgID", resolv);
+	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", dwClsContext, "riid", idbuf2, "ProgID", resolv);
 
 	if (resolv)
 		pCoTaskMemFree(resolv);
