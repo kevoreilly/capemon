@@ -1017,6 +1017,11 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (g_config.yarascan)
 		YaraScan(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase));
 
+	char ModulePath[MAX_PATH];
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), TrackedRegion->AllocationBase, ModulePath, MAX_PATH);
+	if (MappedModule)
+		return;
+
 	TrackedRegion->PagesDumped = DumpRegion(TrackedRegion->AllocationBase);
 
 	if (TrackedRegion->PagesDumped)

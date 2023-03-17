@@ -938,10 +938,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 
 	if (NT_SUCCESS(ret) && BaseAddress && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
 	{
-		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
-		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-		if (g_config.unpacker && !MappedModule)
+		if (g_config.unpacker)
 			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
 		if (g_config.caller_regions)
 		{
