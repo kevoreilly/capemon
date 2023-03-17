@@ -285,6 +285,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	}
 #endif
 
+	disable_sleep_skip();
+
 	set_lasterrors(&lasterror);
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
@@ -361,6 +363,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 			}
 	}
 #endif
+
+	disable_sleep_skip();
 
 	set_lasterrors(&lasterror);
 

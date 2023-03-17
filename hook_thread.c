@@ -161,6 +161,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 	__in	  PINITIAL_TEB InitialTeb,
 	__in	  BOOLEAN CreateSuspended
 	) {
+	disable_sleep_skip();
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 	NTSTATUS ret = Old_NtCreateThread(ThreadHandle, DesiredAccess,
 		ObjectAttributes, ProcessHandle, ClientId, ThreadContext,
@@ -193,8 +194,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 		LOQ_ntstatus("threading", "PpOiii", "ThreadHandle", ThreadHandle, "ProcessHandle", ProcessHandle,
 			"ObjectAttributes", ObjectAttributes, "CreateSuspended", CreateSuspended, "ThreadId", tid,
 			"ProcessId", pid);
-
-		disable_sleep_skip();
 	}
 	else
 		LOQ_ntstatus("threading", "PpOi", "ThreadHandle", ThreadHandle, "ProcessHandle", ProcessHandle,
@@ -219,6 +218,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 	char *module_name = NULL;
 	unsigned int offset;
+	disable_sleep_skip();
 
 	NTSTATUS ret = Old_NtCreateThreadEx(hThread, DesiredAccess,
 		ObjectAttributes, ProcessHandle, lpStartAddress, lpParameter,
@@ -258,8 +258,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 			LOQ_ntstatus("threading", "Ppphii", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
 				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
 				"ProcessId", pid);
-
-		disable_sleep_skip();
 	}
 	else {
 		if (module_name)
@@ -479,6 +477,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	char *module_name = NULL;
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &DllRVA);
+	disable_sleep_skip();
 
 	ret = Old_CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
 
@@ -501,8 +500,6 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 			LOQ_nonnull("threading", "psphI", "StartRoutine", lpStartAddress, "ModuleName", module_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
 		else
 			LOQ_nonnull("threading", "pphI", "StartRoutine", lpStartAddress, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
-
-		disable_sleep_skip();
 	}
 	else
 		LOQ_nonnull("threading", "pph", "StartRoutine", lpStartAddress, "Parameter", lpParameter,
@@ -528,6 +525,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 	ENSURE_DWORD(lpThreadId);
 
 	pid = pid_from_process_handle(hProcess);
+	disable_sleep_skip();
 	ret = Old_CreateRemoteThread(hProcess, lpThreadAttributes,
 		dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED,
 		lpThreadId);
@@ -550,8 +548,6 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 			ResumeThread(ret);
 			set_lasterrors(&lasterror);
 		}
-
-		disable_sleep_skip();
 	}
 
 	LOQ_nonnull("threading", "ppphI", "ProcessHandle", hProcess, "StartRoutine", lpStartAddress,
@@ -579,6 +575,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	ENSURE_CLIENT_ID(ClientId);
 
 	pid = pid_from_process_handle(ProcessHandle);
+	disable_sleep_skip();
 
 	ret = Old_RtlCreateUserThread(ProcessHandle, SecurityDescriptor,
 		TRUE, StackZeroBits, StackReserved, StackCommit,
@@ -602,7 +599,6 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 			ResumeThread(*ThreadHandle);
 			set_lasterrors(&lasterror);
 		}
-		disable_sleep_skip();
 	}
 
 	LOQ_ntstatus("threading", "pippPi", "ProcessHandle", ProcessHandle,
