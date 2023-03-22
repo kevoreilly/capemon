@@ -24,6 +24,9 @@ typedef NTSTATUS(WINAPI *_NtQuerySystemInformation)(
 typedef LONG(WINAPI *_NtQueryInformationProcess)(HANDLE ProcessHandle,
 	ULONG ProcessInformationClass, PVOID ProcessInformation,
 	ULONG ProcessInformationLength, PULONG ReturnLength);
+typedef LONG(WINAPI *_NtSetInformationProcess)(HANDLE ProcessHandle,
+	ULONG ProcessInformationClass, PVOID ProcessInformation,
+	ULONG ProcessInformationLength);
 typedef LONG(WINAPI *_NtQueryInformationThread)(HANDLE ThreadHandle,
 	ULONG ThreadInformationClass, PVOID ThreadInformation,
 	ULONG ThreadInformationLength, PULONG ReturnLength);
@@ -61,6 +64,11 @@ typedef NTSTATUS(WINAPI *_NtMapViewOfSection)(
 	__in	 UINT InheritDisposition,
 	__in	 ULONG AllocationType,
 	__in	 ULONG Win32Protect);
+typedef NTSTATUS(WINAPI *_RtlAdjustPrivilege)(
+	ULONG Privilege,
+	BOOLEAN Enable,
+	BOOLEAN CurrentThread,
+	PBOOLEAN Enabled);
 typedef NTSTATUS(WINAPI *_RtlEqualUnicodeString)(
 	const PUNICODE_STRING String1,
 	const PUNICODE_STRING String2,
@@ -109,6 +117,15 @@ typedef HRESULT (WINAPI *_ProgIDFromCLSID)(
 	_Out_ LPOLESTR *lplpszProgID
 );
 
+_NtSetInformationProcess pNtSetInformationProcess;
+_NtMapViewOfSection pNtMapViewOfSection;
+_NtUnmapViewOfSection pNtUnmapViewOfSection;
+_NtAllocateVirtualMemory pNtAllocateVirtualMemory;
+_NtProtectVirtualMemory pNtProtectVirtualMemory;
+_NtFreeVirtualMemory pNtFreeVirtualMemory;
+_LdrRegisterDllNotification pLdrRegisterDllNotification;
+_RtlNtStatusToDosError pRtlNtStatusToDosError;
+_RtlAdjustPrivilege pRtlAdjustPrivilege;
 void resolve_runtime_apis(void);
 
 DWORD parent_process_id(); // By Napalm @ NetCore2K (rohitab.com)
@@ -187,6 +204,9 @@ BOOLEAN is_valid_address_range(ULONG_PTR start, DWORD len);
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 
+BOOLEAN is_address_in_monitor(ULONG_PTR address);
+BOOLEAN is_address_in_ntdll(ULONG_PTR address);
+BOOLEAN is_address_in_win32u(ULONG_PTR address);
 void num_to_string(char *buf, unsigned int buflen, unsigned int num);
 
 DWORD get_image_size(ULONG_PTR base);

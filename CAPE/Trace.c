@@ -39,6 +39,7 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
+extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_anomaly(const char *subcategory, const char *msg);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
@@ -1825,6 +1826,18 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //				DebugOutput("DoSyscall: Failed to set stack breakpoint on 0x%p\n", (PBYTE)ExceptionInfo->ContextRecord->Rsp-8);
 //		}
 //	}
+#endif
+#ifdef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSCALL"))
+	{
+        if (!FilterTrace)
+		{
+			TraceOutput(CIP, DecodedInstruction);
+			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Rax);
+			if (FunctionName)
+				DebuggerOutput(" %s ", FunctionName);
+		}
+	}
 #endif
     else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
     {

@@ -66,8 +66,9 @@ static char logtbl_explained[256] = {0};
 #define LOG_ID_ANOMALY_HOOKMOD 6
 #define LOG_ID_ANOMALY_PROCNAME 7
 #define LOG_ID_ENVIRON 8
+#define LOG_ID_SYSCALL 9
 // must be one larger than the largest log ID
-#define LOG_ID_PREDEFINED_MAX 9
+#define LOG_ID_PREDEFINED_MAX 10
 
 volatile LONG g_log_index = 20;  // index must start after the special IDs (see defines)
 
@@ -1119,6 +1120,19 @@ void log_breakpoint(const char *subcategory, const char *msg)
 		"Message", msg);
 }
 
+void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval)
+{
+#ifdef _WIN64
+	loq(LOG_ID_SYSCALL, "__notification__", "syscall", 1, 0, "iospp",
+#else
+	loq(LOG_ID_SYSCALL, "__notification__", "sysenter", 1, 0, "iospp",
+#endif
+		"ThreadIdentifier", GetCurrentThreadId(),
+		"Module", module,
+		"Function", function,
+		"Return Address", retaddr,
+		"Return Value", retval);
+}
 void log_procname_anomaly(PUNICODE_STRING InitialName, PUNICODE_STRING InitialPath, PUNICODE_STRING CurrentName, PUNICODE_STRING CurrentPath)
 {
 	loq(LOG_ID_ANOMALY_PROCNAME, "__notification__", "__anomaly__", 1, 0, "isoooo",
