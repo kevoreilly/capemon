@@ -1102,6 +1102,11 @@ void parse_config_line(char* line)
 			if (g_config.plugx)
 				DebugOutput("PlugX package enabled.\n");
 		}
+		else if (!stricmp(key, "syscall")) {
+			g_config.syscall = value[0] == '1';
+			if (g_config.syscall)
+				DebugOutput("Syscall hooks enabled.\n");
+		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
 	}
@@ -1156,6 +1161,7 @@ int read_config(void)
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
 	g_config.amsidump = 1;
+	//g_config.syscall = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 

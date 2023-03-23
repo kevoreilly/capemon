@@ -291,6 +291,9 @@
     <ClCompile Include="CAPE\YaraHarness.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="CAPE\InstrCallback.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
     <ClCompile Include="CAPE\AmsiDumper.cpp">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
@@ -440,5 +443,13 @@
     <ClInclude Include="CAPE\YaraHarness.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="CAPE\InstrHook32.asm">
+      <Filter>Source Files\CAPE</Filter>
+    </MASM>
+    <MASM Include="CAPE\InstrHook64.asm">
+      <Filter>Source Files\CAPE</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

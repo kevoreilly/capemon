@@ -39,6 +39,7 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
+extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_anomaly(const char *subcategory, const char *msg);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
@@ -1826,6 +1827,27 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //		}
 //	}
 #endif
+#ifdef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSCALL"))
+	{
+        if (!FilterTrace)
+		{
+			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Rax);
+#else
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSENTER"))
+	{
+        if (!FilterTrace)
+		{
+			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Eax);
+#endif
+			if (FunctionName)
+				DebuggerOutput("0x%p  %-24s %-6s%-3s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, "", FunctionName);
+			else
+				TraceOutput(CIP, DecodedInstruction);
+		}
+		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+		ForceStepOver = TRUE;
+	}
     else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
     {
         if (!FilterTrace)

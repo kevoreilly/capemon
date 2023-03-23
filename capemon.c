@@ -50,6 +50,7 @@ wchar_t *our_dll_path_w;
 wchar_t *our_commandline;
 BOOL is_64bit_os;
 
+extern ULONG_PTR ntdll_base;
 extern PVOID ImageBase;
 extern void CAPE_init();
 extern void CAPE_post_init();
@@ -524,6 +525,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		g_our_dll_base = (ULONG_PTR)hModule;
 		g_our_dll_size = get_image_size(g_our_dll_base);
+		ntdll_base = (ULONG_PTR)GetModuleHandle("ntdll");
 
 		g_osverinfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 		GetVersionEx(&g_osverinfo);

@@ -171,6 +171,9 @@ struct _g_config {
 	// dynamic upx unpacker
 	int upx;
 
+	// syscall hooks
+	int syscall;
+
 	// Enable debugger
 	int debugger;
 

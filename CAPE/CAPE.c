@@ -125,9 +125,7 @@ extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern lookup_t g_caller_regions;
 
-#ifdef CAPE_NIRVANA
 extern void NirvanaInit();
-#endif
 extern void AmsiDumperInit(HMODULE module);
 extern void DoOutputFile(_In_ LPCTSTR lpOutputFile);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -2623,10 +2621,8 @@ void RestoreHeaders()
 
 void CAPE_post_init()
 {
-#ifdef CAPE_NIRVANA
-	if (g_config.nirvana)
-		NirvanaInit{);
-#endif
+	if (g_config.syscall && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
+		NirvanaInit();
 
 	if (g_config.debugger && InitialiseDebugger())
 	{

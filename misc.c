@@ -59,6 +59,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pNtDelayExecution = GetProcAddress(ntdllbase, "NtDelayExecution");
 	*(FARPROC *)&pNtQuerySystemInformation = GetProcAddress(ntdllbase, "NtQuerySystemInformation");
 	*(FARPROC *)&pNtQueryInformationProcess = GetProcAddress(ntdllbase, "NtQueryInformationProcess");
+	*(FARPROC *)&pNtSetInformationProcess = GetProcAddress(ntdllbase, "NtSetInformationProcess");
 	*(FARPROC *)&pNtQueryInformationThread = GetProcAddress(ntdllbase, "NtQueryInformationThread");
 	*(FARPROC *)&pNtQueryObject = GetProcAddress(ntdllbase, "NtQueryObject");
 	*(FARPROC *)&pNtQueryKey = GetProcAddress(ntdllbase, "NtQueryKey");
@@ -71,12 +72,26 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
 	*(FARPROC *)&pRtlEqualUnicodeString = GetProcAddress(ntdllbase, "RtlEqualUnicodeString");
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
+	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
 }
 
 ULONG_PTR g_our_dll_base;
 DWORD g_our_dll_size;
 
+BOOLEAN is_address_in_monitor(ULONG_PTR address)
+{
+	if (!g_our_dll_base)
+		return FALSE;
+
+	if (!g_our_dll_size)
+		g_our_dll_size = get_image_size(g_our_dll_base);
+
+	if (address >= g_our_dll_base && address < (g_our_dll_base + g_our_dll_size))
+		return TRUE;
+
+	return FALSE;
+}
 void raw_sleep(int msecs)
 {
 	LARGE_INTEGER interval;
@@ -2013,12 +2028,35 @@ out:
 	return ImageBase;
 }
 
+ULONG_PTR ntdll_base;
+DWORD ntdll_size;
+
 BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 {
-	ULONG_PTR ntdll_base = (ULONG_PTR)GetModuleHandle("ntdll");
-	DWORD ntdll_size = get_image_size(ntdll_base);
+	if (!ntdll_base)
+		return FALSE;
+
+	if (!ntdll_size)
+		ntdll_size = get_image_size(ntdll_base);
 
 	if (address >= ntdll_base && address < (ntdll_base + ntdll_size))
+		return TRUE;
+
+	return FALSE;
+}
+
+ULONG_PTR win32u_base;
+DWORD win32u_size;
+
+BOOLEAN is_address_in_win32u(ULONG_PTR address)
+{
+	if (!win32u_base)
+		return FALSE;
+
+	if (!win32u_size)
+		win32u_size = get_image_size(win32u_base);
+
+	if (address >= win32u_base && address < (win32u_base + win32u_size))
 		return TRUE;
 
 	return FALSE;
