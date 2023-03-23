@@ -1832,13 +1832,22 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	{
         if (!FilterTrace)
 		{
-			TraceOutput(CIP, DecodedInstruction);
 			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Rax);
-			if (FunctionName)
-				DebuggerOutput(" %s ", FunctionName);
-		}
-	}
+#else
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSENTER"))
+	{
+        if (!FilterTrace)
+		{
+			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Eax);
 #endif
+			if (FunctionName)
+				DebuggerOutput("0x%p  %-24s %-6s%-3s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, "", FunctionName);
+			else
+				TraceOutput(CIP, DecodedInstruction);
+		}
+		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+		ForceStepOver = TRUE;
+	}
     else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
     {
         if (!FilterTrace)
