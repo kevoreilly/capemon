@@ -862,7 +862,9 @@ BOOL DropTrackedRegion(PTRACKEDREGION TrackedRegion)
 
 	while (CurrentTrackedRegion)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("DropTrackedRegion: CurrentTrackedRegion 0x%x, AllocationBase 0x%x.\n", CurrentTrackedRegion, CurrentTrackedRegion->AllocationBase);
+#endif
 
 		if (CurrentTrackedRegion == TrackedRegion)
 		{
@@ -1019,6 +1021,12 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), TrackedRegion->AllocationBase, ModulePath, MAX_PATH);
 	if (MappedModule)
 		return;
+
+	if (!CapeMetaData->DumpType)
+		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
+
+	if (!CapeMetaData->Address)
+		CapeMetaData->Address = TrackedRegion->AllocationBase;
 
 	TrackedRegion->PagesDumped = DumpRegion(TrackedRegion->AllocationBase);
 
