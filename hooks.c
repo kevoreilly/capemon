@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "hooking.h"
 #include "hooks.h"
+#include "hook_sleep.h"
 #include "pipe.h"
 
 extern char *our_process_name;
@@ -1502,6 +1503,7 @@ void set_hooks()
 			g_config.caller_regions = 0;
 			g_config.injection = 0;
 			g_config.minhook = 1;
+			disable_sleep_skip();
 			DebugOutput("services.exe hook set enabled\n");
 		}
 		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs")) {
@@ -1510,6 +1512,7 @@ void set_hooks()
 			g_config.caller_regions = 0;
 			g_config.injection = 0;
 			g_config.minhook = 1;
+			disable_sleep_skip();
 			DebugOutput("Service host hook set enabled\n");
 		}
 		else if (!_stricmp(our_process_name, "wscript.exe")) {
