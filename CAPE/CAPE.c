@@ -547,6 +547,7 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	PIMAGE_DOS_HEADER DosHeader;
 	PIMAGE_NT_HEADERS NtHeader;
 	PIMAGE_EXPORT_DIRECTORY ImageExportDirectory;
+	PVOID ExportAddress = NULL;
 
 	if (!ModuleBase || !FunctionName)
 		return NULL;
@@ -584,18 +585,34 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (!ImageExportDirectory->AddressOfNames)
 		return NULL;
 
-	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
-
-	for (unsigned int i = 0; i < ImageExportDirectory->NumberOfNames; i++)
+	if (ImageExportDirectory->AddressOfNames > NtHeader->OptionalHeader.SizeOfImage)
 	{
-		if (NameRVA[i])
-		{
-			if (!strcmp((PCHAR)((PBYTE)ModuleBase + NameRVA[i]), FunctionName))
-				return (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
-		}
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetExportAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ImageExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
+#endif
+		return NULL;
 	}
 
-	return NULL;
+	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
+
+	__try
+	{
+		for (unsigned int i = 0; i < ImageExportDirectory->NumberOfNames; i++)
+		{
+			if (NameRVA[i])
+			{
+				if (!strcmp((PCHAR)((PBYTE)ModuleBase + NameRVA[i]), FunctionName))
+					ExportAddress = (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+			}
+		}
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DebugOutput("GetExportAddress: Exception occurred around 0x%p\n", NameRVA);
+		return NULL;
+	}
+
+	return ExportAddress;
 }
 
 //**************************************************************************************
