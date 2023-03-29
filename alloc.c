@@ -17,7 +17,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #include "hooking.h"
 #include "alloc.h"
-#include <Windows.h>
 
 #ifdef USE_PRIVATE_HEAP
 void *cm_alloc(size_t size)
@@ -26,7 +25,7 @@ void *cm_alloc(size_t size)
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	ret = HeapAlloc(g_heap, 0, size);
+	ret = pRtlAllocateHeap(g_heap, 0, size);
 	set_lasterrors(&lasterror);
 	return ret;
 }
@@ -37,7 +36,7 @@ void *cm_calloc(size_t count, size_t size)
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	ret = HeapAlloc(g_heap, HEAP_ZERO_MEMORY, count * size);
+	ret = pRtlAllocateHeap(g_heap, HEAP_ZERO_MEMORY, count * size);
 	set_lasterrors(&lasterror);
 	return ret;
 }
@@ -47,7 +46,7 @@ void *cm_realloc(void *ptr, size_t size)
 	void *ret;
 	lasterror_t lasterror;
 	get_lasterrors(&lasterror);
-	ret = HeapReAlloc(g_heap, 0, ptr, size);
+	ret = pRtlReAllocateHeap(g_heap, 0, ptr, size);
 	set_lasterrors(&lasterror);
 	return ret;
 }

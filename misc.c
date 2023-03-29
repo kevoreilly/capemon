@@ -27,10 +27,36 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.h"
 #include "pipe.h"
 #include "config.h"
+#include "CAPE\CAPE.h"
+
+#define OBJ_CASE_INSENSITIVE 0x00000040L
+#define ViewShare 1
+
+// INIT_UNICODE_STRING is a replacement of RtlInitUnicodeString
+#ifndef INIT_UNICODE_STRING
+#define INIT_UNICODE_STRING(us, wch)                 \
+    us.MaximumLength = (USHORT)sizeof(wch);          \
+    us.Length        = (USHORT)(wcslen(wch) * sizeof(WCHAR)); \
+    us.Buffer        = wch
+#endif
+
+
+#ifndef InitializeObjectAttributes
+#define InitializeObjectAttributes( p, n, a, r, s ) {   \
+    (p)->Length = sizeof( OBJECT_ATTRIBUTES );          \
+    (p)->RootDirectory = r;                             \
+    (p)->Attributes = a;                                \
+    (p)->ObjectName = n;                                \
+    (p)->SecurityDescriptor = s;                        \
+    (p)->SecurityQualityOfService = NULL;               \
+    }
+#endif
 
 extern char *our_process_name;
 extern int path_is_system(const wchar_t *path_w);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
+extern PVOID NewGetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _NtQueryInformationThread pNtQueryInformationThread;
@@ -38,16 +64,99 @@ static _RtlGenRandom pRtlGenRandom;
 static _NtQueryAttributesFile pNtQueryAttributesFile;
 static _NtQueryObject pNtQueryObject;
 static _NtQueryKey pNtQueryKey;
+static _NtOpenSection pNtOpenSection;
+static _NtCreateSection pNtCreateSection;
+static _NtOpenFile pNtOpenFile;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
 static _RtlEqualUnicodeString pRtlEqualUnicodeString;
+static _NtClose pNtClose;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
-_NtProtectVirtualMemory pNtProtectVirtualMemory;
 _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
 _RtlNtStatusToDosError pRtlNtStatusToDosError;
+
+PVOID RemapNtdll()
+{
+    LARGE_INTEGER     SectionOffset;
+    SIZE_T            ViewSize;
+    PVOID             ViewBase;
+    HANDLE            SectionHandle = NULL;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+
+#ifdef _WIN64
+	UNICODE_STRING KnownDllsNtDllName;
+
+	INIT_UNICODE_STRING(KnownDllsNtDllName, L"\\KnownDlls\\ntdll.dll");
+
+    InitializeObjectAttributes(&ObjectAttributes, &KnownDllsNtDllName, OBJ_CASE_INSENSITIVE, 0, NULL );
+
+    if (!NT_SUCCESS(pNtOpenSection(&SectionHandle, SECTION_MAP_EXECUTE | SECTION_MAP_READ | SECTION_QUERY, &ObjectAttributes)))
+		goto cleanup;
+#else
+    HANDLE FileHandle = NULL;
+	IO_STATUS_BLOCK StatusBlock;
+	UNICODE_STRING FileName;
+
+	INIT_UNICODE_STRING(FileName, L"\\??\\C:\\Windows\\SysWOW64\\ntdll.dll");
+
+    InitializeObjectAttributes(&ObjectAttributes, &FileName, OBJ_CASE_INSENSITIVE, 0, NULL );
+
+    if (!NT_SUCCESS(pNtOpenFile(&FileHandle, FILE_READ_DATA, &ObjectAttributes, &StatusBlock, FILE_SHARE_READ, 0)))
+		goto cleanup;
+
+    if (!NT_SUCCESS(pNtCreateSection(&SectionHandle, SECTION_ALL_ACCESS, NULL, NULL, PAGE_READONLY, SEC_IMAGE, FileHandle)))
+		goto cleanup;
+#endif
+    SectionOffset.LowPart = 0;
+    SectionOffset.HighPart = 0;
+    ViewSize = 0;
+    ViewBase = NULL;
+
+    if (!NT_SUCCESS(pNtMapViewOfSection(SectionHandle, NtCurrentProcess(), &ViewBase, 0, 0, &SectionOffset, &ViewSize, ViewShare, 0, PAGE_EXECUTE_READ)))
+		goto cleanup;
+
+	return ViewBase;
+
+cleanup:
+    if (ViewBase)
+		pNtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
+
+    if (SectionHandle)
+		pNtClose(SectionHandle);
+
+	return NULL;
+}
+
+void resolve_remapped_apis(void)
+{
+	HMODULE ntdllremap = RemapNtdll();
+
+	if (!ntdllremap)
+		return;
+
+	*(FARPROC*)&pNtDelayExecution = GetExportAddress(ntdllremap, "NtDelayExecution");
+	*(FARPROC*)&pNtQuerySystemInformation = GetExportAddress(ntdllremap, "NtQuerySystemInformation");
+	*(FARPROC*)&pNtQueryInformationProcess = GetExportAddress(ntdllremap, "NtQueryInformationProcess");
+	*(FARPROC*)&pNtSetInformationProcess = GetExportAddress(ntdllremap, "NtSetInformationProcess");
+	*(FARPROC*)&pNtQueryInformationThread = GetExportAddress(ntdllremap, "NtQueryInformationThread");
+	*(FARPROC*)&pNtQueryObject = GetExportAddress(ntdllremap, "NtQueryObject");
+	*(FARPROC*)&pNtQueryKey = GetExportAddress(ntdllremap, "NtQueryKey");
+	*(FARPROC*)&pNtQueryAttributesFile = GetExportAddress(ntdllremap, "NtQueryAttributesFile");
+	*(FARPROC*)&pRtlEqualUnicodeString = GetExportAddress(ntdllremap, "RtlEqualUnicodeString");
+	*(FARPROC*)&pRtlNtStatusToDosError = GetExportAddress(ntdllremap, "RtlNtStatusToDosError");
+
+	*(FARPROC*)&pNtAllocateVirtualMemory = GetExportAddress(ntdllremap, "NtAllocateVirtualMemory");
+	*(FARPROC*)&pNtFreeVirtualMemory = GetExportAddress(ntdllremap, "NtFreeVirtualMemory");
+#ifndef _WIN64
+	*(FARPROC*)&pRtlAllocateHeap = GetExportAddress(ntdllremap, "RtlAllocateHeap");
+	*(FARPROC*)&pRtlReAllocateHeap = GetExportAddress(ntdllremap, "RtlReAllocateHeap");
+#endif
+}
+
+#define REMAP_NTDLL 1
 
 void resolve_runtime_apis(void)
 {
@@ -56,24 +165,46 @@ void resolve_runtime_apis(void)
 	if (!ntdllbase)
 		return;
 
-	*(FARPROC *)&pNtDelayExecution = GetProcAddress(ntdllbase, "NtDelayExecution");
-	*(FARPROC *)&pNtQuerySystemInformation = GetProcAddress(ntdllbase, "NtQuerySystemInformation");
-	*(FARPROC *)&pNtQueryInformationProcess = GetProcAddress(ntdllbase, "NtQueryInformationProcess");
-	*(FARPROC *)&pNtSetInformationProcess = GetProcAddress(ntdllbase, "NtSetInformationProcess");
-	*(FARPROC *)&pNtQueryInformationThread = GetProcAddress(ntdllbase, "NtQueryInformationThread");
-	*(FARPROC *)&pNtQueryObject = GetProcAddress(ntdllbase, "NtQueryObject");
-	*(FARPROC *)&pNtQueryKey = GetProcAddress(ntdllbase, "NtQueryKey");
-	*(FARPROC *)&pNtQueryAttributesFile = GetProcAddress(ntdllbase, "NtQueryAttributesFile");
-	*(FARPROC *)&pNtAllocateVirtualMemory = GetProcAddress(ntdllbase, "NtAllocateVirtualMemory");
-	*(FARPROC *)&pNtProtectVirtualMemory = GetProcAddress(ntdllbase, "NtProtectVirtualMemory");
-	*(FARPROC *)&pNtFreeVirtualMemory = GetProcAddress(ntdllbase, "NtFreeVirtualMemory");
-	*(FARPROC *)&pLdrRegisterDllNotification = GetProcAddress(ntdllbase, "LdrRegisterDllNotification");
-	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
-	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
-	*(FARPROC *)&pRtlEqualUnicodeString = GetProcAddress(ntdllbase, "RtlEqualUnicodeString");
-	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
-	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
-	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
+#ifdef REMAP_NTDLL
+	*(FARPROC*)&pNtOpenSection = GetProcAddress(ntdllbase, "NtOpenSection");
+	*(FARPROC*)&pNtCreateSection = GetProcAddress(ntdllbase, "NtCreateSection");
+	*(FARPROC*)&pNtOpenFile = GetProcAddress(ntdllbase, "NtOpenFile");
+	*(FARPROC*)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
+	*(FARPROC*)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
+	*(FARPROC*)&pNtClose = GetProcAddress(ntdllbase, "NtClose");
+
+#ifdef _WIN64
+	*(FARPROC*)&pRtlAllocateHeap = GetProcAddress(ntdllbase, "RtlAllocateHeap");
+	*(FARPROC*)&pRtlReAllocateHeap = GetProcAddress(ntdllbase, "RtlReAllocateHeap");
+#endif
+	*(FARPROC*)&pLdrRegisterDllNotification = GetProcAddress(ntdllbase, "LdrRegisterDllNotification");
+
+	resolve_remapped_apis();
+#else
+	*(FARPROC*)&pNtDelayExecution = GetProcAddress(ntdllbase, "NtDelayExecution");
+	*(FARPROC*)&pNtQuerySystemInformation = GetProcAddress(ntdllbase, "NtQuerySystemInformation");
+	*(FARPROC*)&pNtQueryInformationProcess = GetProcAddress(ntdllbase, "NtQueryInformationProcess");
+	*(FARPROC*)&pNtSetInformationProcess = GetProcAddress(ntdllbase, "NtSetInformationProcess");
+	*(FARPROC*)&pNtQueryInformationThread = GetProcAddress(ntdllbase, "NtQueryInformationThread");
+	*(FARPROC*)&pNtQueryObject = GetProcAddress(ntdllbase, "NtQueryObject");
+	*(FARPROC*)&pNtQueryKey = GetProcAddress(ntdllbase, "NtQueryKey");
+	*(FARPROC*)&pNtOpenSection = GetProcAddress(ntdllbase, "NtOpenSection");
+	*(FARPROC*)&pNtCreateSection = GetProcAddress(ntdllbase, "NtCreateSection");
+	*(FARPROC*)&pNtOpenFile = GetProcAddress(ntdllbase, "NtOpenFile");
+	*(FARPROC*)&pNtClose = GetProcAddress(ntdllbase, "NtClose");
+	*(FARPROC*)&pNtQueryAttributesFile = GetProcAddress(ntdllbase, "NtQueryAttributesFile");
+	*(FARPROC*)&pNtAllocateVirtualMemory = GetProcAddress(ntdllbase, "NtAllocateVirtualMemory");
+	*(FARPROC*)&pNtFreeVirtualMemory = GetProcAddress(ntdllbase, "NtFreeVirtualMemory");
+	*(FARPROC*)&pRtlAllocateHeap = GetProcAddress(ntdllbase, "RtlAllocateHeap");
+	*(FARPROC*)&pRtlReAllocateHeap = GetProcAddress(ntdllbase, "RtlReAllocateHeap");
+	*(FARPROC*)&pLdrRegisterDllNotification = GetProcAddress(ntdllbase, "LdrRegisterDllNotification");
+	*(FARPROC*)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
+	*(FARPROC*)&pRtlEqualUnicodeString = GetProcAddress(ntdllbase, "RtlEqualUnicodeString");
+	*(FARPROC*)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
+	*(FARPROC*)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
+
+	*(FARPROC*)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
+#endif
 }
 
 ULONG_PTR g_our_dll_base;

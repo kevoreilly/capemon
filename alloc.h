@@ -21,10 +21,19 @@ typedef NTSTATUS(WINAPI * _NtFreeVirtualMemory)(
 	_Inout_  PVOID *BaseAddress,
 	_Inout_  PSIZE_T RegionSize,
 	_In_	 ULONG FreeType);
-
+typedef PVOID(WINAPI * _RtlAllocateHeap)(
+	__in	  PVOID  HeapHandle,
+	__in_opt  ULONG  Flags,
+	__in	  SIZE_T Size);
+typedef PVOID(WINAPI * _RtlReAllocateHeap)(
+	__in	  PVOID  HeapHandle,
+	__in_opt  ULONG  Flags,
+	__in_opt  LPVOID lpMem,
+	__in	  SIZE_T Size);
 extern _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
-extern _NtProtectVirtualMemory pNtProtectVirtualMemory;
 extern _NtFreeVirtualMemory pNtFreeVirtualMemory;
+extern _RtlAllocateHeap pRtlAllocateHeap;
+extern _RtlReAllocateHeap pRtlReAllocateHeap;
 
 #define USE_PRIVATE_HEAP
 

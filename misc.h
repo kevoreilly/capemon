@@ -47,6 +47,31 @@ typedef NTSTATUS(WINAPI *_NtQueryKey)(
 	PVOID  KeyInformation,
 	ULONG  Length,
 	PULONG  ResultLength);
+typedef NTSTATUS(WINAPI *_NtCreateSection)(
+	__out	 PHANDLE SectionHandle,
+	__in	  ACCESS_MASK DesiredAccess,
+	__in_opt  POBJECT_ATTRIBUTES ObjectAttributes,
+	__in_opt  PLARGE_INTEGER MaximumSize,
+	__in	  ULONG SectionPageProtection,
+	__in	  ULONG AllocationAttributes,
+	__in_opt  HANDLE FileHandle
+);
+typedef NTSTATUS(WINAPI *_NtOpenSection)(
+	__out  PHANDLE SectionHandle,
+	__in   ACCESS_MASK DesiredAccess,
+	__in   POBJECT_ATTRIBUTES ObjectAttributes
+);
+typedef NTSTATUS(WINAPI *_NtOpenFile)(
+	__out  PHANDLE FileHandle,
+	__in   ACCESS_MASK DesiredAccess,
+	__in   POBJECT_ATTRIBUTES ObjectAttributes,
+	__out  PIO_STATUS_BLOCK IoStatusBlock,
+	__in   ULONG ShareAccess,
+	__in   ULONG OpenOptions
+);
+typedef NTSTATUS(WINAPI *_NtClose)(
+	__in	HANDLE Handle
+);
 typedef NTSTATUS(WINAPI *_NtDelayExecution)(
 	BOOLEAN Alertable,
 	PLARGE_INTEGER Interval);
@@ -121,11 +146,11 @@ _NtSetInformationProcess pNtSetInformationProcess;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
-_NtProtectVirtualMemory pNtProtectVirtualMemory;
+_RtlAllocateHeap pRtlAllocateHeap;
+_RtlReAllocateHeap pRtlReAllocateHeap;
 _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
 _RtlNtStatusToDosError pRtlNtStatusToDosError;
-_RtlAdjustPrivilege pRtlAdjustPrivilege;
 void resolve_runtime_apis(void);
 
 DWORD parent_process_id(); // By Napalm @ NetCore2K (rohitab.com)
