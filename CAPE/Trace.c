@@ -952,6 +952,7 @@ BOOL DoStepOver(PCHAR FunctionName)
 		"LdrUnlockLoaderLock",
 		"RtlAcquirePebLock",
 		"RtlReleasePebLock",
+		"RtlAcquireSRWLockExclusive",
 		NULL
 	};
 
