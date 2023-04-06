@@ -815,6 +815,20 @@ HOOKDEF(BOOL, WINAPI, PostMessageW,
 	_In_  LPARAM lParam
 );
 
+HOOKDEF(BOOL, WINAPI, PostThreadMessageA,
+		_In_  DWORD idThread,
+		_In_  UINT Msg,
+		_In_  WPARAM wParam,
+		_In_  LPARAM lParam
+);
+
+HOOKDEF(BOOL, WINAPI, PostThreadMessageW,
+			_In_  DWORD idThread,
+			_In_  UINT Msg,
+			_In_  WPARAM wParam,
+			_In_  LPARAM lParam
+);
+
 HOOKDEF(BOOL, WINAPI, SendMessageA,
 	_In_  HWND hWnd,
 	_In_  UINT Msg,
