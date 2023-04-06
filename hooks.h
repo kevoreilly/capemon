@@ -981,6 +981,11 @@ HOOKDEF(BOOL, WINAPI, Module32NextW,
 	__out LPMODULEENTRY32W lpme
 );
 
+HOOKDEF(UINT, WINAPI, WinExec,
+	__in LPCSTR lpCmdLine,
+	__in UINT   uCmdShow
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
 	__out	   PHANDLE ProcessHandle,
 	__in		ACCESS_MASK DesiredAccess,

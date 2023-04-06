@@ -130,6 +130,15 @@ HOOKDEF(BOOL, WINAPI, Module32FirstW,
 	return ret;
 }
 
+HOOKDEF(UINT, WINAPI, WinExec,
+	__in LPCSTR lpCmdLine,
+	__in UINT   uCmdShow
+) {
+	UINT ret = Old_WinExec(lpCmdLine, uCmdShow);
+	LOQ_nonzero("process", "si", "CmdLine", lpCmdLine, "CmdShow", uCmdShow);
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
 	__out	   PHANDLE ProcessHandle,
 	__in		ACCESS_MASK DesiredAccess,
