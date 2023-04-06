@@ -254,7 +254,12 @@ void YaraScan(PVOID Address, SIZE_T Size)
 	SIZE_T AccessibleSize = GetAccessibleSize(Address);
 
 	if (!AccessibleSize)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("YaraScan: Memory at 0x%p is inaccessible.\n", Address);
+#endif
 		return;
+	}
 
 	if (AccessibleSize < Size)
 		Size = AccessibleSize;
@@ -268,7 +273,9 @@ void YaraScan(PVOID Address, SIZE_T Size)
 		return;
 	}
 
+#ifndef DEBUG_COMMENTS
 	if (YaraLogging)
+#endif
 		DebugOutput("YaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
 
 	__try
