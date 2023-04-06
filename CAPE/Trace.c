@@ -413,14 +413,20 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #endif
 					}
 				}
-#ifdef DEBUG_COMMENTS
 				else
+                {
+                    TargetSet = TRUE;
+#ifdef DEBUG_COMMENTS
 					DebuggerOutput("ActionDispatcher: Target 0x%p (%s).\n", Target, p+1);
 #endif
+                }
 			}
-			*q = '\0';
-			Target = GetRegister(ExceptionInfo->ContextRecord, p+1);
-			*q = ':';
+			if (!TargetSet)
+			{
+                *q = '\0';
+                Target = GetRegister(ExceptionInfo->ContextRecord, p+1);
+                *q = ':';
+			}
 			if (Target)
 			{
 				TargetSet = TRUE;
