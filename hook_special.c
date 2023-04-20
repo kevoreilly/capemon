@@ -269,7 +269,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 				bits_sent = 1;
 				pipe("BITS:");
 			}
-		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
+		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0") ||
+		    !strcmp(idbuf1, "148BD52A-A2AB-11CE-B11F-00AA00530503"))
 			if (!tasksched_sent) {
 				tasksched_sent = 1;
 				pipe("TASKSCHED:");
