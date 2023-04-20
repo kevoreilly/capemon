@@ -1097,6 +1097,32 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenSection,
 	__in   POBJECT_ATTRIBUTES ObjectAttributes
 );
 
+HOOKDEF(BOOL, WINAPI, CreateProcessA,
+	__in_opt	LPCSTR lpApplicationName,
+	__inout_opt LPSTR lpCommandLine,
+	__in_opt	LPSECURITY_ATTRIBUTES lpProcessAttributes,
+	__in_opt	LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		BOOL bInheritHandles,
+	__in		DWORD dwCreationFlags,
+	__in_opt	LPVOID lpEnvironment,
+	__in_opt	LPCSTR lpCurrentDirectory,
+	__in		LPSTARTUPINFOA lpStartupInfo,
+	__out	    LPPROCESS_INFORMATION lpProcessInformation
+);
+
+HOOKDEF(BOOL, WINAPI, CreateProcessW,
+	__in_opt	LPWSTR lpApplicationName,
+	__inout_opt LPWSTR lpCommandLine,
+	__in_opt	LPSECURITY_ATTRIBUTES lpProcessAttributes,
+	__in_opt	LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		BOOL bInheritHandles,
+	__in		DWORD dwCreationFlags,
+	__in_opt	LPVOID lpEnvironment,
+	__in_opt	LPWSTR lpCurrentDirectory,
+	__in		LPSTARTUPINFOW lpStartupInfo,
+	__out	    LPPROCESS_INFORMATION lpProcessInformation
+);
+
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 	__in_opt	LPVOID lpUnknown1,
 	__in_opt	LPWSTR lpApplicationName,

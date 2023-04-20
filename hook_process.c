@@ -139,6 +139,100 @@ HOOKDEF(UINT, WINAPI, WinExec,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, CreateProcessA,
+	__in_opt	LPCSTR lpApplicationName,
+	__inout_opt LPSTR lpCommandLine,
+	__in_opt	LPSECURITY_ATTRIBUTES lpProcessAttributes,
+	__in_opt	LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		BOOL bInheritHandles,
+	__in		DWORD dwCreationFlags,
+	__in_opt	LPVOID lpEnvironment,
+	__in_opt	LPCSTR lpCurrentDirectory,
+	__in		LPSTARTUPINFOA lpStartupInfo,
+	__out	    LPPROCESS_INFORMATION lpProcessInformation
+) {
+	BOOL ret;
+	ENSURE_STRUCT(lpProcessInformation, PROCESS_INFORMATION);
+
+	ret = Old_CreateProcessA(lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
+		bInheritHandles, dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation);
+
+	if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT && lpStartupInfo->cb == sizeof(STARTUPINFOEXA)) {
+		HANDLE ParentHandle = (HANDLE)-1;
+		unsigned int i;
+		LPSTARTUPINFOEXA lpExtStartupInfo = (LPSTARTUPINFOEXA)lpStartupInfo;
+		if (lpExtStartupInfo->lpAttributeList) {
+			for (i = 0; i < lpExtStartupInfo->lpAttributeList->Count; i++)
+				if (lpExtStartupInfo->lpAttributeList->Entries[i].Attribute == PROC_THREAD_ATTRIBUTE_PARENT_PROCESS)
+					ParentHandle = *(HANDLE *)lpExtStartupInfo->lpAttributeList->Entries[i].lpValue;
+		}
+		LOQ_bool("process", "sshiippps", "ApplicationName", lpApplicationName,
+			"CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
+			"ProcessId", lpProcessInformation->dwProcessId,
+			"ThreadId", lpProcessInformation->dwThreadId,
+			"ParentHandle", ParentHandle,
+			"ProcessHandle", lpProcessInformation->hProcess,
+			"ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	}
+	else {
+		LOQ_bool("process", "sshiipps", "ApplicationName", lpApplicationName,
+			"CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
+			"ProcessId", lpProcessInformation->dwProcessId,
+			"ThreadId", lpProcessInformation->dwThreadId,
+			"ProcessHandle", lpProcessInformation->hProcess,
+			"ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	}
+
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, CreateProcessW,
+	__in_opt	LPWSTR lpApplicationName,
+	__inout_opt LPWSTR lpCommandLine,
+	__in_opt	LPSECURITY_ATTRIBUTES lpProcessAttributes,
+	__in_opt	LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		BOOL bInheritHandles,
+	__in		DWORD dwCreationFlags,
+	__in_opt	LPVOID lpEnvironment,
+	__in_opt	LPWSTR lpCurrentDirectory,
+	__in		LPSTARTUPINFOW lpStartupInfo,
+	__out	    LPPROCESS_INFORMATION lpProcessInformation
+) {
+	BOOL ret;
+	ENSURE_STRUCT(lpProcessInformation, PROCESS_INFORMATION);
+
+	ret = Old_CreateProcessW(lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
+		bInheritHandles, dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation);
+
+	if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT && lpStartupInfo->cb == sizeof(STARTUPINFOEXW)) {
+		HANDLE ParentHandle = (HANDLE)-1;
+		unsigned int i;
+		LPSTARTUPINFOEXW lpExtStartupInfo = (LPSTARTUPINFOEXW)lpStartupInfo;
+		if (lpExtStartupInfo->lpAttributeList) {
+			for (i = 0; i < lpExtStartupInfo->lpAttributeList->Count; i++)
+				if (lpExtStartupInfo->lpAttributeList->Entries[i].Attribute == PROC_THREAD_ATTRIBUTE_PARENT_PROCESS)
+					ParentHandle = *(HANDLE *)lpExtStartupInfo->lpAttributeList->Entries[i].lpValue;
+		}
+		LOQ_bool("process", "uuhiippps", "ApplicationName", lpApplicationName,
+			"CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
+			"ProcessId", lpProcessInformation->dwProcessId,
+			"ThreadId", lpProcessInformation->dwThreadId,
+			"ParentHandle", ParentHandle,
+			"ProcessHandle", lpProcessInformation->hProcess,
+			"ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	}
+	else {
+		LOQ_bool("process", "uuhiipps", "ApplicationName", lpApplicationName,
+			"CommandLine", lpCommandLine, "CreationFlags", dwCreationFlags,
+			"ProcessId", lpProcessInformation->dwProcessId,
+			"ThreadId", lpProcessInformation->dwThreadId,
+			"ProcessHandle", lpProcessInformation->hProcess,
+			"ThreadHandle", lpProcessInformation->hThread, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	}
+
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
 	__out	   PHANDLE ProcessHandle,
 	__in		ACCESS_MASK DesiredAccess,
