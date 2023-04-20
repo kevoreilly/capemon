@@ -62,7 +62,6 @@ extern int StepOverRegister;
 extern int process_shutting_down;
 extern HANDLE DebuggerLog;
 
-DWORD MainThreadId;
 struct ThreadBreakpoints *MainThreadBreakpointList;
 GUARD_PAGE_HANDLER GuardPageHandler;
 unsigned int TrapIndex, DepthCount;
@@ -133,46 +132,45 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 			return NULL;
 		}
 
-		memset(MainThreadBreakpointList, 0, sizeof(struct ThreadBreakpoints));
+		CurrentThreadBreakpoints = MainThreadBreakpointList;
 
-		MainThreadBreakpointList->ThreadId = MainThreadId;
+		memset(CurrentThreadBreakpoints, 0, sizeof(struct ThreadBreakpoints));
 	}
-
-	CurrentThreadBreakpoints = MainThreadBreakpointList;
-
-	while (CurrentThreadBreakpoints)
+	else
 	{
-		if (CurrentThreadBreakpoints->ThreadHandle && GetThreadId(CurrentThreadBreakpoints->ThreadHandle) == ThreadId)
+		CurrentThreadBreakpoints = MainThreadBreakpointList;
+
+		while (CurrentThreadBreakpoints)
 		{
+			if (CurrentThreadBreakpoints->ThreadId && CurrentThreadBreakpoints->ThreadId == ThreadId)
+			{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("CreateThreadBreakpoints error: found an existing thread breakpoint list for ThreadId 0x%x\n", ThreadId);
+				DebugOutput("CreateThreadBreakpoints error: found an existing thread breakpoint list for ThreadId %d\n", ThreadId);
 #endif
-			return NULL;
+				return NULL;
+			}
+
+			PreviousThreadBreakpoint = CurrentThreadBreakpoints;
+			CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 		}
 
-		if ((CurrentThreadBreakpoints->ThreadId) == ThreadId)
-			break;
-
-		PreviousThreadBreakpoint = CurrentThreadBreakpoints;
-		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
-	}
-
-	if (!CurrentThreadBreakpoints && PreviousThreadBreakpoint)
-	{
-		// We haven't found it in the linked list, so create a new one
-		CurrentThreadBreakpoints = PreviousThreadBreakpoint;
-
-		CurrentThreadBreakpoints->NextThreadBreakpoints = ((struct ThreadBreakpoints*)malloc(sizeof(struct ThreadBreakpoints)));
-
-		if (CurrentThreadBreakpoints->NextThreadBreakpoints == NULL)
+		if (!CurrentThreadBreakpoints && PreviousThreadBreakpoint)
 		{
-			DebugOutput("CreateThreadBreakpoints: Failed to allocate new thread breakpoints.\n");
-			return NULL;
+			// We haven't found it in the linked list, so create a new one
+			CurrentThreadBreakpoints = PreviousThreadBreakpoint;
+
+			CurrentThreadBreakpoints->NextThreadBreakpoints = ((struct ThreadBreakpoints*)malloc(sizeof(struct ThreadBreakpoints)));
+
+			if (CurrentThreadBreakpoints->NextThreadBreakpoints == NULL)
+			{
+				DebugOutput("CreateThreadBreakpoints: Failed to allocate new thread breakpoints.\n");
+				return NULL;
+			}
+
+			memset(CurrentThreadBreakpoints->NextThreadBreakpoints, 0, sizeof(struct ThreadBreakpoints));
+
+			CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 		}
-
-		memset(CurrentThreadBreakpoints->NextThreadBreakpoints, 0, sizeof(struct ThreadBreakpoints));
-
-		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 	}
 
 	if (!CurrentThreadBreakpoints)
@@ -2333,15 +2331,13 @@ BOOL InitialiseDebugger(void)
 	if (DebuggerInitialised)
 		return TRUE;
 
-	MainThreadId = GetCurrentThreadId();
-
 	if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &MainThreadHandle, 0, FALSE, DUPLICATE_SAME_ACCESS) == 0)
 	{
 		DebugOutput("InitialiseDebugger: Failed to duplicate thread handle.\n");
 		return FALSE;
 	}
 
-	MainThreadBreakpointList = CreateThreadBreakpoints(MainThreadId, NULL);
+	MainThreadBreakpointList = CreateThreadBreakpoints(GetCurrentThreadId(), NULL);
 
 	if (MainThreadBreakpointList == NULL)
 	{
