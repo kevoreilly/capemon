@@ -2714,15 +2714,13 @@ void CAPE_init()
 	// Cuckoo debug output level for development (0=none, 2=max)
 	// g_config.debug = 2;
 
-	if (base_of_dll_of_interest)
-		ImageBase = (PVOID)base_of_dll_of_interest;
-	else
-		ImageBase = GetModuleHandle(NULL);
+	ImageBase = GetModuleHandle(NULL);
 
 	if (g_config.yarascan)
 	{
 		DebugOutput("Initialising Yara...\n");
 		YaraInit();
+		YaraScan(ImageBase, GetAccessibleSize(ImageBase));
 	}
 
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
