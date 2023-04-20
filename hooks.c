@@ -1404,25 +1404,27 @@ void set_hooks()
 #ifndef _WIN64
 		if (!_stricmp(our_process_name, "firefox.exe"))
         {
-            g_config.firefox = 1;
-            g_config.injection = 0;
+			g_config.firefox = 1;
+			g_config.injection = 0;
 			g_config.unpacker = 0;
-            g_config.caller_regions = 0;
-            g_config.api_rate_cap = 0;
-            g_config.yarascan = 0;
-            g_config.ntdll_protect = 0;
-            DebugOutput("Firefox-specific hook-set enabled.\n");
+			g_config.caller_regions = 0;
+			g_config.api_rate_cap = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
+			DebugOutput("Firefox-specific hook-set enabled.\n");
         }
 		else
 #endif
 		if (!_stricmp(our_process_name, "iexplore.exe"))
         {
-            g_config.iexplore = 1;
-            g_config.injection = 0;
-            g_config.api_rate_cap = 0;
-            g_config.ntdll_protect = 0;
-            g_config.yarascan = 0;
-            DebugOutput("Internet Explorer-specific hook-set enabled.\n");
+			g_config.iexplore = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			DebugOutput("Internet Explorer-specific hook-set enabled.\n");
         }
 
 		if (strstr(our_process_path, "Microsoft Office"))
@@ -1431,6 +1433,7 @@ void set_hooks()
 			g_config.unpacker = 0;
 			g_config.caller_regions = 0;
 			g_config.injection = 0;
+			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.ntdll_protect = 0;
 			DebugOutput("Microsoft Office settings enabled.\n");
@@ -1499,11 +1502,13 @@ void set_hooks()
 				}
 			}
 			g_config.ntdll_protect = 0;
+			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.msi = 1;
 			DebugOutput("MsiExec hook set enabled\n");
 		}
 		else if (!_stricmp(our_process_name, "services.exe")) {
+			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.unpacker = 0;
 			g_config.caller_regions = 0;
@@ -1513,6 +1518,7 @@ void set_hooks()
 			DebugOutput("services.exe hook set enabled\n");
 		}
 		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs")) {
+			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.unpacker = 0;
 			g_config.caller_regions = 0;

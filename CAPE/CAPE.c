@@ -2536,7 +2536,7 @@ int DoProcessDump()
 		if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase && !is_in_dll_range((ULONG_PTR)Address))
 			DumpInterestingRegions(MemInfo);
 
-		if (g_config.procmemdump && !is_in_dll_range((ULONG_PTR)Address))
+		if (g_config.procmemdump && !is_in_dll_range((ULONG_PTR)Address) && !ScanForRulesCanary(MemInfo.BaseAddress, MemInfo.RegionSize))
 		{
 			LARGE_INTEGER BufferAddress;
 			DWORD BytesWritten;

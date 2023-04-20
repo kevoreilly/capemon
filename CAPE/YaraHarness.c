@@ -33,7 +33,7 @@ extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
 
 YR_RULES* Rules = NULL;
-BOOL YaraActivated, YaraLogging;
+BOOL YaraActivated, YaraLogging, CapemonRulesDetected;
 #ifdef _WIN64
 extern PVOID LdrpInvertedFunctionTableSRWLock;
 #endif
@@ -45,7 +45,10 @@ char InternalYara[] =
 	"{strings:$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
 	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
 	"$10_0_10240_16384 = {48 8D 0D [4] 48 8B E8 E8 [4] 33 C9 E8 [4] 8B 15 [4] 3B 15 [4] 0F 84}"
-	"condition:uint16(0) == 0x5a4d and any of them}";
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule capemon"
+	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
+	"condition:all of them}";
 
 BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 {
@@ -181,7 +184,8 @@ int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_da
 			YR_STRING* String;
 			YR_RULE* Rule = (YR_RULE*)message_data;
 
-			DebugOutput("InternalYaraScan hit: %s\n", Rule->identifier);
+			if (YaraLogging)
+				DebugOutput("InternalYaraScan hit: %s\n", Rule->identifier);
 
 			yr_rule_strings_foreach(Rule, String)
 			{
@@ -198,6 +202,9 @@ int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_da
 						}
 					}
 #endif
+					if (!strcmp(Rule->identifier, "capemon"))
+						if (!strcmp(String->identifier, "$hash"))
+							CapemonRulesDetected = TRUE;
 				}
 			}
 			return CALLBACK_CONTINUE;
@@ -317,11 +324,13 @@ void InternalYaraScan(PVOID Address, SIZE_T Size)
 
 	if (!Size)
 	{
-		DebugOutput("InternalYaraScan: Nothing to scan at 0x%p!\n", Address);
+		if (YaraLogging)
+			DebugOutput("InternalYaraScan: Nothing to scan at 0x%p!\n", Address);
 		return;
 	}
 
-	DebugOutput("InternalYaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
+	if (YaraLogging)
+		DebugOutput("InternalYaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
 
 	__try
 	{
@@ -329,15 +338,26 @@ void InternalYaraScan(PVOID Address, SIZE_T Size)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("InternalYaraScan: Unable to scan 0x%p\n", Address);
+		if (YaraLogging)
+			DebugOutput("InternalYaraScan: Unable to scan 0x%p\n", Address);
 		return;
 	}
-	if (Result != ERROR_SUCCESS)
+	if (Result != ERROR_SUCCESS && YaraLogging)
 		ScannerError(Result);
 #ifdef DEBUG_COMMENTS
 	else
 		DebugOutput("InternalYaraScan: successfully scanned 0x%p\n", Address);
 #endif
+}
+
+BOOL ScanForRulesCanary(PVOID Address, SIZE_T Size)
+{
+	BOOL PreviousYaraLogging = YaraLogging;
+	YaraLogging = FALSE;
+	CapemonRulesDetected = FALSE;
+	InternalYaraScan(Address, Size);
+	YaraLogging = PreviousYaraLogging;
+	return CapemonRulesDetected;
 }
 
 BOOL YaraInit()
@@ -369,7 +389,10 @@ BOOL YaraInit()
 		else if (Result == ERROR_COULD_NOT_OPEN_FILE)
 			DebugOutput("YaraInit: Unable to load existing compiled rules file %s\n", compiled_rules);
 		else
+		{
+			DebugOutput("YaraInit: Error loading existing compiled rules file %s\n", compiled_rules);
 			ScannerError(Result);
+		}
 	}
 	else
 	{
@@ -404,7 +427,10 @@ BOOL YaraInit()
 						if (errors == ERROR_COULD_NOT_OPEN_FILE)
 							DebugOutput("YaraInit: Unable to open file %s\n", file_name);
 						else if (errors)
+						{
+							DebugOutput("YaraInit: Unable to compile rule file %s\n", file_name);
 							ScannerError(errors);
+						}
 						else
 						{
 							count++;
