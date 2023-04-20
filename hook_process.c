@@ -551,7 +551,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
 		file_handle_terminate();
 	}
-	else if (GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+	else if (NtCurrentProcess() == ProcessHandle) {
 		Pid = GetCurrentProcessId();
 		process_shutting_down = 1;
 		LOQ_ntstatus("process", "ph", "ProcessHandle", ProcessHandle, "ExitCode", ExitStatus);
@@ -798,7 +798,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+	if (NT_SUCCESS(ret) && !called_by_hook() && NtCurrentProcess() == ProcessHandle) {
 		if (g_config.unpacker)
 			AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
 
@@ -823,7 +823,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemoryEx(ProcessHandle, BaseAddress, RegionSize, AllocationType, PageProtection, Parameters, ParameterCount);
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle)) {
+	if (NT_SUCCESS(ret) && !called_by_hook() && NtCurrentProcess() == ProcessHandle) {
 		if (g_config.unpacker)
 			AllocationHandler(*BaseAddress, *RegionSize, AllocationType, PageProtection);
 
@@ -1004,7 +1004,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)*BaseAddress, &DllRVA);
 
 	if (g_config.ntdll_protect && NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
-			GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress) &&
+			NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress) &&
 			ModuleName && !strcmp(ModuleName, "ntdll.dll")) {
 				// don't allow writes, this will cause memory access violations
 				// that we are going to handle in the RtlDispatchException hook
@@ -1013,7 +1013,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	}
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
+	if (NewAccessProtection == PAGE_EXECUTE_READ && BaseAddress && NumberOfBytesToProtect && NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
@@ -1039,7 +1039,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		NewAccessProtection = OriginalNewAccessProtection;
 	}
 
-	if (NT_SUCCESS(ret) && BaseAddress && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle))
+	if (NT_SUCCESS(ret) && BaseAddress && !called_by_hook() && NtCurrentProcess() == ProcessHandle)
 	{
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
 		if (g_config.unpacker)
@@ -1092,7 +1092,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)lpAddress, &DllRVA);
 
 	if (g_config.ntdll_protect && flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
-			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress) &&
+			NtCurrentProcess() == hProcess && is_in_dll_range((ULONG_PTR)lpAddress) &&
 			ModuleName && !strcmp(ModuleName, "ntdll.dll")) {
 				// don't allow writes, this will cause memory access violations
 				// that we are going to handle in the RtlDispatchException hook
@@ -1101,7 +1101,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	}
 
 	memset(&meminfo, 0, sizeof(meminfo));
-	if (flNewProtect == PAGE_EXECUTE_READ && lpAddress && dwSize && GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
+	if (flNewProtect == PAGE_EXECUTE_READ && lpAddress && dwSize && NtCurrentProcess() == hProcess && is_in_dll_range((ULONG_PTR)lpAddress)) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));
@@ -1127,7 +1127,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		flNewProtect = OriginalNewProtect;
 	}
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(hProcess))
+	if (NT_SUCCESS(ret) && !called_by_hook() && NtCurrentProcess() == hProcess)
 	{
 		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(lpAddress);
@@ -1144,7 +1144,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		}
 	}
 
-	if (flNewProtect == PAGE_EXECUTE_READWRITE && GetCurrentProcessId() == our_getprocessid(hProcess) &&
+	if (flNewProtect == PAGE_EXECUTE_READWRITE && NtCurrentProcess() == hProcess &&
 		(ULONG_PTR)meminfo.AllocationBase >= get_stack_bottom() && (((ULONG_PTR)meminfo.AllocationBase + meminfo.RegionSize) <= get_stack_top())) {
 		LOQ_bool("process", "ppphhHss", "ProcessHandle", hProcess, "Address", lpAddress,
 			"Size", dwSize, "MemType", meminfo.Type, "Protection", flNewProtect, "OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no", "IsStack", "yes");
@@ -1170,7 +1170,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
 	IN OUT  PSIZE_T RegionSize,
 	IN	  ULONG FreeType
 ) {
-	if (g_config.unpacker && !called_by_hook() && GetCurrentProcessId() == our_getprocessid(ProcessHandle) && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+	if (g_config.unpacker && !called_by_hook() && NtCurrentProcess() == ProcessHandle && *RegionSize == 0 && (FreeType & MEM_RELEASE))
 		FreeHandler(*BaseAddress);
 
 	NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
