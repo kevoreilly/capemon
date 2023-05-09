@@ -207,6 +207,7 @@ extern DWORD g_our_dll_size;
 BOOLEAN is_address_in_monitor(ULONG_PTR address);
 BOOLEAN is_address_in_ntdll(ULONG_PTR address);
 BOOLEAN is_address_in_win32u(ULONG_PTR address);
+BOOLEAN is_image_base_remapped(HMODULE BaseAddress);
 void num_to_string(char *buf, unsigned int buflen, unsigned int num);
 
 DWORD get_image_size(ULONG_PTR base);

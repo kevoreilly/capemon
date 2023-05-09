@@ -109,6 +109,7 @@ typedef struct _hook_info_t {
 	ULONG_PTR parent_caller_retaddr;
 } hook_info_t;
 
+extern BOOLEAN is_image_base_remapped(HMODULE BaseAddress);
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
 extern wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
 extern int called_by_hook(void);
@@ -143,7 +144,7 @@ extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 
 OSVERSIONINFO OSVersion;
-BOOL ProcessDumped, ModuleDumped;
+BOOL ProcessDumped, ModuleDumped, ImageBaseRemapped;
 PVOID ImageBase;
 static unsigned int DumpCount;
 
@@ -1839,10 +1840,13 @@ int IsDotNetImage(PVOID Buffer)
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
+	if (!IsAddressAccessible(Buffer) || IsDisguisedPEHeader(Buffer) <= 0)
+		return 0;
+
+	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
+
 	__try
 	{
-		pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
-
 		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
 			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
 
@@ -2721,6 +2725,47 @@ void CAPE_init()
 		DebugOutput("Initialising Yara...\n");
 		YaraInit();
 		YaraScan(ImageBase, GetAccessibleSize(ImageBase));
+	}
+
+	if (is_image_base_remapped(ImageBase))
+	{
+		ImageBaseRemapped = TRUE;
+
+		HANDLE FileHandle = CreateFileW(our_process_path_w, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (FileHandle == INVALID_HANDLE_VALUE)
+		{
+			ErrorOutput("CAPE_init: Unable to open main executable image");
+			goto Finish;
+		}
+
+		DWORD FileSize = GetFileSize(FileHandle, NULL);
+		if (FileSize == INVALID_FILE_SIZE)
+		{
+			ErrorOutput("CAPE_init: Unable to get size of main executable image");
+			goto Finish;
+		}
+
+		HANDLE MappingHandle = CreateFileMapping(FileHandle, NULL, PAGE_READONLY, 0, 0, NULL);
+		if (MappingHandle == NULL)
+		{
+			ErrorOutput("CAPE_init: Unable to create file mapping of main executable image");
+			goto Finish;
+		}
+
+		LPVOID Mapped = MapViewOfFile(MappingHandle, FILE_MAP_READ, 0, 0, FileSize);
+		if (Mapped == NULL)
+		{
+			ErrorOutput("CAPE_init: Unable to map main executable image");
+			goto Finish;
+		}
+
+		DebugOutput("CAPE_init: Image base temporarily remapped for scanning at 0x%p", ImageBase);
+		YaraScan(Mapped, GetAccessibleSize(ImageBase));
+
+Finish:
+		if (Mapped) UnmapViewOfFile(Mapped);
+		if (MappingHandle) CloseHandle(MappingHandle);
+		if (FileHandle && FileHandle != INVALID_HANDLE_VALUE) CloseHandle(FileHandle);
 	}
 
 	OSVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);

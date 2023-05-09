@@ -2045,6 +2045,23 @@ BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 	return FALSE;
 }
 
+BOOLEAN is_image_base_remapped(HMODULE BaseAddress)
+{
+	BOOL remapped = FALSE;
+	wchar_t *filepath = malloc(MAX_PATH * sizeof(wchar_t));
+	GetMappedFileNameW(GetCurrentProcess(), BaseAddress, filepath, MAX_PATH);
+
+	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+	ensure_absolute_unicode_path(absolutepath, filepath);
+	free(filepath);
+
+	if (wcsicmp(our_process_path_w, absolutepath))
+		remapped = TRUE;
+
+	free(absolutepath);
+	return remapped;
+}
+
 ULONG_PTR win32u_base;
 DWORD win32u_size;
 
