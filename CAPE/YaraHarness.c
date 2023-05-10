@@ -25,12 +25,12 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
 extern void parse_config_line(char* line);
-extern BOOL DumpRegion(PVOID Address);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
+extern BOOL BreakpointsHit;
 
 YR_RULES* Rules = NULL;
 BOOL YaraActivated, YaraLogging, CapemonRulesDetected;
@@ -142,6 +142,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 #endif
 						if (!_stricmp("dump", OptionLine))
 							DoDumpRegion = TRUE;
+						if (!_stricmp("clear", OptionLine))
+							BreakpointsHit = FALSE;
 						parse_config_line(OptionLine);
 						if (p)
 						{
