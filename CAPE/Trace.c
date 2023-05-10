@@ -23,13 +23,14 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\misc.h"
 #include "Debugger.h"
 #include "CAPE.h"
+#include "YaraHarness.h"
 #include <psapi.h>
 #include <intrin.h>
 
 #define MAX_INSTRUCTIONS 0x10
 #define MAX_DUMP_SIZE 0x1000000
 #define CHUNKSIZE 0x10
-#define RVA_LIMIT 0x200000
+#define RVA_LIMIT 0x2000000
 #define DoClearZeroFlag 1
 #define DoSetZeroFlag   2
 #define PrintEAX		3
@@ -846,7 +847,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		else if (strlen(g_config.typestring3))
 			CapeMetaData->TypeString = g_config.typestring3;
 
-		if (DumpImageInCurrentProcess(CallingModule))
+		if (DumpRegion(CallingModule))
 			DebuggerOutput("ActionDispatcher: Dumped breaking module at 0x%p.\n", CallingModule);
 		else
 			DebuggerOutput("ActionDispatcher: Failed to dump breaking module at 0x%p.\n", CallingModule);
@@ -939,6 +940,48 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%d.\n", Target, DumpSize);
 		DumpAddress = 0;
 		DumpSize = 0;
+	}
+	else if (!stricmp(Action, "Scan"))
+	{
+		PVOID ScanAddress = GetAllocationBase(CIP);
+		if (Target)
+			ScanAddress = GetAllocationBase(Target);
+		DebuggerOutput("ActionDispatcher: Scanning region at 0x%p.\n", ScanAddress);
+		YaraScan(ScanAddress, GetAccessibleSize(ScanAddress));
+	}
+	else if (!stricmp(Action, "DumpStack"))
+	{
+		unsigned int Offset;
+#ifdef _WIN64
+		ULONG_PTR* Stack = (PVOID)ExceptionInfo->ContextRecord->Rsp;
+		ULONG_PTR Frame = (ULONG_PTR)ExceptionInfo->ContextRecord->Rip;
+		char* DllName = convert_address_to_dll_name_and_offset(Frame, &Offset);
+#else
+		ULONG_PTR* Stack = (PVOID)ExceptionInfo->ContextRecord->Esp;
+		ULONG_PTR Frame = (ULONG_PTR)ExceptionInfo->ContextRecord->Ebp;
+		char* DllName = convert_address_to_dll_name_and_offset((ULONG_PTR)ExceptionInfo->ContextRecord->Eip, &Offset);
+#endif
+		unsigned int StackRange = (int)(get_stack_top() - (ULONG_PTR)Stack)/sizeof(ULONG_PTR);
+		if ((StackRange > 100) && is_valid_address_range((ULONG_PTR)Stack, 100))
+		{
+			for (unsigned int i = 0; i < 100; i++) {
+				DllName = NULL;
+				if (Stack[i]) {
+					DllName = convert_address_to_dll_name_and_offset(Stack[i], &Offset);
+					if (&Stack[i] == (ULONG_PTR*)(Frame + sizeof(ULONG_PTR))) {
+						Frame = *(ULONG_PTR*)Frame;
+						if (DllName)
+							DebuggerOutput("0x%p:\t 0x%p - %s::0x%x\t<========>\n", &Stack[i], Stack[i], DllName, Offset);
+						else if (IsAddressAccessible((PVOID)Stack[i]))
+							DebuggerOutput("0x%p:\t 0x%p\t<========>\n", &Stack[i], Stack[i]);
+					}
+					else if (DllName)
+						DebuggerOutput("0x%p:\t 0x%p - %s::0x%x\n", &Stack[i], Stack[i], DllName, Offset);
+					else if (IsAddressAccessible((PVOID)Stack[i]))
+						DebuggerOutput("0x%p:\t 0x%p\n", &Stack[i], Stack[i]);
+				}
+			}
+		}
 	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
