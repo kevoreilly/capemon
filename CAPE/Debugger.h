@@ -157,6 +157,7 @@ BOOL ClearAllBreakpoints();
 BOOL ContextClearBreakpoint(PCONTEXT Context, int Register);
 BOOL ContextClearCurrentBreakpoint(PCONTEXT Context);
 BOOL ContextClearAllBreakpoints(PCONTEXT Context);
+BOOL ContextClearDebugRegisters(PCONTEXT Context);
 BOOL ClearSingleStepMode(PCONTEXT Context);
 
 // Misc

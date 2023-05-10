@@ -75,15 +75,11 @@ void ApplyQueuedBreakpoints();
 PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId)
 //**************************************************************************************
 {
-	DWORD CurrentThreadId;
-
 	PTHREADBREAKPOINTS CurrentThreadBreakpoints = MainThreadBreakpointList;
 
 	while (CurrentThreadBreakpoints)
 	{
-		CurrentThreadId = GetThreadId(CurrentThreadBreakpoints->ThreadHandle);
-
-		if (CurrentThreadId == ThreadId)
+		if (CurrentThreadBreakpoints->ThreadId == ThreadId)
 			return CurrentThreadBreakpoints;
 		else
 			CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
@@ -220,6 +216,14 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 	if (MainThreadBreakpointList == NULL)
 	{
 		DebugOutput("InitNewThreadBreakpoints: Failed to create thread breakpoints struct.\n");
+		return FALSE;
+	}
+
+	if (GetThreadBreakpoints(ThreadId))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("InitNewThreadBreakpoints: Thread breakpoints already exists for thread %d.\n", ThreadId);
+#endif
 		return FALSE;
 	}
 
@@ -434,8 +438,15 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (SingleStepHandler)
 				SingleStepHandler(ExceptionInfo);
 			else
+			{
 				// Unhandled single-step exception, pass it on
+				if (BreakpointsSet)
+					ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 				return EXCEPTION_CONTINUE_SEARCH;
+			}
+
+			if (BreakpointsSet)
+				ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
@@ -556,6 +567,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				Handler(pBreakpointInfo, ExceptionInfo);
 		}
 
+		if (BreakpointsSet)
+			ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
+
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
@@ -596,6 +610,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ExceptionInfo->ContextRecord->Eip += lde((void*)ExceptionInfo->ContextRecord->Eip);
 			}
 #endif
+			if (BreakpointsSet)
+				ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
+
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 #ifdef _WIN64
@@ -641,6 +658,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		}
 	}
+
+	if (BreakpointsSet)
+		ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 
 	// Some other exception occurred. Pass it to next handler.
 	return EXCEPTION_CONTINUE_SEARCH;
@@ -833,7 +853,9 @@ BOOL SetDebugRegister
 
 	if (!GetThreadContext(hThread, &Context))
 	{
+#ifdef DEBUG_COMMENTS
 		ErrorOutput("SetDebugRegister: GetThreadContext failed (thread handle 0x%x)", hThread);
+#endif
 		return FALSE;
 	}
 
@@ -884,6 +906,26 @@ BOOL SetDebugRegister
 		ErrorOutput("SetDebugRegister: SetThreadContext failed");
 		return FALSE;
 	}
+
+	return TRUE;
+}
+
+//**************************************************************************************
+BOOL ContextClearDebugRegisters(PCONTEXT Context)
+//**************************************************************************************
+{
+	if (!Context)
+	{
+		DebugOutput("ContextClearDebugRegisters - no context supplied.\n");
+		return FALSE;
+	}
+
+	Context->Dr0 = 0;
+	Context->Dr1 = 0;
+	Context->Dr2 = 0;
+	Context->Dr3 = 0;
+	Context->Dr6 = 0;
+	Context->Dr7 = 0;
 
 	return TRUE;
 }
@@ -2415,7 +2457,9 @@ void NtContinueHandler(PCONTEXT ThreadContext)
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
 		if (ThreadBreakpoints)
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("NtContinue hook: restoring breakpoints for thread %d.\n", ThreadId);
+#endif
 			ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, TRUE);
 #ifndef _WIN64
 			if (BreakOnNtContinue) {
