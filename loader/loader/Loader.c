@@ -1162,7 +1162,7 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 		if (GetLastError() == ERROR_ACCESS_DENIED)
 		{
 			// On Win10+ this could mean the target process is PPL (e.g. services.exe)
-			// Try injecting with PPLinject (https://github.com/twinwave-security/PPLinject)
+			// Try injecting with PPLinject (https://github.com/splunk/PPLinject)
 #ifdef _WIN64
 			char PPLinject[] = "PPLinject64.exe";
 #else
