@@ -171,6 +171,31 @@ HOOKDEF(BOOL, WINAPI, PostMessageW,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, PostThreadMessageA,
+	_In_  DWORD idThread,
+	_In_  UINT Msg,
+	_In_  WPARAM wParam,
+	_In_  LPARAM lParam
+) {
+	BOOL ret = Old_PostThreadMessageA(idThread, Msg, wParam, lParam);
+
+	LOQ_bool("windows", "pi", "ThreadId", idThread, "Message", Msg);
+
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, PostThreadMessageW,
+	_In_  DWORD idThread,
+	_In_  UINT Msg,
+	_In_  WPARAM wParam,
+	_In_  LPARAM lParam
+) {
+	BOOL ret = Old_PostThreadMessageW(idThread, Msg, wParam, lParam);
+
+	LOQ_bool("windows", "pi", "ThreadId", idThread, "Message", Msg);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, SendMessageA,
 	_In_  HWND hWnd,
 	_In_  UINT Msg,
