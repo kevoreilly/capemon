@@ -17,6 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <stdio.h>
+#include <initguid.h>
 #include "ntapi.h"
 #include "hooking.h"
 #include "log.h"
@@ -223,6 +224,64 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 static _CoTaskMemFree pCoTaskMemFree;
 static _ProgIDFromCLSID pProgIDFromCLSID;
 
+/* 4991D34B-80A1-4291-83B6-3328366B9097 */ DEFINE_GUID(CLSID_BITSControlClass_v1_0, 0x4991D34B, 0x80A1, 0x4291, 0x83, 0xB6, 0x33, 0x28, 0x36, 0x6B, 0x90, 0x97);
+/* 5CE34C0D-0DC9-4C1F-897C-100000000003 */ DEFINE_GUID(CLSID_BITS_Unknown, 0x5CE34C0D, 0x0DC9, 0x4C1F, 0x89, 0x7C, 0x10, 0x00, 0x00, 0x00, 0x00, 0x03); // Is this GUID correct? The last 6 bytes are odd. IBackgroundCopyManager would end with DAA1B78CEE7C
+
+/* 0F87369F-A4E5-4CFC-BD3E-73E6154572DD */ DEFINE_GUID(CLSID_TaskScheduler, 0x0F87369F, 0xA4E5, 0x4CFC, 0xBD, 0x3E, 0x73, 0xE6, 0x15, 0x45, 0x72, 0xDD);
+/* 0F87369F-A4E5-4CFC-BD3E-5529CE8784B0 */ DEFINE_GUID(CLSID_TaskScheduler_Unknown, 0x0F87369F, 0xA4E5, 0x4CFC, 0xBD, 0x3E, 0x55, 0x29, 0xCE, 0x87, 0x84, 0xB0);
+/* 148BD52A-A2AB-11CE-B11F-00AA00530503 */ DEFINE_GUID(CLSID_SchedulingAgentServiceClass, 0x148BD52A, 0xA2AB, 0x11CE, 0xB1, 0x1F, 0x00, 0xAA, 0x00, 0x53, 0x05, 0x03);
+
+/* 4590F811-1D3A-11D0-891F-00AA004B2E24 */ DEFINE_GUID(CLSID_WbemLocator, 0x4590F811, 0x1D3A, 0x11D0, 0x89, 0x1F, 0x00, 0xAA, 0x00, 0x4B, 0x2E, 0x24);
+/* 4590F812-1D3A-11D0-891F-00AA004B2E24 */ DEFINE_GUID(CLSID_WbemClassObject, 0x4590F812, 0x1D3A, 0x11D0, 0x89, 0x1F, 0x00, 0xAA, 0x00, 0x4B, 0x2E, 0x24); // Unmarshaler CLSID
+/* 172BDDF8-CEEA-11D1-8B05-00600806D9B6 */ DEFINE_GUID(CLSID_winmgmts, 0x172BDDF8, 0xCEEA, 0x11D1, 0x8B, 0x05, 0x00, 0x60, 0x08, 0x06, 0xD9, 0xB6);
+/* CF4CC405-E2C5-4DDD-B3CE-5E7582D8C9FA */ DEFINE_GUID(CLSID_WbemDefaultPathParser, 0xCF4CC405, 0xE2C5, 0x4DDD, 0xB3, 0xCE, 0x5E, 0x75, 0x82, 0xD8, 0xC9, 0xFA);
+
+/* 000209FF-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_WordObjectLibrary, 0x000209FF, 0, 0);
+/* 00024500-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_ExcelObjectLibrary, 0x00024500, 0, 0);
+/* 000246FF-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_Unknown246FF, 0x000246FF, 0, 0); // ?
+/* 0006F03A-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_OutlookObjectLibrary, 0x0006F03A, 0, 0);
+/* 0002CE02-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_Equation2, 0x0002CE02, 0, 0);
+/* 0002DF01-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_InternetExplorer, 0x0002DF01, 0, 0);
+/* 000C101C-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_MsiInstallServer, 0x000C101C, 0, 0);
+/* 00000323-0000-0000-C000-000000000046 */ DEFINE_OLEGUID(CLSID_StdGlobalInterfaceTable, 0x00000323, 0, 0);
+/* 91493441-5A91-11CF-8700-00AA0060263B */ DEFINE_GUID(CLSID_PowerPointObjectLibrary, 0x91493441, 0x5A91, 0x11CF, 0x87, 0x00, 0x00, 0xAA, 0x00, 0x60, 0x26, 0x3B);
+/* 75DFF2B7-6936-4C06-A8BB-676A7B00B24B */ DEFINE_GUID(CLSID_SeparateMultipleProcessExplorerHost, 0x75DFF2B7, 0x6936, 0x4C06, 0xA8, 0xBB, 0x67, 0x6A, 0x7B, 0x00, 0xB2, 0x4B);
+/* C08AFD90-F2A1-11D1-8455-00A0C91F3880 */ DEFINE_GUID(CLSID_ShellBrowserWindow, 0xC08AFD90, 0xF2A1, 0x11D1, 0x84, 0x55, 0x00, 0xA0, 0xC9, 0x1F, 0x38, 0x80);
+
+void inspect_clsid(REFCLSID rclsid) {
+	if (IsEqualCLSID(rclsid, &CLSID_BITSControlClass_v1_0) || IsEqualCLSID(rclsid, &CLSID_BITS_Unknown)) {
+		if (!bits_sent) {
+			bits_sent = 1;
+			pipe("BITS:");
+		}
+	}
+	if (IsEqualCLSID(rclsid, &CLSID_TaskScheduler) || IsEqualCLSID(rclsid, &CLSID_TaskScheduler_Unknown) ||
+		IsEqualCLSID(rclsid, &CLSID_SchedulingAgentServiceClass)) {
+		if (!tasksched_sent) {
+			tasksched_sent = 1;
+			pipe("TASKSCHED:");
+		}
+	}
+#ifndef _WIN64
+	if (IsEqualCLSID(rclsid, &CLSID_WbemLocator) || IsEqualCLSID(rclsid, &CLSID_WbemClassObject) ||
+		IsEqualCLSID(rclsid, &CLSID_winmgmts) || IsEqualCLSID(rclsid, &CLSID_WbemDefaultPathParser)) {
+		if (!wmi_sent) {
+			wmi_sent = 1;
+			pipe("WMI:");
+		}
+	}
+	if (IsEqualCLSID(rclsid, &CLSID_WordObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_ExcelObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_Unknown246FF) ||
+		IsEqualCLSID(rclsid, &CLSID_OutlookObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_Equation2) || IsEqualCLSID(rclsid, &CLSID_InternetExplorer) ||
+		IsEqualCLSID(rclsid, &CLSID_MsiInstallServer) || IsEqualCLSID(rclsid, &CLSID_StdGlobalInterfaceTable) || IsEqualCLSID(rclsid, &CLSID_PowerPointObjectLibrary) ||
+		IsEqualCLSID(rclsid, &CLSID_SeparateMultipleProcessExplorerHost) || IsEqualCLSID(rclsid, &CLSID_ShellBrowserWindow)) {
+		if (!interop_sent) {
+			interop_sent = 1;
+			pipe("INTEROP:");
+		}
+	}
+#endif
+}
+
 HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	__in	REFCLSID rclsid,
 	__in	LPUNKNOWN pUnkOuter,
@@ -255,35 +314,9 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
 		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
 
-#ifndef _WIN64
 	if (!called_by_hook()) {
-		if (!strcmp(idbuf1, "4590F811-1D3A-11D0-891F-00AA004B2E24") || !strcmp(idbuf1, "4590F812-1D3A-11D0-891F-00AA004B2E24") ||
-			!strcmp(idbuf1, "172BDDF8-CEEA-11D1-8B05-00600806D9B6") || !strcmp(idbuf1, "CF4CC405-E2C5-4DDD-B3CE-5E7582D8C9FA")) {
-			if (!wmi_sent) {
-				wmi_sent = 1;
-				pipe("WMI:");
-			}
-		}
-		if (!strcmp(idbuf1, "4991D34B-80A1-4291-83B6-3328366B9097") || !strcmp(idbuf1, "5CE34C0D-0DC9-4C1F-897C-100000000003"))
-			if (!bits_sent) {
-				bits_sent = 1;
-				pipe("BITS:");
-			}
-		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
-			if (!tasksched_sent) {
-				tasksched_sent = 1;
-				pipe("TASKSCHED:");
-			}
-		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
-			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
-			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880") || !strcmp(idbuf1, "0006F03A-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002DF01-0000-0000-C000-000000000046") ||
-			!strcmp(idbuf1, "000C101C-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00000323-0000-0000-C000-000000000046"))
-			if (!interop_sent) {
-				interop_sent = 1;
-				pipe("INTEROP:");
-			}
+		inspect_clsid(&id1);
 	}
-#endif
 
 	disable_sleep_skip();
 
@@ -334,35 +367,9 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
 		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
 
-#ifndef _WIN64
 	if (!called_by_hook()) {
-		if (!strcmp(idbuf1, "4590F811-1D3A-11D0-891F-00AA004B2E24") || !strcmp(idbuf1, "4590F812-1D3A-11D0-891F-00AA004B2E24") ||
-			!strcmp(idbuf1, "172BDDF8-CEEA-11D1-8B05-00600806D9B6") || !strcmp(idbuf1, "CF4CC405-E2C5-4DDD-B3CE-5E7582D8C9FA")) {
-			if (!wmi_sent) {
-				wmi_sent = 1;
-				pipe("WMI:");
-			}
-		}
-		if (!strcmp(idbuf1, "4991D34B-80A1-4291-83B6-3328366B9097") || !strcmp(idbuf1, "5CE34C0D-0DC9-4C1F-897C-100000000003"))
-			if (!bits_sent) {
-				bits_sent = 1;
-				pipe("BITS:");
-			}
-		if (!strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-73E6154572DD") || !strcmp(idbuf1, "0F87369F-A4E5-4CFC-BD3E-5529CE8784B0"))
-			if (!tasksched_sent) {
-				tasksched_sent = 1;
-				pipe("TASKSCHED:");
-			}
-		if (!strcmp(idbuf1, "000209FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "00024500-0000-0000-C000-000000000046") || !strcmp(idbuf1, "91493441-5A91-11CF-8700-00AA0060263B") ||
-			!strcmp(idbuf1, "000246FF-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002CE02-0000-0000-C000-000000000046") || !strcmp(idbuf1, "75DFF2B7-6936-4C06-A8BB-676A7B00B24B") ||
-			!strcmp(idbuf1, "C08AFD90-F2A1-11D1-8455-00A0C91F3880") || !strcmp(idbuf1, "0006F03A-0000-0000-C000-000000000046") || !strcmp(idbuf1, "0002DF01-0000-0000-C000-000000000046") ||
-			!strcmp(idbuf1, "000C101C-0000-0000-C000-000000000046"))
-			if (!interop_sent) {
-				interop_sent = 1;
-				pipe("INTEROP:");
-			}
+		inspect_clsid(&id1);
 	}
-#endif
 
 	disable_sleep_skip();
 
