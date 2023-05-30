@@ -3454,3 +3454,22 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
 	__in HMODULE hLibModule
 );
+
+HOOKDEF(UINT, WINAPI, GetWriteWatch,
+	__in		DWORD		dwFlags,
+	__in		PVOID		lpBaseAddress,
+	__in		SIZE_T		dwRegionSize,
+	__out		PVOID*		lpAddresses,
+	__inout		ULONG_PTR*	lpdwCount,
+	__out		LPDWORD		lpdwGranularity
+);
+
+HOOKDEF(BOOL, WINAPI, UpdateProcThreadAttribute,
+	__inout		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+	__in		DWORD		dwFlags,
+	__in		DWORD_PTR	Attribute,
+	__in		PVOID		lpValue,
+	__in		SIZE_T		cbSize,
+	__out_opt	PVOID		lpPreviousValue,
+	__in_opt	PSIZE_T		lpReturnSize
+);

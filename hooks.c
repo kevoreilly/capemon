@@ -97,6 +97,8 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
 	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
+	HOOK(kernel32, UpdateProcThreadAttribute),
+	HOOK(kernel32, GetWriteWatch),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
