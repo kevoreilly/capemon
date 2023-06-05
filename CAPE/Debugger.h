@@ -74,6 +74,7 @@ typedef struct BreakpointInfo
 	DWORD			Type;
 	unsigned int	HitCount;
 	LPVOID			Callback;
+	BOOL			HandlerActive;
 } BREAKPOINTINFO, *PBREAKPOINTINFO;
 
 typedef BOOL (cdecl *BREAKPOINT_HANDLER)(PBREAKPOINTINFO, struct _EXCEPTION_POINTERS*);

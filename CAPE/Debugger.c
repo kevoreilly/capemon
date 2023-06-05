@@ -411,7 +411,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
 	unsigned int bp;
-	BREAKPOINT_HANDLER Handler;
 
 	// Hardware breakpoints generate EXCEPTION_SINGLE_STEP rather than EXCEPTION_BREAKPOINT
 	if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
@@ -557,14 +556,16 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 		else
 		{
-			Handler = (BREAKPOINT_HANDLER)pBreakpointInfo->Callback;
-
-#ifdef DEBUG_COMMENTS
-			DebugOutput("CAPEExceptionFilter: About to call breakpoint handler at: 0x%p\n", Handler);
-#endif
 			// Invoke the handler
-			if (Handler)
-				Handler(pBreakpointInfo, ExceptionInfo);
+			if (pBreakpointInfo->Callback && !pBreakpointInfo->HandlerActive)
+			{
+				pBreakpointInfo->HandlerActive = TRUE;
+#ifdef DEBUG_COMMENTS
+				DebugOutput("CAPEExceptionFilter: About to call breakpoint handler at: 0x%p\n", pBreakpointInfo->Callback);
+#endif
+				((BREAKPOINT_HANDLER)pBreakpointInfo->Callback)(pBreakpointInfo, ExceptionInfo);
+				pBreakpointInfo->HandlerActive = FALSE;
+			}
 		}
 
 		if (BreakpointsSet)
