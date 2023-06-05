@@ -58,9 +58,6 @@ void file_init()
 {
 	specialname_map_init();
 
-	lookup_init(&g_files);
-	lookup_init(&g_file_logs);
-
 	dropped_count = 0;
 	dropped_limit_reached = FALSE;
 }

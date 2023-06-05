@@ -43,11 +43,6 @@ static lookup_t g_ignored_threads;
 
 DWORD LastInjected;
 
-void ignored_threads_init(void)
-{
-	lookup_init(&g_ignored_threads);
-}
-
 BOOLEAN is_ignored_thread(DWORD tid)
 {
 	void *ret;

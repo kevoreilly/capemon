@@ -88,7 +88,7 @@ BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* 
 		}
 	}
 	if (ret == FALSE) {
-		ThreadRandom *R = lookup_get_no_cs(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
+		ThreadRandom *R = lookup_get(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
 		if (R) {
 			memcpy(ClientRandomRepr, R->ClientRandomRepr, 32*2+1);
 #ifdef DEBUG_COMMENTS
@@ -193,9 +193,9 @@ HOOKDEF(NTSTATUS, WINAPI, SslHashHandshake,
 	NTSTATUS ret = Old_SslHashHandshake(hSslProvider, hHandshakeHash, pbInput, cbInput, dwFlags);
 	PWORD pwVersion = (PWORD)(pbInput+4);
 	if (*pbInput == 1 && *pwVersion == 0x0303) {
-		ThreadRandom *R = lookup_get_no_cs(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
+		ThreadRandom *R = lookup_get(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
 		if (R == NULL) {
-			R = lookup_add_no_cs(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), sizeof(ThreadRandom));
+			R = lookup_add(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), sizeof(ThreadRandom));
 			memset(R, 0, sizeof(*R));
 			HexEncode(R->ClientRandomRepr, (uint8_t*)(pbInput+6), 32);
 #ifdef DEBUG_COMMENTS

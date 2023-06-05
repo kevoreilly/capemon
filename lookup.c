@@ -16,22 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include "ntapi.h"
-#include <windows.h>
 #include "lookup.h"
-#include "pipe.h"
-
-#define ENTER() EnterCriticalSection(&d->cs)
-#define LEAVE() LeaveCriticalSection(&d->cs)
-
-void lookup_init(lookup_t *d)
-{
-	d->root = NULL;
-	InitializeCriticalSection(&d->cs);
-}
 
 void lookup_free(lookup_t *d)
 {
@@ -40,20 +25,7 @@ void lookup_free(lookup_t *d)
 
 void *lookup_add(lookup_t *d, ULONG_PTR id, unsigned int size)
 {
-	entry_t *t = (entry_t *) malloc(sizeof(entry_t) + size);
-	ENTER();
-	memset(t, 0, sizeof(*t));
-	t->next = d->root;
-	t->id = id;
-	t->size = size;
-	d->root = t;
-	LEAVE();
-	return t->data;
-}
-
-void *lookup_add_no_cs(lookup_t *d, ULONG_PTR id, unsigned int size)
-{
-	entry_t *t = (entry_t *) malloc(sizeof(entry_t) + size);
+	entry_t *t = (entry_t *) calloc(1, sizeof(entry_t) + size);
 	memset(t, 0, sizeof(*t));
 	t->next = d->root;
 	t->id = id;
@@ -65,31 +37,11 @@ void *lookup_add_no_cs(lookup_t *d, ULONG_PTR id, unsigned int size)
 void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size)
 {
 	entry_t *p;
-	ENTER();
 	for (p = d->root; p != NULL; p = p->next) {
-		if(p->id == id) {
+		if (p->id == id) {
 			void *data;
-			if(size != NULL) {
+			if (size != NULL)
 				*size = p->size;
-			}
-			data = p->data;
-			LEAVE();
-			return data;
-		}
-	}
-	LEAVE();
-	return NULL;
-}
-
-void *lookup_get_no_cs(lookup_t *d, ULONG_PTR id, unsigned int *size)
-{
-	entry_t *p;
-	for (p = d->root; p != NULL; p = p->next) {
-		if(p->id == id) {
-			void *data;
-			if(size != NULL) {
-				*size = p->size;
-			}
 			data = p->data;
 			return data;
 		}
@@ -102,44 +54,18 @@ void lookup_del(lookup_t *d, ULONG_PTR id)
 	entry_t *p;
 	entry_t *last;
 
-	ENTER();
 	p = d->root;
 	// edge case; we want to delete the first entry
-	if(p != NULL && p->id == id) {
-		entry_t *t = p->next;
-		free(d->root);
-		d->root = t;
-		LEAVE();
-		return;
-	}
-	for (last = NULL; p != NULL; last = p, p = p->next) {
-		if(p->id == id) {
-			last->next = p->next;
-			free(p);
-			break;
-		}
-	}
-	LEAVE();
-}
-
-void lookup_del_no_cs(lookup_t *d, ULONG_PTR id)
-{
-	entry_t *p;
-	entry_t *last;
-
-	p = d->root;
-	// edge case; we want to delete the first entry
-	if(p != NULL && p->id == id) {
+	if (p != NULL && p->id == id) {
 		entry_t *t = p->next;
 		free(d->root);
 		d->root = t;
 		return;
 	}
-	for (last = NULL; p != NULL; last = p, p = p->next) {
-		if(p->id == id) {
+	for (last = NULL; p != NULL; last = p, p = p->next)
+		if (p->id == id) {
 			last->next = p->next;
 			free(p);
 			break;
 		}
-	}
 }

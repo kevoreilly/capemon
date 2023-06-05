@@ -31,11 +31,6 @@ typedef struct _entry_t {
 	unsigned char data[0];
 } entry_t;
 
-void lookup_init(lookup_t *d);
 void *lookup_add(lookup_t *d, ULONG_PTR id, unsigned int size);
 void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size);
 void lookup_del(lookup_t *d, ULONG_PTR id);
-
-void *lookup_add_no_cs(lookup_t *d, ULONG_PTR id, unsigned int size);
-void *lookup_get_no_cs(lookup_t *d, ULONG_PTR id, unsigned int *size);
-void lookup_del_no_cs(lookup_t *d, ULONG_PTR id);

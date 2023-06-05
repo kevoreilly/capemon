@@ -1046,10 +1046,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
 		if (g_config.caller_regions)
 		{
-			if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			if (g_config.yarascan && lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
 			{
 				DebugOutput("NtProtectVirtualMemory: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
-				lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+				lookup_del(&g_caller_regions, (ULONG_PTR)AllocationBase);
 			}
 		}
 	}
@@ -1136,10 +1136,10 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
 		if (g_config.caller_regions)
 		{
-			if (g_config.yarascan && lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			if (g_config.yarascan && lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
 			{
 				DebugOutput("VirtualProtectEx: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
-				lookup_del_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase);
+				lookup_del(&g_caller_regions, (ULONG_PTR)AllocationBase);
 			}
 		}
 	}

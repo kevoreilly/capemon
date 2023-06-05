@@ -162,7 +162,7 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 			DebugOutput("InstrumentationCallback: Returns to 0x%p, return value %d, ssn %d -> %s)\n", CIP, ReturnValue, ScanForSsn((PVOID)CIP), FunctionName);
 #endif
 			log_syscall(ModuleName, FunctionName, (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
-			if (g_config.caller_regions && AllocationBase && !lookup_get_no_cs(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			if (g_config.caller_regions && AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
 			{
 				lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 				DebugOutput("InstrumentationCallback: Adding region at 0x%p to caller regions list (returns to 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());

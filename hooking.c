@@ -52,11 +52,6 @@ extern BOOL BreakpointsSet;
 extern PVOID ImageBase;
 extern BOOLEAN g_dll_main_complete;
 
-void hook_init()
-{
-	lookup_init(&g_caller_regions);
-}
-
 void emit_rel(unsigned char *buf, unsigned char *source, unsigned char *target)
 {
 	*(DWORD *)buf = (DWORD)(target - (source + 4));
@@ -301,7 +296,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 	if (h->new_func == &New_NtAllocateVirtualMemory) {
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
-		if (lookup_get_no_cs(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), NULL) == NULL && (!tmphookinfo_threadid || tmphookinfo_threadid != GetCurrentThreadId())) {
+		if (lookup_get(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), NULL) == NULL && (!tmphookinfo_threadid || tmphookinfo_threadid != GetCurrentThreadId())) {
 			memset(&tmphookinfo, 0, sizeof(tmphookinfo));
 			tmphookinfo_threadid = GetCurrentThreadId();
 		}
@@ -377,9 +372,9 @@ hook_info_t *hook_info()
 
 	get_lasterrors(&lasterror);
 
-	ptr = (hook_info_t *)lookup_get_no_cs(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	ptr = (hook_info_t *)lookup_get(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), NULL);
 	if (ptr == NULL) {
-		ptr = lookup_add_no_cs(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), sizeof(hook_info_t));
+		ptr = lookup_add(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), sizeof(hook_info_t));
 		memset(ptr, 0, sizeof(*ptr));
 	}
 

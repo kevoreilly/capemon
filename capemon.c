@@ -503,7 +503,6 @@ void init_private_heap(void)
 #endif
 }
 
-extern void ignored_threads_init(void);
 extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex;
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
@@ -548,7 +547,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// initialize file stuff, needs to be performed prior to any file normalization
 		file_init();
-		//ignored_threads_init();
 
 		get_our_dll_path();
 

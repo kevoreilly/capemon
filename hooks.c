@@ -1597,8 +1597,6 @@ void set_hooks()
 	memset(&threadInfo, 0, sizeof(threadInfo));
 	threadInfo.dwSize = sizeof(threadInfo);
 
-	hook_init();
-
 	hook_disable();
 
 	hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
