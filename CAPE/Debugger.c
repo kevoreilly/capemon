@@ -643,21 +643,37 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (ModuleName)
 		{
 			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		}
 		else
 		{
 			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p",ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
 		}
+#ifdef _WIN64
+		DebuggerOutput(
+			"RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x\nR8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n",
+			ExceptionInfo->ContextRecord->Rax, ExceptionInfo->ContextRecord->Rbx, ExceptionInfo->ContextRecord->Rcx, ExceptionInfo->ContextRecord->Rdx,
+			ExceptionInfo->ContextRecord->Rsi, ExceptionInfo->ContextRecord->Rdi, ExceptionInfo->ContextRecord->R8, ExceptionInfo->ContextRecord->R9,
+			ExceptionInfo->ContextRecord->R10, ExceptionInfo->ContextRecord->R11, ExceptionInfo->ContextRecord->R12, ExceptionInfo->ContextRecord->R13,
+			ExceptionInfo->ContextRecord->R14, ExceptionInfo->ContextRecord->R15, ExceptionInfo->ContextRecord->Rsp, ExceptionInfo->ContextRecord->Rbp
+			);
+#else
+		DebuggerOutput(
+			"EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x ESP 0x%x EBP 0x%x\n",
+			ExceptionInfo->ContextRecord->Eax, ExceptionInfo->ContextRecord->Ebx, ExceptionInfo->ContextRecord->Ecx, ExceptionInfo->ContextRecord->Edx,
+			ExceptionInfo->ContextRecord->Esi, ExceptionInfo->ContextRecord->Edi, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp
+			);
+#endif
+		DoTraceOutput((PVOID)ExceptionInfo->ExceptionRecord->ExceptionAddress);
 	}
 
 	if (BreakpointsSet)
