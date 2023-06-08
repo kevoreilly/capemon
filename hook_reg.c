@@ -266,7 +266,7 @@ HOOKDEF(LSTATUS, WINAPI, RegDeleteKeyExA,
 	__reserved DWORD  Reserved
 ) {
 	LSTATUS ret = Old_RegDeleteKeyExA(hKey, lpSubKey, samDesired, Reserved);
-	LOQ_zero("puhE", "Handle", hKey, "SubKey", lpSubKey, "Access", samDesired, "FullName", hKey, lpSubKey);
+	LOQ_zero("registry", "puhE", "Handle", hKey, "SubKey", lpSubKey, "Access", samDesired, "FullName", hKey, lpSubKey);
 	return ret;
 }
 
