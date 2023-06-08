@@ -248,6 +248,28 @@ HOOKDEF(LONG, WINAPI, RegDeleteKeyW,
 	return ret;
 }
 
+HOOKDEF(LSTATUS, WINAPI, RegDeleteKeyExW,
+	_In_ HKEY    hKey,
+	_In_ LPCWSTR lpSubKey,
+	_In_ REGSAM  samDesired,
+	__reserved DWORD   Reserved
+) {
+	LSTATUS ret = Old_RegDeleteKeyExW(hKey, lpSubKey, samDesired, Reserved);
+	LOQ_zero("registry", "puhE", "Handle", hKey, "SubKey", lpSubKey, "Access", samDesired, "FullName", hKey, lpSubKey);
+	return ret;
+}
+
+HOOKDEF(LSTATUS, WINAPI, RegDeleteKeyExA,
+	_In_ HKEY   hKey,
+	_In_ LPCSTR lpSubKey,
+	_In_ REGSAM samDesired,
+	__reserved DWORD  Reserved
+) {
+	LSTATUS ret = Old_RegDeleteKeyExA(hKey, lpSubKey, samDesired, Reserved);
+	LOQ_zero("puhE", "Handle", hKey, "SubKey", lpSubKey, "Access", samDesired, "FullName", hKey, lpSubKey);
+	return ret;
+}
+
 HOOKDEF(LONG, WINAPI, RegEnumKeyW,
 	__in   HKEY hKey,
 	__in   DWORD dwIndex,
