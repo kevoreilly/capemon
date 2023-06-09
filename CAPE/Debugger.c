@@ -53,9 +53,9 @@ extern BOOL WoW64PatchBreakpoint(unsigned int Register);
 extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL SetInitialBreakpoints(PVOID ImageBase);
+extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
-extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
 extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue;
 extern PVOID BreakOnNtContinueCallback;
 extern int StepOverRegister;
@@ -68,6 +68,7 @@ unsigned int TrapIndex, DepthCount;
 PVOID _KiUserExceptionDispatcher;
 HANDLE hCapePipe;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
+static lookup_t SoftBPs;
 
 void ApplyQueuedBreakpoints();
 
@@ -397,6 +398,59 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 }
 
 //**************************************************************************************
+BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
+//**************************************************************************************
+{
+#ifdef DEBUG_COMMENTS
+	DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+#endif
+	return SetSoftwareBreakpoint(ExceptionInfo->ExceptionRecord->ExceptionAddress);
+}
+
+//**************************************************************************************
+BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
+//**************************************************************************************
+{
+	DWORD OldProtect;
+	PVOID Address = ExceptionInfo->ExceptionRecord->ExceptionAddress;
+
+	if (!Address)
+		return FALSE;
+
+	BYTE InsByte = *(PBYTE)Address;
+	if (InsByte != 0xCC)
+		return FALSE;
+
+	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
+	if (!pInsByte)
+		pInsByte = lookup_add(&SoftBPs, (ULONG_PTR)Address, 0);
+	if (!pInsByte)
+	{
+		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction byte for 0x%p", Address);
+		return FALSE;
+	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("SoftwareBreakpointHandler: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
+#endif
+	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		DebugOutput("SoftwareBreakpointHandler: Unable to change memory protection at 0x%p", Address);
+		return FALSE;
+	}
+
+	*(PBYTE)Address = *pInsByte;
+
+	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+
+	Trace(ExceptionInfo);
+//	SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
+
+	return TRUE;
+
+}
+
+//**************************************************************************************
 BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
 //**************************************************************************************
 {
@@ -572,6 +626,23 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 
 		return EXCEPTION_CONTINUE_EXECUTION;
+	}
+	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT)
+	{
+		// Check to see if it's a software breakpoint
+		if (*(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
+		{
+			if (lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
+			{
+//#ifdef DEBUG_COMMENTS
+				DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+//#endif
+				SoftwareBreakpointHandler(ExceptionInfo);
+			}
+			else
+				return EXCEPTION_CONTINUE_SEARCH;
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
 	{
@@ -2043,6 +2114,58 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 //**************************************************************************************
 {
 	return ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, FALSE);
+}
+
+//**************************************************************************************
+BOOL SetSoftwareBreakpoint(LPVOID Address)
+//**************************************************************************************
+{
+	DWORD OldProtect;
+
+	if (!Address)
+		return FALSE;
+
+	BYTE InsByte = *(PBYTE)Address;
+	if (InsByte == 0xCC)
+		return FALSE;
+
+	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
+	if (!pInsByte)
+	{
+		pInsByte = lookup_add(&SoftBPs, (ULONG_PTR)Address, 0);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSoftwareBreakpoint: Adding lookup byte for instruction at 0x%p", Address);
+#endif
+	}
+	if (!pInsByte)
+	{
+		DebugOutput("SetSoftwareBreakpoint: Unable to store instruction byte at 0x%p", Address);
+		return FALSE;
+	}
+
+	*pInsByte = InsByte;
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
+#endif
+
+	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		DebugOutput("SetSoftwareBreakpoint: Unable to change memory protection at 0x%p", Address);
+		return FALSE;
+	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("SetSoftwareBreakpoint: Changed memory protection at 0x%p", Address);
+#endif
+
+	*(PBYTE)Address = 0xCC;
+
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSoftwareBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+#endif
+	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+
+	return TRUE;
 }
 
 //**************************************************************************************
