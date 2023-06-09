@@ -282,6 +282,191 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
     return Register;
 }
 
+OutputRegisterChanges(PCONTEXT Context)
+{
+#ifdef _WIN64
+	if (!FilterTrace)
+	{
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+
+		if (LastContext.Rax != Context->Rax)
+		{
+			DebuggerOutput(" RAX=%#I64x", Context->Rax);
+			StringCheck((PVOID)Context->Rax);
+		}
+
+		if (LastContext.Rbx != Context->Rbx)
+		{
+			DebuggerOutput(" RBX=%#I64x", Context->Rbx);
+			StringCheck((PVOID)Context->Rbx);
+		}
+
+		if (LastContext.Rcx != Context->Rcx)
+		{
+			DebuggerOutput(" RCX=%#I64x", Context->Rcx);
+			StringCheck((PVOID)Context->Rcx);
+		}
+
+		if (LastContext.Rdx != Context->Rdx)
+		{
+			DebuggerOutput(" RDX=%#I64x", Context->Rdx);
+			StringCheck((PVOID)Context->Rdx);
+		}
+
+		if (LastContext.Rsi != Context->Rsi)
+		{
+			DebuggerOutput(" RSI=%#I64x", Context->Rsi);
+			StringCheck((PVOID)Context->Rsi);
+		}
+
+		if (LastContext.Rdi != Context->Rdi)
+		{
+			DebuggerOutput(" RDI=%#I64x", Context->Rdi);
+			StringCheck((PVOID)Context->Rdi);
+		}
+
+		if (LastContext.Rsp != Context->Rsp)
+		{
+			DebuggerOutput(" RSP=%#I64x", Context->Rsp);
+			StringCheck((PVOID)Context->Rsp);
+			DebuggerOutput(" *RSP=%#I64x", *(QWORD*)Context->Rsp);
+			StringCheck((PVOID)*(QWORD*)Context->Rsp);
+		}
+
+		if (LastContext.Rbp != Context->Rbp)
+		{
+			DebuggerOutput(" RBP=%#I64x", Context->Rbp);
+			StringCheck((PVOID)Context->Rbp);
+		}
+
+		if (LastContext.R8 != Context->R8)
+		{
+			DebuggerOutput(" R8=%#I64x", Context->R8);
+			StringCheck((PVOID)Context->R8);
+		}
+
+		if (LastContext.R9 != Context->R9)
+		{
+			DebuggerOutput(" R9=%#I64x", Context->R9);
+			StringCheck((PVOID)Context->R9);
+		}
+
+		if (LastContext.R10 != Context->R10)
+		{
+			DebuggerOutput(" R10=%#I64x", Context->R10);
+			StringCheck((PVOID)Context->R10);
+		}
+
+		if (LastContext.R11 != Context->R11)
+		{
+			DebuggerOutput(" R11=%#I64x", Context->R11);
+			StringCheck((PVOID)Context->R11);
+		}
+
+		if (LastContext.R12 != Context->R12)
+		{
+			DebuggerOutput(" R12=%#I64x", Context->R12);
+			StringCheck((PVOID)Context->R12);
+		}
+
+		if (LastContext.R13 != Context->R13)
+		{
+			DebuggerOutput(" R13=%#I64x", Context->R13);
+			StringCheck((PVOID)Context->R13);
+		}
+
+		if (LastContext.R14 != Context->R14)
+		{
+			DebuggerOutput(" R14=%#I64x", Context->R14);
+			StringCheck((PVOID)Context->R14);
+		}
+
+		if (LastContext.R15 != Context->R15)
+		{
+			DebuggerOutput(" R15=%#I64x", Context->R15);
+			StringCheck((PVOID)Context->R15);
+		}
+
+		if (LastContext.Xmm0.Low != Context->Xmm0.Low)
+		{
+			DebuggerOutput(" Xmm0.Low=%#I64x", Context->Xmm0.Low);
+			StringCheck((PVOID)Context->Xmm0.Low);
+		}
+
+		if (LastContext.Xmm0.High != Context->Xmm0.High)
+		{
+			DebuggerOutput(" Xmm0.High=%#I64x", Context->Xmm0.High);
+			StringCheck((PVOID)Context->Xmm0.High);
+		}
+
+		if (LastContext.Xmm1.Low != Context->Xmm1.Low)
+		{
+			DebuggerOutput(" Xmm1.Low=%#I64x", Context->Xmm1.Low);
+			StringCheck((PVOID)Context->Xmm1.Low);
+		}
+
+		if (LastContext.Xmm1.High != Context->Xmm1.High)
+		{
+			DebuggerOutput(" Xmm1.High=%#I64x", Context->Xmm1.High);
+			StringCheck((PVOID)Context->Xmm1.High);
+		}
+	}
+#else
+	if (!FilterTrace)
+	{
+		if (LastContext.Eax != Context->Eax)
+		{
+			DebuggerOutput(" EAX=0x%x", Context->Eax);
+			StringCheck((PVOID)Context->Eax);
+		}
+
+		if (LastContext.Ebx != Context->Ebx)
+		{
+			DebuggerOutput(" EBX=0x%x", Context->Ebx);
+			StringCheck((PVOID)Context->Ebx);
+		}
+
+		if (LastContext.Ecx != Context->Ecx)
+		{
+			DebuggerOutput(" ECX=0x%x", Context->Ecx);
+			StringCheck((PVOID)Context->Ecx);
+		}
+
+		if (LastContext.Edx != Context->Edx)
+		{
+			DebuggerOutput(" EDX=0x%x", Context->Edx);
+			StringCheck((PVOID)Context->Edx);
+		}
+
+		if (LastContext.Esi != Context->Esi)
+		{
+			DebuggerOutput(" ESI=0x%x", Context->Esi);
+			StringCheck((PVOID)Context->Esi);
+		}
+
+		if (LastContext.Edi != Context->Edi)
+		{
+			DebuggerOutput(" EDI=0x%x", Context->Edi);
+			StringCheck((PVOID)Context->Edi);
+		}
+
+		if (LastContext.Esp != Context->Esp)
+		{
+			DebuggerOutput(" ESP=0x%x", Context->Esp);
+			StringCheck((PVOID)Context->Esp);
+			DebuggerOutput(" *ESP=0x%x", *(DWORD*)Context->Esp);
+			StringCheck((PVOID)*(DWORD*)Context->Esp);
+		}
+
+		if (LastContext.Ebp != Context->Ebp)
+		{
+			DebuggerOutput(" EBP=0x%x", Context->Ebp);
+			StringCheck((PVOID)Context->Ebp);
+		}
+	}
+#endif
+}
+
 void SkipInstruction(PCONTEXT Context)
 {
 	PVOID CIP;
@@ -1014,6 +1199,527 @@ BOOL DoStepOver(PCHAR FunctionName)
 	return FALSE;
 }
 
+void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, BOOL* StepOver, BOOL* ForceStepOver)
+{
+	unsigned int DllRVA;
+#ifdef _WIN64
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+
+	if (!strcmp(DecodedInstruction.mnemonic.p, "CALL"))
+	{
+		PCHAR ExportName = NULL;
+		PVOID CallTarget = NULL;
+		// We set this as a matter of course for calls in case we might
+		// want to step over this as a result of the call target
+		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+
+#ifdef _WIN64
+		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [R", 8))
+#else
+		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
+#endif
+		// begins with DWORD except "DWORD [E" (or "QWORD [R")
+		{
+			CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+
+			if (!strncmp(DecodedInstruction.operands.p, "DWORD [FS:0xc0]", 15))
+			{
+				ExportName = DecodedInstruction.operands.p;
+				*ForceStepOver = TRUE;
+			}
+			else
+			{
+				__try
+				{
+					ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+					if (!ExportName)
+						ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
+				}
+				__except(EXCEPTION_EXECUTE_HANDLER)
+				{
+					DebugOutput("Trace: Error dereferencing CallTarget 0x%p.\n", CallTarget);
+					ExportName = NULL;
+				}
+			}
+
+			if (ExportName)
+			{
+				ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CallTarget, &DllRVA);
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutput(CIP, DecodedInstruction);
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+		}
+		else if (DecodedInstruction.size > 4)
+		{
+			CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+			__try
+			{
+				ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+				if (!ExportName)
+					ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				DebugOutput("Trace: Error dereferencing CallTarget 0x%x.", CallTarget);
+				ExportName = NULL;
+			}
+
+			if (!FilterTrace && ExportName)
+			{
+				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#endif
+		}
+#ifdef _WIN64
+		else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+#else
+		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
+		{
+			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
+			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				*StepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);;
+#endif
+		}
+		else if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+
+		if (ExportName)
+		{
+			*ForceStepOver = DoStepOver(ExportName);
+
+			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+			{
+				if (!g_config.trace_into_api[i])
+					break;
+				if (!stricmp(ExportName, g_config.trace_into_api[i]))
+				{
+					*StepOver = FALSE;
+					if (TraceDepthCount > 0)
+						TraceDepthCount--;
+					DebuggerOutput("\nTrace: Stepping into %s\n", ExportName);
+				}
+			}
+		}
+
+		if (CallTarget == &loq)
+		{
+			ExportName = "loq";
+			*ForceStepOver = TRUE;
+		}
+
+		if (CallTarget == &log_flush)
+		{
+			ExportName = "log_flush";
+			*ForceStepOver = TRUE;
+		}
+
+		if (ReturnAddress && (unsigned int)abs(TraceDepthCount) >= TraceDepthLimit)
+			*StepOver = TRUE;
+		else
+			TraceDepthCount++;
+	}
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
+	{
+		PCHAR ExportName = NULL;
+		PVOID JumpTarget = NULL;
+#ifdef _WIN64
+		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+
+		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [R", 8))
+		{
+			if (!strncmp(DecodedInstruction.operands.p, "QWORD [0x", 9))
+				JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+			else
+				// begins with QWORD except "QWORD [R"
+#else
+		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+
+		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
+		{
+			if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
+				JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
+			else
+				// begins with DWORD except "DWORD [E"
+#endif
+				JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
+
+			__try
+			{
+				ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				DebugOutput("Trace: Error dereferencing JumpTarget 0x%p.\n", JumpTarget);
+				ExportName = NULL;
+			}
+
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+				if (!g_config.trace_all)
+					*ForceStepOver = TRUE;
+			}
+			else if (!FilterTrace || g_config.trace_all)
+				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
+
+			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
+			//	*ForceStepOver = TRUE;
+			if (inside_hook(JumpTarget) && g_config.trace_all < 2)
+				*ForceStepOver = TRUE;
+
+			if (g_config.branch_trace)
+				*ForceStepOver = TRUE;
+		}
+		else if (DecodedInstruction.size > 4)
+		{
+			JumpTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
+			__try
+			{
+				ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				DebugOutput("Trace: Error dereferencing JumpTarget 0x%p.", JumpTarget);
+				ExportName = NULL;
+			}
+
+			if (ExportName)
+			{
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+			}
+			else
+				if (!FilterTrace || g_config.trace_all)
+					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
+		}
+		else if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+	}
+	//else if (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 4) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
+	else if (!strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+		*ForceStepOver = TRUE;
+	}
+#ifndef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+		*ForceStepOver = TRUE;
+	}
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP FAR"))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
+		*ForceStepOver = TRUE;
+	}
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "INT 3"))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+		BreakOnNtContinueCallback = BreakpointCallback;
+	}
+#endif
+#ifndef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
+	{
+		if (!FilterTrace)
+			TraceOutput(CIP, DecodedInstruction);
+
+		if (InsideMonitor(NULL, CIP))
+		{
+			DebuggerOutput("\nInternal POP SS detected.\n");
+		}
+		//else
+		//{
+			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (PVOID)ExceptionInfo->ContextRecord->Esp, BP_READWRITE, 0, BreakpointCallback))
+			{
+				DebugOutput("Trace: Set stack breakpoint before POP SS at 0x%p\n", CIP);
+				LastContext = *ExceptionInfo->ContextRecord;
+				ClearSingleStepMode(ExceptionInfo->ContextRecord);
+				ReturnAddress = NULL;
+			}
+			else
+				DebugOutput("Trace: Failed to set stack breakpoint on 0x%p\n", ExceptionInfo->ContextRecord->Esp);
+		//}
+	}
+//#else
+//	else if (!strcmp(DecodedInstruction.mnemonic.p, "MOV") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
+//	{
+//		TraceOutput(CIP, DecodedInstruction);
+//
+//		if (InsideMonitor(NULL, CIP))
+//		{
+//			DebuggerOutput("\nInternal MOV SS detected.\n");
+//
+//			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, &StackSelector, BP_READWRITE, 0, BreakpointCallback))
+//			{
+//				DebugOutput("DoSyscall: Set breakpoint before MOV SS at 0x%p\n", ExceptionInfo->ContextRecord->Rip);
+//				//TraceRunning = FALSE;
+//				//LastContext = *ExceptionInfo->ContextRecord;
+//				//ClearSingleStepMode(ExceptionInfo->ContextRecord);
+//				//ReturnAddress = NULL;
+//				//return TRUE;
+//				ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
+//				*ForceStepOver = TRUE;
+//			}
+//			else
+//				DebugOutput("DoSyscall: Failed to set stack breakpoint on 0x%p\n", (PBYTE)ExceptionInfo->ContextRecord->Rsp-8);
+//		}
+//	}
+#endif
+#ifdef _WIN64
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSCALL"))
+	{
+        if (!FilterTrace)
+		{
+			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Rax);
+#else
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSENTER"))
+	{
+        if (!FilterTrace)
+		{
+			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Eax);
+#endif
+			if (FunctionName)
+				DebuggerOutput("0x%p  %-24s %-6s%-3s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, "", FunctionName);
+			else
+				TraceOutput(CIP, DecodedInstruction);
+		}
+		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+		*ForceStepOver = TRUE;
+	}
+    else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
+    {
+        if (!FilterTrace)
+			TraceOutput(CIP, DecodedInstruction);
+
+		if (!inside_hook(CIP) && !InsideMonitor(NULL, CIP) && !is_in_dll_range((ULONG_PTR)CIP))
+		{
+//#ifdef DEBUG_COMMENTS
+			DebuggerOutput("\nTrace: Stepping over %s at 0x%p\n", DecodedInstruction.mnemonic.p, CIP);
+//#endif
+			ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+			*ForceStepOver = TRUE;
+		}
+    }
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+
+		if (!g_config.trace_all && TraceDepthCount > 0)
+			TraceDepthCount--;
+	}
+	else if (!FilterTrace)
+		TraceOutput(CIP, DecodedInstruction);
+}
+
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
@@ -1101,186 +1807,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 	}
 
-#ifdef _WIN64
-	if (!FilterTrace)
-	{
-		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-
-		if (LastContext.Rax != ExceptionInfo->ContextRecord->Rax)
-		{
-			DebuggerOutput(" RAX=%#I64x", ExceptionInfo->ContextRecord->Rax);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rax);
-		}
-
-		if (LastContext.Rbx != ExceptionInfo->ContextRecord->Rbx)
-		{
-			DebuggerOutput(" RBX=%#I64x", ExceptionInfo->ContextRecord->Rbx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbx);
-		}
-
-		if (LastContext.Rcx != ExceptionInfo->ContextRecord->Rcx)
-		{
-			DebuggerOutput(" RCX=%#I64x", ExceptionInfo->ContextRecord->Rcx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rcx);
-		}
-
-		if (LastContext.Rdx != ExceptionInfo->ContextRecord->Rdx)
-		{
-			DebuggerOutput(" RDX=%#I64x", ExceptionInfo->ContextRecord->Rdx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdx);
-		}
-
-		if (LastContext.Rsi != ExceptionInfo->ContextRecord->Rsi)
-		{
-			DebuggerOutput(" RSI=%#I64x", ExceptionInfo->ContextRecord->Rsi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsi);
-		}
-
-		if (LastContext.Rdi != ExceptionInfo->ContextRecord->Rdi)
-		{
-			DebuggerOutput(" RDI=%#I64x", ExceptionInfo->ContextRecord->Rdi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdi);
-		}
-
-		if (LastContext.Rsp != ExceptionInfo->ContextRecord->Rsp)
-		{
-			DebuggerOutput(" RSP=%#I64x", ExceptionInfo->ContextRecord->Rsp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsp);
-			DebuggerOutput(" *RSP=%#I64x", *(QWORD*)ExceptionInfo->ContextRecord->Rsp);
-			StringCheck((PVOID)*(QWORD*)ExceptionInfo->ContextRecord->Rsp);
-		}
-
-		if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
-		{
-			DebuggerOutput(" RBP=%#I64x", ExceptionInfo->ContextRecord->Rbp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbp);
-		}
-
-		if (LastContext.R8 != ExceptionInfo->ContextRecord->R8)
-		{
-			DebuggerOutput(" R8=%#I64x", ExceptionInfo->ContextRecord->R8);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R8);
-		}
-
-		if (LastContext.R9 != ExceptionInfo->ContextRecord->R9)
-		{
-			DebuggerOutput(" R9=%#I64x", ExceptionInfo->ContextRecord->R9);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R9);
-		}
-
-		if (LastContext.R10 != ExceptionInfo->ContextRecord->R10)
-		{
-			DebuggerOutput(" R10=%#I64x", ExceptionInfo->ContextRecord->R10);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R10);
-		}
-
-		if (LastContext.R11 != ExceptionInfo->ContextRecord->R11)
-		{
-			DebuggerOutput(" R11=%#I64x", ExceptionInfo->ContextRecord->R11);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R11);
-		}
-
-		if (LastContext.R12 != ExceptionInfo->ContextRecord->R12)
-		{
-			DebuggerOutput(" R12=%#I64x", ExceptionInfo->ContextRecord->R12);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R12);
-		}
-
-		if (LastContext.R13 != ExceptionInfo->ContextRecord->R13)
-		{
-			DebuggerOutput(" R13=%#I64x", ExceptionInfo->ContextRecord->R13);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R13);
-		}
-
-		if (LastContext.R14 != ExceptionInfo->ContextRecord->R14)
-		{
-			DebuggerOutput(" R14=%#I64x", ExceptionInfo->ContextRecord->R14);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R14);
-		}
-
-		if (LastContext.R15 != ExceptionInfo->ContextRecord->R15)
-		{
-			DebuggerOutput(" R15=%#I64x", ExceptionInfo->ContextRecord->R15);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R15);
-		}
-
-		if (LastContext.Xmm0.Low != ExceptionInfo->ContextRecord->Xmm0.Low)
-		{
-			DebuggerOutput(" Xmm0.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm0.Low);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.Low);
-		}
-
-		if (LastContext.Xmm0.High != ExceptionInfo->ContextRecord->Xmm0.High)
-		{
-			DebuggerOutput(" Xmm0.High=%#I64x", ExceptionInfo->ContextRecord->Xmm0.High);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.High);
-		}
-
-		if (LastContext.Xmm1.Low != ExceptionInfo->ContextRecord->Xmm1.Low)
-		{
-			DebuggerOutput(" Xmm1.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm1.Low);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.Low);
-		}
-
-		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
-		{
-			DebuggerOutput(" Xmm1.High=%#I64x", ExceptionInfo->ContextRecord->Xmm1.High);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.High);
-		}
-#else
-	if (!FilterTrace)
-	{
-		if (LastContext.Eax != ExceptionInfo->ContextRecord->Eax)
-		{
-			DebuggerOutput(" EAX=0x%x", ExceptionInfo->ContextRecord->Eax);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Eax);
-		}
-
-		if (LastContext.Ebx != ExceptionInfo->ContextRecord->Ebx)
-		{
-			DebuggerOutput(" EBX=0x%x", ExceptionInfo->ContextRecord->Ebx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebx);
-		}
-
-		if (LastContext.Ecx != ExceptionInfo->ContextRecord->Ecx)
-		{
-			DebuggerOutput(" ECX=0x%x", ExceptionInfo->ContextRecord->Ecx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ecx);
-		}
-
-		if (LastContext.Edx != ExceptionInfo->ContextRecord->Edx)
-		{
-			DebuggerOutput(" EDX=0x%x", ExceptionInfo->ContextRecord->Edx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edx);
-		}
-
-		if (LastContext.Esi != ExceptionInfo->ContextRecord->Esi)
-		{
-			DebuggerOutput(" ESI=0x%x", ExceptionInfo->ContextRecord->Esi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esi);
-		}
-
-		if (LastContext.Edi != ExceptionInfo->ContextRecord->Edi)
-		{
-			DebuggerOutput(" EDI=0x%x", ExceptionInfo->ContextRecord->Edi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edi);
-		}
-
-		if (LastContext.Esp != ExceptionInfo->ContextRecord->Esp)
-		{
-			DebuggerOutput(" ESP=0x%x", ExceptionInfo->ContextRecord->Esp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esp);
-			DebuggerOutput(" *ESP=0x%x", *(DWORD*)ExceptionInfo->ContextRecord->Esp);
-			StringCheck((PVOID)*(DWORD*)ExceptionInfo->ContextRecord->Esp);
-		}
-
-		if (LastContext.Ebp != ExceptionInfo->ContextRecord->Ebp)
-		{
-			DebuggerOutput(" EBP=0x%x", ExceptionInfo->ContextRecord->Ebp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebp);
-		}
-#endif
-	}
+	OutputRegisterChanges(ExceptionInfo->ContextRecord);
 
 	if (!FilterTrace)
 		DebuggerOutput("\n");
@@ -1354,574 +1881,15 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 	}
 
-	// We disassemble once for the action dispatcher
+	// Instruction disassembly
 	if (CIP)
 		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
-	ReDisassemble = FALSE;
-
-	// Dispatch any actions
-	if (Instruction0 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction0, strlen(Instruction0)))
-		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0);
-
-	if (Instruction1 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction1, strlen(Instruction1)))
-		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action1);
-
-	if (Instruction2 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction2, strlen(Instruction2)))
-		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
-
-	if (Instruction3 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction3, strlen(Instruction3)))
-		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
-
-	// We disassemble a second time in case of any changes/patches
-	if (ReDisassemble)
-	{
-#ifdef _WIN64
-		CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
-#else
-		CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
-#endif
-		if (CIP)
-			Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
-	}
-
 	// Instruction handling
-	if (!strcmp(DecodedInstruction.mnemonic.p, "CALL"))
-	{
-		PCHAR ExportName = NULL;
-		PVOID CallTarget = NULL;
-		// We set this as a matter of course for calls in case we might
-		// want to step over this as a result of the call target
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+	InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
 
-#ifdef _WIN64
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [R", 8))
-#else
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
-#endif
-		// begins with DWORD except "DWORD [E" (or "QWORD [R")
-		{
-			CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
-
-			if (!strncmp(DecodedInstruction.operands.p, "DWORD [FS:0xc0]", 15))
-			{
-				ExportName = DecodedInstruction.operands.p;
-				ForceStepOver = TRUE;
-			}
-			else
-			{
-				__try
-				{
-					ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-					if (!ExportName)
-						ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
-				}
-				__except(EXCEPTION_EXECUTE_HANDLER)
-				{
-					DebugOutput("Trace: Error dereferencing CallTarget 0x%p.\n", CallTarget);
-					ExportName = NULL;
-				}
-			}
-
-			if (ExportName)
-			{
-				ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CallTarget, &DllRVA);
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutput(CIP, DecodedInstruction);
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-		}
-		else if (DecodedInstruction.size > 4)
-		{
-			CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
-			__try
-			{
-				ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-				if (!ExportName)
-					ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("Trace: Error dereferencing CallTarget 0x%x.", CallTarget);
-				ExportName = NULL;
-			}
-
-			if (!FilterTrace && ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);;
-#endif
-		}
-		else if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-
-		if (ExportName)
-		{
-			ForceStepOver = DoStepOver(ExportName);
-
-			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
-			{
-				if (!g_config.trace_into_api[i])
-					break;
-				if (!stricmp(ExportName, g_config.trace_into_api[i]))
-				{
-					StepOver = FALSE;
-					if (TraceDepthCount > 0)
-						TraceDepthCount--;
-					DebuggerOutput("\nTrace: Stepping into %s\n", ExportName);
-				}
-			}
-		}
-
-		if (CallTarget == &loq)
-		{
-			ExportName = "loq";
-			ForceStepOver = TRUE;
-		}
-
-		if (CallTarget == &log_flush)
-		{
-			ExportName = "log_flush";
-			ForceStepOver = TRUE;
-		}
-
-		if (!StepLimit || StepCount > StepLimit || StopTrace)
-		{
-			ForceStepOver = FALSE;
-			StepOver = FALSE;
-		}
-		else if (((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
-		{
-			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
-			{
-				ClearSingleStepMode(ExceptionInfo->ContextRecord);
-#ifndef DEBUG_COMMENTS
-				if (ForceStepOver)
-#endif
-					DebugOutput("Trace: Set breakpoint on return address 0x%p (register %d)\n", ReturnAddress, StepOverRegister);
-				ReturnAddress = NULL;
-				LastContext = *ExceptionInfo->ContextRecord;
-				return TRUE;
-			}
-			else
-				DebugOutput("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-		}
-		else
-			TraceDepthCount++;
-	}
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
-	{
-		PCHAR ExportName = NULL;
-		PVOID JumpTarget = NULL;
-#ifdef _WIN64
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
-
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [R", 8))
-		{
-			if (!strncmp(DecodedInstruction.operands.p, "QWORD [0x", 9))
-				JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
-			else
-				// begins with QWORD except "QWORD [R"
-#else
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
-
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
-		{
-			if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
-				JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
-			else
-				// begins with DWORD except "DWORD [E"
-#endif
-				JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
-
-			__try
-			{
-				ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("Trace: Error dereferencing JumpTarget 0x%p.\n", JumpTarget);
-				ExportName = NULL;
-			}
-
-			if (ExportName)
-			{
-				ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)JumpTarget, &DllRVA);
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				if (!g_config.trace_all)
-					ForceStepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
-
-			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
-			//	ForceStepOver = TRUE;
-			if (inside_hook(JumpTarget) && g_config.trace_all < 2)
-				ForceStepOver = TRUE;
-
-			if (g_config.branch_trace)
-				ForceStepOver = TRUE;
-		}
-		else if (DecodedInstruction.size > 4)
-		{
-			JumpTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
-			__try
-			{
-				ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("Trace: Error dereferencing JumpTarget 0x%p.", JumpTarget);
-				ExportName = NULL;
-			}
-
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-			}
-			else
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
-		}
-		else if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-	}
-	//else if (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 4) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
-	else if (!strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
-	{
-		if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-		ForceStepOver = TRUE;
-	}
-#ifndef _WIN64
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
-	{
-		if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-		ForceStepOver = TRUE;
-	}
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP FAR"))
-	{
-		if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
-		ForceStepOver = TRUE;
-	}
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "INT 3"))
-	{
-		if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-		BreakOnNtContinueCallback = BreakpointCallback;
-		//LastContext = *ExceptionInfo->ContextRecord;
-		//ClearSingleStepMode(ExceptionInfo->ContextRecord);
-		//ReturnAddress = NULL;
-		//return TRUE;
-	}
-
-#endif
-#ifndef _WIN64
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
-	{
-		if (!FilterTrace)
-			TraceOutput(CIP, DecodedInstruction);
-
-		if (InsideMonitor(NULL, CIP))
-		{
-			DebuggerOutput("\nInternal POP SS detected.\n");
-		}
-		//else
-		//{
-			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (PVOID)ExceptionInfo->ContextRecord->Esp, BP_READWRITE, 0, BreakpointCallback))
-			{
-				DebugOutput("Trace: Set stack breakpoint before POP SS at 0x%p\n", CIP);
-				LastContext = *ExceptionInfo->ContextRecord;
-				ClearSingleStepMode(ExceptionInfo->ContextRecord);
-				ReturnAddress = NULL;
-				return TRUE;
-			}
-			else
-				DebugOutput("Trace: Failed to set stack breakpoint on 0x%p\n", ExceptionInfo->ContextRecord->Esp);
-		//}
-	}
-//#else
-//	else if (!strcmp(DecodedInstruction.mnemonic.p, "MOV") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
-//	{
-//		TraceOutput(CIP, DecodedInstruction);
-//
-//		if (InsideMonitor(NULL, CIP))
-//		{
-//			DebuggerOutput("\nInternal MOV SS detected.\n");
-//
-//			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, &StackSelector, BP_READWRITE, 0, BreakpointCallback))
-//			{
-//				DebugOutput("DoSyscall: Set breakpoint before MOV SS at 0x%p\n", ExceptionInfo->ContextRecord->Rip);
-//				//TraceRunning = FALSE;
-//				//LastContext = *ExceptionInfo->ContextRecord;
-//				//ClearSingleStepMode(ExceptionInfo->ContextRecord);
-//				//ReturnAddress = NULL;
-//				//return TRUE;
-//				ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
-//				ForceStepOver = TRUE;
-//			}
-//			else
-//				DebugOutput("DoSyscall: Failed to set stack breakpoint on 0x%p\n", (PBYTE)ExceptionInfo->ContextRecord->Rsp-8);
-//		}
-//	}
-#endif
-#ifdef _WIN64
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSCALL"))
-	{
-        if (!FilterTrace)
-		{
-			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Rax);
-#else
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "SYSENTER"))
-	{
-        if (!FilterTrace)
-		{
-			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Eax);
-#endif
-			if (FunctionName)
-				DebuggerOutput("0x%p  %-24s %-6s%-3s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), (char*)DecodedInstruction.mnemonic.p, "", FunctionName);
-			else
-				TraceOutput(CIP, DecodedInstruction);
-		}
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-		ForceStepOver = TRUE;
-	}
-    else if (!strcmp(DecodedInstruction.mnemonic.p, "PUSHF") || !strcmp(DecodedInstruction.mnemonic.p, "POPF"))
-    {
-        if (!FilterTrace)
-			TraceOutput(CIP, DecodedInstruction);
-
-		if (!inside_hook(CIP) && !InsideMonitor(NULL, CIP))
-		{
-#ifdef DEBUG_COMMENTS
-			DebugOutput("Trace: Stepping over %s at 0x%p\n", DecodedInstruction.mnemonic.p, CIP);
-#endif
-			ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-			ForceStepOver = TRUE;
-		}
-    }
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
-	{
-		if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-
-		if (!g_config.trace_all && TraceDepthCount > 0)
-			TraceDepthCount--;
-	}
-	else if (!FilterTrace)
-		TraceOutput(CIP, DecodedInstruction);
+	if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC") && g_config.fake_rdtsc)
+		ModTimestamp = TRUE;
 
 	if (g_config.branch_trace && BranchTarget)
 	{
@@ -1931,12 +1899,9 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			TraceOutput(CIP, DecodedInstruction);
 	}
 
-	if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC") && g_config.fake_rdtsc)
-		ModTimestamp = TRUE;
-
 	LastContext = *ExceptionInfo->ContextRecord;
 
-	if (ForceStepOver && !StopTrace)
+	if (!StopTrace && ReturnAddress && (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
 	{
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
@@ -1979,18 +1944,6 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 	_OffsetType Offset = 0;
 	_DecodedInst DecodedInstruction;
 	unsigned DecodedInstructionsCount = 0;
-
-	if (pBreakpointInfo == NULL)
-	{
-		DebugOutput("StepOutCallback executed with pBreakpointInfo NULL.\n");
-		return FALSE;
-	}
-
-	if (pBreakpointInfo->ThreadHandle == NULL)
-	{
-		DebugOutput("StepOutCallback executed with NULL thread handle.\n");
-		return FALSE;
-	}
 
 #ifdef _WIN64
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
@@ -2053,18 +2006,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	BOOL StepOver = FALSE, ForceStepOver = FALSE;
 
 	StopTrace = FALSE;
-
-	if (pBreakpointInfo == NULL)
-	{
-		DebugOutput("BreakpointCallback executed with pBreakpointInfo NULL.\n");
-		return FALSE;
-	}
-
-	if (pBreakpointInfo->ThreadHandle == NULL)
-	{
-		DebugOutput("BreakpointCallback executed with NULL thread handle.\n");
-		return FALSE;
-	}
 
 	BreakpointsHit = TRUE;
 
@@ -2152,186 +2093,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	StepCount++;
 
-#ifdef _WIN64
-	if (!FilterTrace)
-	{
-		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
-
-		if (LastContext.Rax != ExceptionInfo->ContextRecord->Rax)
-		{
-			DebuggerOutput(" RAX=%#I64x", ExceptionInfo->ContextRecord->Rax);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rax);
-		}
-
-		if (LastContext.Rbx != ExceptionInfo->ContextRecord->Rbx)
-		{
-			DebuggerOutput(" RBX=%#I64x", ExceptionInfo->ContextRecord->Rbx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbx);
-		}
-
-		if (LastContext.Rcx != ExceptionInfo->ContextRecord->Rcx)
-		{
-			DebuggerOutput(" RCX=%#I64x", ExceptionInfo->ContextRecord->Rcx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rcx);
-		}
-
-		if (LastContext.Rdx != ExceptionInfo->ContextRecord->Rdx)
-		{
-			DebuggerOutput(" RDX=%#I64x", ExceptionInfo->ContextRecord->Rdx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdx);
-		}
-
-		if (LastContext.Rsi != ExceptionInfo->ContextRecord->Rsi)
-		{
-			DebuggerOutput(" RSI=%#I64x", ExceptionInfo->ContextRecord->Rsi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsi);
-		}
-
-		if (LastContext.Rdi != ExceptionInfo->ContextRecord->Rdi)
-		{
-			DebuggerOutput(" RDI=%#I64x", ExceptionInfo->ContextRecord->Rdi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rdi);
-		}
-
-		if (LastContext.Rsp != ExceptionInfo->ContextRecord->Rsp)
-		{
-			DebuggerOutput(" RSP=%#I64x", ExceptionInfo->ContextRecord->Rsp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rsp);
-			DebuggerOutput(" *RSP=%#I64x", *(QWORD*)ExceptionInfo->ContextRecord->Rsp);
-			StringCheck((PVOID)*(QWORD*)ExceptionInfo->ContextRecord->Rsp);
-		}
-
-		if (LastContext.Rbp != ExceptionInfo->ContextRecord->Rbp)
-		{
-			DebuggerOutput(" RBP=%#I64x", ExceptionInfo->ContextRecord->Rbp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Rbp);
-		}
-
-		if (LastContext.R8 != ExceptionInfo->ContextRecord->R8)
-		{
-			DebuggerOutput(" R8=%#I64x", ExceptionInfo->ContextRecord->R8);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R8);
-		}
-
-		if (LastContext.R9 != ExceptionInfo->ContextRecord->R9)
-		{
-			DebuggerOutput(" R9=%#I64x", ExceptionInfo->ContextRecord->R9);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R9);
-		}
-
-		if (LastContext.R10 != ExceptionInfo->ContextRecord->R10)
-		{
-			DebuggerOutput(" R10=%#I64x", ExceptionInfo->ContextRecord->R10);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R10);
-		}
-
-		if (LastContext.R11 != ExceptionInfo->ContextRecord->R11)
-		{
-			DebuggerOutput(" R11=%#I64x", ExceptionInfo->ContextRecord->R11);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R11);
-		}
-
-		if (LastContext.R12 != ExceptionInfo->ContextRecord->R12)
-		{
-			DebuggerOutput(" R12=%#I64x", ExceptionInfo->ContextRecord->R12);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R12);
-		}
-
-		if (LastContext.R13 != ExceptionInfo->ContextRecord->R13)
-		{
-			DebuggerOutput(" R13=%#I64x", ExceptionInfo->ContextRecord->R13);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R13);
-		}
-
-		if (LastContext.R14 != ExceptionInfo->ContextRecord->R14)
-		{
-			DebuggerOutput(" R14=%#I64x", ExceptionInfo->ContextRecord->R14);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R14);
-		}
-
-		if (LastContext.R15 != ExceptionInfo->ContextRecord->R15)
-		{
-			DebuggerOutput(" R15=%#I64x", ExceptionInfo->ContextRecord->R15);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->R15);
-		}
-
-		if (LastContext.Xmm0.Low != ExceptionInfo->ContextRecord->Xmm0.Low)
-		{
-			DebuggerOutput(" Xmm0.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm0.Low);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.Low);
-		}
-
-		if (LastContext.Xmm0.High != ExceptionInfo->ContextRecord->Xmm0.High)
-		{
-			DebuggerOutput(" Xmm0.High=%#I64x", ExceptionInfo->ContextRecord->Xmm0.High);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm0.High);
-		}
-
-		if (LastContext.Xmm1.Low != ExceptionInfo->ContextRecord->Xmm1.Low)
-		{
-			DebuggerOutput(" Xmm1.Low=%#I64x", ExceptionInfo->ContextRecord->Xmm1.Low);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.Low);
-		}
-
-		if (LastContext.Xmm1.High != ExceptionInfo->ContextRecord->Xmm1.High)
-		{
-			DebuggerOutput(" Xmm1.High=%#I64x", ExceptionInfo->ContextRecord->Xmm1.High);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Xmm1.High);
-		}
-#else
-	if (!FilterTrace)
-	{
-		if (LastContext.Eax != ExceptionInfo->ContextRecord->Eax)
-		{
-			DebuggerOutput(" EAX=0x%x", ExceptionInfo->ContextRecord->Eax);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Eax);
-		}
-
-		if (LastContext.Ebx != ExceptionInfo->ContextRecord->Ebx)
-		{
-			DebuggerOutput(" EBX=0x%x", ExceptionInfo->ContextRecord->Ebx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebx);
-		}
-
-		if (LastContext.Ecx != ExceptionInfo->ContextRecord->Ecx)
-		{
-			DebuggerOutput(" ECX=0x%x", ExceptionInfo->ContextRecord->Ecx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ecx);
-		}
-
-		if (LastContext.Edx != ExceptionInfo->ContextRecord->Edx)
-		{
-			DebuggerOutput(" EDX=0x%x", ExceptionInfo->ContextRecord->Edx);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edx);
-		}
-
-		if (LastContext.Esi != ExceptionInfo->ContextRecord->Esi)
-		{
-			DebuggerOutput(" ESI=0x%x", ExceptionInfo->ContextRecord->Esi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esi);
-		}
-
-		if (LastContext.Edi != ExceptionInfo->ContextRecord->Edi)
-		{
-			DebuggerOutput(" EDI=0x%x", ExceptionInfo->ContextRecord->Edi);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Edi);
-		}
-
-		if (LastContext.Esp != ExceptionInfo->ContextRecord->Esp)
-		{
-			DebuggerOutput(" ESP=0x%x", ExceptionInfo->ContextRecord->Esp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Esp);
-			DebuggerOutput(" *ESP=0x%x", *(DWORD*)ExceptionInfo->ContextRecord->Esp);
-			StringCheck((PVOID)*(DWORD*)ExceptionInfo->ContextRecord->Esp);
-		}
-
-		if (LastContext.Ebp != ExceptionInfo->ContextRecord->Ebp)
-		{
-			DebuggerOutput(" EBP=0x%x", ExceptionInfo->ContextRecord->Ebp);
-			StringCheck((PVOID)ExceptionInfo->ContextRecord->Ebp);
-		}
-#endif
-	}
+	OutputRegisterChanges(ExceptionInfo->ContextRecord);
 
 	if (!FilterTrace)
 		DebuggerOutput("\n");
@@ -2441,386 +2203,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 
 	// Instruction handling
-	if (!strcmp(DecodedInstruction.mnemonic.p, "CALL"))
-	{
-		PCHAR ExportName = NULL;
-		PVOID CallTarget = NULL;
-
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
-		{
-			CallTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
-
-			if (!strncmp(DecodedInstruction.operands.p, "DWORD [FS:0xc0]", 15))
-			{
-				TraceOutput(CIP, DecodedInstruction);
-				ForceStepOver = TRUE;
-			}
-			else
-			{
-				__try
-				{
-					ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-					if (!ExportName)
-						ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
-				}
-				__except(EXCEPTION_EXECUTE_HANDLER)
-				{
-					DebugOutput("BreakpointCallback: Error dereferencing CallTarget 0x%x.\n", CallTarget);
-					ExportName = NULL;
-				}
-			}
-
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
-			{
-				TraceOutput(CIP, DecodedInstruction);
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-		}
-		else if (DecodedInstruction.size > 4)
-		{
-			CallTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
-			__try
-			{
-				ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-				if (!ExportName)
-					ExportName = ScyllaGetExportNameByAddress(*(PVOID*)CallTarget, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("BreakpointCallback: Error dereferencing CallTarget 0x%x.", CallTarget);
-				ExportName = NULL;
-			}
-
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
-		{
-#ifdef _WIN64
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				StepOver = TRUE;
-			}
-			else
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-		else
-			TraceOutput(CIP, DecodedInstruction);
-
-		if (ExportName)
-		{
-			ForceStepOver = DoStepOver(ExportName);
-
-			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
-			{
-				if (!g_config.trace_into_api[i])
-					break;
-				if (!stricmp(ExportName, g_config.trace_into_api[i]))
-				{
-					StepOver = FALSE;
-					if (TraceDepthCount > 0)
-						TraceDepthCount--;
-					DebuggerOutput("\nBreakpointCallback: Stepping into %s\n", ExportName);
-				}
-			}
-		}
-
-		if (CallTarget == &loq)
-		{
-			ExportName = "loq";
-			ForceStepOver = TRUE;
-		}
-
-		if (CallTarget == &log_flush)
-		{
-			ExportName = "log_flush";
-			ForceStepOver = TRUE;
-		}
-
-		if (!StepLimit || StepCount >= StepLimit || StopTrace)
-		{
-			ReturnAddress = NULL;
-			ForceStepOver = FALSE;
-			StepOver = FALSE;
-		}
-		else if (ReturnAddress && ((unsigned int)abs(TraceDepthCount) >= TraceDepthLimit && !g_config.trace_all) || (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
-		{
-			if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
-				DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-#ifndef DEBUG_COMMENTS
-			if (ForceStepOver)
-#endif
-				DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
-
-			ReturnAddress = NULL;
-
-			LastContext = *ExceptionInfo->ContextRecord;
-
-			ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
-
-			return TRUE;
-		}
-		else
-			TraceDepthCount++;
-	}
-//	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
-//	{
-//		if (!FilterTrace || g_config.trace_all)
-//			TraceOutput(CIP, DecodedInstruction);
-//		if (!g_config.trace_all && TraceDepthCount > 0)
-//			TraceDepthCount--;
-//	}
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
-	{
-		PCHAR ExportName = NULL;
-		PVOID JumpTarget = NULL;
-#ifdef _WIN64
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Rsp);
-
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "QWORD", 5) && strncmp(DecodedInstruction.operands.p, "QWORD [E", 8))
-		{
-			if (!strncmp(DecodedInstruction.operands.p, "QWORD [0x", 9))
-				JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
-			else
-				// begins with QWORD except "QWORD [E"
-#else
-		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
-
-		if (DecodedInstruction.size > 4 && DecodedInstruction.operands.length && !strncmp(DecodedInstruction.operands.p, "DWORD", 5) && strncmp(DecodedInstruction.operands.p, "DWORD [E", 8))
-		{
-			if (!strncmp(DecodedInstruction.operands.p, "DWORD [0x", 9))
-				JumpTarget = *(PVOID*)(*(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4));
-			else
-				// begins with DWORD except "DWORD [E"
-#endif
-				JumpTarget = *(PVOID*)((PUCHAR)CIP + DecodedInstruction.size - 4);
-
-			__try
-			{
-				ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("BreakpointCallback: Error dereferencing JumpTarget 0x%p.\n", JumpTarget);
-				ExportName = NULL;
-			}
-
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				if (!g_config.trace_all)
-					ForceStepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
-
-			//if (is_in_dll_range((ULONG_PTR)JumpTarget))
-			//	ForceStepOver = TRUE;
-			if (inside_hook(JumpTarget) && g_config.trace_all < 2)
-				ForceStepOver = TRUE;
-		}
-		else if (DecodedInstruction.size > 4)
-		{
-			JumpTarget = (PVOID)((PUCHAR)CIP + (int)*(DWORD*)((PUCHAR)CIP + DecodedInstruction.size - 4) + DecodedInstruction.size);
-			__try
-			{
-				ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("BreakpointCallback: Error dereferencing JumpTarget 0x%p.", JumpTarget);
-				ExportName = NULL;
-			}
-
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-			}
-			else
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
-		}
-		else if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-
-		if (is_in_dll_range((ULONG_PTR)JumpTarget))
-			ForceStepOver = TRUE;
-	}
-	else if (!FilterTrace)
-		TraceOutput(CIP, DecodedInstruction);
+	InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
@@ -2835,22 +2218,18 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		TraceRunning = FALSE;
 		ReturnAddress = NULL;
 	}
-
-	if (!StopTrace)
+	else if (ReturnAddress && (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
 	{
-		if (ForceStepOver && ReturnAddress)
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
-			if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
-			{
-				DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
-				ReturnAddress = NULL;
-			}
-			else
-				DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+			DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+			ReturnAddress = NULL;
 		}
 		else
-			DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+			DebugOutput("BreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
 	}
+	else
+		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
 
 	return TRUE;
 }
@@ -2859,18 +2238,6 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 {
 	PVOID CIP;
 	unsigned int DllRVA;
-
-	if (pBreakpointInfo == NULL)
-	{
-		DebugOutput("BreakOnReturnCallback executed with pBreakpointInfo NULL.\n");
-		return FALSE;
-	}
-
-	if (pBreakpointInfo->ThreadHandle == NULL)
-	{
-		DebugOutput("BreakOnReturnCallback executed with NULL thread handle.\n");
-		return FALSE;
-	}
 
 	BreakpointsHit = TRUE;
 
@@ -2920,18 +2287,6 @@ BOOL WriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* 
 	_DecodedInst DecodedInstruction;
 	unsigned int DecodedInstructionsCount = 0;
 	char OutputBuffer[MAX_PATH] = "";
-
-	if (pBreakpointInfo == NULL)
-	{
-		DebugOutput("WriteCallback executed with pBreakpointInfo NULL.\n");
-		return FALSE;
-	}
-
-	if (pBreakpointInfo->ThreadHandle == NULL)
-	{
-		DebugOutput("WriteCallback executed with NULL thread handle.\n");
-		return FALSE;
-	}
 
 	BreakpointsHit = TRUE;
 
