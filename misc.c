@@ -737,9 +737,10 @@ void add_dll_range(ULONG_PTR start, ULONG_PTR end)
 BOOL is_in_dll_range(ULONG_PTR addr)
 {
 	DWORD i;
-	for (i = 0; i < loaded_dlls; i++)
+	for (i = 0; i < loaded_dlls; i++) {
 		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end)
 			return TRUE;
+	}
 	return FALSE;
 }
 
@@ -771,17 +772,15 @@ void add_all_dlls_to_dll_ranges(void)
 		pListEntry = pListEntry->Flink)
 	{
 		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+		ModulePath.MaximumLength = ModulePath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
+		ModulePath.Buffer = calloc(ModulePath.Length/sizeof(WCHAR) + 1, sizeof(WCHAR));
+		memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length);
 		// skip dlls in same directory as exe
-		if (!path_is_system(ProcessPath.Buffer)) {
-			ModulePath.MaximumLength = ModulePath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
-			ModulePath.Buffer = calloc(ModulePath.Length/sizeof(WCHAR) + 1, sizeof(WCHAR));
-			memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length);
-			if (pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
-				free(ModulePath.Buffer);
-				continue;
-			}
+		if (!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
 			free(ModulePath.Buffer);
+			continue;
 		}
+		free(ModulePath.Buffer);
 		add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
 
