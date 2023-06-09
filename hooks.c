@@ -183,6 +183,8 @@ hook_t full_hooks[] = {
 	HOOK(kernel32, RegCreateKeyExW),
 	HOOK(kernel32, RegDeleteKeyA),
 	HOOK(kernel32, RegDeleteKeyW),
+	HOOK(advapi32, RegDeleteKeyExW),
+	HOOK(advapi32, RegDeleteKeyExA),
 	HOOK(kernel32, RegEnumKeyW),
 	HOOK(kernel32, RegEnumKeyExA),
 	HOOK(kernel32, RegEnumKeyExW),
