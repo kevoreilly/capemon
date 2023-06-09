@@ -1161,8 +1161,6 @@ int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(v
 
 	get_lasterrors(&lasterror);
 
-	hook_disable();
-
 	frames = our_stackwalk(_rip, sp, backtrace, HOOK_BACKTRACE_DEPTH);
 
 	for (i = 0; i < frames; i++) {
@@ -1180,7 +1178,6 @@ int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(v
 	}
 
 out:
-	hook_enable();
 	set_lasterrors(&lasterror);
 	return ret;
 }
