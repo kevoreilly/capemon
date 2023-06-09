@@ -1038,7 +1038,10 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), TrackedRegion->AllocationBase, ModulePath, MAX_PATH);
 	if (MappedModule)
+	{
+		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %s, skipping", TrackedRegion->AllocationBase, ModulePath);
 		return;
+	}
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
