@@ -29,6 +29,7 @@ extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLD
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
+extern BOOL ImageBaseRemapped;
 
 struct _g_config g_config;
 volatile int dummy_val;
@@ -1422,7 +1423,7 @@ void set_hooks()
         }
 		else
 #endif
-		if (!_stricmp(our_process_name, "iexplore.exe"))
+		if (!ImageBaseRemapped && !_stricmp(our_process_name, "iexplore.exe"))
         {
 			g_config.iexplore = 1;
 			g_config.injection = 0;
