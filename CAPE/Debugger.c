@@ -422,8 +422,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return FALSE;
 
 	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
-	if (!pInsByte)
-		pInsByte = lookup_add(&SoftBPs, (ULONG_PTR)Address, 0);
+
 	if (!pInsByte)
 	{
 		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction byte for 0x%p", Address);
@@ -629,19 +628,18 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT)
 	{
-		// Check to see if it's a software breakpoint
-		if (*(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
+		// Check to see if it's a software breakpoint and it's ours
+		if (*(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC && lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
 		{
-			if (lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
-			{
 //#ifdef DEBUG_COMMENTS
-				DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+			DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 //#endif
-				SoftwareBreakpointHandler(ExceptionInfo);
+			if (SoftwareBreakpointHandler(ExceptionInfo))
+			{
+				if (BreakpointsSet)
+					ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
+				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			else
-				return EXCEPTION_CONTINUE_SEARCH;
-			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
