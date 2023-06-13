@@ -1618,12 +1618,6 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		ReturnAddress = *(PVOID*)(ExceptionInfo->ContextRecord->Esp);
 		*ForceStepOver = TRUE;
 	}
-	else if (!strcmp(DecodedInstruction.mnemonic.p, "INT 3"))
-	{
-		if (!FilterTrace || g_config.trace_all)
-			TraceOutput(CIP, DecodedInstruction);
-		BreakOnNtContinueCallback = BreakpointCallback;
-	}
 #endif
 #ifndef _WIN64
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "POP") && !strncmp(DecodedInstruction.operands.p, "SS", 2))
