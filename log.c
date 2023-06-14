@@ -155,7 +155,7 @@ static void log_raw_direct(const char *buf, size_t length) {
 	while (copiedlen != length) {
 		EnterCriticalSection(&g_writing_log_buffer_mutex);
 		copylen = min(length - copiedlen, (size_t)(BUFFERSIZE - g_idx));
-		memcpy(&g_buffer[g_idx], &buf[copiedlen], copylen);
+		if(g_buffer) memcpy(&g_buffer[g_idx], &buf[copiedlen], copylen); 
 		g_idx += (int)copylen;
 		copiedlen += copylen;
 		LeaveCriticalSection(&g_writing_log_buffer_mutex);

@@ -199,11 +199,20 @@ HOOKDEF(BOOL, WINAPI, CreateProcessW,
 	__out	    LPPROCESS_INFORMATION lpProcessInformation
 ) {
 	BOOL ret;
+	lasterror_t lasterror;
 	ENSURE_STRUCT(lpProcessInformation, PROCESS_INFORMATION);
-
+	__try
+	{
 	ret = Old_CreateProcessW(lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
 		bInheritHandles, dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation);
-
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER) 
+	{
+		get_lasterrors(&lasterror);
+		if(&lasterror)
+			DebugOutput("Error creating process %ls with error: Win:%lu NT:%lu ",lpCommandLine,lasterror.Win32Error,lasterror.NtstatusError);
+		set_lasterrors(&lasterror);
+	}
 	if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT && lpStartupInfo->cb == sizeof(STARTUPINFOEXW)) {
 		HANDLE ParentHandle = (HANDLE)-1;
 		unsigned int i;
