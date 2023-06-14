@@ -98,7 +98,7 @@ void parse_config_line(char* line)
 					g_config.url_of_interest = ascii_to_unicode_dup(value);
 			}
 		}
-		else if (!strcmp(key, "referrer")) {
+		else if (!strcmp(key, "referrer")) { //Enable/Disable use of a fake referrer when performing URL analyses
 			g_config.w_referrer = ascii_to_unicode_dup(value);
 			g_config.referrer = strdup(value);
 		}
@@ -119,10 +119,10 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "startup-time")) {
 			g_config.startup_time = atoi(value);
 		}
-		else if (!strcmp(key, "debug")) {
+		else if (!strcmp(key, "debug")) { // Set to 1 to enable reporting of critical exceptions occurring during analysis, set to 2 to enable reporting of all exceptions.
 			g_config.debug = atoi(value);
 		}
-		else if (!strcmp(key, "hook-type")) {
+		else if (!strcmp(key, "hook-type")) { //Valid for 32-bit analyses only. Specifies the hook type to use: direct, indirect, or safe. Safe attempts a Detours-style hook.
 #ifndef _WIN64
 			if (!strcmp(value, "direct"))
 				g_config.hook_type = HOOK_JMP_DIRECT;
@@ -132,7 +132,7 @@ void parse_config_line(char* line)
 				g_config.hook_type = HOOK_SAFEST;
 #endif
 		}
-		else if (!strcmp(key, "disable_hook_content")) {
+		else if (!strcmp(key, "disable_hook_content")) { //Set to 1 to remove functionality of all hooks except those critical for monitoring other processes. Set to 2 to apply to all hooks.
 			g_config.disable_hook_content = atoi(value);
 		}
 		/*
@@ -143,10 +143,10 @@ void parse_config_line(char* line)
 			g_config.host_port = atoi(value);
 		}
 		*/
-		else if (!strcmp(key, "force-sleepskip")) {
+		else if (!strcmp(key, "force-sleepskip")) { // Override default sleep skipping behavior: 0 disables all sleep skipping, 1 skips all sleeps.
 			g_config.force_sleepskip = value[0] == '1';
 		}
-		else if (!strcmp(key, "serial")) {
+		else if (!strcmp(key, "serial")) { //Spoof the serial of the system volume as the provided hex value
 			g_config.serial_number = (unsigned int)strtoul(value, NULL, 16);
 		}
 		else if (!strcmp(key, "sysvol_ctimelow")) {
@@ -161,16 +161,16 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "sys32_ctimehigh")) {
 			g_config.sys32_ctime.dwHighDateTime = (unsigned int)strtoul(value, NULL, 16);
 		}
-		else if (!strcmp(key, "full-logs")) {
+		else if (!strcmp(key, "full-logs")) { //By default, logs prior to network activity for URL analyses and prior to access of the file in question for non-executable formats are suppressed. Set to 1 to disable log suppression.
 			g_config.full_logs = value[0] == '1';
 		}
-		else if (!strcmp(key, "force-flush")) {
+		else if (!strcmp(key, "force-flush")) { //For performance reasons, logs are buffered before being sent back to the result server. We make every attempt to flush the buffer at critical points including when exceptions occur, but in some rare termination scenarios, logs may be lost. Set to 1 to force flushing of the log buffers after any non-duplicate API is called, set to 2 to force flushing of every log.
 			g_config.force_flush = atoi(value);
 		}
 		else if (!strcmp(key, "terminate-event")) {
 			strncpy(g_config.terminate_event_name, value, ARRAYSIZE(g_config.terminate_event_name));
 		}
-		else if (!strcmp(key, "no-stealth")) {
+		else if (!strcmp(key, "no-stealth")) { // Set to 1 to disable anti-anti-VM/sandbox code enabled by default.
 			g_config.no_stealth = value[0] == '1';
 		}
 		else if (!strcmp(key, "buffer-max")) {
@@ -193,7 +193,7 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Breakpoint logging to behavior log disabled.\n");
 		}
-		else if (!strcmp(key, "dropped-limit")) {
+		else if (!strcmp(key, "dropped-limit")) { //Override the default dropped file limit of 100 files
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Dropped file limit set to %d.\n", g_config.dropped_limit);
 		}
@@ -207,7 +207,7 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "standalone")) {
 			g_config.standalone = value[0] == '1';
 		}
-		else if (!strcmp(key, "exclude-apis")) {
+		else if (!strcmp(key, "exclude-apis")) { //Exclude the colon-separated list of APIs from being hooked
 			unsigned int x = 0;
 			char *p2;
 			p = value;
@@ -222,7 +222,7 @@ void parse_config_line(char* line)
 				p = p2 + 1;
 			}
 		}
-		else if (!strcmp(key, "exclude-dlls")) {
+		else if (!strcmp(key, "exclude-dlls")) { //Exclude the colon-separated list of DLLs from being hooked
 			unsigned int x = 0;
 			char *p2;
 			p = value;
@@ -237,7 +237,7 @@ void parse_config_line(char* line)
 				p = p2 + 1;
 			}
 		}
-		else if (!strcmp(key, "base-on-api")) {
+		else if (!strcmp(key, "base-on-api")) { //Sets the base address to which breakpoints will be applied (and sets breakpoints)
 			unsigned int x = 0;
 			char *p2;
 			p = value;
@@ -253,7 +253,7 @@ void parse_config_line(char* line)
 				p = p2 + 1;
 			}
 		}
-		else if (!strcmp(key, "dump-on-api")) {
+		else if (!strcmp(key, "dump-on-api")) { //Dump the calling module when a function from the colon-separated list of APIs is used
 			unsigned int x = 0;
 			char *p2;
 			p = value;
@@ -288,7 +288,7 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "dump-on-api-type")) {
 			g_config.dump_on_api_type = (unsigned int)strtoul(value, NULL, 0);
 		}
-		else if (!strcmp(key, "file-offsets")) {
+		else if (!strcmp(key, "file-offsets")) { //Breakpoints in bp0-bp3 will be interpreted as PE file offsets rather than RVAs
 			g_config.file_offsets = value[0] == '1';
 			if (g_config.file_offsets)
 				DebugOutput("Breakpoints interpreted as file offsets.\n");
@@ -817,7 +817,7 @@ void parse_config_line(char* line)
 			strncpy(procname0, value, strlen(value));
 			DebugOutput("Config: procname0 set to %s.", value);
 		}
-		else if (!stricmp(key, "break-on-return")) {
+		else if (!stricmp(key, "break-on-return")) { //Sets breakpoints on the return address(es) from a colon-separated list of APIs
 			g_config.debugger = 1;
 			strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return));
 			DebugOutput("Config: Break-on-return set to %s.", g_config.break_on_return);
@@ -999,7 +999,7 @@ void parse_config_line(char* line)
 			else if (g_config.unpacker == 2)
 				DebugOutput("Active unpacking of payloads enabled\n");
 		}
-		else if (!stricmp(key, "injection")) {
+		else if (!stricmp(key, "injection")) { //When set to 1 this will enable CAPE’s capture of injected payloads between processes
 			g_config.injection = value[0] == '1';
 			if (g_config.injection)
 				DebugOutput("Capture of injected payloads enabled.\n");
