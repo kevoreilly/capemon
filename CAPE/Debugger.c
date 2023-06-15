@@ -214,6 +214,14 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 	PTHREADBREAKPOINTS NewThreadBreakpoints = NULL;
 	BOOL ThreadBreakpointsSet = FALSE;
 
+	if (!DebuggerInitialised)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("InitNewThreadBreakpoints: Debugger not initialised - ignoring thread %d.\n", ThreadId);
+#endif
+		return FALSE;
+	}
+
 	if (MainThreadBreakpointList == NULL)
 	{
 		DebugOutput("InitNewThreadBreakpoints: Failed to create thread breakpoints struct.\n");
