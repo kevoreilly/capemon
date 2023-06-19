@@ -142,9 +142,9 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 		DebugOutput("Target DLL unloading from 0x%p, dumping\n", DllImageBase);
 		CapeMetaData->DumpType = PROCDUMP;
 		if (g_config.import_reconstruction)
-			DumpImageInCurrentProcessFixImports(DllImageBase, 0);
+			ProcessDumped = DumpImageInCurrentProcessFixImports(DllImageBase, 0);
 		else
-			DumpImageInCurrentProcess(DllImageBase);
+			ProcessDumped = DumpImageInCurrentProcess(DllImageBase);
 	}
 
 	if (DllImageBase && DllImageBase != LastDllUnload)

@@ -117,7 +117,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 		DebugOutput("AllocationHandler: Previously reserved region at 0x%p, committing at: 0x%p.\n", TrackedRegion->AllocationBase, BaseAddress);
 
 		if (TrackedRegion->AllocationBase != BaseAddress)
-			TrackedRegion->ProtectAddress = BaseAddress;
+			TrackedRegion->Address = BaseAddress;
 	}
 	else if (TrackedRegion && (AllocationType & MEM_RESERVE))
 	{
@@ -274,6 +274,8 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 	{
 		DebugOutput("ProtectionHandler: New code detected at 0x%p, dumping.\n", TrackedRegion->AllocationBase);
 
+		TrackedRegion->Address = Address;
+
 		ProcessTrackedRegion(TrackedRegion);
 
 		if (TrackedRegion->PagesDumped)
@@ -292,8 +294,6 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 	else
 		DebugOutput("ProtectionHandler: No action taken on empty protected region at 0x%p.\n", Address);
 #endif
-
-	TrackedRegion->ProtectAddress = Address;
 
 	if (g_config.unpacker > 1 && !TrackedRegion->PagesDumped)
 	{
@@ -1192,8 +1192,8 @@ BOOL PEPointerWriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_P
 
 	TrackedRegion->EntryPoint = 0;
 
-	if (TrackedRegion->ProtectAddress)
-		pDosHeader = (PIMAGE_DOS_HEADER)TrackedRegion->ProtectAddress;
+	if (TrackedRegion->Address)
+		pDosHeader = (PIMAGE_DOS_HEADER)TrackedRegion->Address;
 	else
 		pDosHeader = (PIMAGE_DOS_HEADER)TrackedRegion->AllocationBase;
 
@@ -1466,9 +1466,9 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 		return FALSE;
 	}
 
-	if (TrackedRegion->ProtectAddress && TrackedRegion->ProtectAddress != TrackedRegion->AllocationBase)
+	if (TrackedRegion->Address && TrackedRegion->Address != TrackedRegion->AllocationBase)
 		// we want to put a breakpoint on the protected address
-		TrackedRegion->ExecBp = TrackedRegion->ProtectAddress;
+		TrackedRegion->ExecBp = TrackedRegion->Address;
 	else
 		TrackedRegion->ExecBp = TrackedRegion->AllocationBase;
 
@@ -1572,7 +1572,6 @@ void UnpackerInit()
 		DebugOutput("UnpackerInit: Adding monitor image base to tracked regions.\n");
 #endif
 		TrackedRegion->PagesDumped = TRUE;
-		TrackedRegion->CallerDetected = TRUE;
 	}
 	else
 		DebugOutput("UnpackerInit: Error adding monitor image base to tracked regions.\n");

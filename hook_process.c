@@ -574,10 +574,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		TerminateHandler();
 
 	if (process_shutting_down && g_config.debugger)
-	{
 		DebuggerShutdown();
-		DebugOutput("NtTerminateProcess hook: Debugger shutdown (process %d).\n", GetCurrentProcessId());
-	}
 
 	if (process_shutting_down && g_config.procdump && !ProcessDumped) {
 		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());

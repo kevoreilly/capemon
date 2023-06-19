@@ -140,11 +140,10 @@ enum {
 typedef struct TrackedRegion
 {
 	PVOID						AllocationBase;
-	PVOID						ProtectAddress;
+	PVOID						Address;
 	MEMORY_BASIC_INFORMATION	MemInfo;
 	BOOL						Committed;
 	BOOL						PagesDumped;
-	BOOL						CallerDetected;
 	BOOL						CanDump;
 	DWORD						EntryPoint;
 	double						Entropy;
