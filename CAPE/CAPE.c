@@ -809,7 +809,6 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	{
 		PageAlreadyTracked = TRUE;
 #ifdef DEBUG_COMMENTS
-
 		DebugOutput("AddTrackedRegion: Region at 0x%p already in tracked region 0x%p - updating.\n", Address, TrackedRegion->AllocationBase);
 #endif
 	}
