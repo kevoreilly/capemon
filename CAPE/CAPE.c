@@ -337,19 +337,19 @@ PVOID GetAllocationBase(PVOID Address)
 		ErrorOutput("GetAllocationBase: Failed to obtain system page size.\n");
 		return 0;
 	}
-	__try
-	{
+
+
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
-			dw = GetLastError();
-			ErrorOutput("GetAllocationBase: unable to query memory address 0x%p with error %ld", Address, dw);
-		return 0;
-	}
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER) 
-	{
-		dw = GetLastError();
-		ErrorOutput("GetAllocationBase: unable to query memory address 0x%p with error %ld", Address, dw);
+
+
+
+
+
+
+
+
+		//ErrorOutput("GetAllocationBase: unable to query memory address 0x%p", Address);
 		return 0;
 	}
 
@@ -818,15 +818,15 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	{
 		PageAlreadyTracked = TRUE;
 #ifdef DEBUG_COMMENTS
-		if(TrackedRegion)
+
 		DebugOutput("AddTrackedRegion: Region at 0x%p already in tracked region 0x%p - updating.\n", Address, TrackedRegion->AllocationBase);
 #endif
 	}
-	if (!TrackedRegion)
-	{
-		ErrorOutput("AddTrackedRegion: unable to query next tracked region around 0x%p", Address);
-		return NULL;
-	}
+
+
+
+
+
 	if (!VirtualQuery(Address, &TrackedRegion->MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
 		ErrorOutput("AddTrackedRegion: unable to query memory region 0x%p", Address);
