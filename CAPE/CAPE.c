@@ -814,10 +814,6 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 #endif
 	}
 
-
-
-
-
 	if (!VirtualQuery(Address, &TrackedRegion->MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
 		ErrorOutput("AddTrackedRegion: unable to query memory region 0x%p", Address);
