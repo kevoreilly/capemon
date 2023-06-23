@@ -338,17 +338,8 @@ PVOID GetAllocationBase(PVOID Address)
 		return 0;
 	}
 
-
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
-
-
-
-
-
-
-
-
 		//ErrorOutput("GetAllocationBase: unable to query memory address 0x%p", Address);
 		return 0;
 	}
