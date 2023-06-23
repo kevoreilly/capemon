@@ -152,6 +152,9 @@ static void log_raw_direct(const char *buf, size_t length) {
 	size_t copiedlen = 0;
 	size_t copylen;
 
+	if (!g_buffer)
+		return;
+
 	while (copiedlen != length) {
 		EnterCriticalSection(&g_writing_log_buffer_mutex);
 		copylen = min(length - copiedlen, (size_t)(BUFFERSIZE - g_idx));
@@ -159,7 +162,7 @@ static void log_raw_direct(const char *buf, size_t length) {
 		g_idx += (int)copylen;
 		copiedlen += copylen;
 		LeaveCriticalSection(&g_writing_log_buffer_mutex);
-		if (copiedlen != length && g_buffer)
+		if (copiedlen != length)
 			_send_log();
 	}
 }

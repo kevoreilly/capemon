@@ -92,7 +92,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	{
 		TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
 		if (TrackedRegion && (TrackedRegion->Address || TrackedRegion->PagesDumped))
-			return;	
+			return;
 		if (!TrackedRegion) {
 			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 			if (!TrackedRegion) {
@@ -385,11 +385,17 @@ hook_info_t *hook_info()
 
 void get_lasterrors(lasterror_t *errors)
 {
-	char *teb;
+	char *teb = NULL;
 
 	errors->Eflags = (DWORD)__readeflags();
 
 	teb = (char *)NtCurrentTeb();
+
+	if (teb == NULL) {
+		errors->Win32Error = -1;
+		errors->NtstatusError = -1;
+		return;
+	}
 
 	errors->Win32Error = *(DWORD *)(teb + TLS_LAST_WIN32_ERROR);
 	errors->NtstatusError = *(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR);
@@ -399,6 +405,9 @@ void get_lasterrors(lasterror_t *errors)
 void set_lasterrors(lasterror_t *errors)
 {
 	char *teb = (char *)NtCurrentTeb();
+
+	if (teb == NULL)
+		return;
 
 	*(DWORD *)(teb + TLS_LAST_WIN32_ERROR) = errors->Win32Error;
 	*(DWORD *)(teb + TLS_LAST_NTSTATUS_ERROR) = errors->NtstatusError;
