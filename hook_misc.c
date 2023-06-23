@@ -1274,13 +1274,13 @@ HOOKDEF(HRSRC, WINAPI, FindResourceExW,
 
 	wchar_t type_id[8];
 	if (IS_INTRESOURCE(lpType)) {
-		swprintf(type_id, sizeof type_id, L"#%hu", (WORD)lpType);
+		swprintf_s(type_id, sizeof(type_id), L"#%hu", (WORD)lpType);
 		lpType = type_id;
 	}
 
 	wchar_t name_id[8];
 	if (IS_INTRESOURCE(lpName)) {
-		swprintf(name_id, sizeof name_id, L"#%hu", (WORD)lpName);
+		swprintf_s(name_id, sizeof(name_id), L"#%hu", (WORD)lpName);
 		lpName = name_id;
 	}
 

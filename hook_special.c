@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include <initguid.h>
+#include <cguid.h>
 #include "ntapi.h"
 #include "hooking.h"
 #include "log.h"
@@ -225,7 +226,11 @@ static _CoTaskMemFree pCoTaskMemFree;
 static _ProgIDFromCLSID pProgIDFromCLSID;
 
 /* 4991D34B-80A1-4291-83B6-3328366B9097 */ DEFINE_GUID(CLSID_BITSControlClass_v1_0, 0x4991D34B, 0x80A1, 0x4291, 0x83, 0xB6, 0x33, 0x28, 0x36, 0x6B, 0x90, 0x97);
-/* 5CE34C0D-0DC9-4C1F-897C-100000000003 */ DEFINE_GUID(CLSID_BITS_Unknown, 0x5CE34C0D, 0x0DC9, 0x4C1F, 0x89, 0x7C, 0x10, 0x00, 0x00, 0x00, 0x00, 0x03); // Is this GUID correct? The last 6 bytes are odd. IBackgroundCopyManager would end with DAA1B78CEE7C
+/* 5CE34C0D-0DC9-4C1F-897C-100000000003 */ DEFINE_GUID(CLSID_BITS_Unknown, 0x5CE34C0D, 0x0DC9, 0x4C1F, 0x89, 0x7C, 0x10, 0x00, 0x00, 0x00, 0x00, 0x03); // Is this GUID correct?
+/* 69AD4AEE-51BE-439B-A92C-86AE490E8B30 */ DEFINE_GUID(CLSID_BITS_LegacyControlClass, 0x69AD4AEE, 0x51BE, 0x439B, 0xA9, 0x2C, 0x86, 0xAE, 0x49, 0x0E, 0x8B, 0x30);
+/* 37668D37-507E-4160-9316-26306D150B12 */ DEFINE_GUID(CLSID_BITS_IBackgroundCopyJob, 0x37668D37,0x507E, 0x4160, 0x93, 0x16, 0x26, 0x30, 0x6D, 0x15, 0x0B, 0x12);
+/* 5CE34C0D-0DC9-4C1F-897C-DAA1B78CEE7C */ DEFINE_GUID(CLSID_BITS_IBackgroundCopyManager, 0x5CE34C0D, 0x0DC9, 0x4C1F, 0x89, 0x7C, 0xDA, 0xA1, 0xB7, 0x8C, 0xEE, 0x7C);
+/* 01B7BD23-FB88-4A77-8490-5891D3E4653A */ DEFINE_GUID(CLSID_BITS_IBackgroundCopyFile, 0x01B7BD23, 0xFB88, 0x4A77, 0x84, 0x90, 0x58, 0x91, 0xD3, 0xE4, 0x65, 0x3A);
 
 /* 0F87369F-A4E5-4CFC-BD3E-73E6154572DD */ DEFINE_GUID(CLSID_TaskScheduler, 0x0F87369F, 0xA4E5, 0x4CFC, 0xBD, 0x3E, 0x73, 0xE6, 0x15, 0x45, 0x72, 0xDD);
 /* 0F87369F-A4E5-4CFC-BD3E-5529CE8784B0 */ DEFINE_GUID(CLSID_TaskScheduler_Unknown, 0x0F87369F, 0xA4E5, 0x4CFC, 0xBD, 0x3E, 0x55, 0x29, 0xCE, 0x87, 0x84, 0xB0);
@@ -249,7 +254,8 @@ static _ProgIDFromCLSID pProgIDFromCLSID;
 /* C08AFD90-F2A1-11D1-8455-00A0C91F3880 */ DEFINE_GUID(CLSID_ShellBrowserWindow, 0xC08AFD90, 0xF2A1, 0x11D1, 0x84, 0x55, 0x00, 0xA0, 0xC9, 0x1F, 0x38, 0x80);
 
 void inspect_clsid(REFCLSID rclsid) {
-	if (IsEqualCLSID(rclsid, &CLSID_BITSControlClass_v1_0) || IsEqualCLSID(rclsid, &CLSID_BITS_Unknown)) {
+	if (IsEqualCLSID(rclsid, &CLSID_BITSControlClass_v1_0) || IsEqualCLSID(rclsid, &CLSID_BITS_Unknown) ||
+		IsEqualCLSID(rclsid, &CLSID_BITS_LegacyControlClass)) {
 		if (!bits_sent) {
 			bits_sent = 1;
 			pipe("BITS:");
@@ -289,8 +295,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	__in	REFIID riid,
 	__out	LPVOID *ppv
 ) {
-	IID id1;
-	IID id2;
+	IID id1 = CLSID_NULL;
+	IID id2 = CLSID_NULL;
 	char idbuf1[40];
 	char idbuf2[40];
 	lasterror_t lasterror;
@@ -348,7 +354,7 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 	_In_	DWORD		dwCount,
 	_Inout_ MULTI_QI	 *pResults
 	) {
-	IID id1;
+	IID id1 = CLSID_NULL;
 	char idbuf1[40];
 	lasterror_t lasterror;
 	HRESULT ret;
@@ -403,8 +409,8 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 ) {
 	HRESULT ret;
 	lasterror_t lasterror;
-	IID id1;
-	IID id2;
+	IID id1 = CLSID_NULL;
+	IID id2 = CLSID_NULL;
 	char idbuf1[40];
 	char idbuf2[40];
 	hook_info_t saved_hookinfo;
