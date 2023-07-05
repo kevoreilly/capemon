@@ -735,15 +735,20 @@ bool PeParser::openFileHandle()
 
 bool PeParser::openWriteFileHandle(const CHAR *newFile)
 {
+	const char *filePath;
 	if (newFile)
-	{
-		hFile = CreateFile(newFile, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-	}
+		filePath = newFile;
+		// If no name was specified, assign a temporary name
 	else
-	{
-		// If no name was specified, let's give it a temporary name to allow it to be renamed later with its hash value
-		hFile = CreateFile(CAPE_OUTPUT_FILE, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-	}
+		filePath = GetTempName();
+
+	hFile = CreateFile(filePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+
+#ifdef DEBUG_COMMENTS
+	if (hFile == INVALID_HANDLE_VALUE)
+		ErrorOutput("openWriteFileHandle: Cannot create %s", filePath);
+#endif
+
 	return (hFile != INVALID_HANDLE_VALUE);
 }
 
@@ -940,58 +945,102 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 		return false;
 	}
 
-	if (openWriteFileHandle(newFile))
+	if (!openWriteFileHandle(newFile))
 	{
-		//Dos header
-		dwWriteSize = sizeof(IMAGE_DOS_HEADER);
-		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pDosHeader))
-		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("PeParser: savePeFileToDisk: Failure to write DOS header.\n");
-#endif
-			retValue = false;
-		}
-		dwFileOffset += dwWriteSize;
-
-
-		if (dosStubSize && pDosStub)
-		{
-			//Dos Stub
-			dwWriteSize = dosStubSize;
-			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pDosStub))
-			{
-#ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: savePeFileToDisk: Failure to write DOS stub.\n");
-#endif
-				retValue = false;
-			}
-			dwFileOffset += dwWriteSize;
-		}
-
-		//PE header
-		if (isPE32())
-			dwWriteSize = sizeof(IMAGE_NT_HEADERS32);
+		if (newFile)
+			DebugOutput("PeParser: savePeFileToDisk: Unable to create output file: %s.\n", newFile);
 		else
-			dwWriteSize = sizeof(IMAGE_NT_HEADERS64);
+			DebugOutput("PeParser: savePeFileToDisk: Unable to create output file.\n");
+#endif
+		return false;
+	}
 
-		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pNTHeader32))
+	//Dos header
+	dwWriteSize = sizeof(IMAGE_DOS_HEADER);
+	if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pDosHeader))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("PeParser: savePeFileToDisk: Failure to write DOS header.\n");
+#endif
+		retValue = false;
+	}
+	dwFileOffset += dwWriteSize;
+
+
+	if (dosStubSize && pDosStub)
+	{
+		//Dos Stub
+		dwWriteSize = dosStubSize;
+		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pDosStub))
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("PeParser: savePeFileToDisk: Failure to write PE header.\n");
+			DebugOutput("PeParser: savePeFileToDisk: Failure to write DOS stub.\n");
 #endif
 			retValue = false;
 		}
 		dwFileOffset += dwWriteSize;
+	}
 
-		//section headers
-		dwWriteSize = sizeof(IMAGE_SECTION_HEADER);
+	//PE header
+	if (isPE32())
+		dwWriteSize = sizeof(IMAGE_NT_HEADERS32);
+	else
+		dwWriteSize = sizeof(IMAGE_NT_HEADERS64);
 
-		for (WORD i = 0; i < getNumberOfSections(); i++)
+	if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, pNTHeader32))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("PeParser: savePeFileToDisk: Failure to write PE header.\n");
+#endif
+		retValue = false;
+	}
+	dwFileOffset += dwWriteSize;
+
+	//section headers
+	dwWriteSize = sizeof(IMAGE_SECTION_HEADER);
+
+	for (WORD i = 0; i < getNumberOfSections(); i++)
+	{
+		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, &listPeSection[i].sectionHeader))
 		{
-			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, &listPeSection[i].sectionHeader))
+#ifdef DEBUG_COMMENTS
+			DebugOutput("PeParser: savePeFileToDisk: Failure to write section headers (size 0x%x bytes).\n", dwWriteSize);
+#endif
+			retValue = false;
+			break;
+		}
+		dwFileOffset += dwWriteSize;
+	}
+
+	//PE slack
+	if (SizeOfSlackData)
+	{
+		dwWriteSize = (DWORD)SizeOfSlackData;
+		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, SlackData))
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("PeParser: savePeFileToDisk: Failure to write header slack (size 0x%x bytes).\n", dwWriteSize);
+#endif
+			retValue = false;
+		}
+		dwFileOffset += dwWriteSize;
+	}
+
+	//sections
+	for (WORD i = 0; i < getNumberOfSections(); i++)
+	{
+		if (!listPeSection[i].sectionHeader.PointerToRawData)
+			continue;
+
+		if (listPeSection[i].sectionHeader.PointerToRawData > dwFileOffset)
+		{
+			dwWriteSize = listPeSection[i].sectionHeader.PointerToRawData - dwFileOffset; //padding
+
+			if (!writeZeroMemoryToFile(hFile, dwFileOffset, dwWriteSize))
 			{
 #ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: savePeFileToDisk: Failure to write section headers (size 0x%x bytes).\n", dwWriteSize);
+				DebugOutput("PeParser: savePeFileToDisk: Failure to write padding prior to section %d.\n", i+1);
 #endif
 				retValue = false;
 				break;
@@ -999,119 +1048,102 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 			dwFileOffset += dwWriteSize;
 		}
 
-		//PE slack
-		if (SizeOfSlackData)
+		dwWriteSize = listPeSection[i].dataSize;
+
+		if (dwWriteSize)
 		{
-			dwWriteSize = (DWORD)SizeOfSlackData;
-			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, SlackData))
-			{
 #ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: savePeFileToDisk: Failure to write header slack (size 0x%x bytes).\n", dwWriteSize);
+			DebugOutput("PeParser: savePeFileToDisk: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
 #endif
+			if (!ProcessAccessHelp::writeMemoryToFile(hFile, listPeSection[i].sectionHeader.PointerToRawData, dwWriteSize, listPeSection[i].data))
+			{
+				DebugOutput("PeParser: savePeFileToDisk: Failure to write section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
 				retValue = false;
+				break;
 			}
 			dwFileOffset += dwWriteSize;
-		}
 
-		//sections
-		for (WORD i = 0; i < getNumberOfSections(); i++)
-		{
-			if (!listPeSection[i].sectionHeader.PointerToRawData)
-				continue;
+			SectionDataWritten = true;
 
-			if (listPeSection[i].sectionHeader.PointerToRawData > dwFileOffset)
+			if (listPeSection[i].dataSize < listPeSection[i].sectionHeader.SizeOfRawData) //padding
 			{
-				dwWriteSize = listPeSection[i].sectionHeader.PointerToRawData - dwFileOffset; //padding
+				dwWriteSize = listPeSection[i].sectionHeader.SizeOfRawData - listPeSection[i].dataSize;
 
 				if (!writeZeroMemoryToFile(hFile, dwFileOffset, dwWriteSize))
 				{
-#ifdef DEBUG_COMMENTS
-					DebugOutput("PeParser: savePeFileToDisk: Failure to write padding prior to section %d.\n", i+1);
-#endif
+					DebugOutput("PeParser: savePeFileToDisk: Failure to write padding to section %d.\n", i+1);
 					retValue = false;
 					break;
 				}
 				dwFileOffset += dwWriteSize;
 			}
-
-			dwWriteSize = listPeSection[i].dataSize;
-
-			if (dwWriteSize)
-			{
-#ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: savePeFileToDisk: Writing section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
-#endif
-				if (!ProcessAccessHelp::writeMemoryToFile(hFile, listPeSection[i].sectionHeader.PointerToRawData, dwWriteSize, listPeSection[i].data))
-				{
-					DebugOutput("PeParser: savePeFileToDisk: Failure to write section %d of size 0x%x bytes.\n", i+1, dwWriteSize);
-					retValue = false;
-					break;
-				}
-				dwFileOffset += dwWriteSize;
-
-				SectionDataWritten = true;
-
-				if (listPeSection[i].dataSize < listPeSection[i].sectionHeader.SizeOfRawData) //padding
-				{
-					dwWriteSize = listPeSection[i].sectionHeader.SizeOfRawData - listPeSection[i].dataSize;
-
-					if (!writeZeroMemoryToFile(hFile, dwFileOffset, dwWriteSize))
-					{
-						DebugOutput("PeParser: savePeFileToDisk: Failure to write padding to section %d.\n", i+1);
-						retValue = false;
-						break;
-					}
-					dwFileOffset += dwWriteSize;
-				}
-			}
-#ifdef DEBUG_COMMENTS
-			else
-				DebugOutput("PeParser: savePeFileToDisk: Nothing to write for section %d.\n", i+1);
-#endif
 		}
-
-		//add overlay?
-		if (overlaySize && overlayData)
-		{
-			dwWriteSize = overlaySize;
-			if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, overlayData))
-			{
 #ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: savePeFileToDisk: Failure to write ovrelay data.\n");
+		else
+			DebugOutput("PeParser: savePeFileToDisk: Nothing to write for section %d.\n", i+1);
 #endif
-				retValue = false;
-			}
-			dwFileOffset += dwWriteSize;
-		}
+	}
 
-		SetEndOfFile(hFile);
-		dumpSize = dwFileOffset;
-
-		closeFileHandle();
-
-		// If only headers are written, fail
-		// (this will allow a subsequent 'raw' memory dump)
-		if (!SectionDataWritten)
+	//add overlay?
+	if (overlaySize && overlayData)
+	{
+		dwWriteSize = overlaySize;
+		if (!ProcessAccessHelp::writeMemoryToFile(hFile, dwFileOffset, dwWriteSize, overlayData))
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("PeParser: savePeFileToDisk: No section data written!\n");
+			DebugOutput("PeParser: savePeFileToDisk: Failure to write ovrelay data.\n");
 #endif
+			retValue = false;
+		}
+		dwFileOffset += dwWriteSize;
+	}
+
+	SetEndOfFile(hFile);
+	dumpSize = dwFileOffset;
+
+	closeFileHandle();
+
+	// If only headers are written, fail
+	// (this will allow a subsequent 'raw' memory dump)
+	if (!SectionDataWritten)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("PeParser: savePeFileToDisk: No section data written!\n");
+#endif
+		return false;
+	}
+
+	if (!newFile)
+	{
+		if (!GetFullPathName(GetTempName(), MAX_PATH, CapeOutputPath, NULL))
+		{
+			ErrorOutput("savePeFileToDisk: There was a problem obtaining the full file path");
 			return false;
 		}
 
-		if (!newFile)
+		CapeName = GetName();
+
+#ifdef DEBUG_COMMENTS
+		DebugOutput("PeParser: savePeFileToDisk: Full file path %s, CapeName %s.\n", CapeOutputPath, CapeName);
+#endif
+		if (MoveFile(CapeOutputPath, CapeName))
 		{
-			if (!GetFullPathName(CAPE_OUTPUT_FILE, MAX_PATH, CapeOutputPath, NULL))
+			memset(CapeOutputPath, 0, MAX_PATH);
+
+			if (!GetFullPathName(CapeName, MAX_PATH, CapeOutputPath, NULL))
 			{
 				ErrorOutput("savePeFileToDisk: There was a problem obtaining the full file path");
-				return 0;
+				return false;
 			}
+
+			CapeOutputFile(CapeOutputPath);
+		}
+		else if (GetLastError() == ERROR_ALREADY_EXISTS)	// have seen this occasionally
+		{
+			DebugOutput("savePeFileToDisk: Name clash, trying to obtain new name...");
 
 			CapeName = GetName();
 
-#ifdef DEBUG_COMMENTS
-			DebugOutput("PeParser: savePeFileToDisk: Full file path %s, CapeName %s.\n", CapeOutputPath, CapeName);
-#endif
 			if (MoveFile(CapeOutputPath, CapeName))
 			{
 				memset(CapeOutputPath, 0, MAX_PATH);
@@ -1119,52 +1151,33 @@ bool PeParser::savePeFileToDisk(const CHAR *newFile)
 				if (!GetFullPathName(CapeName, MAX_PATH, CapeOutputPath, NULL))
 				{
 					ErrorOutput("savePeFileToDisk: There was a problem obtaining the full file path");
-					return 0;
+					return false;
 				}
 
 				CapeOutputFile(CapeOutputPath);
 			}
-			else if (GetLastError() == ERROR_ALREADY_EXISTS)	// have seen this occasionally
-			{
-				DebugOutput("savePeFileToDisk: Name clash, trying to obtain new name...");
-
-				CapeName = GetName();
-
-				if (MoveFile(CapeOutputPath, CapeName))
-				{
-					memset(CapeOutputPath, 0, MAX_PATH);
-
-					if (!GetFullPathName(CapeName, MAX_PATH, CapeOutputPath, NULL))
-					{
-						ErrorOutput("savePeFileToDisk: There was a problem obtaining the full file path");
-						return 0;
-					}
-
-					CapeOutputFile(CapeOutputPath);
-				}
-				else
-				{
-					ErrorOutput("savePeFileToDisk: Failed twice to rename file");
-
-					if (!DeleteFile(CapeOutputPath))
-					{
-						ErrorOutput("savePeFileToDisk: There was a problem deleting the file: %s", CapeOutputPath);
-					}
-
-					return 0;
-				}
-			}
 			else
 			{
-				ErrorOutput("savePeFileToDisk: There was a problem renaming the file");
+				ErrorOutput("savePeFileToDisk: Failed twice to rename file");
 
 				if (!DeleteFile(CapeOutputPath))
 				{
 					ErrorOutput("savePeFileToDisk: There was a problem deleting the file: %s", CapeOutputPath);
 				}
 
-				return 0;
+				return false;
 			}
+		}
+		else
+		{
+			ErrorOutput("savePeFileToDisk: There was a problem renaming the file");
+
+			if (!DeleteFile(CapeOutputPath))
+			{
+				ErrorOutput("savePeFileToDisk: There was a problem deleting the file: %s", CapeOutputPath);
+			}
+
+			return false;
 		}
 	}
 
@@ -1333,58 +1346,66 @@ bool PeParser::saveCompletePeToDisk(const CHAR *newFile)
 		return false;
 	}
 
-	if (openWriteFileHandle(newFile))
+	if (!openWriteFileHandle(newFile))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections() - 1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections() - 1].sectionHeader.SizeOfRawData);
+		if (newFile)
+			DebugOutput("saveCompletePeToDisk: savePeFileToDisk: Unable to create output file: %s.\n", newFile);
+		else
+			DebugOutput("saveCompletePeToDisk: savePeFileToDisk: Unable to create output file.\n");
+#endif
+		return false;
+	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("Number of sections: %d, PointerToRawData: 0x%x, SizeOfRawData: 0x%x\n", getNumberOfSections(), listPeSection[getNumberOfSections() - 1].sectionHeader.PointerToRawData, listPeSection[getNumberOfSections() - 1].sectionHeader.SizeOfRawData);
 #endif
 
-		dwWriteSize = listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData
-			+ listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData;
+	dwWriteSize = listPeSection[getNumberOfSections()-1].sectionHeader.PointerToRawData
+		+ listPeSection[getNumberOfSections()-1].sectionHeader.SizeOfRawData;
 
-		if (!ProcessAccessHelp::writeMemoryToFile(hFile, 0, dwWriteSize, (LPCVOID)moduleBaseAddress))
+	if (!ProcessAccessHelp::writeMemoryToFile(hFile, 0, dwWriteSize, (LPCVOID)moduleBaseAddress))
+	{
+		retValue = false;
+	}
+
+	SetEndOfFile(hFile);
+	dumpSize = dwWriteSize;
+
+	closeFileHandle();
+
+	if (!newFile)
+	{
+		if (!GetFullPathName(GetTempName(), MAX_PATH, CapeOutputPath, NULL))
 		{
-			retValue = false;
+			ErrorOutput("saveCompletePeToDisk: There was a problem obtaining the full file path");
+			return false;
 		}
 
-		SetEndOfFile(hFile);
-		dumpSize = dwWriteSize;
+		CapeName = GetName();
 
-		closeFileHandle();
-
-		if (!newFile)
+		if (MoveFile(CapeOutputPath, CapeName))
 		{
-			if (!GetFullPathName(CAPE_OUTPUT_FILE, MAX_PATH, CapeOutputPath, NULL))
+			memset(CapeOutputPath, 0, MAX_PATH);
+
+			if (!GetFullPathName(CapeName, MAX_PATH, CapeOutputPath, NULL))
 			{
 				ErrorOutput("saveCompletePeToDisk: There was a problem obtaining the full file path");
-				return 0;
+				return false;
 			}
 
-			CapeName = GetName();
+			CapeOutputFile(CapeOutputPath);
+		}
+		else
+		{
+			ErrorOutput("saveCompletePeToDisk: There was a problem renaming the file");
 
-			if (MoveFile(CapeOutputPath, CapeName))
+			if (!DeleteFile(CapeOutputPath))
 			{
-				memset(CapeOutputPath, 0, MAX_PATH);
-
-				if (!GetFullPathName(CapeName, MAX_PATH, CapeOutputPath, NULL))
-				{
-					ErrorOutput("saveCompletePeToDisk: There was a problem obtaining the full file path");
-					return 0;
-				}
-
-				CapeOutputFile(CapeOutputPath);
+				ErrorOutput("saveCompletePeToDisk: There was a problem deleting the file: %s", CapeOutputPath);
 			}
-			else
-			{
-				ErrorOutput("saveCompletePeToDisk: There was a problem renaming the file");
 
-				if (!DeleteFile(CapeOutputPath))
-				{
-					ErrorOutput("saveCompletePeToDisk: There was a problem deleting the file: %s", CapeOutputPath);
-				}
-
-				return 0;
-			}
+			return false;
 		}
 	}
 
@@ -1907,7 +1928,7 @@ bool PeParser::dumpProcessToHandle(DWORD_PTR modBase, DWORD_PTR entryPoint, HAND
 	getFileOverlay();
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("dumpProcess DEBUG: Fixups complete, about to save to disk.\n");
+	DebugOutput("DumpProcess: Fixups complete, about to save to disk.\n");
 #endif
 	return savePeFileToHandle(FileHandle);
 }

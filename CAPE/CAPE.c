@@ -1291,6 +1291,15 @@ char* GetName()
 }
 
 //**************************************************************************************
+char* GetTempName()
+//**************************************************************************************
+{
+	char *FullPathName = GetResultsPath("CAPE");
+	PathAppend(FullPathName, "CapeOutput.bin");
+	return FullPathName;
+}
+
+//**************************************************************************************
 BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffer)
 //**************************************************************************************
 {
