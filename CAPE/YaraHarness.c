@@ -469,12 +469,15 @@ BOOL YaraInit()
 			goto exit;
 		}
 
-		Result = yr_rules_save(Rules, compiled_rules);
+		if (g_config.yarascan)
+		{
+			Result = yr_rules_save(Rules, compiled_rules);
 
-		if (Result != ERROR_SUCCESS)
-			ScannerError(Result);
-		else
-			DebugOutput("YaraInit: Compiled rules saved to file %s\n", compiled_rules);
+			if (Result != ERROR_SUCCESS)
+				ScannerError(Result);
+			else
+				DebugOutput("YaraInit: Compiled rules saved to file %s\n", compiled_rules);
+		}
 
 		yr_compiler_destroy(Compiler);
 	}
