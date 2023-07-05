@@ -2103,6 +2103,7 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 	wchar_t *whitelist[] = {
 		L"C:\\Windows\\System32\\ntdll.dll",
 		L"C:\\Windows\\SysWOW64\\ntdll.dll",
+		L"C:\\Windows\\sysnative\\ntdll.dll",
 		NULL
 	};
 
@@ -2120,11 +2121,14 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 		if (!wcsicmp(whitelist[i], absolutepath)) {
 			// is this a loaded module?
 			HMODULE address = GetModuleHandleW(absolutepath);
-			if (address != NULL) {
-				DebugOutput("Sample attempted to remap module '%ws' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
-				pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
-				*BaseAddress = (LPVOID)address;
-			}
+			if (address == NULL)
+				address = GetModuleHandleW(get_dll_basename(absolutepath));
+			if (address == NULL)
+				continue;
+			DebugOutput("Sample attempted to remap module '%ws' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
+			pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
+			*BaseAddress = (LPVOID)address;
+			g_config.ntdll_protect = 0;
 			break;
 		}
 	}
