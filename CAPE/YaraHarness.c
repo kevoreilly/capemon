@@ -404,55 +404,58 @@ BOOL YaraInit()
 			goto exit;
 		}
 
-		char FindString[MAX_PATH];
-		WIN32_FIND_DATA FindFileData;
-		sprintf(FindString, "%s\\*.yar", yara_dir);
-#ifdef DEBUG_COMMENTS
-		DebugOutput("YaraInit: Yara search string: %s", FindString);
-#endif
-		HANDLE hFind = FindFirstFile(FindString, &FindFileData);
-		if (hFind != INVALID_HANDLE_VALUE)
+		if (g_config.yarascan)
 		{
-			unsigned int count = 0;
-			do
-			{
-				snprintf(file_name, sizeof(file_name), "%s\\%s", yara_dir, FindFileData.cFileName);
-
-				if (!(FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-				{
-					rule_file = fopen(file_name, "r");
-
-					if (rule_file)
-					{
-						int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
-
-						if (errors == ERROR_COULD_NOT_OPEN_FILE)
-							DebugOutput("YaraInit: Unable to open file %s\n", file_name);
-						else if (errors)
-						{
-							DebugOutput("YaraInit: Unable to compile rule file %s\n", file_name);
-							ScannerError(errors);
-						}
-						else
-						{
-							count++;
+			char FindString[MAX_PATH];
+			WIN32_FIND_DATA FindFileData;
+			sprintf(FindString, "%s\\*.yar", yara_dir);
 #ifdef DEBUG_COMMENTS
-							DebugOutput("YaraInit: Compiled rule file %s\n", file_name);
+			DebugOutput("YaraInit: Yara search string: %s", FindString);
 #endif
-						}
+			HANDLE hFind = FindFirstFile(FindString, &FindFileData);
+			if (hFind != INVALID_HANDLE_VALUE)
+			{
+				unsigned int count = 0;
+				do
+				{
+					snprintf(file_name, sizeof(file_name), "%s\\%s", yara_dir, FindFileData.cFileName);
 
-						fclose(rule_file);
+					if (!(FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+					{
+						rule_file = fopen(file_name, "r");
+
+						if (rule_file)
+						{
+							int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
+
+							if (errors == ERROR_COULD_NOT_OPEN_FILE)
+								DebugOutput("YaraInit: Unable to open file %s\n", file_name);
+							else if (errors)
+							{
+								DebugOutput("YaraInit: Unable to compile rule file %s\n", file_name);
+								ScannerError(errors);
+							}
+							else
+							{
+								count++;
+#ifdef DEBUG_COMMENTS
+								DebugOutput("YaraInit: Compiled rule file %s\n", file_name);
+#endif
+							}
+
+							fclose(rule_file);
+						}
 					}
 				}
+				while (FindNextFile(hFind, &FindFileData));
+
+				FindClose(hFind);
+
+				DebugOutput("YaraInit: Compiled %d rule files\n", count);
 			}
-			while (FindNextFile(hFind, &FindFileData));
-
-			FindClose(hFind);
-
-			DebugOutput("YaraInit: Compiled %d rule files\n", count);
+			else
+				DebugOutput("YaraInit: Found no Yara rules in %s\n", yara_dir);
 		}
-		else
-			DebugOutput("YaraInit: Found no Yara rules in %s\n", yara_dir);
 
 		// Add 'internal' yara
 		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)

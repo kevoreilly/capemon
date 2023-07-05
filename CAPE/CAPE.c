@@ -2759,14 +2759,12 @@ void CAPE_init()
 	// Cuckoo debug output level for development (0=none, 2=max)
 	// g_config.debug = 2;
 
+	YaraInit();
+
 	ImageBase = GetModuleHandle(NULL);
 
 	if (g_config.yarascan)
-	{
-		DebugOutput("Initialising Yara...\n");
-		YaraInit();
 		YaraScan(ImageBase, GetAccessibleSize(ImageBase));
-	}
 
 	if (is_image_base_remapped(ImageBase))
 	{
@@ -2801,7 +2799,8 @@ void CAPE_init()
 		}
 
 		DebugOutput("CAPE_init: Image base temporarily remapped for scanning at 0x%p", ImageBase);
-		YaraScan(Mapped, GetAccessibleSize(ImageBase));
+		if (g_config.yarascan)
+			YaraScan(Mapped, GetAccessibleSize(ImageBase));
 
 Finish:
 		if (Mapped) UnmapViewOfFile(Mapped);
