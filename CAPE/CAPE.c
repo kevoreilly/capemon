@@ -140,7 +140,6 @@ extern PVOID GetReturnAddress(hook_info_t *hookinfo);
 extern PVOID CallingModule;
 extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
-extern BOOL UPXInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 
 OSVERSIONINFO OSVersion;
@@ -2706,17 +2705,6 @@ void CAPE_post_init()
 	else if (g_config.debugger)
 		DebugOutput("Post-init: Failed to initialise debugger.\n");
 #endif
-
-	if (!g_config.debugger && g_config.upx)
-	{
-		CapeMetaData->DumpType = UPX;
-		g_config.procdump = 0;
-		if (InitialiseDebugger())
-			DebugOutput("UPX unpacker: Debugger initialised.\n");
-		else
-			DebugOutput("UPX unpacker: Failed to initialise debugger.\n");
-		UPXInitialBreakpoints(GetModuleHandle(NULL));
-	}
 
 	if (g_config.unpacker)
 		UnpackerInit();

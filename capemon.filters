@@ -273,9 +273,6 @@
     <ClCompile Include="CAPE\Trace.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
-    <ClCompile Include="CAPE\UPX.c">
-      <Filter>Source Files\CAPE</Filter>
-    </ClCompile>
     <ClCompile Include="CAPE\Unpacker.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>

@@ -1098,11 +1098,6 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Dumps & scans of caller regions disabled.\n");
 		}
-		else if (!stricmp(key, "upx")) {
-			g_config.upx = value[0] == '1';
-			if (g_config.upx)
-				DebugOutput("UPX unpacker enabled.\n");
-		}
 		else if (!stricmp(key, "yarascan")) {
 			g_config.yarascan = value[0] == '1';
 			if (g_config.yarascan)

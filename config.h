@@ -168,9 +168,6 @@ struct _g_config {
 	// for PlugX config & payload extraction
 	int plugx;
 
-	// dynamic upx unpacker
-	int upx;
-
 	// syscall hooks
 	int syscall;
 

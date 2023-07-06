@@ -133,8 +133,6 @@ enum {
 	STACK_REGION = 0x6c,
 
 	TYPE_STRING = 0x100,
-
-	UPX = 0x1000
 };
 
 typedef struct TrackedRegion
