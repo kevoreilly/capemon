@@ -297,6 +297,56 @@ void parse_config_line(char* line)
 			ExportAddress = strtoul(value, NULL, 0);
 			DebugOutput("Config: Export address set to 0x%x", ExportAddress);
 		}
+		else if (!stricmp(key, "bp")) {
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < EXCLUSION_MAX) {
+				p2 = strchr(p, ':');
+				if (p2) {
+					*p2 = '\0';
+				}
+				int delta=0;
+				p2 = strchr(value, '+');
+				if (p2) {
+					delta = strtoul(p2+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p2 = '\0';
+				}
+				else {
+					p2 = strchr(value, '-');
+					if (p2) {
+						delta = - (int)strtoul(p2+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p2 = '\0';
+					}
+				}
+				g_config.bp[x++] = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
+				if (g_config.bp[x++]) {
+					DebugOutput("Config: Added 0x%p to breakpoint list.\n", g_config.bp[x++]);
+					g_config.debugger = 1;
+				}
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
+			}
+		}
+		else if (!stricmp(key, "action")) {
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < EXCLUSION_MAX) {
+				p2 = strchr(p, '|');
+				if (p2) {
+					*p2 = '\0';
+				}
+				g_config.action[x++] = strdup(p);
+				DebugOutput("Config: Action %d set to %s.", x-1, g_config.action[x-1]);
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
+			}
+		}
 		else if (!stricmp(key, "bp0")) {
 			p = strchr(value, ':');
 			if (p && *(p+1) == ':') {

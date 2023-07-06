@@ -53,7 +53,7 @@ extern BOOL WoW64PatchBreakpoint(unsigned int Register);
 extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
+extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POINTERS* ExceptionInfo), SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
 extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue;
@@ -450,11 +450,9 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
-	Trace(ExceptionInfo);
-//	SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
+	SoftwareBreakpointCallback(ExceptionInfo);
 
 	return TRUE;
-
 }
 
 //**************************************************************************************
@@ -2129,21 +2127,27 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 {
 	DWORD OldProtect;
 
-	if (!Address)
+	if (!Address || !IsAddressAccessible(Address))
 		return FALSE;
+
+	if (lookup_get(&SoftBPs, (ULONG_PTR)Address, 0))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already in software breakpoint list", Address);
+#endif
+		return FALSE;
+	}
 
 	BYTE InsByte = *(PBYTE)Address;
 	if (InsByte == 0xCC)
-		return FALSE;
-
-	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
-	if (!pInsByte)
 	{
-		pInsByte = lookup_add(&SoftBPs, (ULONG_PTR)Address, 0);
 #ifdef DEBUG_COMMENTS
-		DebugOutput("SetSoftwareBreakpoint: Adding lookup byte for instruction at 0x%p", Address);
+		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already contains 0xCC byte", Address);
 #endif
+		return FALSE;
 	}
+
+	PBYTE pInsByte = lookup_add(&SoftBPs, (ULONG_PTR)Address, 0);
 	if (!pInsByte)
 	{
 		DebugOutput("SetSoftwareBreakpoint: Unable to store instruction byte at 0x%p", Address);
@@ -2152,7 +2156,7 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 
 	*pInsByte = InsByte;
 #ifdef DEBUG_COMMENTS
-		DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
+	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
 #endif
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
@@ -2168,7 +2172,7 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 	*(PBYTE)Address = 0xCC;
 
 #ifdef DEBUG_COMMENTS
-		DebugOutput("SetSoftwareBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+	DebugOutput("SetSoftwareBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
 #endif
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 

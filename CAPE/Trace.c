@@ -37,7 +37,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
-extern int DumpImageInCurrentProcess(LPVOID ImageBase);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
 extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_anomaly(const char *subcategory, const char *msg);
@@ -556,6 +555,43 @@ void WriteRet(PCONTEXT Context)
 	VirtualProtect(CIP, DecodedInstruction.size, OldProtect, &OldProtect);
 
 	return;
+}
+
+// For packers where there is a jmp to OEP (e.g. UPX)
+BOOL ProcessOEP(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP, AllocationBase;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+	AllocationBase = GetAllocationBase(CIP);
+	StopTrace = FALSE;
+
+	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	TraceOutput(CIP, DecodedInstruction);
+
+	CapeMetaData->Address = AllocationBase;
+	CapeMetaData->DumpType = UNPACKED_PE;
+
+	if (DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction))
+		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p.\n", CIP);
+	else
+		DebuggerOutput("\nProcessOEP: Failed to dump module with OEP at 0x%p.\n", CIP);
+
+	YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
+
+	return TRUE;
 }
 
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, PCHAR Action)
@@ -1123,6 +1159,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%d.\n", Target, DumpSize);
 		DumpAddress = 0;
 		DumpSize = 0;
+	}
+	else if (!stricmp(Action, "Step2OEP"))
+	{
+		SetSingleStepMode(ExceptionInfo->ContextRecord, ProcessOEP);
+		StepLimit = 0;
 	}
 	else if (!stricmp(Action, "Scan"))
 	{
@@ -2222,6 +2263,105 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	return TRUE;
 }
 
+BOOL SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+	BOOL StepOver = FALSE, ForceStepOver = FALSE;
+
+	StopTrace = FALSE;
+
+	BreakpointsHit = TRUE;
+
+	DebuggerOutput("Software breakpoint hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	FilterTrace = FALSE;
+
+	if (InsideMonitor(NULL, CIP) && g_config.trace_all == 1)
+		FilterTrace = TRUE;
+
+	if (inside_hook(CIP) && !g_config.trace_all)
+		FilterTrace = TRUE;
+
+	if (is_in_dll_range((ULONG_PTR)CIP) && !g_config.trace_all)
+		FilterTrace = TRUE;
+
+	StepCount++;
+
+	OutputRegisterChanges(ExceptionInfo->ContextRecord);
+
+	if (!FilterTrace)
+		DebuggerOutput("\n");
+
+	// We disassemble once for the action dispatcher
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	ReDisassemble = FALSE;
+
+	// Dispatch any actions
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.bp); i++)
+	{
+		if (g_config.action[i])
+			ActionDispatcher(ExceptionInfo, DecodedInstruction, g_config.action[i]);
+	}
+
+	// We disassemble a second time in case of any changes/patches
+	if (ReDisassemble)
+	{
+#ifdef _WIN64
+		CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+		CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+		if (CIP)
+			Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+	}
+
+	// Instruction handling
+	InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
+
+	LastContext = *ExceptionInfo->ContextRecord;
+
+	if (!StepLimit || StepCount > StepLimit || StopTrace)
+	{
+		DebuggerOutput("\nSoftwareBreakpointCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
+		memset(&LastContext, 0, sizeof(CONTEXT));
+		StopTrace = TRUE;
+		StepCount = 0;
+		TraceRunning = FALSE;
+		ReturnAddress = NULL;
+	}
+	else if (ReturnAddress && (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
+	{
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("SoftwareBreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+#endif
+			ReturnAddress = NULL;
+		}
+		else
+			DebugOutput("SoftwareBreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+	}
+	else
+		SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
+
+	return TRUE;
+}
+
 BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
@@ -2559,6 +2699,15 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			DebugOutput("SetInitialBreakpoints: SetBreakpoint failed for breakpoint %d.\n", Register);
 			BreakpointsSet = FALSE;
 			return FALSE;
+		}
+	}
+
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.bp); i++)
+	{
+		if (g_config.bp[i])
+		{
+			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, g_config.bp[i]);
+			SetSoftwareBreakpoint((PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]));
 		}
 	}
 
