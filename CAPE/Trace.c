@@ -30,7 +30,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_INSTRUCTIONS 0x10
 #define MAX_DUMP_SIZE 0x1000000
 #define CHUNKSIZE 0x10
-#define RVA_LIMIT 0x2000000
 #define DoClearZeroFlag 1
 #define DoSetZeroFlag   2
 #define PrintEAX		3
@@ -2337,12 +2336,7 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 		BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)Address);
 	}
 	else
-	{
-		if ((SIZE_T)Address > RVA_LIMIT)
-			BreakpointVA = (DWORD_PTR)Address;
-		else
-			BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)Address;
-	}
+		BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)Address;
 
 	if (Register == 0)
 	{
@@ -2523,12 +2517,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
 		}
 		else
-		{
-			if ((SIZE_T)g_config.br0 > RVA_LIMIT)
-				BreakpointVA = (DWORD_PTR)g_config.br0;
-			else
-				BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0;
-		}
+			BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0;
 
 		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
 		{
@@ -2558,12 +2547,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
 		}
 		else
-		{
-			if ((SIZE_T)g_config.br1 > RVA_LIMIT)
-				BreakpointVA = (DWORD_PTR)g_config.br1;
-			else
-				BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1;
-		}
+			BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1;
 
 		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
 		{
