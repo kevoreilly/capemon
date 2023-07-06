@@ -774,7 +774,7 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 		TrackedRegion = TrackedRegion->NextTrackedRegion;
 	}
 
-	if (NumberOfTrackedRegions > 10)
+	if (NumberOfTrackedRegions > 100)
 		DebugOutput("AddTrackedRegion: DEBUG Warning - number of tracked regions %d.\n", NumberOfTrackedRegions);
 
 	if (GetPageAddress(Address) == GetPageAddress(TrackedRegionList))
