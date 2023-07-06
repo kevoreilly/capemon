@@ -175,7 +175,12 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	if (peFile->isValidPeFile())
 	{
 		if (NewEP)
-			entrypoint = NewEP;
+		{
+			if (ModuleBase && NewEP > ModuleBase)
+				entrypoint = NewEP - ModuleBase;
+			else
+				entrypoint = NewEP;
+		}
 		else
 			entrypoint = peFile->getEntryPoint();
 
