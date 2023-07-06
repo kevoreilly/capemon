@@ -988,7 +988,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	{
 		TraceOutput(CIP, DecodedInstruction);
 		DebuggerOutput("\nActionDispatcher: %s detected, stopping trace.\n", DecodedInstruction.mnemonic.p);
-		ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 		ClearSingleStepMode(ExceptionInfo->ContextRecord);
 		memset(&LastContext, 0, sizeof(CONTEXT));
 		TraceRunning = FALSE;
@@ -1984,8 +1983,6 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 		}
 	}
 
-	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
-
 	return TRUE;
 }
 
@@ -2201,8 +2198,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
-	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
-
 	if (!StepLimit || StepCount > StepLimit || StopTrace)
 	{
 		DebuggerOutput("\nBreakpointCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
@@ -2266,8 +2261,6 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 		DebugOutput("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
 	ReturnAddress = NULL;
-
-	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
 	return TRUE;
 }
