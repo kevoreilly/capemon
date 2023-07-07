@@ -322,8 +322,8 @@ void parse_config_line(char* line)
 					}
 				}
 				g_config.bp[x++] = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
-				if (g_config.bp[x++]) {
-					DebugOutput("Config: Added 0x%p to breakpoint list.\n", g_config.bp[x++]);
+				if (g_config.bp[x-1]) {
+					DebugOutput("Config: Added 0x%p to breakpoint list.\n", g_config.bp[x-1]);
 					g_config.debugger = 1;
 				}
 				if (p2 == NULL)
