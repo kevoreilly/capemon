@@ -582,7 +582,10 @@ BOOL ProcessOEP(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	TraceOutput(CIP, DecodedInstruction);
 
 	CapeMetaData->Address = AllocationBase;
-	CapeMetaData->DumpType = UNPACKED_PE;
+	if (g_config.typestring)
+		CapeMetaData->TypeString = g_config.typestring;
+	else if (!CapeMetaData->DumpType)
+		CapeMetaData->DumpType = UNPACKED_PE;
 
 	if (DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction))
 		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p.\n", CIP);
@@ -2461,8 +2464,7 @@ BOOL BreakpointOnReturn(PVOID Address)
 
 BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 {
-	PVOID Callback = NULL;
-	DWORD_PTR BreakpointVA = 0;
+	PVOID Callback = NULL, BreakpointVA = NULL;
 	unsigned int Type = 0, HitCount = 0;
 
 	if (g_config.file_offsets)
@@ -2473,10 +2475,10 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 			BreakpointsSet = FALSE;
 			return FALSE;
 		}
-		BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)Address);
+		BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)Address);
 	}
 	else
-		BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)Address;
+		BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)Address);
 
 	if (Register == 0)
 	{
@@ -2535,7 +2537,7 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 		HitCount = g_config.hc3;
 	}
 
-	if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type, HitCount, Callback))
+	if (SetBreakpoint(Register, 0, BreakpointVA, Type, HitCount, Callback))
 	{
 		DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, hit count %d, thread %d)\n", Register, BreakpointVA, Address, Type, HitCount, GetCurrentThreadId());
 		BreakpointsSet = TRUE;
@@ -2549,7 +2551,7 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 
 BOOL SetInitialBreakpoints(PVOID ImageBase)
 {
-	DWORD_PTR BreakpointVA = 0;
+	PVOID BreakpointVA = NULL;
 	DWORD Register = 0;
 
 	if (BreakpointsHit)
@@ -2654,12 +2656,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 				BreakpointsSet = FALSE;
 				return FALSE;
 			}
-			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
+			BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
 		}
 		else
-			BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0;
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0);
 
-		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
+		if (SetBreakpoint(Register, 0, BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
 		{
 			DebugOutput("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br0, BP_EXEC);
 			BreakpointsSet = TRUE;
@@ -2684,12 +2686,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 				BreakpointsSet = FALSE;
 				return FALSE;
 			}
-			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
+			BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
 		}
 		else
-			BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1;
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1);
 
-		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
+		if (SetBreakpoint(Register, 0, BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
 		{
 			DebugOutput("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br1, BP_EXEC);
 			BreakpointsSet = TRUE;
@@ -2706,8 +2708,9 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 	{
 		if (g_config.bp[i])
 		{
-			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, g_config.bp[i]);
-			SetSoftwareBreakpoint((PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]));
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
+			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
+			SetSoftwareBreakpoint(BreakpointVA);
 		}
 	}
 
