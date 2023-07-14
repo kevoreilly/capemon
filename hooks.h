@@ -1276,6 +1276,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 	OUT PULONG ReturnLength OPTIONAL
 );
 
+HOOKDEF(HMODULE, WINAPI, LoadLibraryExW,
+	__in	  LPCWSTR lpLibFileName,
+	__in	  HANDLE  hFile,
+	__in	  DWORD   dwFlags
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	__in	 HANDLE ProcessHandle,
 	__inout  PVOID *BaseAddress,

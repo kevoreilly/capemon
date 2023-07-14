@@ -784,6 +784,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSectionEx,
 	return ret;
 }
 
+HOOKDEF(HMODULE, WINAPI, LoadLibraryExW,
+	__in	  LPCWSTR lpLibFileName,
+	__in	  HANDLE  hFile,
+	__in	  DWORD   dwFlags
+) {
+	HMODULE ret = Old_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
+	LOQ_nonnull("system", "uh", "lpLibFileName", lpLibFileName, "dwFlags", dwFlags);
+	return ret;
+}
+
 // it's not safe to call pipe() in this hook until we replace all uses of snprintf in pipe()
 HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	__in	 HANDLE ProcessHandle,
