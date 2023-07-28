@@ -202,9 +202,6 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 	if (!(Protect & EXECUTABLE_FLAGS))
 		return;
 
-	if (is_in_dll_range((ULONG_PTR)Address))
-		return;
-
 	hook_disable();
 
 	if (TrackedRegionList)
