@@ -71,8 +71,8 @@ PCHAR GetNameBySsn(unsigned int Number)
 
 	// based on https://www.mdsec.co.uk/2022/04/resolving-system-service-numbers-using-the-exception-directory
 	PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)ntdll_base + (ULONG)((PIMAGE_DOS_HEADER)ntdll_base)->e_lfanew);
-#ifdef _WIN64	
-	// using runtime function table on x64 just for fun 
+#ifdef _WIN64
+	// using runtime function table on x64 just for fun
 	PIMAGE_RUNTIME_FUNCTION_ENTRY RuntimeFunctionTable = (PIMAGE_RUNTIME_FUNCTION_ENTRY)((PUCHAR)ntdll_base + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress);
 #else
 	PIMAGE_LOAD_CONFIG_DIRECTORY LoadConfigDirectory = (PIMAGE_LOAD_CONFIG_DIRECTORY)((PUCHAR)ntdll_base + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG].VirtualAddress);
@@ -132,7 +132,7 @@ VOID InstrumentationCallback(PCONTEXT Context)
 	Context->Rcx = Context->R10;
 	Context->Rsp = *((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousSp));
 	Context->Rip = *((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousPc));
-	unsigned int ReturnValue = (unsigned int)Context->Rax;
+	unsigned int ReturnValue = (unsigned int)Context->Rax & 0xFFFFFFFF;
 	PVOID ReturnAddress = *(PVOID*)Context->Rsp;
 	PVOID CIP = (PVOID)Context->Rip;
 #else
@@ -186,12 +186,30 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 				else
 					DebugOutput("InstrumentationCallback: Dump of calling region at 0x%p skipped (returns to 0x%p).\n", AllocationBase, CIP);
 			}
-			//if (g_config.debugger && !__called_by_hook(Context->Rsp, CIP) && g_config.break_on_return && !stricmp(FunctionName, g_config.break_on_return))
-			//{
-			//	DebugOutput("Break-on-return: %s syscall detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
-			//	BreakpointOnReturn((PVOID)ReturnValue);
-			//}
-	
+			else if (g_config.unpacker)
+			{
+				PTRACKEDREGION TrackedRegion = NULL;
+				TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+				if (!TrackedRegion) {
+					TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
+					if (!TrackedRegion)
+						DebugOutput("InstrumentationCallback: Failed to add region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
+					else {
+						DebugOutput("InstrumentationCallback: Added region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
+						TrackedRegion->Address = (PVOID)CIP;
+					}
+				}
+				if (TrackedRegion)
+					ProcessTrackedRegion(TrackedRegion);
+			}
+
+			//if (g_config.debugger && !__called_by_hook(Context->Rsp, CIP) && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
+			if (g_config.debugger && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
+			{
+				DebugOutput("Break-on-return: %s syscall detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
+				BreakpointOnReturn(CIP);
+			}
+
 		}
 //		else
 //		{
