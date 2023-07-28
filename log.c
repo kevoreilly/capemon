@@ -1123,19 +1123,27 @@ void log_breakpoint(const char *subcategory, const char *msg)
 		"Message", msg);
 }
 
+#ifdef _WIN64
+#define SYSCALL_NAME "syscall"
+#else
+#define SYSCALL_NAME "sysenter"
+#endif
+
 void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval)
 {
-#ifdef _WIN64
-	loq(LOG_ID_SYSCALL, "__notification__", "syscall", 1, 0, "iospp",
-#else
-	loq(LOG_ID_SYSCALL, "__notification__", "sysenter", 1, 0, "iospp",
-#endif
-		"ThreadIdentifier", GetCurrentThreadId(),
-		"Module", module,
-		"Function", function,
-		"Return Address", retaddr,
-		"Return Value", retval);
+	if (module)
+		loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "iosp",
+			"ThreadIdentifier", GetCurrentThreadId(),
+			"Module", module,
+			"Function", function,
+			"Return Address", retaddr);
+	else
+		loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "isp",
+			"ThreadIdentifier", GetCurrentThreadId(),
+			"Function", function,
+			"Return Address", retaddr);
 }
+
 void log_procname_anomaly(PUNICODE_STRING InitialName, PUNICODE_STRING InitialPath, PUNICODE_STRING CurrentName, PUNICODE_STRING CurrentPath)
 {
 	loq(LOG_ID_ANOMALY_PROCNAME, "__notification__", "__anomaly__", 1, 0, "isoooo",
