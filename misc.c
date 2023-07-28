@@ -598,13 +598,17 @@ DWORD pid_from_process_handle(HANDLE process_handle)
 
 	memset(&pbi, 0, sizeof(pbi));
 
-	duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
-
-	if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+	if (pNtQueryInformationProcess(process_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
 		PID = (DWORD)pbi.UniqueProcessId;
+	else {
+		duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
 
-	if (duped)
-		CloseHandle(dup_handle);
+		if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+			PID = (DWORD)pbi.UniqueProcessId;
+
+		if (duped)
+			CloseHandle(dup_handle);
+	}
 
 out:
 	set_lasterrors(&lasterror);
@@ -625,16 +629,22 @@ static BOOL cid_from_thread_handle(HANDLE thread_handle, PCLIENT_ID cid)
 
 	memset(&tbi, 0, sizeof(tbi));
 
-	duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
+	if (pNtQueryInformationThread(thread_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
+		memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
+		ret = TRUE;
+	}
+	else {
+		duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
 
-	if (duped) {
-        if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
-            memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
-            ret = TRUE;
-        }
+		if (duped) {
+			if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
+				memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
+				ret = TRUE;
+			}
 
-		CloseHandle(dup_handle);
-    }
+			CloseHandle(dup_handle);
+		}
+	}
 
 	set_lasterrors(&lasterror);
 
