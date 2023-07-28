@@ -252,6 +252,22 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 			Register = (PVOID)Context->Rbp;
         else if (!stricmp(RegString, "rip"))
 			Register = (PVOID)Context->Rip;
+        else if (!stricmp(RegString, "r8"))
+			Register = (PVOID)Context->R8;
+        else if (!stricmp(RegString, "r9"))
+			Register = (PVOID)Context->R9;
+        else if (!stricmp(RegString, "r10"))
+			Register = (PVOID)Context->R10;
+        else if (!stricmp(RegString, "r11"))
+			Register = (PVOID)Context->R11;
+        else if (!stricmp(RegString, "r12"))
+			Register = (PVOID)Context->R13;
+        else if (!stricmp(RegString, "r13"))
+			Register = (PVOID)Context->R13;
+        else if (!stricmp(RegString, "r14"))
+			Register = (PVOID)Context->R14;
+        else if (!stricmp(RegString, "r15"))
+			Register = (PVOID)Context->R15;
 #else
         if (!stricmp(RegString, "eax"))
 			Register = (PVOID)Context->Eax;
@@ -702,7 +718,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 	}
 
-	if (!strnicmp(Action, "SetEax", 6))
+	if (!stricmp(Action, "SetEax"))
 	{
 		if (Target || TargetSet)
 		{
@@ -925,6 +941,29 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot GoTo - target value missing.\n");
+	}
+	else if (!strnicmp(Action, "Call", 4))
+	{
+		if (Target)
+		{
+			TraceOutput(CIP, DecodedInstruction);
+			if (p)
+				DebuggerOutput("\nActionDispatcher: Call target 0x%p (%s).\n", Target, p+1);
+			else
+				DebuggerOutput("\nActionDispatcher: Call target 0x%p.\n", Target);
+			PVOID ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rsp -= sizeof(QWORD);
+			*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = ReturnAddress;
+			ExceptionInfo->ContextRecord->Rip = (QWORD)Target;
+#else
+			ExceptionInfo->ContextRecord->Esp -= sizeof(DWORD);
+			*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = ReturnAddress;
+			ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
+#endif
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot call - target value missing.\n");
 	}
 	else if (!strnicmp(Action, "Push", 4))
 	{
@@ -1176,6 +1215,46 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		DebuggerOutput("ActionDispatcher: Scanning region at 0x%p.\n", ScanAddress);
 		YaraScan(ScanAddress, GetAccessibleSize(ScanAddress));
 	}
+	else if (!strnicmp(Action, "SetBp0", 6))
+	{
+		if (Target)
+		{
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 0, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp0: Breakpoint 0 set to 0x%p.", Target);
+		}
+		else
+			DebuggerOutput("SetBp0: Failed to obtain breakpoint address.");
+	}
+	else if (!strnicmp(Action, "SetBp1", 6))
+	{
+		if (Target)
+		{
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 1, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp1: Breakpoint 1 set to 0x%p.", Target);
+		}
+		else
+			DebuggerOutput("SetBp1: Failed to obtain breakpoint address.");
+	}
+	else if (!strnicmp(Action, "SetBp2", 6))
+	{
+		if (Target)
+		{
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 2, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp2: Breakpoint 2 set to 0x%p.", Target);
+		}
+		else
+			DebuggerOutput("SetBp2: Failed to obtain breakpoint address.");
+	}
+	else if (!strnicmp(Action, "SetBp3", 6))
+	{
+		if (Target)
+		{
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 3, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp3: Breakpoint 3 set to 0x%p.", Target);
+		}
+		else
+			DebuggerOutput("SetBp3: Failed to obtain breakpoint address.");
+	}
 	else if (!stricmp(Action, "DumpStack"))
 	{
 		unsigned int Offset;
@@ -1326,37 +1405,56 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 		}
 #ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
+		else if (!strncmp(DecodedInstruction.operands.p, "R", 1))
 		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+			if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
+			else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
+			else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
+			else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
+			else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
+			else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
+			else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
+			else if (!strncmp(DecodedInstruction.operands.p, "R8", 2))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R8;
+			else if (!strncmp(DecodedInstruction.operands.p, "R9", 2))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R9;
+			else if (!strncmp(DecodedInstruction.operands.p, "R10", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R10;
+			else if (!strncmp(DecodedInstruction.operands.p, "R11", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R11;
+			else if (!strncmp(DecodedInstruction.operands.p, "R12", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R12;
+			else if (!strncmp(DecodedInstruction.operands.p, "R13", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R13;
+			else if (!strncmp(DecodedInstruction.operands.p, "R14", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R14;
+			else if (!strncmp(DecodedInstruction.operands.p, "R15", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R15;
 #else
-		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
+		else if (!strncmp(DecodedInstruction.operands.p, "E", 1))
 		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+			if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
+			else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
+			else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
+			else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
+			else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
+			else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
+			else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
 #endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1366,160 +1464,6 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			}
 			else if (!FilterTrace || g_config.trace_all)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);;
-#endif
 		}
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
