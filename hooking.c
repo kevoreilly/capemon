@@ -206,6 +206,8 @@ int called_by_hook(void)
 	return __called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer);
 }
 
+BOOL ModuleDumped;
+
 void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 {
 	unsigned int i;

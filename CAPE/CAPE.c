@@ -143,7 +143,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 
 OSVERSIONINFO OSVersion;
-BOOL ProcessDumped, ModuleDumped, ImageBaseRemapped;
+BOOL ProcessDumped, ImageBaseRemapped;
 PVOID ImageBase;
 static unsigned int DumpCount;
 
