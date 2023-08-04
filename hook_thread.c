@@ -331,6 +331,22 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
+) {
+	ENSURE_HANDLE(ThreadHandle);
+	ENSURE_STRUCT(Context, WOW64_CONTEXT);
+	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+
+	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
+
+	LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
+
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	__in  HANDLE ThreadHandle,
 	__in  CONTEXT *Context

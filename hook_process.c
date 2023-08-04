@@ -518,6 +518,29 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, NtOpenProcessToken,
+	__in HANDLE ProcessHandle,
+	__in ACCESS_MASK DesiredAccess,
+	__out PHANDLE TokenHandle
+) {
+	NTSTATUS ret;
+	ret = Old_NtOpenProcessToken(ProcessHandle, DesiredAccess, TokenHandle);
+	LOQ_ntstatus("process", "phP", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "TokenHandle", TokenHandle);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationToken,
+	IN HANDLE TokenHandle,
+	IN TOKEN_INFORMATION_CLASS TokenInformationClass,
+	OUT PVOID TokenInformation,
+	IN ULONG TokenInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
+) {
+	NTSTATUS ret = Old_NtQueryInformationToken(TokenHandle, TokenInformationClass, TokenInformation, TokenInformationLength, ReturnLength);
+	LOQ_ntstatus("process", "ib", "TokenInformationClass", TokenInformationClass, "TokenInformation", TokenInformationLength, TokenInformation);
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	__in  HANDLE ProcessHandle
 ) {

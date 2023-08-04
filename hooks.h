@@ -1077,6 +1077,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcessToken,
 	__out PHANDLE TokenHandle
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationToken,
+	IN HANDLE TokenHandle,
+	IN TOKEN_INFORMATION_CLASS TokenInformationClass,
+	OUT PVOID TokenInformation,
+	IN ULONG TokenInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	__in_opt  HANDLE ProcessHandle,
 	__in	  NTSTATUS ExitStatus
@@ -1466,6 +1474,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenThread,
 HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	__in	 HANDLE ThreadHandle,
 	__inout  LPCONTEXT Context
+);
+
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
