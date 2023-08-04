@@ -1162,7 +1162,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(lpAddress);
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-		if (g_config.unpacker && !MappedModule)
+		if (g_config.unpacker)
 			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
 		if (g_config.caller_regions)
 		{
