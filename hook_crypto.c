@@ -126,6 +126,13 @@ HOOKDEF(BOOL, WINAPI, CryptDecrypt,
 		DumpMemoryRaw(pbData, *pdwDataLen);
 		DebugOutput("CryptDecrypt hook: Dumped decrypted buffer at 0x%p (size 0x%x).\n", pbData, *pdwDataLen);
 	}
+	if (ret && g_config.unpacker && IsDisguisedPEHeader((PVOID)pbData)) {
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = UNPACKED_PE;
+		CapeMetaData->Address = pbData;
+		if (DumpImageInCurrentProcess((PVOID)pbData))
+			DebugOutput("CryptDecrypt: Dumped decrypted PE image at 0x%p.\n", pbData);
+	}
 	LOQ_bool("crypto", "ppBii", "CryptKey", hKey, "CryptHash", hHash, "Buffer", pdwDataLen, pbData, "Length", *pdwDataLen, "Final", Final);
 	return ret;
 }
@@ -465,6 +472,13 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptDecrypt,
 		DumpMemoryRaw(pbInput, cbOutput);
 		DebugOutput("NCryptDecrypt hook: Dumped decrypted buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
 	}
+	if (ret && g_config.unpacker && IsDisguisedPEHeader((PVOID)pbInput)) {
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = UNPACKED_PE;
+		CapeMetaData->Address = pbInput;
+		if (DumpImageInCurrentProcess((PVOID)pbInput))
+			DebugOutput("NCryptDecrypt: Dumped decrypted PE image at 0x%p.\n", pbInput);
+	}
 	LOQ_bool("crypto", "bhpi", "Output", cbOutput, pbOutput, "Flags", dwFlags, "CryptKey", hKey, "Length", cbOutput);
 	return ret;
 }
@@ -544,6 +558,13 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 			CapeMetaData->DumpType = DATADUMP;
 		DumpMemoryRaw(pbInput, cbOutput);
 		DebugOutput("BCryptDecrypt hook: Dumped decrypted buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
+	}
+	if (ret && g_config.unpacker && IsDisguisedPEHeader((PVOID)pbInput)) {
+		if (!CapeMetaData->DumpType)
+			CapeMetaData->DumpType = UNPACKED_PE;
+		CapeMetaData->Address = pbInput;
+		if (DumpImageInCurrentProcess((PVOID)pbInput))
+			DebugOutput("BCryptDecrypt: Dumped decrypted PE image at 0x%p.\n", pbInput);
 	}
 	LOQ_ntstatus("crypto", "bbhpi", "Output", cbOutput, pbOutput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey, "Length", cbOutput);
 	return ret;
