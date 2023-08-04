@@ -41,6 +41,7 @@ extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" int ScanForNonZero(LPVOID Buffer, unsigned int Size);
 extern "C" PVOID GetAllocationBase(PVOID Address);
 extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
+extern "C" BOOL IsAddressAccessible(PVOID Address);
 
 extern char CapeOutputPath[MAX_PATH];
 
@@ -509,6 +510,22 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 extern "C" int LooksLikeSectionBoundary(DWORD_PTR Buffer)
 //**************************************************************************************
 {
+	if (!IsAddressAccessible((PVOID)Buffer))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("LooksLikeSectionBoundary: Address 0x%p inaccessible.\n", Buffer);
+#endif
+		return -1;
+	}
+
+	if (!IsAddressAccessible((PVOID)((BYTE*)Buffer - 4)))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("LooksLikeSectionBoundary: Yes - end of previous region before candidate section at 0x%p inaccessible.\n", Buffer);
+#endif
+		return 1;
+	}
+
 	__try
 	{
 		if
@@ -673,6 +690,7 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 					delete peFile;
 					return 1;
 				}
+
 				SectionBoundary = LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress);
 				if (SectionBoundary == -1)
 				{
@@ -694,6 +712,9 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 		}
 	}
 
+#ifdef DEBUG_COMMENTS
+	DebugOutput("IsPeImageRaw: Unable to find any section boundaries.\n");
+#endif
 	delete peFile;
 	return 0;
 }
