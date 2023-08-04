@@ -1371,6 +1371,8 @@ HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
 	return 0;
 }
 
+BOOL EnableFakeCount;
+
 HOOKDEF(UINT, WINAPI, GetWriteWatch,
 	__in		DWORD		dwFlags,
 	__in		PVOID		lpBaseAddress,
@@ -1380,9 +1382,15 @@ HOOKDEF(UINT, WINAPI, GetWriteWatch,
 	__out		LPDWORD		lpdwGranularity
 ) {
 	UINT ret = Old_GetWriteWatch(dwFlags, lpBaseAddress, dwRegionSize, lpAddresses, lpdwCount, lpdwGranularity);
-	LOQ_zero("process", "piiL", "BaseAddress", lpBaseAddress, "RegionSize", dwRegionSize, "Flags", dwFlags, "Count", lpdwCount);
-	if (lpdwCount && *lpdwCount)
+	LOQ_zero("process", "phiL", "BaseAddress", lpBaseAddress, "RegionSize", dwRegionSize, "Flags", dwFlags, "Count", lpdwCount);
+#ifndef _WIN64
+	// For Pikabot detonation, e.g. 2ebf4db49a8a7875e9c443482f82af1febd9751eee65be155355c3525331ae88
+	// ref https://github.com/BaumFX/cpp-anti-debug/blob/d6e84a09b21593a65a5d7545e0d3df876cb0a29a/anti_debug.cpp#L260
+	if (ret)
+		EnableFakeCount = TRUE;
+	else if (EnableFakeCount && lpdwCount && *lpdwCount == 1)
 		*lpdwCount = 0;
+#endif
 	return ret;
 }
 
