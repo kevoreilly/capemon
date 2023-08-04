@@ -593,6 +593,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		}
 	}
 
+	if (Pid)
+		pipe("KILL:%d", Pid);
+
 	if (process_shutting_down && g_config.injection)
 		TerminateHandler();
 
@@ -603,9 +606,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
 		DoProcessDump();
 	}
-
-	if (Pid)
-		pipe("KILL:%d", Pid);
 
 	set_lasterrors(&lasterror);
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);
