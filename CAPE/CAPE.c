@@ -2580,7 +2580,7 @@ int DoProcessDump()
 		if (g_config.procdump && MemInfo.BaseAddress != ImageBase && MemInfo.BaseAddress != NewImageBase && !is_in_dll_range((ULONG_PTR)Address))
 			DumpInterestingRegions(MemInfo);
 
-		if (g_config.procmemdump && !is_in_dll_range((ULONG_PTR)Address) && !ScanForRulesCanary(MemInfo.BaseAddress, MemInfo.RegionSize))
+		if (g_config.procmemdump && !is_in_dll_range((ULONG_PTR)Address) && IsAddressAccessible((PVOID)Address) && !ScanForRulesCanary(MemInfo.BaseAddress, MemInfo.RegionSize))
 		{
 			LARGE_INTEGER BufferAddress;
 			DWORD BytesWritten;
@@ -2754,7 +2754,7 @@ void CAPE_init()
 	if (g_config.yarascan)
 		YaraScan(ImageBase, GetAccessibleSize(ImageBase));
 
-	if (is_image_base_remapped(ImageBase))
+	if (g_config.yarascan && is_image_base_remapped(ImageBase))
 	{
 		ImageBaseRemapped = TRUE;
 
@@ -2786,9 +2786,9 @@ void CAPE_init()
 			goto Finish;
 		}
 
-		DebugOutput("CAPE_init: Image base temporarily remapped for scanning at 0x%p", ImageBase);
-		if (g_config.yarascan)
-			YaraScan(Mapped, GetAccessibleSize(ImageBase));
+		DebugOutput("CAPE_init: Main executable image temporarily remapped for scanning at 0x%p", Mapped);
+
+		YaraScan(Mapped, GetAccessibleSize(ImageBase));
 
 Finish:
 		if (Mapped) UnmapViewOfFile(Mapped);
