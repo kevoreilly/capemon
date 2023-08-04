@@ -126,6 +126,7 @@ BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID 
 BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
 BOOL SetSoftwareBreakpoint(LPVOID Address);
+BOOL SetSyscallBreakpoint(LPVOID Address);
 
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);

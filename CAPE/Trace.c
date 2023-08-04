@@ -2653,10 +2653,26 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (g_config.bp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
-			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
 			SetSoftwareBreakpoint(BreakpointVA);
+#ifdef DEBUG_COMMENTS
+			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
+#endif
 		}
 	}
+
+#ifdef _WIN64
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++)
+	{
+		if (g_config.sysbp[i])
+		{
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp[i]);
+			SetSyscallBreakpoint(BreakpointVA);
+#ifdef DEBUG_COMMENTS
+			DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
+#endif
+		}
+	}
+#endif
 
 	return BreakpointsSet;
 }

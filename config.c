@@ -301,7 +301,7 @@ void parse_config_line(char* line)
 			unsigned int x = 0;
 			char *p2;
 			p = value;
-			while (p && x < EXCLUSION_MAX) {
+			while (p && x < BREAKPOINT_MAX) {
 				p2 = strchr(p, ':');
 				if (p2) {
 					*p2 = '\0';
@@ -335,7 +335,7 @@ void parse_config_line(char* line)
 			unsigned int x = 0;
 			char *p2;
 			p = value;
-			while (p && x < EXCLUSION_MAX) {
+			while (p && x < BREAKPOINT_MAX) {
 				p2 = strchr(p, '|');
 				if (p2) {
 					*p2 = '\0';
@@ -751,6 +751,47 @@ void parse_config_line(char* line)
 			if (g_config.br3) {
 				g_config.debugger = 1;
 				DebugOutput("Config: br3 set to 0x%x (break-on-return)\n", g_config.br3);
+			}
+		}
+		else if (!stricmp(key, "sysbp")) {
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < BREAKPOINT_MAX) {
+				p2 = strchr(p, ':');
+				if (p2) {
+					*p2 = '\0';
+				}
+				int delta=0;
+				p2 = strchr(value, '+');
+				if (p2) {
+					delta = strtoul(p2+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p2 = '\0';
+				}
+				else {
+					p2 = strchr(value, '-');
+					if (p2) {
+						delta = - (int)strtoul(p2+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p2 = '\0';
+					}
+				}
+				for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++) {
+					if (g_config.sysbp[x])
+						x++;
+					else
+						break;
+				}
+				if (x < BREAKPOINT_MAX) {
+					PVOID address = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
+					g_config.sysbp[x] = address;
+					//DebugOutput("Config: Set syscall breakpoint at 0x%p\n", address);
+					g_config.debugger = 1;
+				}
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
 			}
 		}
 		else if (!stricmp(key, "count0")) {

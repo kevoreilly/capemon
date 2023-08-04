@@ -47,6 +47,7 @@ extern LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Ex
 extern BOOL UnpackerGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern PTRACKEDREGION GetTrackedRegion(PVOID Address);
 extern PVOID GetPageAddress(PVOID Address);
+extern PCHAR GetNameBySsn(unsigned int Number);
 extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL WoW64fix(void);
 extern BOOL WoW64PatchBreakpoint(unsigned int Register);
@@ -68,7 +69,7 @@ unsigned int TrapIndex, DepthCount;
 PVOID _KiUserExceptionDispatcher;
 HANDLE hCapePipe;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
-static lookup_t SoftBPs;
+static lookup_t SoftBPs, SyscallBPs;
 
 void ApplyQueuedBreakpoints();
 
@@ -455,6 +456,24 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	return TRUE;
 }
 
+#ifdef _WIN64
+//**************************************************************************************
+BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
+//**************************************************************************************
+{
+	unsigned int SSN = (unsigned int)(DWORD_PTR)ExceptionInfo->ContextRecord->Rax;
+
+	PVOID Function = GetProcAddress(GetModuleHandle("ntdll"), GetNameBySsn(SSN));
+
+	if (!Function)
+		return FALSE;
+
+	ExceptionInfo->ContextRecord->Rip = (DWORD_PTR)Function;
+
+	return TRUE;
+}
+#endif
+
 //**************************************************************************************
 BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
 //**************************************************************************************
@@ -634,14 +653,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
-	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT)
+	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT && *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
 	{
 		// Check to see if it's a software breakpoint and it's ours
-		if (*(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC && lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
+		if (lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
 		{
-//#ifdef DEBUG_COMMENTS
+#ifdef DEBUG_COMMENTS
 			DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
-//#endif
+#endif
 			if (SoftwareBreakpointHandler(ExceptionInfo))
 			{
 				if (BreakpointsSet)
@@ -649,6 +668,22 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
 		}
+
+#ifdef _WIN64
+		// Is it a 'syscall' breakpoint
+		if (lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("CAPEExceptionFilter: 'syscall' breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+#endif
+			if (SyscallBreakpointHandler(ExceptionInfo))
+			{
+				if (BreakpointsSet)
+					ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
+		}
+#endif
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
 	{
@@ -2178,6 +2213,56 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 
 	return TRUE;
 }
+
+#ifdef _WIN64
+//**************************************************************************************
+BOOL SetSyscallBreakpoint(LPVOID Address)
+//**************************************************************************************
+{
+	DWORD OldProtect;
+
+	if (!Address || !IsAddressAccessible(Address))
+		return FALSE;
+
+	if (lookup_get(&SyscallBPs, (ULONG_PTR)Address, 0))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already in software breakpoint list", Address);
+#endif
+		return FALSE;
+	}
+
+	WORD Instruction = *(PWORD)Address;
+	if (Instruction != 0x050F)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSoftwareBreakpoint: Instruction at 0x%p not a syscall", Address);
+#endif
+		return FALSE;
+	}
+
+	lookup_add(&SyscallBPs, (ULONG_PTR)Address, 0);
+
+	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		DebugOutput("SetSoftwareBreakpoint: Unable to change memory protection at 0x%p", Address);
+		return FALSE;
+	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("SetSoftwareBreakpoint: Changed memory protection at 0x%p", Address);
+#endif
+
+	*(PBYTE)Address = 0xCC;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("SetSoftwareBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+#endif
+	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+
+	return TRUE;
+}
+#endif
 
 //**************************************************************************************
 BOOL SetThreadBreakpoint

@@ -19,7 +19,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define EXCLUSION_MAX 128
+#define EXCLUSION_MAX	128
+#define BREAKPOINT_MAX	0x100
+#define SYSBP_MAX		0x400
 
 struct _g_config {
 	// name of the pipe to communicate with cuckoo
@@ -243,8 +245,8 @@ struct _g_config {
 	int dumptype0, dumptype1, dumptype2, dumptype3;
 	// Type strings
 	char typestring[MAX_PATH], typestring0[MAX_PATH], typestring1[MAX_PATH], typestring2[MAX_PATH], typestring3[MAX_PATH];
-	PVOID bp[EXCLUSION_MAX];
-	char *action[EXCLUSION_MAX];
+	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
+	char *action[BREAKPOINT_MAX];
 
 	int trace_all;
 	int step_out;
