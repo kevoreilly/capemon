@@ -98,9 +98,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)ApcRoutine, &offset);
 
 	if (module_name)
-		LOQ_ntstatus("threading", "iips", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
+		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
 	else
-		LOQ_ntstatus("threading", "iip", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
+		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
 
 	if (module_name)
 		free(module_name);
