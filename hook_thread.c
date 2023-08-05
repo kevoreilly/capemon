@@ -82,7 +82,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	__in PIO_APC_ROUTINE ApcRoutine,
 	__in_opt PVOID ApcRoutineContext,
 	__in_opt PIO_STATUS_BLOCK ApcStatusBlock,
-	__in_opt ULONG ApcReserved
+	__in_opt PVOID ApcReserved
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
