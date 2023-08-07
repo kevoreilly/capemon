@@ -523,9 +523,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
 
-			if (BreakpointsSet)
-				ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
-
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 
@@ -648,9 +645,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 		}
 
-		if (BreakpointsSet)
-			ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
-
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
 	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT && *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
@@ -662,11 +656,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
 			if (SoftwareBreakpointHandler(ExceptionInfo))
-			{
-				if (BreakpointsSet)
-					ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
-			}
 		}
 
 #ifdef _WIN64
@@ -677,11 +667,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("CAPEExceptionFilter: 'syscall' breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
 			if (SyscallBreakpointHandler(ExceptionInfo))
-			{
-				if (BreakpointsSet)
-					ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
-			}
 		}
 #endif
 	}
@@ -723,9 +709,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ExceptionInfo->ContextRecord->Eip += lde((void*)ExceptionInfo->ContextRecord->Eip);
 			}
 #endif
-			if (BreakpointsSet)
-				ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
-
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 #ifdef _WIN64
