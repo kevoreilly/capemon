@@ -757,7 +757,7 @@ void parse_config_line(char* line)
 			unsigned int x = 0;
 			char *p2;
 			p = value;
-			while (p && x < BREAKPOINT_MAX) {
+			while (p && x < SYSBP_MAX) {
 				p2 = strchr(p, ':');
 				if (p2) {
 					*p2 = '\0';
@@ -783,7 +783,7 @@ void parse_config_line(char* line)
 					else
 						break;
 				}
-				if (x < BREAKPOINT_MAX) {
+				if (x < SYSBP_MAX) {
 					PVOID address = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
 					g_config.sysbp[x] = address;
 					//DebugOutput("Config: Set syscall breakpoint at 0x%p\n", address);
