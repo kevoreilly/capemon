@@ -673,8 +673,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
 	{
-		_DecodedInst instruction;
 #ifdef _WIN64
+		_DecodedInst instruction;
 		if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Rip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
 			if (g_config.nop_rdtscp)
 			{
@@ -711,6 +711,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
+#ifdef DEBUG_COMMENTS
 #ifdef _WIN64
 		else if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Rip))
 			DebugOutput("RtlDispatchException: Unhandled privileged %s instruction at 0x%p\n", instruction.mnemonic.p, ExceptionInfo->ContextRecord->Rip);
@@ -721,6 +722,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("RtlDispatchException: Unhandled privileged %s instruction at 0x%p\n", instruction.mnemonic.p, ExceptionInfo->ContextRecord->Eip);
 		else
 			DebugOutput("RtlDispatchException: Unhandled privileged instruction at 0x%p\n", ExceptionInfo->ContextRecord->Eip);
+#endif
 #endif
 	}
 
