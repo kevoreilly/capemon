@@ -1518,7 +1518,7 @@ void set_hooks()
 			g_config.msi = 1;
 			DebugOutput("MsiExec hook set enabled\n");
 		}
-		else if (!_stricmp(our_process_name, "services.exe")) {
+		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs") || !_stricmp(our_process_name, "WmiPrvSE.exe") || !_stricmp(our_process_name, "services.exe")) {
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.unpacker = 0;
@@ -1526,17 +1526,7 @@ void set_hooks()
 			g_config.injection = 0;
 			g_config.minhook = 1;
 			disable_sleep_skip();
-			DebugOutput("services.exe hook set enabled\n");
-		}
-		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs")) {
-			g_config.procmemdump = 0;
-			g_config.yarascan = 0;
-			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
-			g_config.injection = 0;
-			g_config.minhook = 1;
-			disable_sleep_skip();
-			DebugOutput("Service host hook set enabled\n");
+			DebugOutput("Services hook set enabled\n");
 		}
 		else if (!_stricmp(our_process_name, "wscript.exe")) {
 			const char *excluded_apis[] = {
