@@ -91,7 +91,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	NTSTATUS ret;
 
 	if (pid != GetCurrentProcessId())
-		ProcessMessage(pid, tid);
+		ProcessMessage(pid, 0);
 
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
@@ -126,7 +126,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	NTSTATUS ret;
 
 	if (pid != GetCurrentProcessId())
-		ProcessMessage(pid, tid);
+		ProcessMessage(pid, 0);
 
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
