@@ -2060,6 +2060,195 @@ DWORD GetTimeStamp(PVOID Address)
 }
 
 //**************************************************************************************
+int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
+//**************************************************************************************
+{
+	PIMAGE_DOS_HEADER pDosHeader;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
+	PIMAGE_BASE_RELOCATION Relocations;
+	ULONG RelocationSize = 0, Size = 0;
+	DWORD_PTR Delta;
+
+	int RetVal = -1;
+
+	if (!ImageBase)
+	{
+		DebugOutput("VerifyCodeSection: Error - no address supplied.\n");
+		return RetVal;
+	}
+
+	if (IsDisguisedPEHeader(ImageBase) <= 0)
+		return RetVal;
+
+	pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
+
+	if (!IsAddressAccessible(ImageBase))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: 0x%p inaccessible\n", ImageBase);
+#endif
+		return RetVal;
+	}
+
+	if (*(WORD*)ImageBase != IMAGE_DOS_SIGNATURE)
+		return RetVal;
+
+	pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)pDosHeader + pDosHeader->e_lfanew);
+
+	if (!IsAddressAccessible(pNtHeader))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: NT headers at 0x%p inaccessible\n", pNtHeader);
+#endif
+		return RetVal;
+	}
+
+	if (*(DWORD*)pNtHeader != IMAGE_NT_SIGNATURE)
+		return RetVal;
+
+	DWORD SizeOfHeaders = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNtHeader->FileHeader.SizeOfOptionalHeader;
+	PIMAGE_SECTION_HEADER pFirstSectionHeader = (PIMAGE_SECTION_HEADER)((BYTE*)ImageBase + SizeOfHeaders);
+
+    HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: Error opening file");
+#endif
+		return RetVal;
+    }
+
+    IMAGE_DOS_HEADER DosHeader;
+    DWORD bytesRead;
+    if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: Error reading file");
+#endif
+		goto end;
+	}
+
+    if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: IMAGE_DOS_SIGNATURE");
+#endif
+		goto end;
+	}
+
+	SetFilePointer(hFile, DosHeader.e_lfanew, 0, FILE_BEGIN);
+
+    IMAGE_NT_HEADERS NtHeaders;
+    if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: Error reading header");
+#endif
+		goto end;
+	}
+
+	SetFilePointer(hFile, SizeOfHeaders, 0, FILE_BEGIN);
+
+    IMAGE_SECTION_HEADER FirstSectionHeader;
+    if (!ReadFile(hFile, &FirstSectionHeader, sizeof(IMAGE_SECTION_HEADER), &bytesRead, NULL))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: Error reading first section");
+#endif
+		goto end;
+	}
+
+    if (NtHeaders.OptionalHeader.SizeOfCode != FirstSectionHeader.SizeOfRawData)
+	{
+		DebugOutput("VerifyCodeSection: SizeOfCode mismatch: 0x%x vs 0x%x", NtHeaders.OptionalHeader.SizeOfCode, FirstSectionHeader.SizeOfRawData);
+		goto end;
+	}
+
+    BYTE* CodeSectionBuffer = (BYTE*)calloc(1, NtHeaders.OptionalHeader.SizeOfCode);
+    if (CodeSectionBuffer == NULL)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: Error allocating memory");
+#endif
+		return RetVal;
+    }
+
+	SetFilePointer(hFile, FirstSectionHeader.PointerToRawData, 0, FILE_BEGIN);
+
+    DWORD BytesReadInSection;
+    if (!ReadFile(hFile, CodeSectionBuffer, NtHeaders.OptionalHeader.SizeOfCode, &BytesReadInSection, NULL))
+	{
+#ifdef DEBUG_COMMENTS
+		ErrorOutput("VerifyCodeSection: Error reading code section");
+#endif
+		return RetVal;
+    }
+
+	Relocations = (PIMAGE_BASE_RELOCATION)((PBYTE)ImageBase + NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
+	RelocationSize = NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
+	Delta = (DWORD_PTR)((PBYTE)ImageBase - NtHeaders.OptionalHeader.ImageBase);
+#ifdef DEBUG_COMMENTS
+	DebugOutput("VerifyCodeSection: Relocations set to 0x%p, size 0x%x, Delta 0x%p, ImageBase 0x%p\n", Relocations, RelocationSize, Delta, NtHeaders.OptionalHeader.ImageBase);
+#endif
+
+	__try
+	{
+		while (RelocationSize > Size && Relocations->SizeOfBlock)
+		{
+			ULONG NumOfRelocs = (Relocations->SizeOfBlock - 8) / 2;
+			PUSHORT Reloc = (PUSHORT)((PUCHAR)Relocations + 8);
+
+#ifdef DEBUG_COMMENTS
+			DebugOutput("VerifyCodeSection: VirtualAddress: 0x%.8x; Number of Relocs: %d; Size: %d\n", Relocations->VirtualAddress, NumOfRelocs, Relocations->SizeOfBlock);
+#endif
+			for (ULONG i = 0; i < NumOfRelocs; i++)
+			{
+				if (Reloc[i] > 0)
+				{
+					PUCHAR *RVA = (PUCHAR*)((PBYTE)(DWORD_PTR)Relocations->VirtualAddress + (Reloc[i] & 0x0FFF));
+					DWORD_PTR Offset = (DWORD_PTR)((PBYTE)RVA - pFirstSectionHeader->VirtualAddress);
+					if (Offset < FirstSectionHeader.SizeOfRawData)
+#ifndef _WIN64
+						(PUCHAR)*((PULONG)((PBYTE)CodeSectionBuffer + Offset)) += (ULONG)((ULONGLONG)Delta);
+#else
+						(PULONGLONG)*((PULONGLONG)(CodeSectionBuffer + Offset)) += (ULONGLONG)Delta;
+#endif
+				}
+			}
+
+			Relocations = (PIMAGE_BASE_RELOCATION)((PUCHAR)Relocations + Relocations->SizeOfBlock);
+			Size += Relocations->SizeOfBlock;
+		}
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DebugOutput("VerifyCodeSection: Exception rebasing image from 0x%p to 0x%p.\n", ImageBase, NtHeaders.OptionalHeader.ImageBase);
+	}
+
+	PVOID pFirstSection = (PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress);
+
+    if (!memcmp((PVOID)CodeSectionBuffer, (PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress), NtHeaders.OptionalHeader.SizeOfCode))
+	{
+#ifdef DEBUG_COMMENTS
+        DebugOutput("VerifyCodeSection: Executable code matches.\n");
+#endif
+		RetVal = 1;
+    }
+	else
+	{
+        DebugOutput("VerifyCodeSection: Executable code does not match.\n");
+		RetVal = 0;
+    }
+
+end:
+    free(CodeSectionBuffer);
+    CloseHandle(hFile);
+
+    return RetVal;
+}
+
+//**************************************************************************************
 BOOL DumpStackRegion(void)
 //**************************************************************************************
 {
@@ -2483,25 +2672,33 @@ int DoProcessDump()
 
 		if (IsAddressAccessible(ImageBase))
 		{
-			DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", ImageBase);
+			if (!VerifyCodeSection(ImageBase, our_process_path_w))
+			{
+				DebugOutput("DoProcessDump: Code modification detected, dumping Imagebase at 0x%p.\n", ImageBase);
 
-			CapeMetaData->DumpType = PROCDUMP;
-			__try
-			{
-				if (g_config.import_reconstruction)
-					ProcessDumped = DumpImageInCurrentProcessFixImports(ImageBase, 0);
-				else
-					ProcessDumped = DumpImageInCurrentProcess(ImageBase);
+				CapeMetaData->DumpType = PROCDUMP;
+				__try
+				{
+					if (g_config.import_reconstruction)
+						ProcessDumped = DumpImageInCurrentProcessFixImports(ImageBase, 0);
+					else
+						ProcessDumped = DumpImageInCurrentProcess(ImageBase);
+				}
+				__except(EXCEPTION_EXECUTE_HANDLER)
+				{
+					DebugOutput("DoProcessDump: Failed to dump main process image at 0x%p.\n", ImageBase);
+					goto out;
+				}
 			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
+			else
 			{
-				DebugOutput("DoProcessDump: Failed to dump main process image at 0x%p.\n", ImageBase);
-				goto out;
+				DebugOutput("DoProcessDump: Skipping process dump as code is identical on disk.\n");
+				ProcessDumped = TRUE;
 			}
 		}
 #ifdef DEBUG_COMMENTS
 		else
-			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", ImageBase);
+			DebugOutput("DoProcessDump: Imagebase at 0x%p inaccessible.\n", ImageBase);
 #endif
 		if (NewImageBase && IsAddressAccessible(NewImageBase))
 		{
@@ -2523,7 +2720,7 @@ int DoProcessDump()
 		}
 #ifdef DEBUG_COMMENTS
 		else if (NewImageBase)
-			DebugOutput("DoProcessDump: VirtualQuery failed for Imagebase at 0x%p.\n", NewImageBase);
+			DebugOutput("DoProcessDump: Imagebase at 0x%p inaccessible.\n", NewImageBase);
 #endif
 
 		if (!ProcessDumped)
