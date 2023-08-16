@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "log.h"
 #include "hooking.h"
+#include "hook_sleep.h"
 #include "Shlwapi.h"
 #include "CAPE\CAPE.h"
 
@@ -38,6 +39,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
+extern char *our_process_name;
+extern int path_is_system(const wchar_t *path_w);
+extern int path_is_program_files(const wchar_t *path_w);
 extern wchar_t *our_process_path_w;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2;
@@ -45,8 +49,9 @@ extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX
 extern char *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char *procname0;
 extern char DumpSizeString[MAX_PATH];
-extern SIZE_T DumpSize;
+extern BOOL ImageBaseRemapped;
 extern DWORD ExportAddress;
+extern SIZE_T DumpSize;
 
 void parse_config_line(char* line)
 {
@@ -1286,6 +1291,9 @@ int read_config(void)
 		DebugOutput("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
 	}
 
+	if (fp)
+		fclose(fp);
+
 	if (g_config.tlsdump) {
 		g_config.debugger = 0;
 		g_config.procdump = 0;
@@ -1314,8 +1322,140 @@ int read_config(void)
 		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
 	}
 
-	if (fp)
-		fclose(fp);
+	if (path_is_program_files(our_process_path_w))
+	{
+#ifndef _WIN64
+		if (!_stricmp(our_process_name, "firefox.exe"))
+        {
+			g_config.firefox = 1;
+			g_config.injection = 0;
+			g_config.unpacker = 0;
+			g_config.caller_regions = 0;
+			g_config.api_rate_cap = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
+			DebugOutput("Firefox-specific hook-set enabled.\n");
+        }
+		else
+#endif
+		if (!ImageBaseRemapped && !_stricmp(our_process_name, "iexplore.exe"))
+        {
+			g_config.iexplore = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			DebugOutput("Internet Explorer-specific hook-set enabled.\n");
+        }
+
+		if (strstr(our_process_path, "Microsoft Office"))
+        {
+			g_config.office = 1;
+			g_config.unpacker = 0;
+			g_config.caller_regions = 0;
+			g_config.injection = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
+			DebugOutput("Microsoft Office settings enabled.\n");
+        }
+	}
+	else if (path_is_system(our_process_path_w))
+	{
+		if (!_stricmp(our_process_name, "msiexec.exe")) {
+			const char *excluded_apis[] = {
+				"NtAllocateVirtualMemory",
+				"NtProtectVirtualMemory",
+				"VirtualProtectEx",
+				"CryptDecodeMessage",
+				"CryptDecryptMessage",
+				"NtCreateThreadEx",
+				"SetWindowLongPtrA",
+				"SetWindowLongPtrW",
+				"NtWaitForSingleObject",
+				"NtSetTimer",
+				"NtSetTimerEx",
+				"RegOpenKeyExA",
+				"RegOpenKeyExW",
+				"RegCreateKeyExA",
+				"RegCreateKeyExW",
+				"RegDeleteKeyA",
+				"RegDeleteKeyW",
+				"RegEnumKeyW",
+				"RegEnumKeyExA",
+				"RegEnumKeyExW",
+				"RegEnumValueA",
+				"RegEnumValueW",
+				"RegSetValueExA",
+				"RegSetValueExW",
+				"RegQueryValueExA",
+				"RegQueryValueExW",
+				"RegDeleteValueA",
+				"RegDeleteValueW",
+				"RegQueryInfoKeyA",
+				"RegQueryInfoKeyW",
+				"RegCloseKey",
+				"RegNotifyChangeKeyValue",
+				"NtCreateKey",
+				"NtOpenKey",
+				"NtOpenKeyEx",
+				"NtRenameKey",
+				"NtReplaceKey",
+				"NtEnumerateKey",
+				"NtEnumerateValueKey",
+				"NtSetValueKey",
+				"NtQueryValueKey",
+				"NtQueryMultipleValueKey",
+				"NtDeleteKey",
+				"NtDeleteValueKey",
+				"NtLoadKey",
+				"NtLoadKey2",
+				"NtLoadKeyEx",
+				"NtQueryKey",
+				"NtSaveKey",
+				"NtSaveKeyEx"
+			};
+
+			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
+				if (!add_hook_exclusion(excluded_apis[i])) {
+					DebugOutput("Unable to set hook exclusion for msiexec.\n");
+					break;
+				}
+			}
+			g_config.ntdll_protect = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.msi = 1;
+			DebugOutput("MsiExec hook set enabled\n");
+		}
+		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs") || !_stricmp(our_process_name, "WmiPrvSE.exe") || !_stricmp(our_process_name, "services.exe")) {
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.unpacker = 0;
+			g_config.caller_regions = 0;
+			g_config.injection = 0;
+			g_config.minhook = 1;
+			disable_sleep_skip();
+			DebugOutput("Services hook set enabled\n");
+		}
+		else if (!_stricmp(our_process_name, "wscript.exe")) {
+			const char *excluded_apis[] = {
+				"memcpy",
+				"LoadResource",
+				"LockResource",
+				"SizeofResource",
+			};
+			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
+				if (!add_hook_exclusion(excluded_apis[i])) {
+					DebugOutput("Unable to set hook exclusion for wscript\n");
+					break;
+				}
+			}
+			DebugOutput("wscript hook set enabled\n");
+		}
+	}
 
 	return 1;
 }

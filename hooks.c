@@ -22,14 +22,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "pipe.h"
 
-extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern int path_is_program_files(const wchar_t *path_w);
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
-extern BOOL ImageBaseRemapped;
 
 struct _g_config g_config;
 volatile int dummy_val;
@@ -1409,141 +1405,6 @@ void set_hooks()
 		ErrorOutput("set_hooks: Failed to get OS version");
 
 	IsWow64Process(GetCurrentProcess(), &Wow64Process);
-
-	if (path_is_program_files(our_process_path_w))
-	{
-#ifndef _WIN64
-		if (!_stricmp(our_process_name, "firefox.exe"))
-        {
-			g_config.firefox = 1;
-			g_config.injection = 0;
-			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
-			g_config.api_rate_cap = 0;
-			g_config.procmemdump = 0;
-			g_config.yarascan = 0;
-			g_config.ntdll_protect = 0;
-			DebugOutput("Firefox-specific hook-set enabled.\n");
-        }
-		else
-#endif
-		if (!ImageBaseRemapped && !_stricmp(our_process_name, "iexplore.exe"))
-        {
-			g_config.iexplore = 1;
-			g_config.injection = 0;
-			g_config.api_rate_cap = 0;
-			g_config.ntdll_protect = 0;
-			g_config.procmemdump = 0;
-			g_config.yarascan = 0;
-			DebugOutput("Internet Explorer-specific hook-set enabled.\n");
-        }
-
-		if (strstr(our_process_path, "Microsoft Office"))
-        {
-			g_config.office = 1;
-			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
-			g_config.injection = 0;
-			g_config.procmemdump = 0;
-			g_config.yarascan = 0;
-			g_config.ntdll_protect = 0;
-			DebugOutput("Microsoft Office settings enabled.\n");
-        }
-	}
-	else if (path_is_system(our_process_path_w))
-	{
-		if (!_stricmp(our_process_name, "msiexec.exe")) {
-			const char *excluded_apis[] = {
-				"NtAllocateVirtualMemory",
-				"NtProtectVirtualMemory",
-				"VirtualProtectEx",
-				"CryptDecodeMessage",
-				"CryptDecryptMessage",
-				"NtCreateThreadEx",
-				"SetWindowLongPtrA",
-				"SetWindowLongPtrW",
-				"NtWaitForSingleObject",
-				"NtSetTimer",
-				"NtSetTimerEx",
-				"RegOpenKeyExA",
-				"RegOpenKeyExW",
-				"RegCreateKeyExA",
-				"RegCreateKeyExW",
-				"RegDeleteKeyA",
-				"RegDeleteKeyW",
-				"RegEnumKeyW",
-				"RegEnumKeyExA",
-				"RegEnumKeyExW",
-				"RegEnumValueA",
-				"RegEnumValueW",
-				"RegSetValueExA",
-				"RegSetValueExW",
-				"RegQueryValueExA",
-				"RegQueryValueExW",
-				"RegDeleteValueA",
-				"RegDeleteValueW",
-				"RegQueryInfoKeyA",
-				"RegQueryInfoKeyW",
-				"RegCloseKey",
-				"RegNotifyChangeKeyValue",
-				"NtCreateKey",
-				"NtOpenKey",
-				"NtOpenKeyEx",
-				"NtRenameKey",
-				"NtReplaceKey",
-				"NtEnumerateKey",
-				"NtEnumerateValueKey",
-				"NtSetValueKey",
-				"NtQueryValueKey",
-				"NtQueryMultipleValueKey",
-				"NtDeleteKey",
-				"NtDeleteValueKey",
-				"NtLoadKey",
-				"NtLoadKey2",
-				"NtLoadKeyEx",
-				"NtQueryKey",
-				"NtSaveKey",
-				"NtSaveKeyEx"
-			};
-
-			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
-				if (!add_hook_exclusion(excluded_apis[i])) {
-					DebugOutput("Unable to set hook exclusion for msiexec.\n");
-					break;
-				}
-			}
-			g_config.ntdll_protect = 0;
-			g_config.procmemdump = 0;
-			g_config.yarascan = 0;
-			g_config.msi = 1;
-			DebugOutput("MsiExec hook set enabled\n");
-		}
-		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs") || !_stricmp(our_process_name, "WmiPrvSE.exe") || !_stricmp(our_process_name, "services.exe")) {
-			g_config.procmemdump = 0;
-			g_config.yarascan = 0;
-			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
-			g_config.injection = 0;
-			g_config.minhook = 1;
-			disable_sleep_skip();
-			DebugOutput("Services hook set enabled\n");
-		}
-		else if (!_stricmp(our_process_name, "wscript.exe")) {
-			const char *excluded_apis[] = {
-				"memcpy",
-				"LoadResource",
-				"LockResource",
-				"SizeofResource",
-			};
-			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
-				if (!add_hook_exclusion(excluded_apis[i])) {
-					DebugOutput("Unable to set hook exclusion for wscript\n");
-					break;
-				}
-			}
-			DebugOutput("wscript hook set enabled\n");
-		}
-	}
 
 	// Hook set selection
 	if (TestHooks) {
