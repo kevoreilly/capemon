@@ -2217,15 +2217,6 @@ BOOL SetSyscallBreakpoint(LPVOID Address)
 		return FALSE;
 	}
 
-	WORD Instruction = *(PWORD)Address;
-	if (Instruction != 0x050F)
-	{
-#ifdef DEBUG_COMMENTS
-		DebugOutput("SetSoftwareBreakpoint: Instruction at 0x%p not a syscall", Address);
-#endif
-		return FALSE;
-	}
-
 	lookup_add(&SyscallBPs, (ULONG_PTR)Address, 0);
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
