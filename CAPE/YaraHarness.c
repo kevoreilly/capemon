@@ -20,6 +20,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <windows.h>
 #include "Shlwapi.h"
 #include "CAPE.h"
+#include "Debugger.h"
 #include "YaraHarness.h"
 #include "..\config.h"
 
@@ -166,7 +167,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 				}
 			}
 
-			if (SetBreakpoints)
+			if (DebuggerInitialised && SetBreakpoints)
 				SetInitialBreakpoints(user_data);
 
 			if (DoDumpRegion)
