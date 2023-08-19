@@ -1163,12 +1163,7 @@ HOOKDEF(void, WINAPIV, memcpy,
    size_t count
 )
 {
-	int ret = 0;	// needed for LOQ_void
-
 	Old_memcpy(dest, src, count);
-
-	if (count > 0xa00)
-		LOQ_void("misc", "bppi", "DestinationBuffer", count, dest, "source", src, "destination", dest, "count", count);
 
 	if ((g_config.plugx || CompressedPE) && !PlugXConfigDumped &&
 	(
@@ -1194,6 +1189,7 @@ HOOKDEF(void, WINAPIV, memcpy,
 		DumpMemoryRaw((BYTE*)src, count);
 		PlugXConfigDumped = TRUE;
 	}
+
 	return;
 }
 
