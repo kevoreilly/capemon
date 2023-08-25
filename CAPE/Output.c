@@ -61,7 +61,7 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 	else
 	{
 		memset(PipeBuffer, 0, MAX_PATH*sizeof(CHAR));
-		_sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugBuffer);
+		_sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%u: %s", GetCurrentProcessId(), DebugBuffer);
 		pipe(PipeBuffer, strlen(PipeBuffer));
 	}
 	return;
