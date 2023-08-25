@@ -456,23 +456,38 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	return TRUE;
 }
 
-#ifdef _WIN64
 //**************************************************************************************
 BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
+#ifdef _WIN64
 	unsigned int SSN = (unsigned int)(DWORD_PTR)ExceptionInfo->ContextRecord->Rax;
+#else
+	unsigned int SSN = (unsigned int)(DWORD_PTR)ExceptionInfo->ContextRecord->Eax;
+#endif
 
 	PVOID Function = GetProcAddress(GetModuleHandle("ntdll"), GetNameBySsn(SSN));
 
 	if (!Function)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SyscallBreakpointHandler: Unable to find function for SSN 0x%x\n", SSN);
+#endif
 		return FALSE;
+	}
+#ifdef DEBUG_COMMENTS
+	else
+		DebugOutput("SyscallBreakpointHandler: Calling %s at 0x%p\n", GetNameBySsn(SSN), Function);
+#endif
 
+#ifdef _WIN64
 	ExceptionInfo->ContextRecord->Rip = (DWORD_PTR)Function;
+#else
+	ExceptionInfo->ContextRecord->Eip = (DWORD_PTR)Function;
+#endif
 
 	return TRUE;
 }
-#endif
 
 //**************************************************************************************
 BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
@@ -659,7 +674,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
 
-#ifdef _WIN64
 		// Is it a 'syscall' breakpoint
 		if (lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
 		{
@@ -669,7 +683,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (SyscallBreakpointHandler(ExceptionInfo))
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
-#endif
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
 	{
@@ -2199,7 +2212,6 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 	return TRUE;
 }
 
-#ifdef _WIN64
 //**************************************************************************************
 BOOL SetSyscallBreakpoint(LPVOID Address)
 //**************************************************************************************
@@ -2238,7 +2250,6 @@ BOOL SetSyscallBreakpoint(LPVOID Address)
 
 	return TRUE;
 }
-#endif
 
 //**************************************************************************************
 BOOL SetThreadBreakpoint
