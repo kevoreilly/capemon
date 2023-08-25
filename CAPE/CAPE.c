@@ -2754,6 +2754,10 @@ int DoProcessDump()
 			DebugOutput("DoProcessDump: Unable to create dump file for full process memory dump.\n");
 			goto out;
 		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("DoProcessDump: Saving full process memory dump to %s.\n", FullDumpPath);
+#endif
 	}
 
 	if (!g_config.procdump && !g_config.procmemdump)
@@ -2805,8 +2809,8 @@ int DoProcessDump()
 #ifdef DEBUG_COMMENTS
 				if (BytesWritten != MemInfo.RegionSize)
 					DebugOutput("DoProcessDump: Anomaly detected, wrote only 0x%x of 0x%x bytes to memory dump from region 0x%p.\n", BytesWritten, MemInfo.RegionSize, MemInfo.BaseAddress);
-				else
-					DebugOutput("DoProcessDump: Added 0x%x byte region at 0x%p to memory dump (protect 0x%x).\n", MemInfo.RegionSize, MemInfo.BaseAddress, MemInfo.Protect);
+				//else
+				//	DebugOutput("DoProcessDump: Added 0x%x byte region at 0x%p to memory dump (protect 0x%x).\n", MemInfo.RegionSize, MemInfo.BaseAddress, MemInfo.Protect);
 #endif
 			}
 			__except(EXCEPTION_EXECUTE_HANDLER)
@@ -2831,6 +2835,8 @@ out:
 				DoOutputFile(FullDumpPath);
 			DebugOutput("DoProcessDump: Full process memory dump saved to file: %s.\n", FullDumpPath);
 		}
+		else
+			DebugOutput("DoProcessDump: There was a problem saving full process memory dump to: %s.\n", FullDumpPath);
 		if (OutputFilename)
 			free(OutputFilename);
 		if (FullDumpPath)
