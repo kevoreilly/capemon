@@ -224,6 +224,8 @@ hook_t full_hooks[] = {
 	HOOK(user32, FindWindowExW),
 	HOOK(user32, PostMessageA),
 	HOOK(user32, PostMessageW),
+	HOOK(user32, PostThreadMessageA),
+	HOOK(user32, PostThreadMessageW),
 //	HOOK(user32, SendMessageA),	// maldoc detonation issues
 //	HOOK(user32, SendMessageW),	//
 	HOOK(user32, SendNotifyMessageA),
