@@ -1350,6 +1350,28 @@ int read_config(void)
 			DebugOutput("Internet Explorer-specific hook-set enabled.\n");
         }
 
+		if (!_stricmp(our_process_name, "msedge.exe"))
+		{
+			g_config.edge = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.yarascan = 0;
+			g_config.procmemdump = 0;
+			DebugOutput("Edge-specific hook-set enabled.\n");
+		}
+
+		if (!_stricmp(our_process_name, "chrome.exe"))
+		{
+			g_config.chrome = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.yarascan = 0;
+			g_config.procmemdump = 0;
+			DebugOutput("Chrome-specific hook-set enabled.\n");
+		}
+
 		if (strstr(our_process_path, "Microsoft Office"))
         {
 			g_config.office = 1;
