@@ -1089,7 +1089,7 @@ void parse_config_line(char* line)
 				DebugOutput("Branch tracing enabled.\n");
 		}
 		else if (!stricmp(key, "unpacker")) {
-			g_config.unpacker = (unsigned int)strtoul(value, NULL, 10);;
+			g_config.unpacker = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.unpacker == 1)
 				DebugOutput("Passive unpacking of payloads enabled\n");
 			else if (g_config.unpacker == 2)
@@ -1199,6 +1199,11 @@ void parse_config_line(char* line)
 				DebugOutput("Syscall hooks enabled.\n");
 			else
 				DebugOutput("Syscall hooks disabled.\n");
+		}
+		else if (!stricmp(key, "loopskip")) {
+			g_config.loopskip = value[0] == '1';
+			if (g_config.loopskip)
+				DebugOutput("Loop skipping enabled (instruction trace)\n");
 		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);

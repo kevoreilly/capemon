@@ -54,10 +54,10 @@ extern void log_flush();
 extern PVOID _KiUserExceptionDispatcher;
 
 char *ModuleName, *PreviousModuleName;
-PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback;
+PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
-unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister;
+unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
 unsigned int Type0, Type1, Type2, Type3;
@@ -1581,13 +1581,38 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
 	}
-	//else if (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 4) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
-	else if (!strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
+	else if (g_config.loopskip && !strncmp(DecodedInstruction.mnemonic.p, "REP ", 3) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
 	{
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-		*ForceStepOver = TRUE;
+#ifdef _WIN64
+		if (ExceptionInfo->ContextRecord->Rcx > 1)
+#else
+		if (ExceptionInfo->ContextRecord->Ecx > 1)
+#endif
+		{
+			ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+			*ForceStepOver = TRUE;
+			DebuggerOutput(" *** skip *** ");
+		}
+	}
+	else if (g_config.loopskip && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1) && DecodedInstruction.size == 2)
+	{
+		int JumpOffset = (int)*((PCHAR)CIP + 1);
+		PVOID JumpTarget = (PVOID)((PUCHAR)CIP + DecodedInstruction.size + JumpOffset);
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
+		for (unsigned int i = 0; i < 4; i++)
+		{
+			if (JumpOffset < 0 && PreviousJumps[i] == CIP)
+			{
+				ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+				*ForceStepOver = TRUE;
+				DebuggerOutput(" *** skip *** ");
+			}
+		}
+		PreviousJumps[JumpCount % 4] = CIP;
+		JumpCount++;
 	}
 #ifndef _WIN64
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
