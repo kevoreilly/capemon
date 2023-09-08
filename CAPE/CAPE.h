@@ -24,6 +24,8 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
 
+typedef PVOID(WINAPI *_getJit)(void);
+
 void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);

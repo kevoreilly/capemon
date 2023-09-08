@@ -137,7 +137,7 @@ extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR Ne
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern PVOID GetReturnAddress(hook_info_t *hookinfo);
-extern PVOID CallingModule;
+extern PVOID CallingModule, ClrJIT;
 extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
@@ -541,6 +541,65 @@ SIZE_T GetAccessibleSize(PVOID Address)
 }
 
 //**************************************************************************************
+PVOID GetCLRAddress(HMODULE ModuleBase, PCHAR FunctionName)
+//**************************************************************************************
+{
+	PIMAGE_DOS_HEADER DosHeader;
+	PIMAGE_NT_HEADERS NtHeader;
+
+	if (!ModuleBase || !FunctionName)
+		return NULL;
+
+	if (!IsAddressAccessible(ModuleBase))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetCLRAddress: 0x%p inaccessible\n", ModuleBase);
+#endif
+		return NULL;
+	}
+
+	if (*(WORD*)ModuleBase != IMAGE_DOS_SIGNATURE)
+		return NULL;
+
+	DosHeader = (PIMAGE_DOS_HEADER)ModuleBase;
+	NtHeader = (PIMAGE_NT_HEADERS)((PBYTE)DosHeader + DosHeader->e_lfanew);
+
+	if (!IsAddressAccessible(NtHeader))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetCLRAddress: NT headers at 0x%p inaccessible\n", NtHeader);
+#endif
+		return NULL;
+	}
+
+	if (*(DWORD*)NtHeader != IMAGE_NT_SIGNATURE)
+		return NULL;
+
+	PIMAGE_SECTION_HEADER CodeSectionHeader = (PIMAGE_SECTION_HEADER)((PBYTE)ModuleBase + DosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + NtHeader->FileHeader.SizeOfOptionalHeader);
+	PVOID CodeSection = (PBYTE)ModuleBase + CodeSectionHeader->VirtualAddress;
+	PDWORD Pointer = (PDWORD)CodeSection;
+
+	while ((PBYTE)Pointer < (PBYTE)CodeSection + CodeSectionHeader->Misc.VirtualSize)
+	{
+		DWORD Marker = *Pointer;
+		if ((Marker & 0xFFFFFFFF) == 0xFFFF0000 || (Marker & 0xFFFFFFFF) == 0xFFFF0008)
+		{
+			PCHAR Name = (PCHAR)(DWORD_PTR)*(Pointer + 2);
+			if (Name && !strcmp(FunctionName, Name))
+			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("GetCLRAddress: Matched %s: 0x%p", FunctionName, *(Pointer + 1));
+#endif
+				return (PVOID)(DWORD_PTR)*(Pointer + 1);
+			}
+		}
+		Pointer++;
+	}
+
+	return NULL;
+}
+
+//**************************************************************************************
 PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 //**************************************************************************************
 {
@@ -612,6 +671,26 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 		return NULL;
 	}
 
+
+	if (!ExportAddress && ModuleBase == GetModuleHandle("clr"))
+		return GetCLRAddress(ModuleBase, FunctionName);
+
+	if (!ExportAddress && ModuleBase == GetModuleHandle("clrjit"))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetExportAddress: Looking up %s\n", FunctionName);
+#endif
+		_getJit pgetJit;
+		*(FARPROC *)&pgetJit = GetExportAddress(ModuleBase, "getJit");
+		if (!pgetJit) {
+			DebugOutput("GetExportAddress: failed to resolve getJit\n");
+			return NULL;
+		}
+		PVOID** CILJitBuff = (PVOID**)pgetJit();
+		if (CILJitBuff)
+			ExportAddress = (unsigned char *)**CILJitBuff;
+	}
+
 	return ExportAddress;
 }
 
@@ -622,7 +701,7 @@ BOOL IsAddressAccessible(PVOID Address)
 	MEMORY_BASIC_INFORMATION MemInfo;
 
 	if (!Address || Address > (PVOID)0x7fffffffffff)
-		return 0;
+		return FALSE;
 
 	if (!SystemInfo.dwPageSize)
 		GetSystemInfo(&SystemInfo);
@@ -630,7 +709,7 @@ BOOL IsAddressAccessible(PVOID Address)
 	if (!SystemInfo.dwPageSize)
 	{
 		ErrorOutput("IsAddressAccessible: Failed to obtain system page size.\n");
-		return 0;
+		return FALSE;
 	}
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
@@ -638,7 +717,7 @@ BOOL IsAddressAccessible(PVOID Address)
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("IsAddressAccessible: unable to query memory address 0x%p", Address);
 #endif
-		return 0;
+		return FALSE;
 	}
 
 	if (!(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
@@ -2417,7 +2496,7 @@ BOOL DumpRegion(PVOID Address)
 
 	CapeMetaData->Address = AllocationBase;
 
-	if (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE)
+	if (!CapeMetaData->TypeString && (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE))
 		CapeMetaData->DumpType = UNPACKED_PE;
 
 	// If PEs in range but not at AllocationBase dump as shellcode
@@ -2627,6 +2706,18 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
+	}
+
+	if (MemInfo.BaseAddress == ClrJIT)
+	{
+		DebugOutput("DumpInterestingRegions: Dumping .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+
+		CapeMetaData->ModulePath = NULL;
+		CapeMetaData->DumpType = 0;
+		CapeMetaData->TypeString = ".NET JIT native cache";
+		CapeMetaData->Address = MemInfo.BaseAddress;
+
+		DumpRegion(MemInfo.BaseAddress);
 	}
 }
 

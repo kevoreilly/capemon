@@ -3506,3 +3506,12 @@ HOOKDEF(BOOL, WINAPI, UpdateProcThreadAttribute,
 	__out_opt	PVOID		lpPreviousValue,
 	__in_opt	PSIZE_T		lpReturnSize
 );
+
+HOOKDEF(int, WINAPI, compileMethod,
+	PVOID			this,
+	PVOID			compHnd,
+	PVOID			methodInfo,
+	unsigned int	flags,
+	uint8_t**		entryAddress,
+	uint32_t*		nativeSizeOfCode
+);

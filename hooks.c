@@ -73,6 +73,7 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+	HOOK_SPECIAL(clrjit, compileMethod),
 	HOOK_SPECIAL(urlmon, IsValidURL),
 	//HOOK(kernel32, lstrcpynA),
 	//HOOK(kernel32, lstrcmpiA),
@@ -625,6 +626,7 @@ hook_t min_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
 
+	HOOK_SPECIAL(clrjit, compileMethod),
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),

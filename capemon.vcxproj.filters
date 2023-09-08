@@ -294,6 +294,9 @@
     <ClCompile Include="CAPE\AmsiDumper.cpp">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="hook_clr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">

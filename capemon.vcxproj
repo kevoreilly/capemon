@@ -248,6 +248,7 @@
     <ClCompile Include="hooking_32.c" />
     <ClCompile Include="hooking_64.c" />
     <ClCompile Include="hooks.c" />
+    <ClCompile Include="hook_clr.c" />
     <ClCompile Include="hook_crypto.c" />
     <ClCompile Include="hook_file.c" />
     <ClCompile Include="hook_misc.c" />
