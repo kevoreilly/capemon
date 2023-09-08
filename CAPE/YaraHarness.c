@@ -315,6 +315,18 @@ void YaraScan(PVOID Address, SIZE_T Size)
 #endif
 }
 
+void SilentYaraScan(PVOID Address, SIZE_T Size)
+{
+#ifndef DEBUG_COMMENTS
+	BOOL PreviousYaraLogging = YaraLogging;
+	YaraLogging = FALSE;
+#endif
+	YaraScan(Address, Size);
+#ifndef DEBUG_COMMENTS
+	YaraLogging = PreviousYaraLogging;
+#endif
+}
+
 void InternalYaraScan(PVOID Address, SIZE_T Size)
 {
 	if (!YaraActivated)
