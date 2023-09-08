@@ -2221,6 +2221,9 @@ BOOL SetSyscallBreakpoint(LPVOID Address)
 	if (!Address || !IsAddressAccessible(Address))
 		return FALSE;
 
+	if (GetAllocationBase(Address) == GetModuleHandle("ntdll"))
+		return FALSE;
+
 	if (lookup_get(&SyscallBPs, (ULONG_PTR)Address, 0))
 	{
 #ifdef DEBUG_COMMENTS
