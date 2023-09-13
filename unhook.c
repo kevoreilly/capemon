@@ -364,12 +364,14 @@ int procname_watch_init()
 	PLDR_DATA_TABLE_ENTRY mod; PEB *peb = (PEB *)get_peb();
 	mod = (PLDR_DATA_TABLE_ENTRY)peb->LoaderData->InLoadOrderModuleList.Flink;
 
-	InitialProcessName.MaximumLength = InitialProcessName.Length = mod->BaseDllName.Length;
-	InitialProcessName.Buffer = malloc(InitialProcessName.Length);
+	InitialProcessName.MaximumLength = mod->BaseDllName.MaximumLength;
+	InitialProcessName.Length = mod->BaseDllName.Length;
+	InitialProcessName.Buffer = (PWSTR)calloc(mod->BaseDllName.MaximumLength, 1);
 	memcpy(InitialProcessName.Buffer, mod->BaseDllName.Buffer, InitialProcessName.Length);
 
-	InitialProcessPath.MaximumLength = InitialProcessPath.Length = mod->FullDllName.Length;
-	InitialProcessPath.Buffer = malloc(InitialProcessPath.Length);
+	InitialProcessPath.MaximumLength = mod->FullDllName.MaximumLength;
+	InitialProcessPath.Length = mod->FullDllName.Length;
+	InitialProcessPath.Buffer = (PWSTR)calloc(mod->FullDllName.MaximumLength, 1);
 	memcpy(InitialProcessPath.Buffer, mod->FullDllName.Buffer, InitialProcessPath.Length);
 
 	g_procname_watch_thread_handle =
