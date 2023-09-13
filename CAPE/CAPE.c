@@ -2683,16 +2683,8 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	if (MemInfo.BaseAddress == (PVOID)g_our_dll_base)
 		return;
 
-	__try
-	{
-		BYTE Test = *(BYTE*)MemInfo.BaseAddress;
-		Test = *(BYTE*)MemInfo.BaseAddress + PE_HEADER_LIMIT;
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		// No point in continuing if we can't read!
+	if (!IsAddressAccessible(MemInfo.BaseAddress))
 		return;
-	}
 
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
@@ -2714,7 +2706,11 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
-		CapeMetaData->TypeString = ".NET JIT native cache";
+#ifdef _WIN64
+		CapeMetaData->TypeString = ".NET JIT native cache (64-bit)";
+#else
+		CapeMetaData->TypeString = ".NET JIT native cache (32-bit)";
+#endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
 		DumpRegion(MemInfo.BaseAddress);

@@ -229,6 +229,7 @@ struct _g_config {
 	char break_on_return[MAX_PATH];
 	BOOLEAN break_on_return_set;
 	BOOLEAN break_on_apiname_set;
+	BOOLEAN break_on_jit;
 
 	// debugger breakpoints
 	PVOID bp0, bp1, bp2, bp3;

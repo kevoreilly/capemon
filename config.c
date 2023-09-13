@@ -1205,6 +1205,11 @@ void parse_config_line(char* line)
 			if (g_config.loopskip)
 				DebugOutput("Loop skipping enabled (instruction trace)\n");
 		}
+		else if (!stricmp(key, "break-on-jit")) {
+			g_config.break_on_jit = value[0] == '1';
+			if (g_config.break_on_jit)
+				DebugOutput("Break on .NET JIT native code enabled.\n");
+		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
 	}
