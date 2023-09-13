@@ -141,6 +141,8 @@ extern PVOID CallingModule, ClrJIT;
 extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
+extern char* StringsFile;
+extern HANDLE Strings;
 
 OSVERSIONINFO OSVersion;
 BOOL ProcessDumped, ImageBaseRemapped;
@@ -1577,6 +1579,19 @@ int DumpXorPE(LPBYTE Buffer, unsigned int Size)
 		free(DecryptedBuffer);
 
 	return FALSE;
+}
+
+void DumpStrings()
+{
+	if (Strings) {
+		CloseHandle(Strings);
+		Strings = NULL;
+		CapeMetaData->DumpType = 0;
+		if (g_config.typestring)
+			CapeMetaData->TypeString = g_config.typestring;
+		DebugOutput("DumpStrings: Uploading captured strings at %s\n", StringsFile);
+		CapeOutputFile(StringsFile);
+	}
 }
 
 //**************************************************************************************

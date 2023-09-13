@@ -34,7 +34,7 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
-extern void DebuggerShutdown();
+extern void DebuggerShutdown(), DumpStrings();
 extern HANDLE DebuggerLog, TlsLog;
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
@@ -278,6 +278,8 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 		DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
 	file_handle_terminate();
+
+	DumpStrings();
 
 	if (g_config.yarascan)
 		YaraShutdown();

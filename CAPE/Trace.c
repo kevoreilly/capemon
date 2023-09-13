@@ -37,6 +37,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void StringsOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
 extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_anomaly(const char *subcategory, const char *msg);
@@ -196,15 +197,35 @@ void StringCheck(PVOID PossibleString)
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
 	if (Size > 64)
 		DebuggerOutput(" \"%.64s...\"", (PCHAR)OutputBuffer);
-	else if (Size > 3)
+	else if (Size)
 		DebuggerOutput(" \"%.64s\"", (PCHAR)OutputBuffer);
 	else
 	{
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
 		if (Size > 64)
 			DebuggerOutput(" L\"%.64ws...\"", (PWCHAR)OutputBufferW);
-		else if (Size > 3)
+		else if (Size)
 			DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
+	}
+}
+
+void DoOutputString(PVOID PossibleString)
+{
+	char OutputBuffer[MAX_PATH] = "";
+	WCHAR OutputBufferW[MAX_PATH] = L"";
+
+	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
+	if (Size >= MAX_PATH)
+		StringsOutput("%.256s...\n", (PCHAR)OutputBuffer);
+	else if (Size)
+		StringsOutput("%.256s\n", (PCHAR)OutputBuffer);
+	else
+	{
+		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
+		if (Size >= MAX_PATH)
+			StringsOutput("L%.256ws...\n", (PWCHAR)OutputBufferW);
+		else if (Size)
+			StringsOutput("L%.256ws\n", (PWCHAR)OutputBufferW);
 	}
 }
 
@@ -1288,6 +1309,16 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				}
 			}
 		}
+	}
+	else if (!strnicmp(Action, "String", 6))
+	{
+		if (Target)
+		{
+			DoOutputString(Target);
+			DebuggerOutput("String captured at 0x%p\n", Target);
+		}
+		else
+			DebuggerOutput("String: Failed to obtain string address.\n");
 	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);

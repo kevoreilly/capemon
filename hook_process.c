@@ -39,10 +39,8 @@ extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
 extern void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtect);
-extern void FreeHandler(PVOID BaseAddress);
-extern void ProcessTrackedRegion();
-extern void DebuggerShutdown();
-extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void FreeHandler(PVOID BaseAddress), ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void ProcessTrackedRegion(), DebuggerShutdown(), DumpStrings();
 
 extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
@@ -51,7 +49,6 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern PVOID GetHookCallerBase();
 extern BOOL ProcessDumped;
-extern HANDLE DebuggerLog;
 
 static BOOL ntdll_protect_logged;
 
@@ -595,6 +592,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 
 	if (Pid)
 		pipe("KILL:%d", Pid);
+
+	DumpStrings();
 
 	if (process_shutting_down && g_config.injection)
 		TerminateHandler();

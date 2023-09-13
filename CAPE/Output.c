@@ -32,11 +32,12 @@ TCHAR DebugBuffer[MAX_PATH];
 TCHAR PipeBuffer[MAX_PATH];
 TCHAR ErrorBuffer[MAX_PATH];
 CHAR DebuggerLine[MAX_PATH];
+CHAR StringsLine[MAX_PATH], *StringsFile;
 
 extern char* GetResultsPath(char* FolderName);
 extern struct CapeMetadata *CapeMetaData;
 extern ULONG_PTR base_of_dll_of_interest;
-HANDLE DebuggerLog;
+HANDLE DebuggerLog, Strings;
 extern SIZE_T LastWriteLength;
 extern BOOL StopTrace;
 
@@ -295,6 +296,60 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 		Character++;
 	}
 	WriteFile(DebuggerLog, DebuggerLine, (DWORD)strlen(DebuggerLine), (LPDWORD)&LastWriteLength, NULL);
+
+	va_end(args);
+
+	return;
+}
+
+//**************************************************************************************
+void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
+//**************************************************************************************
+{
+	va_list args;
+	char *OutputFilename, *Character;
+
+	va_start(args, lpOutputString);
+
+	StringsFile = GetResultsPath("CAPE");
+
+	OutputFilename = (char*)malloc(MAX_PATH);
+
+	if (OutputFilename == NULL)
+	{
+		ErrorOutput("StringsOutput: failed to allocate memory for file name string");
+		return;
+	}
+
+	sprintf_s(OutputFilename, MAX_PATH, "%u.txt", GetCurrentProcessId());
+
+	PathAppend(StringsFile, OutputFilename);
+
+	free(OutputFilename);
+
+	if (!Strings)
+	{
+		Strings = CreateFile(StringsFile, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		if (Strings == INVALID_HANDLE_VALUE)
+		{
+			ErrorOutput("StringsOutput: Unable to open strings output file %s", StringsFile);
+			return;
+		}
+
+		DebugOutput("StringsOutput: Output file %s.\n", StringsFile);
+	}
+
+	memset(StringsLine, 0, MAX_PATH*sizeof(CHAR));
+	_vsnprintf_s(StringsLine, MAX_PATH, _TRUNCATE, lpOutputString, args);
+	Character = StringsLine;
+	while (*Character)
+	{   // Restrict to ASCII range
+		if (*Character < 0x0a || *Character > 0x7E)
+			*Character = 0x3F;  // '?'
+		Character++;
+	}
+	WriteFile(Strings, StringsLine, (DWORD)strlen(StringsLine), (LPDWORD)&LastWriteLength, NULL);
 
 	va_end(args);
 
