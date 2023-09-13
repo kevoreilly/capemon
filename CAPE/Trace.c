@@ -1238,43 +1238,55 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	}
 	else if (!strnicmp(Action, "SetBp0", 6))
 	{
+		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 0, 0, Target, BP_EXEC, 0, BreakpointCallback);
-			DebuggerOutput("SetBp0: Breakpoint 0 set to 0x%p.", Target);
+			DebuggerOutput("SetBp0: Breakpoint 0 set to 0x%p.\n", Target);
 		}
 		else
-			DebuggerOutput("SetBp0: Failed to obtain breakpoint address.");
+			DebuggerOutput("SetBp0: Failed to obtain breakpoint address.\n");
 	}
 	else if (!strnicmp(Action, "SetBp1", 6))
 	{
+		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 1, 0, Target, BP_EXEC, 0, BreakpointCallback);
-			DebuggerOutput("SetBp1: Breakpoint 1 set to 0x%p.", Target);
+			DebuggerOutput("SetBp1: Breakpoint 1 set to 0x%p.\n", Target);
 		}
 		else
-			DebuggerOutput("SetBp1: Failed to obtain breakpoint address.");
+			DebuggerOutput("SetBp1: Failed to obtain breakpoint address.\n");
 	}
 	else if (!strnicmp(Action, "SetBp2", 6))
 	{
+		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 2, 0, Target, BP_EXEC, 0, BreakpointCallback);
-			DebuggerOutput("SetBp2: Breakpoint 2 set to 0x%p.", Target);
+			DebuggerOutput("SetBp2: Breakpoint 2 set to 0x%p.\n", Target);
 		}
 		else
-			DebuggerOutput("SetBp2: Failed to obtain breakpoint address.");
+			DebuggerOutput("SetBp2: Failed to obtain breakpoint address.\n");
 	}
 	else if (!strnicmp(Action, "SetBp3", 6))
 	{
+		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 3, 0, Target, BP_EXEC, 0, BreakpointCallback);
-			DebuggerOutput("SetBp3: Breakpoint 3 set to 0x%p.", Target);
+			DebuggerOutput("SetBp3: Breakpoint 3 set to 0x%p.\n", Target);
 		}
 		else
-			DebuggerOutput("SetBp3: Failed to obtain breakpoint address.");
+			DebuggerOutput("SetBp3: Failed to obtain breakpoint address.\n");
 	}
 	else if (!stricmp(Action, "DumpStack"))
 	{

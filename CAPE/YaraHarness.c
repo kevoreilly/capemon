@@ -53,7 +53,7 @@ char InternalYara[] =
 
 BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 {
-	char *Value, *Key, *p, *q;
+	char *Value, *Key, *p, *q, *r, c = 0;
 	unsigned int ValueLength;
 	int delta=0;
 	if (!Line || !Identifier)
@@ -64,7 +64,11 @@ BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 	p = strchr(Line, '=');
 	if (!p)
 		return FALSE;
-	Value = p + 1;
+	r = strchr(p, ':');
+	if (r)
+		Value = r + 1;
+	else
+		Value = p + 1;
 	q = strchr(Value, '+');
 	if (q)
 		delta = strtoul(q+1, NULL, 0);
@@ -83,10 +87,23 @@ BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 		return FALSE;
 
 	Key = Line;
-	*p = 0;
+	if (r) {
+		c = *r;
+		*r = 0;
+	}
+	else {
+		c = *p;
+		*p = 0;
+	}
 	memset(NewLine, 0, sizeof(NewLine));
-	sprintf(NewLine, "%s=0x%p\0", Key, (PUCHAR)Target+delta);
-	*p = '=';
+	sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Target+delta);
+	if (r)
+		*r = c;
+	else
+		*p = c;
+	p = strchr(NewLine, '$');
+	if (p)
+		return FALSE;
 	return TRUE;
 }
 
@@ -138,9 +155,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 								}
 							}
 						}
-#ifdef DEBUG_COMMENTS
-						DebugOutput("YaraScan hit: parse_config_line %s", OptionLine);
-#endif
+
 						if (!_stricmp("dump", OptionLine))
 							DoDumpRegion = TRUE;
 						if (!_stricmp("clear", OptionLine))
@@ -155,7 +170,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							g_config.br2 = NULL;
 							g_config.br3 = NULL;
 						}
-						parse_config_line(OptionLine);
+						if (!strchr(OptionLine, '$'))
+							parse_config_line(OptionLine);
 						if (p)
 						{
 							*p = ',';
