@@ -269,7 +269,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 
 	if (!TrackedRegion->PagesDumped && (NewRegion || *OldProtect & WRITABLE_FLAGS) && ScanForNonZero(Address, GetAccessibleSize(Address)))
 	{
-		DebugOutput("ProtectionHandler: New code detected at 0x%p, dumping.\n", TrackedRegion->AllocationBase);
+		DebugOutput("ProtectionHandler: New code region detected at 0x%p.\n", TrackedRegion->AllocationBase);
 
 		TrackedRegion->Address = Address;
 
