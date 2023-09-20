@@ -2266,7 +2266,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	{
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+#endif
 			ReturnAddress = NULL;
 		}
 		else
