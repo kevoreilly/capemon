@@ -589,6 +589,16 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameW,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
+	__in	int NameType,
+	__out	LPWSTR lpBuffer,
+	__out	LPDWORD nSize
+) {
+	BOOL ret = Old_GetComputerNameExW(NameType, lpBuffer, nSize);
+	LOQ_bool("misc", "u", "ComputerName", lpBuffer);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, GetUserNameA,
 	_Out_	LPSTR lpBuffer,
 	_Inout_  LPDWORD lpnSize

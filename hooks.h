@@ -1798,6 +1798,12 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameW,
 	_Inout_  LPDWORD lpnSize
 );
 
+HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
+	__in	int NameType,
+	__out	LPWSTR lpBuffer,
+	__out	LPDWORD nSize
+);
+
 HOOKDEF(BOOL, WINAPI, GetUserNameA,
 	_Out_	PCTSTR lpBuffer,
 	_Inout_  LPDWORD lpnSize
