@@ -2511,7 +2511,7 @@ BOOL DumpRegion(PVOID Address)
 
 	CapeMetaData->Address = AllocationBase;
 
-	if (!CapeMetaData->TypeString && (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE))
+	if (!(CapeMetaData->TypeString && strlen(CapeMetaData->TypeString)) && (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE))
 		CapeMetaData->DumpType = UNPACKED_PE;
 
 	// If PEs in range but not at AllocationBase dump as shellcode
