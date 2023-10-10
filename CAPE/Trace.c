@@ -231,10 +231,30 @@ void DoOutputString(PVOID PossibleString)
 
 PVOID GetRegister(PCONTEXT Context, char* RegString)
 {
-	PVOID Register = NULL;
 	if (!Context || !RegString)
         return NULL;
-    __try
+
+	PVOID Register = NULL;
+	int delta = 0;
+	char* q = strchr(RegString, '+'), r;
+	if (q)
+	{
+		delta = strtoul(q+1, NULL, 0);
+		r = *q;
+		*q = '\0';
+	}
+	else
+	{
+		q = strchr(RegString, '-');
+		if (q)
+		{
+			r = *q;
+			delta = - (int)strtoul(q+1, NULL, 0);
+			*q = '\0';
+		}
+	}
+
+	__try
     {
 #ifdef _WIN64
         if (!stricmp(RegString, "eax"))
@@ -314,7 +334,11 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
     {
         ;
     }
-    return Register;
+
+	if (q)
+		*q = r;
+
+    return (PVOID)((DWORD_PTR)Register + delta);
 }
 
 OutputRegisterChanges(PCONTEXT Context)
@@ -692,6 +716,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			{
 				TargetSet = TRUE;
 				TargetArg = GetRegister(ExceptionInfo->ContextRecord, q+2);
+				if (!TargetArg)
+				{
+					char *endptr;
+					errno = 0;
+					TargetArg = (PVOID)(DWORD_PTR)strtoul(q+2, &endptr, 0);
+					if (errno || endptr == q+2)
+						DebuggerOutput("ActionDispatcher: Failed to get target arg: %s.\n", q+2);
+				}
 			}
 			//else
 			//	DebuggerOutput("ActionDispatcher: Failed to get base for target module (%s).\n", p+1);
