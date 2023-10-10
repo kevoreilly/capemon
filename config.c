@@ -1212,6 +1212,9 @@ void parse_config_line(char* line)
 		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
+
+		// Replace the '=' we nulled for convenience
+		line[strlen(line)] = '=';
 	}
 }
 
