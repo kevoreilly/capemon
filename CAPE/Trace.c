@@ -771,7 +771,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 	}
 
-	if (!stricmp(Action, "SetEax"))
+	if (!strnicmp(Action, "SetEax", 6))
 	{
 		if (Target || TargetSet)
 		{
