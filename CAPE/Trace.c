@@ -780,10 +780,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rax = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rax);
+			DebuggerOutput("ActionDispatcher: setting RAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rax);
 #else
 			ExceptionInfo->ContextRecord->Eax = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Eax);
+			DebuggerOutput("ActionDispatcher: setting EAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Eax);
 #endif
 		}
 		else
@@ -795,10 +795,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rbx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rbx);
+			DebuggerOutput("ActionDispatcher: setting RBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rbx);
 #else
 			ExceptionInfo->ContextRecord->Ebx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
+			DebuggerOutput("ActionDispatcher: setting EBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
 #endif
 		}
 		else
@@ -810,10 +810,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rcx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RCX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rcx);
+			DebuggerOutput("ActionDispatcher: setting RCX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rcx);
 #else
 			ExceptionInfo->ContextRecord->Ecx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting ECX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
+			DebuggerOutput("ActionDispatcher: setting ECX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
 #endif
 		}
 		else
@@ -825,10 +825,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rdx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdx);
+			DebuggerOutput("ActionDispatcher: setting RDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdx);
 #else
 			ExceptionInfo->ContextRecord->Edx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edx);
+			DebuggerOutput("ActionDispatcher: setting EDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edx);
 #endif
 		}
 		else
@@ -840,10 +840,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rsi = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RSI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rsi);
+			DebuggerOutput("ActionDispatcher: setting RSI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rsi);
 #else
 			ExceptionInfo->ContextRecord->Esi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting ESI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Esi);
+			DebuggerOutput("ActionDispatcher: setting ESI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Esi);
 #endif
 		}
 		else
@@ -855,10 +855,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rdi = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdi);
+			DebuggerOutput("ActionDispatcher: setting RDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdi);
 #else
 			ExceptionInfo->ContextRecord->Edi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
+			DebuggerOutput("ActionDispatcher: setting EDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
 #endif
 		}
 		else
@@ -878,47 +878,47 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	else if (!stricmp(Action, "ClearZeroFlag"))
 	{
 		ClearZeroFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, clearing zero flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: clearing zero flag.\n");
 	}
 	else if (!stricmp(Action, "SetZeroFlag"))
 	{
 		SetZeroFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, setting zero flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: setting zero flag.\n");
 	}
 	else if (!stricmp(Action, "FlipZeroFlag"))
 	{
 		FlipZeroFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, flipping zero flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: flipping zero flag.\n");
 	}
 	else if (!stricmp(Action, "ClearSignFlag"))
 	{
 		ClearSignFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, clearing Sign flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: clearing Sign flag.\n");
 	}
 	else if (!stricmp(Action, "SetSignFlag"))
 	{
 		SetSignFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, setting Sign flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: setting Sign flag.\n");
 	}
 	else if (!stricmp(Action, "FlipSignFlag"))
 	{
 		FlipSignFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, flipping Sign flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: flipping Sign flag.\n");
 	}
 	else if (!stricmp(Action, "ClearCarryFlag"))
 	{
 		ClearCarryFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, clearing Carry flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: clearing Carry flag.\n");
 	}
 	else if (!stricmp(Action, "SetCarryFlag"))
 	{
 		SetCarryFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, setting Carry flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: setting Carry flag.\n");
 	}
 	else if (!stricmp(Action, "FlipCarryFlag"))
 	{
 		FlipCarryFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, flipping Carry flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: flipping Carry flag.\n");
 	}
 	else if (!strnicmp(Action, "Jmp", 3))
 	{
@@ -958,7 +958,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #else
 			ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
 #endif
-			DebuggerOutput("\nActionDispatcher: %s detected, forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, Target);
+			DebuggerOutput("\nActionDispatcher: forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, Target);
 		}
 	}
 	else if (!strnicmp(Action, "Count", 5))
@@ -967,7 +967,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
             TraceDepthCount = 0;
 			StepLimit = (unsigned int)(DWORD_PTR)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting count to 0x%x.\n", DecodedInstruction.mnemonic.p, StepLimit);
+			DebuggerOutput("ActionDispatcher: setting count to 0x%x.\n", DecodedInstruction.mnemonic.p, StepLimit);
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set count - target value missing.\n");
@@ -977,19 +977,19 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		// We want the skipped instruction to appear in the trace
 		TraceOutput(CIP, DecodedInstruction);
 		SkipInstruction(ExceptionInfo->ContextRecord);
-		DebuggerOutput("\nActionDispatcher: %s detected, skipping instruction.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: skipping instruction.\n");
 	}
 	else if (!strnicmp(Action, "Nop", 3))
 	{
 		// We want the nopped instruction to appear in the trace
 		TraceOutput(CIP, DecodedInstruction);
 		NopInstruction(ExceptionInfo->ContextRecord);
-		DebuggerOutput("\nActionDispatcher: %s detected, nopping instruction.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: nopping instruction.\n");
 	}
 	else if (!strnicmp(Action, "Wret", 4))
 	{
 		WriteRet(ExceptionInfo->ContextRecord);
-		DebuggerOutput("\nActionDispatcher: %s detected, ret written.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: ret written.\n");
 	}
 	else if (!strnicmp(Action, "GoTo", 4))
 	{
@@ -1131,7 +1131,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	else if (!stricmp(Action, "Stop"))
 	{
 		TraceOutput(CIP, DecodedInstruction);
-		DebuggerOutput("\nActionDispatcher: %s detected, stopping trace.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: stopping trace.\n");
 		ClearSingleStepMode(ExceptionInfo->ContextRecord);
 		memset(&LastContext, 0, sizeof(CONTEXT));
 		TraceRunning = FALSE;
