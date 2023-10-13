@@ -117,6 +117,7 @@ extern DWORD parent_process_id();
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
+extern BOOL inside_hook(LPVOID Address);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
@@ -1168,6 +1169,37 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", BaseAddress);
 	}
 
+}
+
+//**************************************************************************************
+BOOL TrackExecution(PVOID CIP)
+//**************************************************************************************
+{
+	PVOID AllocationBase = NULL;
+	if (is_in_dll_range((ULONG_PTR)CIP) || inside_hook(CIP))
+		return FALSE;
+
+	AllocationBase = GetAllocationBase(CIP);
+	if (!AllocationBase)
+	{
+		DebugOutput("TrackExecution: Failed to add address region for 0x%p to tracked regions list (thread %d).\n", CIP, GetCurrentThreadId());
+		return FALSE;
+	}
+
+	PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+	if (!TrackedRegion || (TrackedRegion && !TrackedRegion->Address && !TrackedRegion->PagesDumped))
+	{
+		TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
+		if (!TrackedRegion)
+		{
+			DebugOutput("TrackExecution: Failed to add region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
+			return FALSE;
+		}
+		DebugOutput("TrackExecution: Added region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
+		TrackedRegion->Address = CIP;
+		ProcessTrackedRegion(TrackedRegion);
+	}
+	return TRUE;
 }
 
 //**************************************************************************************

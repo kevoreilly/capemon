@@ -169,3 +169,4 @@ BOOL ContextClearTrackedRegion(PCONTEXT Context, PTRACKEDREGION TrackedRegion);
 void ClearTrackedRegion(PTRACKEDREGION TrackedRegion);
 void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
+BOOL TrackExecution(PVOID CIP);
