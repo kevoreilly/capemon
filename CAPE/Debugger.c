@@ -2675,6 +2675,14 @@ void DebuggerShutdown()
 
 void NtContinueHandler(PCONTEXT ThreadContext)
 {
+#ifdef _WIN64
+	PVOID CIP = (PVOID)ThreadContext->Rip;
+#else
+	PVOID CIP = (PVOID)ThreadContext->Eip;
+#endif
+
+	TrackExecution(CIP);
+
 	if (BreakpointsSet)
 	{
 		DWORD ThreadId = GetCurrentThreadId();
