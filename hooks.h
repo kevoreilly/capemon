@@ -3327,6 +3327,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
   IN BOOLEAN  RaiseAlert
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtContinueEx,
+	IN PCONTEXT ThreadContext,
+	IN PVOID ContinueArgument
+);
+
 HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
 	_In_	   PCWSTR DosFileName,
 	_Out_	  PUNICODE_STRING NtFileName,

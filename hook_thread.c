@@ -682,6 +682,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, NtContinueEx,
+	IN PCONTEXT ThreadContext,
+	IN PVOID ContinueArgument
+)
+{
+	NTSTATUS ret = 0;
+	NtContinueHandler(ThreadContext);
+	ret = Old_NtContinueEx(ThreadContext, ContinueArgument);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, SwitchToThread,
 	void
 ) {

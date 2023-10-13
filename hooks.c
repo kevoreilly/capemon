@@ -320,6 +320,7 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtQueryInformationThread),
 	HOOK(ntdll, NtYieldExecution),
 	HOOK(ntdll, NtContinue),
+	HOOK(ntdll, NtContinueEx),
 	HOOK(kernel32, CreateThread),
 	HOOK(kernel32, CreateRemoteThread),
 	HOOK(kernel32, SwitchToThread),
@@ -654,6 +655,7 @@ hook_t min_hooks[] = {
 	HOOK(kernel32, WriteProcessMemory),
 
 	HOOK(ntdll, NtContinue),
+	HOOK(ntdll, NtContinueEx),
 	HOOK(ntdll, NtQueueApcThread),
 	HOOK(ntdll, NtQueueApcThreadEx),
 	HOOK(ntdll, NtCreateThread),
