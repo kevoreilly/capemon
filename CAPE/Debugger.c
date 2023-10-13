@@ -112,6 +112,35 @@ HANDLE GetThreadHandle(DWORD ThreadId)
 }
 
 //**************************************************************************************
+BOOL PatchByte(LPVOID Address, BYTE Byte)
+//**************************************************************************************
+{
+	DWORD OldProtect;
+
+	if (!Address || !IsAddressAccessible(Address))
+		return FALSE;
+
+	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		DebugOutput("PatchByte: Unable to change memory protection at 0x%p", Address);
+		return FALSE;
+	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("PatchByte: Changed memory protection at 0x%p", Address);
+#endif
+
+	*(PBYTE)Address = Byte;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("PatchByte: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+#endif
+	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+
+	return TRUE;
+}
+
+//**************************************************************************************
 PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 //**************************************************************************************
 {
