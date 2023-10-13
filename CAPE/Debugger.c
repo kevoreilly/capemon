@@ -662,12 +662,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT && *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
 	{
-		// Check to see if it's a software breakpoint and it's ours
+//#ifdef DEBUG_COMMENTS
+		DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+//#endif
+		BYTE InsByte = *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+
+		// Check to see if it's ours
 		if (lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
 		{
-#ifdef DEBUG_COMMENTS
-			DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
-#endif
 			if (SoftwareBreakpointHandler(ExceptionInfo))
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
@@ -679,6 +681,15 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("CAPEExceptionFilter: 'syscall' breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
 			if (SyscallBreakpointHandler(ExceptionInfo))
+				return EXCEPTION_CONTINUE_EXECUTION;
+		}
+
+		TrackExecution((PVOID)ExceptionInfo->ExceptionRecord->ExceptionAddress);
+
+		// Has the instruction been changed (via yara)?
+		if (*(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress != InsByte)
+		{
+			if (SoftwareBreakpointCallback(ExceptionInfo))
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
 	}
