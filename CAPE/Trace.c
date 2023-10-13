@@ -721,8 +721,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 					char *endptr;
 					errno = 0;
 					TargetArg = (PVOID)(DWORD_PTR)strtoul(q+2, &endptr, 0);
-					if (errno || endptr == q+2)
-						DebuggerOutput("ActionDispatcher: Failed to get target arg: %s.\n", q+2);
+					if (errno || endptr == q+2) {
+						TargetArg = GetModuleHandle(q+2);
+						if (!TargetArg)
+							DebuggerOutput("ActionDispatcher: Failed to get target arg: %s.\n", q+2);
+					}
 				}
 			}
 			//else
@@ -860,6 +863,17 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set EDI - target value missing.\n");
+	}
+	else if (!strnicmp(Action, "SetPtr", 6))
+	{
+		if (Target || TargetSet)
+		{
+			PVOID *Pointer = Target;
+			*Pointer = (PVOID)TargetArg;
+			DebuggerOutput("ActionDispatcher: Setting value pointed at by 0x%p to 0x%x.\n", Target, TargetArg);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set 0x%p pointer value - target missing.\n", Target);
 	}
 	else if (!stricmp(Action, "ClearZeroFlag"))
 	{
