@@ -510,9 +510,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
 	{
 		PBREAKPOINTINFO pBreakpointInfo;
-		PTHREADBREAKPOINTS CurrentThreadBreakpoints;
-
-		CurrentThreadBreakpoints = GetThreadBreakpoints(CurrentThreadId);
+		PTHREADBREAKPOINTS CurrentThreadBreakpoints  = GetThreadBreakpoints(CurrentThreadId);
 
 		if (CurrentThreadBreakpoints == NULL)
 		{
@@ -2677,14 +2675,20 @@ void DebuggerShutdown()
 
 void NtContinueHandler(PCONTEXT ThreadContext)
 {
-	if (BreakpointsSet && !ThreadContext->Dr0 && !ThreadContext->Dr1 && !ThreadContext->Dr2 && !ThreadContext->Dr3)
+	if (BreakpointsSet)
 	{
 		DWORD ThreadId = GetCurrentThreadId();
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
-		if (ThreadBreakpoints)
+		if (ThreadBreakpoints &&
+		(
+			ThreadContext->Dr0 != (DWORD64)ThreadBreakpoints->BreakpointInfo[0].Address ||
+			ThreadContext->Dr1 != (DWORD64)ThreadBreakpoints->BreakpointInfo[1].Address ||
+			ThreadContext->Dr2 != (DWORD64)ThreadBreakpoints->BreakpointInfo[2].Address ||
+			ThreadContext->Dr3 != (DWORD64)ThreadBreakpoints->BreakpointInfo[3].Address)
+		)
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("NtContinue hook: restoring breakpoints for thread %d.\n", ThreadId);
+			DebugOutput("NtContinue(Ex) handler: restoring breakpoints for thread %d.\n", ThreadId);
 #endif
 			ContextSetThreadBreakpointsEx(ThreadContext, ThreadBreakpoints, TRUE);
 #ifndef _WIN64
