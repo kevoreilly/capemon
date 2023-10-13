@@ -306,6 +306,8 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
 //**************************************************************************************
 {
+	DebuggerOutput(lpOutputString);
+
 	va_list args;
 	char *OutputFilename, *Character;
 
@@ -349,6 +351,8 @@ void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
 			*Character = 0x3F;  // '?'
 		Character++;
 	}
+	if (strlen(StringsLine) + 1 < MAX_PATH)
+		*Character = 0x0a;
 	WriteFile(Strings, StringsLine, (DWORD)strlen(StringsLine), (LPDWORD)&LastWriteLength, NULL);
 
 	va_end(args);

@@ -216,16 +216,16 @@ void DoOutputString(PVOID PossibleString)
 
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
 	if (Size >= MAX_PATH)
-		StringsOutput("%.256s...\n", (PCHAR)OutputBuffer);
+		StringsOutput("%.256s...", (PCHAR)OutputBuffer);
 	else if (Size)
-		StringsOutput("%.256s\n", (PCHAR)OutputBuffer);
+		StringsOutput("%.256s", (PCHAR)OutputBuffer);
 	else
 	{
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
 		if (Size >= MAX_PATH)
-			StringsOutput("L%.256ws...\n", (PWCHAR)OutputBufferW);
+			StringsOutput("L%.256ws...", (PWCHAR)OutputBufferW);
 		else if (Size)
-			StringsOutput("L%.256ws\n", (PWCHAR)OutputBufferW);
+			StringsOutput("L%.256ws", (PWCHAR)OutputBufferW);
 	}
 }
 
@@ -1372,8 +1372,9 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	{
 		if (Target)
 		{
+			DebuggerOutput("String captured at 0x%p: \"", Target);
 			DoOutputString(Target);
-			DebuggerOutput("String captured at 0x%p\n", Target);
+			DebuggerOutput("\"\n", Target);
 		}
 		else
 			DebuggerOutput("String: Failed to obtain string address.\n");
