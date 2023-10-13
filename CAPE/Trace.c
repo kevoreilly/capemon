@@ -2368,6 +2368,14 @@ BOOL SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	DecodeType = Decode32Bits;
 #endif
 
+	if (g_config.log_breakpoints)
+	{
+		// Log breakpoint to behavior log
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+		_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+		log_breakpoint("Debugger", DebuggerBuffer);
+	}
+
 	FilterTrace = FALSE;
 
 	if (InsideMonitor(NULL, CIP) && g_config.trace_all == 1)
