@@ -42,6 +42,7 @@ extern char *our_dll_path;
 extern char *our_process_name;
 extern int path_is_system(const wchar_t *path_w);
 extern int path_is_program_files(const wchar_t *path_w);
+extern BOOL PatchByte(LPVOID Address, BYTE Byte);
 extern wchar_t *our_process_path_w;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2;
@@ -301,6 +302,38 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "export")) {
 			ExportAddress = strtoul(value, NULL, 0);
 			DebugOutput("Config: Export address set to 0x%x", ExportAddress);
+		}
+		else if (!stricmp(key, "patch")) {
+			p = strchr(value, ':');
+			if (p) {
+				*p = '\0';
+				char *p2 = p+1;
+				unsigned int byte = strtoul(value, NULL, 0);
+				int delta=0;
+				p = strchr(p2, '+');
+				if (p) {
+					delta = strtoul(p+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p = '\0';
+				}
+				else {
+					p = strchr(p2, '-');
+					if (p) {
+						delta = - (int)strtoul(p+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p = '\0';
+					}
+				}
+				PVOID address = (PVOID)(DWORD_PTR)strtoul(p2, NULL, 0);
+				if (address) {
+					DebugOutput("Config: patching address 0x%p with byte 0x%x", address, byte);
+					PatchByte(address, (BYTE)byte);
+				}
+				else
+					DebugOutput("Config: patch address missing invalid: %s", value);
+			}
+			else
+				DebugOutput("Config: patch byte missing");
 		}
 		else if (!stricmp(key, "bp")) {
 			unsigned int x = 0;
