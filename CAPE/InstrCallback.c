@@ -32,7 +32,7 @@ extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval);
 extern int __called_by_hook(ULONG_PTR stack_pointer, ULONG_PTR frame_pointer);
 extern _NtSetInformationProcess pNtSetInformationProcess;
-extern ULONG_PTR ntdll_base, win32u_base;
+extern ULONG_PTR ntdll_base, win32u_base, user32_base;
 extern lookup_t g_caller_regions;
 extern ULONG_PTR base_of_dll_of_interest;
 extern PVOID ImageBase;
@@ -153,7 +153,7 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)win32u_base);
 			log_syscall(ModuleName, ScanForExport((PVOID)CIP, SCANMAX), (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
 		}
-		else if (g_config.syscall && !inside_hook(CIP) && !is_address_in_ntdll((ULONG_PTR)CIP) && !is_address_in_win32u((ULONG_PTR)CIP))
+		else if (g_config.syscall && !inside_hook(CIP) && !is_address_in_ntdll((ULONG_PTR)CIP) && !is_address_in_win32u((ULONG_PTR)CIP) && !is_address_in_user32((ULONG_PTR)CIP))
 		{
 			PVOID AllocationBase = GetAllocationBase((PVOID)CIP);
 			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)AllocationBase);
@@ -229,6 +229,7 @@ void NirvanaInit()
 {
 	NTSTATUS ret = 0;
 	win32u_base = (ULONG_PTR)GetModuleHandle("win32u");
+	user32_base = (ULONG_PTR)GetModuleHandle("user32");
 	PROCESS_INSTRUMENTATION_CALLBACK_INFORMATION Nirvana;
 	Nirvana.Callback = (PVOID)InstrHook;
 	Nirvana.Reserved = 0;
