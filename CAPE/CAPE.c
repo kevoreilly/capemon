@@ -25,7 +25,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_UNICODE_PATH 32768
 
 #define BUFSIZE				 1024	// For hashing
-#define DUMP_MAX				100
+#define DUMP_MAX				10
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
 //#define SUSPENDED_THREAD_MAX	4096
 
@@ -138,10 +138,11 @@ extern int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PTR Ne
 extern int ScyllaDumpPE(DWORD_PTR Buffer);
 extern SIZE_T GetPESize(PVOID Buffer);
 extern PVOID GetReturnAddress(hook_info_t *hookinfo);
-extern PVOID CallingModule, ClrJIT;
+extern PVOID CallingModule;
 extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
+extern lookup_t g_dotnet_jit;
 extern char* StringsFile;
 extern HANDLE Strings;
 
@@ -934,6 +935,14 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 		DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions.\n", TrackedRegion->AllocationBase);
 #endif
 
+	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)GetAllocationBase(Address), 0))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("AddTrackedRegion: Ignoring the region containing 0x%p as it is the .NET JIT cache.\n", Address);
+#endif
+		TrackedRegion->PagesDumped = TRUE;
+	}
+
 	return TrackedRegion;
 }
 
@@ -1093,36 +1102,46 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (!TrackedRegion->CanDump && !TrackedRegion->Address && g_terminate_event_handle)
 		return;
 
-	PVOID BaseAddress = TrackedRegion->AllocationBase;
-	SIZE_T RegionSize = GetAccessibleSize(BaseAddress);
+	PVOID Address = TrackedRegion->AllocationBase;
+	SIZE_T Size = (SIZE_T)ReverseScanForNonZero(Address, GetAccessibleSize(Address));
 
-	if (!RegionSize && TrackedRegion->Address)
+	if (!Size)
 	{
-		BaseAddress = TrackedRegion->Address;
-		RegionSize = GetAccessibleSize(BaseAddress);
-		if (!RegionSize)
-		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("ProcessTrackedRegion: Region at 0x%p is empty\n", BaseAddress);
+		DebugOutput("ProcessTrackedRegion: Region at 0x%p is empty\n", Address);
 #endif
+		return;
+	}
+
+	if (TrackedRegion->Address)
+	{
+		PVOID BaseAddress = GetBaseAddress(TrackedRegion->Address);
+		SIZE_T Offset = (SIZE_T)((PUCHAR)BaseAddress - (DWORD_PTR)Address);
+
+		if (Size < Offset)
+		{
+			DebugOutput("ProcessTrackedRegion: Region at 0x%p skipped due to size 0x%x and offset 0x%x", BaseAddress, Size, Offset);
 			return;
 		}
 	}
 
-	if (!ScanForNonZero(BaseAddress, RegionSize))
+	if (TrackedRegion->SubAllocation && Size < SystemInfo.dwPageSize)
 	{
-#ifdef DEBUG_COMMENTS
-		DebugOutput("ProcessTrackedRegion: Region at 0x%p is empty\n", BaseAddress);
-#endif
+		DebugOutput("ProcessTrackedRegion: Sub-allocation at 0x%p skipped due to size 0x%x", Address, Size);
+		TrackedRegion->PagesDumped = TRUE;
 		return;
 	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ProcessTrackedRegion: Address 0x%p Base 0x%p Size %d sub-allocation %d dump count %d\n", TrackedRegion->Address, Address, Size, TrackedRegion->SubAllocation, DumpCount);
+#endif
 
 	if (TrackedRegion->PagesDumped)
 	{
 		// Allow a big enough change in entropy to trigger another dump
 		if (TrackedRegion->EntryPoint && TrackedRegion->Entropy)
 		{
-			double Entropy = GetPEEntropy(BaseAddress);
+			double Entropy = GetPEEntropy(Address);
 			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
 				return;
 		}
@@ -1135,13 +1154,13 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	TraceRunning = FALSE;
 
 	if (g_config.yarascan)
-		YaraScan(BaseAddress, RegionSize);
+		YaraScan(Address, Size);
 
 	char ModulePath[MAX_PATH];
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), BaseAddress, ModulePath, MAX_PATH);
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), Address, ModulePath, MAX_PATH);
 	if (MappedModule)
 	{
-		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %s, skipping", BaseAddress, ModulePath);
+		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %s, skipping", Address, ModulePath);
 		return;
 	}
 
@@ -1149,26 +1168,25 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
 
 	if (!CapeMetaData->Address)
-		CapeMetaData->Address = BaseAddress;
+		CapeMetaData->Address = Address;
 
-	TrackedRegion->PagesDumped = DumpRegion(BaseAddress);
+	TrackedRegion->PagesDumped = DumpRegion(Address);
 
 	if (TrackedRegion->PagesDumped)
 	{
 		if (TraceIsRunning)
-			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", BaseAddress);
+			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", Address);
 		else
-			DebugOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", BaseAddress);
+			DebugOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", Address);
 		ClearTrackedRegion(TrackedRegion);
 	}
 	else
 	{
 		if (TraceIsRunning)
-			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", BaseAddress);
+			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 		else
-			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", BaseAddress);
+			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
-
 }
 
 //**************************************************************************************
@@ -2388,6 +2406,9 @@ BOOL DumpStackRegion(void)
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
+	if (DumpCount >= DUMP_MAX)
+		return FALSE;
+
 	BOOL RetVal = FALSE;
 	PVOID PEPointer = Buffer;
 	SIZE_T Count = 0;
@@ -2494,6 +2515,7 @@ end:
 
 	if (ret)
 	{
+		DumpCount++;
 		CapeMetaData->Address = Buffer;
 		CapeMetaData->Size = Size;
 		CapeOutputFile(FullPathName);
@@ -2510,6 +2532,9 @@ end:
 int DumpMemory(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
+	if (DumpCount >= DUMP_MAX)
+		return 0;
+
 	if (!Size)
 		return 0;
 
@@ -2536,10 +2561,20 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 BOOL DumpRegion(PVOID Address)
 //**************************************************************************************
 {
+	if (DumpCount >= DUMP_MAX)
+		return FALSE;
+
 	PVOID AllocationBase = GetAllocationBase(Address);
-	PVOID BaseAddress = GetBaseAddress(Address);
 	SIZE_T AccessibleSize = GetAccessibleSize(Address);
+
+	PVOID BaseAddress = GetBaseAddress(Address);
 	SIZE_T RegionSize = GetRegionSize(Address);
+
+	SIZE_T Offset = (SIZE_T)((PUCHAR)BaseAddress - (DWORD_PTR)AllocationBase);
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("DumpRegion: Address 0x%p AllocationBase 0x%p AccessibleSize %d, BaseAddress 0x%p, RegionSize %d\n", Address, AllocationBase, AccessibleSize, BaseAddress, RegionSize);
+#endif
 
 	CapeMetaData->Address = AllocationBase;
 
@@ -2578,6 +2613,7 @@ BOOL DumpRegion(PVOID Address)
 				DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", BaseAddress, RegionSize);
 			else
 				DebugOutput("DumpRegion: Dumped region at 0x%p, size %d bytes.\n", BaseAddress, RegionSize);
+			DumpCount++;
 			return TRUE;
 		}
 		else
@@ -2747,7 +2783,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
 	}
 
-	if (MemInfo.BaseAddress == ClrJIT)
+	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
 		DebugOutput("DumpInterestingRegions: Dumping .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
 
@@ -2809,8 +2845,8 @@ int DoProcessDump()
 			if (!VerifyCodeSection(ImageBase, our_process_path_w))
 			{
 				DebugOutput("DoProcessDump: Code modification detected, dumping Imagebase at 0x%p.\n", ImageBase);
-
 				CapeMetaData->DumpType = PROCDUMP;
+				DumpCount--;
 				__try
 				{
 					if (g_config.import_reconstruction)
@@ -2837,8 +2873,8 @@ int DoProcessDump()
 		if (NewImageBase && IsAddressAccessible(NewImageBase))
 		{
 			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
-
 			CapeMetaData->DumpType = PROCDUMP;
+			DumpCount--;
 			__try
 			{
 				if (g_config.import_reconstruction)

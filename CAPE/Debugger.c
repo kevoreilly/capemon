@@ -691,9 +691,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT && *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
 	{
-//#ifdef DEBUG_COMMENTS
+#ifdef DEBUG_COMMENTS
 		DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
-//#endif
+#endif
 		BYTE InsByte = *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress;
 
 		// Check to see if it's ours

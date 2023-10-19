@@ -54,6 +54,7 @@ int DumpCurrentProcessFixImports(PVOID NewEP);
 int DumpCurrentProcess();
 int DumpProcess(HANDLE hProcess, PVOID ImageBase, PVOID NewEP, BOOL FixImports);
 int DumpPE(PVOID Buffer);
+int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 int ScanForNonZero(PVOID Buffer, SIZE_T Size);
 int ScanPageForNonZero(PVOID Address);
 int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
@@ -145,6 +146,7 @@ typedef struct TrackedRegion
 	BOOL						Committed;
 	BOOL						PagesDumped;
 	BOOL						CanDump;
+	BOOL						SubAllocation;
 	DWORD						EntryPoint;
 	double						Entropy;
 	SIZE_T						MinPESize;

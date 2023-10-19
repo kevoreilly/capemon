@@ -13,7 +13,7 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 
-PVOID ClrJIT;
+lookup_t g_dotnet_jit;
 
 HOOKDEF(int, WINAPI, compileMethod,
 	PVOID			this,
@@ -26,22 +26,22 @@ HOOKDEF(int, WINAPI, compileMethod,
 {
     int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
-		if (!ClrJIT) {
-			ClrJIT = GetAllocationBase(*entryAddress);
+		PVOID AllocationBase = GetAllocationBase(*entryAddress);
+		if (!lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0)) {
 			if (g_config.procdump && g_config.yarascan)
-				DebugOutput(".NET JIT native cache at 0x%p: scans and dumps active.\n", ClrJIT);
+				DebugOutput(".NET JIT native cache at 0x%p: scans and dumps active.\n", AllocationBase);
 			else if (g_config.procdump)
-				DebugOutput(".NET JIT native cache at 0x%p: dumps active.\n", ClrJIT);
+				DebugOutput(".NET JIT native cache at 0x%p: dumps active.\n", AllocationBase);
 			else if (g_config.yarascan)
-				DebugOutput(".NET JIT native cache at 0x%p: scans active.\n", ClrJIT);
+				DebugOutput(".NET JIT native cache at 0x%p: scans active.\n", AllocationBase);
+			lookup_add(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0);
 		}
 		if (g_config.yarascan)
 		{
-			SIZE_T Size = (SIZE_T)((PUCHAR)ClrJIT - (DWORD_PTR)*entryAddress - *nativeSizeOfCode);
 #ifdef DEBUG_COMMENTS
-			YaraScan(ClrJIT, Size);
+			YaraScan(*entryAddress, *nativeSizeOfCode);
 #else
-			SilentYaraScan(ClrJIT, Size);
+			SilentYaraScan(*entryAddress, *nativeSizeOfCode);
 #endif
 		}
 		if (g_config.break_on_jit) {

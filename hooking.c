@@ -78,9 +78,22 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 	return 0;
 }
 
+static int filter_callers(hook_info_t *hookinfo)
+{
+	if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") && !wcsicmp(hookinfo->current_hook->library, L"ntdll"))
+		return 1;
+	if (!stricmp(hookinfo->current_hook->funcname, "NtContinue") && !wcsicmp(hookinfo->current_hook->library, L"ntdll"))
+		return 1;
+	if (!stricmp(hookinfo->current_hook->funcname, "compileMethod") && !wcsicmp(hookinfo->current_hook->library, L"clrjit"))
+		return 1;
+	return 0;
+}
+
 static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
-	if (g_config.tlsdump || !stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+	if (g_config.tlsdump)
+		return;
+	if (filter_callers(hookinfo))
 		return;
 	if (!g_config.unpacker && !g_config.caller_regions)
 		return;
@@ -96,7 +109,9 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		if (!TrackedRegion) {
 			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 			if (!TrackedRegion) {
+#ifdef DEBUG_COMMENTS
 				DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+#endif
 				return;
 			}
 			DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
