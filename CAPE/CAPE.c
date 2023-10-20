@@ -2796,7 +2796,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 #endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		DumpRegion(MemInfo.BaseAddress);
+		DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress));
 	}
 }
 
@@ -2846,7 +2846,8 @@ int DoProcessDump()
 			{
 				DebugOutput("DoProcessDump: Code modification detected, dumping Imagebase at 0x%p.\n", ImageBase);
 				CapeMetaData->DumpType = PROCDUMP;
-				DumpCount--;
+				if (DumpCount > 0)
+					DumpCount--;
 				__try
 				{
 					if (g_config.import_reconstruction)
@@ -2874,7 +2875,8 @@ int DoProcessDump()
 		{
 			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
 			CapeMetaData->DumpType = PROCDUMP;
-			DumpCount--;
+			if (DumpCount > 0)
+				DumpCount--;
 			__try
 			{
 				if (g_config.import_reconstruction)
