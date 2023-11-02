@@ -780,10 +780,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rax = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: setting RAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rax);
+			DebuggerOutput("ActionDispatcher: setting RAX to 0x%x.\n", ExceptionInfo->ContextRecord->Rax);
 #else
 			ExceptionInfo->ContextRecord->Eax = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: setting EAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Eax);
+			DebuggerOutput("ActionDispatcher: setting EAX to 0x%x.\n", ExceptionInfo->ContextRecord->Eax);
 #endif
 		}
 		else
@@ -795,10 +795,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rbx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: setting RBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rbx);
+			DebuggerOutput("ActionDispatcher: setting RBX to 0x%x.\n", ExceptionInfo->ContextRecord->Rbx);
 #else
 			ExceptionInfo->ContextRecord->Ebx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: setting EBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
+			DebuggerOutput("ActionDispatcher: setting EBX to 0x%x.\n", ExceptionInfo->ContextRecord->Ebx);
 #endif
 		}
 		else
@@ -810,10 +810,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rcx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: setting RCX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rcx);
+			DebuggerOutput("ActionDispatcher: setting RCX to 0x%x.\n", ExceptionInfo->ContextRecord->Rcx);
 #else
 			ExceptionInfo->ContextRecord->Ecx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: setting ECX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
+			DebuggerOutput("ActionDispatcher: setting ECX to 0x%x.\n", ExceptionInfo->ContextRecord->Ecx);
 #endif
 		}
 		else
@@ -825,10 +825,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rdx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: setting RDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdx);
+			DebuggerOutput("ActionDispatcher: setting RDX to 0x%x.\n", ExceptionInfo->ContextRecord->Rdx);
 #else
 			ExceptionInfo->ContextRecord->Edx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: setting EDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edx);
+			DebuggerOutput("ActionDispatcher: setting EDX to 0x%x.\n", ExceptionInfo->ContextRecord->Edx);
 #endif
 		}
 		else
@@ -840,10 +840,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rsi = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: setting RSI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rsi);
+			DebuggerOutput("ActionDispatcher: setting RSI to 0x%x.\n", ExceptionInfo->ContextRecord->Rsi);
 #else
 			ExceptionInfo->ContextRecord->Esi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: setting ESI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Esi);
+			DebuggerOutput("ActionDispatcher: setting ESI to 0x%x.\n", ExceptionInfo->ContextRecord->Esi);
 #endif
 		}
 		else
@@ -855,10 +855,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rdi = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: setting RDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdi);
+			DebuggerOutput("ActionDispatcher: setting RDI to 0x%x.\n", ExceptionInfo->ContextRecord->Rdi);
 #else
 			ExceptionInfo->ContextRecord->Edi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: setting EDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
+			DebuggerOutput("ActionDispatcher: setting EDI to 0x%x.\n", ExceptionInfo->ContextRecord->Edi);
 #endif
 		}
 		else
