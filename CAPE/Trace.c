@@ -526,6 +526,20 @@ OutputRegisterChanges(PCONTEXT Context)
 #endif
 }
 
+void SetOperand(PCONTEXT Context, PCHAR Operand, PVOID Target)
+{
+	if (*Operand != '[')
+		return;
+	PVOID *Pointer = GetRegister(Context, Operand+1);
+	if (Pointer)
+	{
+		*Pointer = (PVOID)Target;
+		DebuggerOutput("ActionDispatcher: Setting %s -> [0x%p] to 0x%x.\n", Operand, Pointer, Target);
+	}
+	else
+		DebuggerOutput("ActionDispatcher: Unable to set %s.\n", Operand);
+}
+
 void SkipInstruction(PCONTEXT Context)
 {
 	PVOID CIP;
@@ -874,6 +888,35 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set 0x%p pointer value - target missing.\n", Target);
+	}
+	else if (!strnicmp(Action, "SetSrc", 6))
+	{
+		if (Target || TargetSet)
+		{
+			PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+			if (Dst)
+			{
+				*Dst = 0;
+				SetOperand(ExceptionInfo->ContextRecord, DecodedInstruction.operands.p, Target);
+				*Dst = ',';
+			}
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set operand value - target missing.\n", Target);
+	}
+	else if (!strnicmp(Action, "SetDst", 6))
+	{
+		if (Target || TargetSet)
+		{
+			PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+			if (Dst)
+			{
+				Dst += 2;
+				SetOperand(ExceptionInfo->ContextRecord, Dst, Target);
+			}
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set operand value - target missing.\n", Target);
 	}
 	else if (!stricmp(Action, "ClearZeroFlag"))
 	{
