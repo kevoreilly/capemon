@@ -2671,6 +2671,7 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 //**************************************************************************************
 {
 	PIMAGE_DOS_HEADER pDosHeader;
+	PIMAGE_NT_HEADERS pNtHeader;
 	PVOID FirstPage = NULL;
 	DWORD dwProtect = 0;
 	int RetVal = 0;
@@ -2682,6 +2683,69 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 		DebugOutput("DumpImageInCurrentProcess: CAPE dump limit reached.\n");
 		return 0;
 	}
+
+    if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
+    {
+        // We want to fix the PE header in the dump (for e.g. disassembly etc)
+        if (!SystemInfo.dwPageSize)
+            GetSystemInfo(&SystemInfo);
+
+        if (!SystemInfo.dwPageSize)
+        {
+            ErrorOutput("DumpImageInCurrentProcess: Failed to obtain system page size.\n");
+            return 0;
+        }
+
+        FirstPage = calloc(SystemInfo.dwPageSize, sizeof(char));
+
+        if (!FirstPage)
+        {
+            ErrorOutput("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
+            return 0;
+        }
+
+        __try
+        {
+            memcpy(FirstPage, BaseAddress, SystemInfo.dwPageSize);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DebugOutput("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", BaseAddress);
+            free(FirstPage);
+            return 0;
+        }
+
+        // Set target image page permissions to allow writing of new headers
+        if (!VirtualProtect((BYTE*)BaseAddress, SystemInfo.dwPageSize, PAGE_EXECUTE_READWRITE, &dwProtect))
+        {
+            ErrorOutput("DumpImageInCurrentProcess: Failed to modify memory page protection of NtHeader");
+            free(FirstPage);
+            return 0;
+        }
+
+        pDosHeader = (PIMAGE_DOS_HEADER)(BaseAddress);
+
+        DebugOutput("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", BaseAddress);
+
+        if (!pDosHeader->e_lfanew)
+        {
+            // In case the header until and including 'PE' has been zeroed
+            WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+            while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+            {
+                if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+                {
+                    if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
+                        pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+                }
+                MachineProbe += sizeof(WORD);
+            }
+
+            if (pNtHeader)
+                pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+        }
+	}
+
 
 	if (IsPeImageRaw(BaseAddress))
 	{
