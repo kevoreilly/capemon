@@ -2258,7 +2258,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     if (hFile == INVALID_HANDLE_VALUE)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("VerifyCodeSection: Error opening file");
+		ErrorOutput("VerifyCodeSection: Error opening file %ws", Path);
 #endif
 		return RetVal;
     }
@@ -2268,7 +2268,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("VerifyCodeSection: Error reading file");
+		ErrorOutput("VerifyCodeSection: Error reading file %ws", Path);
 #endif
 		goto end;
 	}
@@ -2287,7 +2287,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("VerifyCodeSection: Error reading header");
+		DebugOutput("VerifyCodeSection: Error reading header of %ws", Path);
 #endif
 		goto end;
 	}
@@ -2298,7 +2298,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     if (!ReadFile(hFile, &FirstSectionHeader, sizeof(IMAGE_SECTION_HEADER), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("VerifyCodeSection: Error reading first section");
+		DebugOutput("VerifyCodeSection: Error reading first section of %ws", Path);
 #endif
 		goto end;
 	}
@@ -2324,7 +2324,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     if (!ReadFile(hFile, CodeSectionBuffer, NtHeaders.OptionalHeader.SizeOfCode, &BytesReadInSection, NULL))
 	{
 #ifdef DEBUG_COMMENTS
-		ErrorOutput("VerifyCodeSection: Error reading code section");
+		ErrorOutput("VerifyCodeSection: Error reading code section of %ws", Path);
 #endif
 		return RetVal;
     }
