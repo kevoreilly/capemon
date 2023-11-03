@@ -1131,17 +1131,32 @@ void log_breakpoint(const char *subcategory, const char *msg)
 
 void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval)
 {
-	if (module)
-		loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "iosp",
-			"ThreadIdentifier", GetCurrentThreadId(),
-			"Module", module,
-			"Function", function,
-			"Return Address", retaddr);
+	if (function)
+	{
+		if (module)
+			loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "iosp",
+				"ThreadIdentifier", GetCurrentThreadId(),
+				"Module", module,
+				"Function", function,
+				"Return Address", retaddr);
+		else
+			loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "isp",
+				"ThreadIdentifier", GetCurrentThreadId(),
+				"Function", function,
+				"Return Address", retaddr);
+	}
 	else
-		loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "isp",
-			"ThreadIdentifier", GetCurrentThreadId(),
-			"Function", function,
-			"Return Address", retaddr);
+	{
+		if (module)
+			loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "iop",
+				"ThreadIdentifier", GetCurrentThreadId(),
+				"Module", module,
+				"Return Address", retaddr);
+		else
+			loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "ip",
+				"ThreadIdentifier", GetCurrentThreadId(),
+				"Return Address", retaddr);
+	}
 }
 
 void log_procname_anomaly(PUNICODE_STRING InitialName, PUNICODE_STRING InitialPath, PUNICODE_STRING CurrentName, PUNICODE_STRING CurrentPath)
