@@ -1556,7 +1556,7 @@ void specialname_map_init(void)
 int is_wow64_fs_redirection_disabled(void)
 {
 #ifdef _WIN64
-	return 1;
+	return 0;
 #else
 	if (is_64bit_os) {
 		__try {
