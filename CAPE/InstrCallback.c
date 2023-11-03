@@ -141,10 +141,8 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 	ULONG_PTR pTEB = (ULONG_PTR)NtCurrentTeb();
 	PVOID ReturnAddress = *(PVOID*)*((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousSp));
 #endif
-	*((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousPc)) = 0;
-	*((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousSp)) = 0;
 
-	if (InterlockedOr(((LONG*)pTEB + InstrumentationCallbackDisabled), 1) == 1)
+	if (g_config.syscall && !*((BOOLEAN*)pTEB + InstrumentationCallbackDisabled))
 	{
 		*((BOOLEAN*)pTEB + InstrumentationCallbackDisabled) = TRUE;
 
@@ -153,7 +151,7 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)win32u_base);
 			log_syscall(ModuleName, ScanForExport((PVOID)CIP, SCANMAX), (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
 		}
-		else if (g_config.syscall && !inside_hook(CIP) && !is_address_in_ntdll((ULONG_PTR)CIP) && !is_address_in_win32u((ULONG_PTR)CIP) && !is_address_in_user32((ULONG_PTR)CIP))
+		else if (!inside_hook(CIP) && !is_address_in_ntdll((ULONG_PTR)CIP) && !is_address_in_win32u((ULONG_PTR)CIP) && !is_address_in_user32((ULONG_PTR)CIP))
 		{
 			PVOID AllocationBase = GetAllocationBase((PVOID)CIP);
 			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)AllocationBase);
@@ -162,7 +160,23 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 			DebugOutput("InstrumentationCallback: Returns to 0x%p, return value %d, ssn %d -> %s)\n", CIP, ReturnValue, ScanForSsn((PVOID)CIP), FunctionName);
 #endif
 			log_syscall(ModuleName, FunctionName, (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
-			if (g_config.caller_regions && AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
+			if (g_config.unpacker)
+			{
+				PTRACKEDREGION TrackedRegion = NULL;
+				TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+				if (!TrackedRegion) {
+					TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
+					if (!TrackedRegion)
+						DebugOutput("InstrumentationCallback: Failed to add region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
+					else {
+						DebugOutput("InstrumentationCallback: Added region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
+						TrackedRegion->Address = (PVOID)CIP;
+					}
+				}
+				if (TrackedRegion)
+					ProcessTrackedRegion(TrackedRegion);
+			}
+			else if (g_config.caller_regions && AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
 			{
 				lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
 				DebugOutput("InstrumentationCallback: Adding region at 0x%p to caller regions list (returns to 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
@@ -186,22 +200,6 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 				else
 					DebugOutput("InstrumentationCallback: Dump of calling region at 0x%p skipped (returns to 0x%p).\n", AllocationBase, CIP);
 			}
-			else if (g_config.unpacker)
-			{
-				PTRACKEDREGION TrackedRegion = NULL;
-				TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-				if (!TrackedRegion) {
-					TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
-					if (!TrackedRegion)
-						DebugOutput("InstrumentationCallback: Failed to add region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
-					else {
-						DebugOutput("InstrumentationCallback: Added region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
-						TrackedRegion->Address = (PVOID)CIP;
-					}
-				}
-				if (TrackedRegion)
-					ProcessTrackedRegion(TrackedRegion);
-			}
 
 			//if (g_config.debugger && !__called_by_hook(Context->Rsp, CIP) && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
 			if (g_config.debugger && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
@@ -216,9 +214,9 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 //			if (g_config.syscall > 2 && !is_in_dll_range((ULONG_PTR)ReturnAddress) && !inside_hook(ReturnAddress))
 //				log_syscall(get_basename_of_module((HMODULE)ntdll_base), ScanForExport((PVOID)CIP, SCANMAX), (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
 //		}
-
-		InterlockedAnd(((LONG*)pTEB + InstrumentationCallbackDisabled), 0);
 	}
+
+	*((BOOLEAN*)pTEB + InstrumentationCallbackDisabled) = FALSE;
 
 #ifdef _WIN64
 	RtlRestoreContext(Context, NULL);
