@@ -2303,6 +2303,12 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
+    if (!FirstSectionHeader.SizeOfRawData)
+	{
+		DebugOutput("VerifyCodeSection: SizeOfRawData zero.\n");
+		goto end;
+	}
+
     if (NtHeaders.OptionalHeader.SizeOfCode != FirstSectionHeader.SizeOfRawData)
 	{
 		DebugOutput("VerifyCodeSection: SizeOfCode mismatch: 0x%x vs 0x%x", NtHeaders.OptionalHeader.SizeOfCode, FirstSectionHeader.SizeOfRawData);
@@ -2744,6 +2750,23 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
             if (pNtHeader)
                 pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
         }
+
+        if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_MAX_SIZE)
+        {
+            DebugOutput("DumpImageInCurrentProcess: Bad e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+            goto end;
+        }
+
+        __try
+        {
+            *(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
+            *(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            DebugOutput("DumpImageInCurrentProcess: Exception occured writing PE signatures in region at 0x%p, dumping entire memory region.\n", pDosHeader);
+            goto end;
+        }
 	}
 
 
@@ -2766,6 +2789,7 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 			RetVal = 1;
 	}
 
+end:
 	if (FirstPage)
 	{
 		// Copy the original headers back
