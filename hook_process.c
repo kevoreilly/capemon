@@ -563,6 +563,19 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	NTSTATUS ret = 0;
 	DWORD Pid = 0;
 
+	if (process_shutting_down && g_config.debugger)
+		DebuggerShutdown();
+
+	DumpStrings();
+
+	if (process_shutting_down && g_config.injection)
+		TerminateHandler();
+
+	if (process_shutting_down && g_config.procdump && !ProcessDumped) {
+		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
+		DoProcessDump();
+	}
+
 	if (ProcessHandle == NULL) {
 		// we mark this here as this termination type will kill all threads but ours, including
 		// the logging thread.  By setting this, we'll switch into a direct logging mode
@@ -592,19 +605,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 
 	if (Pid)
 		pipe("KILL:%d", Pid);
-
-	DumpStrings();
-
-	if (process_shutting_down && g_config.injection)
-		TerminateHandler();
-
-	if (process_shutting_down && g_config.debugger)
-		DebuggerShutdown();
-
-	if (process_shutting_down && g_config.procdump && !ProcessDumped) {
-		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
-		DoProcessDump();
-	}
 
 	set_lasterrors(&lasterror);
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);
