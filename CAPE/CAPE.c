@@ -272,7 +272,7 @@ PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath)
 	char DriveStrings[BUFSIZE];
 	DriveStrings[0] = '\0';
 
-	PCHAR DriveLetterFilePath = (PCHAR)malloc(MAX_PATH);
+	PCHAR DriveLetterFilePath = (PCHAR)calloc(MAX_PATH, sizeof(BYTE));
 
 	if (!DriveLetterFilePath)
 	{
@@ -816,15 +816,13 @@ PTRACKEDREGION CreateTrackedRegion()
 	if (TrackedRegionList)
 		return TrackedRegionList;
 
-	PTRACKEDREGION FirstTrackedRegion = ((struct TrackedRegion*)malloc(sizeof(struct TrackedRegion)));
+	PTRACKEDREGION FirstTrackedRegion = ((struct TrackedRegion*)calloc(sizeof(struct TrackedRegion), sizeof(BYTE)));
 
 	if (FirstTrackedRegion == NULL)
 	{
 		DebugOutput("CreateTrackedRegion: failed to allocate memory for initial tracked region list.\n");
 		return NULL;
 	}
-
-	memset(FirstTrackedRegion, 0, sizeof(struct TrackedRegion));
 
 	TrackedRegionList = FirstTrackedRegion;
 
@@ -872,7 +870,7 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 		// We haven't found it in the linked list, so create a new one
 		TrackedRegion = PreviousTrackedRegion;
 
-		TrackedRegion->NextTrackedRegion = ((struct TrackedRegion*)malloc(sizeof(struct TrackedRegion)));
+		TrackedRegion->NextTrackedRegion = ((struct TrackedRegion*)calloc(sizeof(struct TrackedRegion), sizeof(BYTE)));
 
 		if (TrackedRegion->NextTrackedRegion == NULL)
 		{
@@ -881,8 +879,6 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 		}
 
 		TrackedRegion = TrackedRegion->NextTrackedRegion;
-
-		memset(TrackedRegion, 0, sizeof(struct TrackedRegion));
 #ifdef DEBUG_COMMENTS
 		DebugOutput("AddTrackedRegion: Created new tracked region for address 0x%p.\n", Address);
 #endif
@@ -1256,7 +1252,7 @@ BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVO
 
 		if (CapeMetaData->TargetProcess == NULL && !GetModuleFileNameEx(hTargetProcess, NULL, CapeMetaData->TargetProcess, MAX_PATH))
 		{
-			CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+			CapeMetaData->TargetProcess = (char*)calloc(MAX_PATH, sizeof(BYTE));
 			ErrorOutput("SetCapeMetaData: GetModuleFileNameEx failed on target process, handle 0x%x", hTargetProcess);
 			return FALSE;
 		}
@@ -1304,7 +1300,7 @@ BOOL MapFile(HANDLE hFile, unsigned char **Buffer, DWORD* FileSize)
 
 	DebugOutput("File size: 0x%x", *FileSize);
 
-	*Buffer = malloc(*FileSize);
+	*Buffer = calloc(*FileSize, sizeof(BYTE));
 
 	if (SetFilePointer(hFile, 0, 0, FILE_BEGIN))
 	{
@@ -1349,7 +1345,7 @@ char* GetResultsPath(char* FolderName)
 	char *FullPath;
 	DWORD RetVal;
 
-	FullPath = (char*)malloc(MAX_PATH);
+	FullPath = (char*)calloc(MAX_PATH, sizeof(BYTE));
 
 	if (FullPath == NULL)
 	{
@@ -1357,7 +1353,6 @@ char* GetResultsPath(char* FolderName)
 		return 0;
 	}
 
-	memset(FullPath, 0, MAX_PATH);
 	strncpy_s(FullPath, MAX_PATH, g_config.results, strlen(g_config.results)+1);
 
 	if (FolderName)
@@ -1597,7 +1592,7 @@ int DumpXorPE(LPBYTE Buffer, unsigned int Size)
 			{
 				DebugOutput("Xor-encrypted PE detected, about to dump.\n");
 
-				DecryptedBuffer = (BYTE*)malloc(Size);
+				DecryptedBuffer = (BYTE*)calloc(Size, sizeof(BYTE));
 
 				if (DecryptedBuffer == NULL)
 				{
@@ -2315,7 +2310,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    BYTE* CodeSectionBuffer = (BYTE*)calloc(1, NtHeaders.OptionalHeader.SizeOfCode);
+    BYTE* CodeSectionBuffer = (BYTE*)calloc(NtHeaders.OptionalHeader.SizeOfCode, sizeof(BYTE));
     if (CodeSectionBuffer == NULL)
 	{
 #ifdef DEBUG_COMMENTS
@@ -2472,7 +2467,7 @@ int DumpMemoryRaw(PVOID Buffer, SIZE_T Size)
 	char *FullPathName = NULL;
 	int ret = 0;
 
-	BufferCopy = (PVOID)((BYTE*)malloc(Size));
+	BufferCopy = (PVOID)((BYTE*)calloc(Size, sizeof(BYTE)));
 
 	if (BufferCopy == NULL)
 	{
@@ -3001,7 +2996,7 @@ int DoProcessDump()
 			goto out;
 		}
 
-		OutputFilename = (char*)malloc(MAX_PATH);
+		OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
 
 		sprintf_s(OutputFilename, MAX_PATH, "%u.dmp", CapeMetaData->Pid);
 
@@ -3048,7 +3043,7 @@ int DoProcessDump()
 			PVOID TempBuffer;
 
 			BufferAddress.QuadPart = (ULONGLONG)Address;
-			TempBuffer = malloc(MemInfo.RegionSize);
+			TempBuffer = calloc(MemInfo.RegionSize, sizeof(BYTE));
 			if (!TempBuffer)
 			{
 				DebugOutput("DoProcessDump: Error allocating memory for copy of region at 0x%p, size 0x%x.\n", MemInfo.BaseAddress, MemInfo.RegionSize);
@@ -3186,10 +3181,10 @@ void CAPE_init()
 	// Initialise CAPE global variables
 	//
 	//if (!g_config.standalone)
-	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA),1);
+	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA), sizeof(BYTE));
 	CapeMetaData->Pid = GetCurrentProcessId();
 	CapeMetaData->PPid = parent_process_id();
-	CapeMetaData->ProcessPath = (char*)malloc(MAX_PATH);
+	CapeMetaData->ProcessPath = (char*)calloc(MAX_PATH, sizeof(BYTE));
 	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
 	Character = CapeMetaData->ProcessPath;
 	if (g_config.typestring)

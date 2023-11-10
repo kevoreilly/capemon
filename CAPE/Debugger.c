@@ -151,7 +151,7 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 
 	if (MainThreadBreakpointList == NULL)
 	{
-		MainThreadBreakpointList = ((struct ThreadBreakpoints*)malloc(sizeof(struct ThreadBreakpoints)));
+		MainThreadBreakpointList = ((struct ThreadBreakpoints*)calloc(sizeof(struct ThreadBreakpoints), sizeof(BYTE)));
 
 		if (MainThreadBreakpointList == NULL)
 		{
@@ -160,8 +160,6 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 		}
 
 		CurrentThreadBreakpoints = MainThreadBreakpointList;
-
-		memset(CurrentThreadBreakpoints, 0, sizeof(struct ThreadBreakpoints));
 	}
 	else
 	{
@@ -186,15 +184,15 @@ PTHREADBREAKPOINTS CreateThreadBreakpoints(DWORD ThreadId, HANDLE Handle)
 			// We haven't found it in the linked list, so create a new one
 			CurrentThreadBreakpoints = PreviousThreadBreakpoint;
 
-			CurrentThreadBreakpoints->NextThreadBreakpoints = ((struct ThreadBreakpoints*)malloc(sizeof(struct ThreadBreakpoints)));
+			PTHREADBREAKPOINTS NewThreadBreakpoints = ((struct ThreadBreakpoints*)calloc(sizeof(struct ThreadBreakpoints), sizeof(BYTE)));
 
-			if (CurrentThreadBreakpoints->NextThreadBreakpoints == NULL)
+			if (NewThreadBreakpoints == NULL)
 			{
 				DebugOutput("CreateThreadBreakpoints: Failed to allocate new thread breakpoints.\n");
 				return NULL;
 			}
 
-			memset(CurrentThreadBreakpoints->NextThreadBreakpoints, 0, sizeof(struct ThreadBreakpoints));
+			CurrentThreadBreakpoints->NextThreadBreakpoints = NewThreadBreakpoints;
 
 			CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 		}
