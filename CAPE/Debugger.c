@@ -329,8 +329,6 @@ void OutputThreadBreakpoints(DWORD ThreadId)
 BOOL GetNextAvailableBreakpoint(DWORD ThreadId, int* Register)
 //**************************************************************************************
 {
-	DWORD CurrentThreadId;
-
 	PTHREADBREAKPOINTS CurrentThreadBreakpoints = MainThreadBreakpointList;
 
 	if (CurrentThreadBreakpoints == NULL)
@@ -341,9 +339,7 @@ BOOL GetNextAvailableBreakpoint(DWORD ThreadId, int* Register)
 
 	while (CurrentThreadBreakpoints)
 	{
-		CurrentThreadId = GetThreadId(CurrentThreadBreakpoints->ThreadHandle);
-
-		if (CurrentThreadId == ThreadId)
+		if (CurrentThreadBreakpoints->ThreadId && CurrentThreadBreakpoints->ThreadId == ThreadId)
 		{
 			for (unsigned int i=0; i < NUMBER_OF_DEBUG_REGISTERS; i++)
 			{
