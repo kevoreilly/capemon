@@ -37,8 +37,6 @@ extern void set_hooks();
 extern void notify_successful_load(void);
 extern BOOL ProcessDumped;
 
-PVOID LastDllUnload;
-
 static int wmi_sent = 0;
 static int bits_sent = 0;
 static int tasksched_sent = 0;
@@ -146,12 +144,6 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 			ProcessDumped = DumpImageInCurrentProcessFixImports(DllImageBase, 0);
 		else
 			ProcessDumped = DumpImageInCurrentProcess(DllImageBase);
-	}
-
-	if (DllImageBase && DllImageBase != LastDllUnload)
-	{
-		DebugOutput("DLL unloaded from 0x%p.\n", DllImageBase);
-		LastDllUnload = DllImageBase;
 	}
 
 	return 0;
