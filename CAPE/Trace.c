@@ -1327,7 +1327,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			return;
 		}
 		else
-			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%d.\n", Target, DumpSize);
+			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%x.\n", Target, DumpSize);
 		DumpAddress = 0;
 		DumpSize = 0;
 	}
