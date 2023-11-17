@@ -2137,33 +2137,6 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 	TraceOutput(CIP, DecodedInstruction);
 
-	if (!stricmp(Action0, "dumpebx"))
-	{
-		if (!stricmp(DumpSizeString, "eax"))
-		{
-#ifdef _WIN64
-			DumpSize = ExceptionInfo->ContextRecord->Rax;
-			PVOID Address = (PVOID)ExceptionInfo->ContextRecord->Rbx;
-#else
-			DumpSize = ExceptionInfo->ContextRecord->Eax;
-			PVOID Address = (PVOID)ExceptionInfo->ContextRecord->Ebx;
-#endif
-			if (g_config.dumptype0)
-				CapeMetaData->DumpType = g_config.dumptype0;
-			else if (g_config.dumptype1)
-				CapeMetaData->DumpType = g_config.dumptype1;
-			else if (g_config.dumptype2)
-				CapeMetaData->DumpType = g_config.dumptype2;
-			else
-				CapeMetaData->DumpType = UNPACKED_PE;
-
-			if (Address && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Address, DumpSize))
-				DebugOutput("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", Address, DumpSize);
-			else
-				DebugOutput("StepOutCallback: Failed to dump region at 0x%p.\n", Address);
-		}
-	}
-
 	return TRUE;
 }
 
