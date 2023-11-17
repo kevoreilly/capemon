@@ -58,7 +58,7 @@ char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
-unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
+unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
 unsigned int Type0, Type1, Type2, Type3;
@@ -1316,9 +1316,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("ActionDispatcher: Dump size set to 0x%x\n", DumpSize);
 		}
 
-		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Target, DumpSize))
+		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE)
 		{
-			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
+			if (DumpCount > 0)
+				DumpCount--;
+			if (DumpMemory(Target, DumpSize))
+				DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
+			else
+				DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", Target, DumpSize);
 			return;
 		}
 		else if (Target && DumpRegion(Target))

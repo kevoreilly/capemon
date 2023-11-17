@@ -149,7 +149,6 @@ extern HANDLE Strings;
 OSVERSIONINFO OSVersion;
 BOOL ProcessDumped, ImageBaseRemapped;
 PVOID ImageBase;
-static unsigned int DumpCount;
 
 static __inline ULONG_PTR get_stack_top(void)
 {

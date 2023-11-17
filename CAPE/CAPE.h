@@ -67,6 +67,7 @@ void DumpSectionViewsForPid(DWORD Pid);
 BOOL DumpStackRegion(void);
 
 BOOL ProcessDumped;
+unsigned int DumpCount;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
