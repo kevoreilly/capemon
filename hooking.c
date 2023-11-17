@@ -64,7 +64,7 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = _hook_info;
 
-	if (addr && !inside_hook((PVOID)addr)) {
+	if (addr && !inside_hook((PVOID)addr) && !InsideMonitor(NULL, (PVOID)addr)) {
 		if (!hookinfo->main_caller_retaddr) {
 			hookinfo->main_caller_retaddr = addr;
 			return 0;
@@ -152,7 +152,7 @@ static int set_caller_info(void *_hook_info, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = _hook_info;
 
-	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr)) {
+	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr) && !InsideMonitor(NULL, (PVOID)addr)) {
 		caller_dispatch(hookinfo, addr);
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
@@ -284,9 +284,9 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 
 	if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
 		DebugOutput("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
-		if (main_caller_retaddr)
+		if (main_caller_retaddr && !is_in_dll_range(main_caller_retaddr))
 			BreakpointOnReturn((PVOID)main_caller_retaddr);
-		else if (parent_caller_retaddr)
+		else if (parent_caller_retaddr && !is_in_dll_range(parent_caller_retaddr))
 			BreakpointOnReturn((PVOID)parent_caller_retaddr);
 		else
 			BreakpointOnReturn((PVOID)hookinfo->return_address);
