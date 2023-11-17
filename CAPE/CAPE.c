@@ -2408,7 +2408,10 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
 	if (DumpCount >= DUMP_MAX)
+	{
+		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, DUMP_MAX);
 		return FALSE;
+	}
 
 	BOOL RetVal = FALSE;
 	PVOID PEPointer = Buffer;
@@ -2534,7 +2537,10 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
 	if (DumpCount >= DUMP_MAX)
+	{
+		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, DUMP_MAX);
 		return 0;
+	}
 
 	if (!Size)
 		return 0;
@@ -2563,7 +2569,10 @@ BOOL DumpRegion(PVOID Address)
 //**************************************************************************************
 {
 	if (DumpCount >= DUMP_MAX)
+	{
+		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, DUMP_MAX);
 		return FALSE;
+	}
 
 	PVOID AllocationBase = GetAllocationBase(Address);
 	SIZE_T AccessibleSize = GetAccessibleSize(Address);
@@ -2630,7 +2639,10 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 //**************************************************************************************
 {
 	if (DumpCount >= DUMP_MAX)
+	{
+		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, DUMP_MAX);
 		return 0;
+	}
 
 	__try
 	{
@@ -2651,7 +2663,10 @@ int DumpPE(PVOID Buffer)
 //**************************************************************************************
 {
 	if (DumpCount >= DUMP_MAX)
+	{
+		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, DUMP_MAX);
 		return 0;
+	}
 
 	__try
 	{
@@ -2681,7 +2696,7 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 
 	if (DumpCount >= DUMP_MAX)
 	{
-		DebugOutput("DumpImageInCurrentProcess: CAPE dump limit reached.\n");
+		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", BaseAddress, DUMP_MAX);
 		return 0;
 	}
 
