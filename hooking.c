@@ -234,13 +234,11 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 
 	if (g_config.debugger && DebuggerInitialised)
 	{
-		DWORD CurrentThreadId = GetCurrentThreadId();
-		InitNewThreadBreakpoints(CurrentThreadId, NULL);
 		for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
 			if (!g_config.base_on_apiname[i])
 				break;
 			if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
-				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], CurrentThreadId, main_caller_retaddr);
+				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
 				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
 					BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
