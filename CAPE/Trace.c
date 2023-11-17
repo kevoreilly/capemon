@@ -236,9 +236,21 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 	if (!Context || !RegString)
         return NULL;
 
+	BOOL Pointer = FALSE;
 	PVOID Register = NULL;
 	int delta = 0;
-	char* q = strchr(RegString, '+'), r;
+	char *q, r, *s;
+
+	if (*RegString == '[') {
+		RegString++;
+		s = strchr(RegString, ']');
+		if (s) {
+			*s = '\0';
+			Pointer = TRUE;
+		}
+	}
+
+	q = strchr(RegString, '+');
 	if (q)
 	{
 		delta = strtoul(q+1, NULL, 0);
@@ -340,7 +352,12 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 	if (q)
 		*q = r;
 
-    return (PVOID)((DWORD_PTR)Register + delta);
+	if (Pointer) {
+		*s = ']';
+		return *(PVOID*)((PUCHAR)Register + delta);
+	}
+	else
+		return (PVOID)((PUCHAR)Register + delta);
 }
 
 OutputRegisterChanges(PCONTEXT Context)
