@@ -678,6 +678,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				((BREAKPOINT_HANDLER)pBreakpointInfo->Callback)(pBreakpointInfo, ExceptionInfo);
 				pBreakpointInfo->HandlerActive = FALSE;
 				ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+				ContextSetThreadBreakpointsEx(ExceptionInfo->ContextRecord, CurrentThreadBreakpoints, TRUE);
 			}
 		}
 
