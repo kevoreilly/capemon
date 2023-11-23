@@ -1736,7 +1736,7 @@ BOOL ClearSingleStepMode(PCONTEXT Context)
 	// Clear the trap flag & index
 	Context->EFlags &= ~FL_TF;
 
-	//SingleStepHandler = NULL;
+	SingleStepHandler = NULL;
 
 	return TRUE;
 }
