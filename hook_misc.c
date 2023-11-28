@@ -1076,7 +1076,7 @@ HOOKDEF(BOOL, WINAPI, SystemTimeToTzSpecificLocalTime,
 	_In_	 LPSYSTEMTIME			lpUniversalTime,
 	_Out_	LPSYSTEMTIME			lpLocalTime
 ) {
-	BOOL ret = SystemTimeToTzSpecificLocalTime(lpTimeZone, lpUniversalTime, lpLocalTime);
+	BOOL ret = Old_SystemTimeToTzSpecificLocalTime(lpTimeZone, lpUniversalTime, lpLocalTime);
 	LOQ_bool("misc", "");
 	return ret;
 }
