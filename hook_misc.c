@@ -1085,7 +1085,7 @@ HOOKDEF(HRESULT, WINAPI, CLSIDFromProgID,
 	_In_ LPCOLESTR lpszProgID,
 	_Out_ LPCLSID lpclsid
 ) {
-	HRESULT ret = CLSIDFromProgID(lpszProgID, lpclsid);
+	HRESULT ret = Old_CLSIDFromProgID(lpszProgID, lpclsid);
 	LOQ_hresult("misc", "u", "ProgID", lpszProgID);
 	return ret;
 }
