@@ -2203,6 +2203,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 {
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
+	PBYTE CodeSectionBuffer = NULL;
 	PIMAGE_BASE_RELOCATION Relocations;
 	ULONG RelocationSize = 0, Size = 0;
 	DWORD_PTR Delta;
@@ -2245,7 +2246,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		return RetVal;
 
 	DWORD SizeOfHeaders = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNtHeader->FileHeader.SizeOfOptionalHeader;
-	PIMAGE_SECTION_HEADER pFirstSectionHeader = (PIMAGE_SECTION_HEADER)((BYTE*)ImageBase + SizeOfHeaders);
+	PIMAGE_SECTION_HEADER pFirstSectionHeader = (PIMAGE_SECTION_HEADER)((PBYTE)ImageBase + SizeOfHeaders);
 
     HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -2309,7 +2310,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    BYTE* CodeSectionBuffer = (BYTE*)calloc(NtHeaders.OptionalHeader.SizeOfCode, sizeof(BYTE));
+    CodeSectionBuffer = (PBYTE)calloc(NtHeaders.OptionalHeader.SizeOfCode, sizeof(BYTE));
     if (CodeSectionBuffer == NULL)
 	{
 #ifdef DEBUG_COMMENTS
@@ -2386,7 +2387,8 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     }
 
 end:
-    free(CodeSectionBuffer);
+	if (CodeSectionBuffer)
+		free(CodeSectionBuffer);
     CloseHandle(hFile);
 
     return RetVal;
