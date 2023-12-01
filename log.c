@@ -1131,7 +1131,7 @@ void log_breakpoint(const char *subcategory, const char *msg)
 
 void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval)
 {
-	if (function)
+	if (function && strlen(function))
 	{
 		if (module)
 			loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, retval==0, retval, "iosp",
