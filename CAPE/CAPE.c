@@ -1920,19 +1920,39 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 		PIMAGE_SECTION_HEADER NtSection;
 
 		if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("TestPERequirements: Bad magic 0x%x", pNtHeader->OptionalHeader.Magic);
+#endif
 			return FALSE;
+		}
 
 		// Basic requirements
 		if (!pNtHeader->FileHeader.NumberOfSections || pNtHeader->FileHeader.NumberOfSections > PE_MAX_SECTIONS)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("TestPERequirements: Bad number of sections %d", pNtHeader->FileHeader.NumberOfSections);
+#endif
 			return FALSE;
+		}
 
 		if (!pNtHeader->OptionalHeader.SizeOfImage || pNtHeader->OptionalHeader.SizeOfImage > PE_MAX_SIZE)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("TestPERequirements: Bad SizeOfImage 0x%x", pNtHeader->OptionalHeader.SizeOfImage);
+#endif
 			return FALSE;
+		}
 
 		NtSection = IMAGE_FIRST_SECTION(pNtHeader);
 
 		if (!NtSection)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("TestPERequirements: Bad first section entry");
+#endif
 			return FALSE;
+		}
 
 		for (unsigned int i=0; i<pNtHeader->FileHeader.NumberOfSections; i++)
 		{
@@ -2051,14 +2071,32 @@ int IsDisguisedPEHeader(PVOID Buffer)
 
 	__try
 	{
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+		if (!pDosHeader->e_lfanew || (ULONG)pDosHeader->e_lfanew > PE_HEADER_LIMIT)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("IsDisguisedPEHeader: Bad e_lfanew value 0x%x", pDosHeader->e_lfanew);
+#endif
+			return 0;
+		}
+
+		if (((ULONG)pDosHeader->e_lfanew & 3) != 0)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("IsDisguisedPEHeader: Bad e_lfanew alignment 0x%x", pDosHeader->e_lfanew);
+#endif
+			return 0;
+		}
+
+		pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
 
 		if (pNtHeader && TestPERequirements(pNtHeader))
 			return 1;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("IsDisguisedPEHeader: Exception checking PE header!");
+#endif
 		return -1;
 	}
 
