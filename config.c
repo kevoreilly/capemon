@@ -1498,7 +1498,11 @@ int read_config(void)
 			g_config.msi = 1;
 			DebugOutput("MsiExec hook set enabled\n");
 		}
-		else if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs") || !_stricmp(our_process_name, "WmiPrvSE.exe") || !_stricmp(our_process_name, "services.exe")) {
+		else if (
+			(!_stricmp(our_process_name, "services.exe") && parent_has_path("C:\\Windows\\System32\\wininit.exe")) ||
+			(!_stricmp(our_process_name, "svchost.exe") && parent_has_path("C:\\Windows\\System32\\services.exe") && (wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs"))) ||
+			(!_stricmp(our_process_name, "WmiPrvSE.exe") && !can_open_parent() && wcsstr(our_commandline, L"-secured -Embedding"))
+		) {
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.unpacker = 0;

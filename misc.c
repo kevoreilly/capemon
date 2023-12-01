@@ -580,6 +580,42 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 	return 0;
 }
 
+BOOLEAN parent_has_path(char* path)
+{
+	DWORD ppid = parent_process_id();
+	HANDLE process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ppid);
+	if (process_handle == NULL) {
+		DebugOutput("parent_has_path: unable to open parent process %d", ppid);
+		return FALSE;
+	}
+
+    char process_path[MAX_PATH] = "";
+	DWORD result = GetModuleFileNameEx(process_handle, NULL, process_path, MAX_PATH);
+
+	CloseHandle(process_handle);
+
+	if (result > 0) {
+		DebugOutput("parent_has_path: parent path %s", process_path);
+		if (!stricmp(process_path, path))
+			return TRUE;
+	}
+	else
+		DebugOutput("parent_has_path: unable to get path for parent process %d", ppid);
+
+	return FALSE;
+}
+
+BOOLEAN can_open_parent()
+{
+	HANDLE process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, parent_process_id());
+	if (process_handle == NULL)
+		return FALSE;
+
+	CloseHandle(process_handle);
+
+	return TRUE;
+}
+
 DWORD pid_from_process_handle(HANDLE process_handle)
 {
 	PROCESS_BASIC_INFORMATION pbi;

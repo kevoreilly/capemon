@@ -139,6 +139,8 @@ BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj);
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj);
 void hide_module_from_peb(HMODULE module_handle);
 BOOLEAN is_suspended(DWORD pid, DWORD tid);
+BOOLEAN parent_has_path(char* path);
+BOOLEAN can_open_parent();
 
 uint32_t path_from_handle(HANDLE handle,
 	wchar_t *path, uint32_t path_buffer_len);
