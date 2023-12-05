@@ -117,6 +117,12 @@ typedef HRESULT (WINAPI *_ProgIDFromCLSID)(
 	_Out_ LPOLESTR *lplpszProgID
 );
 
+typedef SIZE_T (WINAPI *_RtlCompareMemory)(
+    _In_ const VOID* Source1,
+    _In_ const VOID* Source2,
+    _In_ SIZE_T Length
+);
+
 _NtSetInformationProcess pNtSetInformationProcess;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;

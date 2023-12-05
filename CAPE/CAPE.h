@@ -46,6 +46,7 @@ PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
+int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path);
 int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 int DumpMemory(PVOID Buffer, SIZE_T Size);
 int DumpCurrentProcessNewEP(PVOID NewEP);

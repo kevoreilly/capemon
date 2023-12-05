@@ -109,6 +109,13 @@ typedef struct _hook_info_t {
 	ULONG_PTR parent_caller_retaddr;
 } hook_info_t;
 
+typedef SIZE_T (WINAPI *_RtlCompareMemory)(
+    _In_ const VOID* Source1,
+    _In_ const VOID* Source2,
+    _In_ SIZE_T Length
+);
+
+extern _RtlCompareMemory pRtlCompareMemory;
 extern BOOLEAN is_image_base_remapped(HMODULE BaseAddress);
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
 extern wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
@@ -2342,12 +2349,6 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    if (NtHeaders.OptionalHeader.SizeOfCode != FirstSectionHeader.SizeOfRawData)
-	{
-		DebugOutput("VerifyCodeSection: SizeOfCode mismatch: 0x%x vs 0x%x", NtHeaders.OptionalHeader.SizeOfCode, FirstSectionHeader.SizeOfRawData);
-		goto end;
-	}
-
     CodeSectionBuffer = (PBYTE)calloc(NtHeaders.OptionalHeader.SizeOfCode, sizeof(BYTE));
     if (CodeSectionBuffer == NULL)
 	{
@@ -2411,7 +2412,38 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 
 	PVOID pFirstSection = (PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress);
 
-    if (!memcmp((PVOID)CodeSectionBuffer, (PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress), NtHeaders.OptionalHeader.SizeOfCode))
+	SIZE_T SizeOfCode = (SIZE_T)ReverseScanForNonZero((PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress), NtHeaders.OptionalHeader.SizeOfCode);
+
+	SIZE_T ThunksSize = 0;
+	DWORD pFirstThunk = 0;
+	if (NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress)
+	{
+		PIMAGE_IMPORT_DESCRIPTOR pImageImport = (PIMAGE_IMPORT_DESCRIPTOR)((PBYTE)ImageBase + NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+		pFirstThunk = pImageImport->FirstThunk;
+		while (pImageImport->FirstThunk)
+		{
+			PDWORD Thunks = (PDWORD)((PBYTE)ImageBase + pImageImport->FirstThunk);
+			while (*Thunks)
+			{
+				ThunksSize += sizeof(DWORD);
+				++Thunks;
+			};
+			ThunksSize += sizeof(DWORD);
+			++pImageImport;
+		};
+	}
+
+	if (pFirstThunk && pFirstThunk >= pFirstSectionHeader->VirtualAddress && pFirstThunk < (pFirstSectionHeader->VirtualAddress + SizeOfCode))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyCodeSection: Restoring original thunks - size 0x%x", ThunksSize);
+#endif
+		memcpy(CodeSectionBuffer + pFirstThunk - pFirstSectionHeader->VirtualAddress, (PVOID)((PBYTE)ImageBase + pFirstThunk), ThunksSize);
+	}
+
+	SIZE_T Matching = pRtlCompareMemory((PVOID)CodeSectionBuffer, pFirstSection, SizeOfCode);
+
+    if (Matching == SizeOfCode)
 	{
 #ifdef DEBUG_COMMENTS
         DebugOutput("VerifyCodeSection: Executable code matches.\n");
@@ -2420,7 +2452,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     }
 	else
 	{
-        DebugOutput("VerifyCodeSection: Executable code does not match.\n");
+        DebugOutput("VerifyCodeSection: Executable code does not match, 0x%x of 0x%x matching\n", Matching, SizeOfCode);
 		RetVal = 0;
     }
 
@@ -2945,6 +2977,7 @@ int DoProcessDump()
 	MEMORY_BASIC_INFORMATION MemInfo;
 	HANDLE FileHandle = NULL;
 	char *FullDumpPath = NULL, *OutputFilename = NULL;
+	wchar_t *ImagePath = NULL;
 	PVOID NewImageBase = NULL;
 
 	DWORD ThreadId = GetCurrentThreadId();
@@ -2969,17 +3002,21 @@ int DoProcessDump()
 	if (g_config.procdump)
 	{
 		if (base_of_dll_of_interest)
+		{
 			ImageBase = (PVOID)base_of_dll_of_interest;
+			ImagePath = g_config.file_of_interest;
+		}
 		else
 		{
 			NewImageBase = GetModuleHandle(NULL);
 			if (ImageBase && ImageBase == NewImageBase)
 				NewImageBase = NULL;
+			ImagePath = our_process_path_w;
 		}
 
 		if (IsAddressAccessible(ImageBase))
 		{
-			if (VerifyCodeSection(ImageBase, our_process_path_w) < 1)
+			if (VerifyCodeSection(ImageBase, ImagePath) < 1)
 			{
 				DebugOutput("DoProcessDump: Code modification detected, dumping Imagebase at 0x%p.\n", ImageBase);
 				CapeMetaData->DumpType = PROCDUMP;
