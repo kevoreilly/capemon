@@ -591,7 +591,7 @@ BOOLEAN parent_has_path(char* path)
 		return FALSE;
 	}
 
-    char process_path[MAX_PATH] = "";
+	char process_path[MAX_PATH] = "";
 	DWORD result = GetModuleFileNameEx(process_handle, NULL, process_path, MAX_PATH);
 
 	CloseHandle(process_handle);

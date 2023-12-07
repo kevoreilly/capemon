@@ -1501,7 +1501,7 @@ int read_config(void)
 		else if (
 			(!_stricmp(our_process_name, "services.exe") && parent_has_path("C:\\Windows\\System32\\wininit.exe")) ||
 			(!_stricmp(our_process_name, "svchost.exe") && parent_has_path("C:\\Windows\\System32\\services.exe") && (wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs"))) ||
-			(!_stricmp(our_process_name, "WmiPrvSE.exe") && !can_open_parent() && wcsstr(our_commandline, L"-secured -Embedding"))
+			(!_stricmp(our_process_name, "WmiPrvSE.exe") && !can_open_parent() && wcsstr(our_commandline, L"-Embedding"))
 		) {
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
