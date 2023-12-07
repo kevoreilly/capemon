@@ -2759,7 +2759,7 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 {
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader;
-	PVOID FirstPage = NULL;
+	PVOID RegionCopy = NULL;
 	DWORD dwProtect = 0;
 	int RetVal = 0;
 
@@ -2774,18 +2774,11 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
     if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
     {
         // We want to fix the PE header in the dump (for e.g. disassembly etc)
-        if (!SystemInfo.dwPageSize)
-            GetSystemInfo(&SystemInfo);
+		SIZE_T RegionSize = GetAccessibleSize(BaseAddress);
 
-        if (!SystemInfo.dwPageSize)
-        {
-            ErrorOutput("DumpImageInCurrentProcess: Failed to obtain system page size.\n");
-            return 0;
-        }
+        RegionCopy = calloc(RegionSize, sizeof(BYTE));
 
-        FirstPage = calloc(SystemInfo.dwPageSize, sizeof(char));
-
-        if (!FirstPage)
+        if (!RegionCopy)
         {
             ErrorOutput("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
             return 0;
@@ -2793,24 +2786,16 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 
         __try
         {
-            memcpy(FirstPage, BaseAddress, SystemInfo.dwPageSize);
+            memcpy(RegionCopy, BaseAddress, RegionSize);
         }
         __except(EXCEPTION_EXECUTE_HANDLER)
         {
             DebugOutput("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", BaseAddress);
-            free(FirstPage);
+            free(RegionCopy);
             return 0;
         }
 
-        // Set target image page permissions to allow writing of new headers
-        if (!VirtualProtect((BYTE*)BaseAddress, SystemInfo.dwPageSize, PAGE_EXECUTE_READWRITE, &dwProtect))
-        {
-            ErrorOutput("DumpImageInCurrentProcess: Failed to modify memory page protection of NtHeader");
-            free(FirstPage);
-            return 0;
-        }
-
-        pDosHeader = (PIMAGE_DOS_HEADER)(BaseAddress);
+        pDosHeader = (PIMAGE_DOS_HEADER)RegionCopy;
 
         DebugOutput("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", BaseAddress);
 
@@ -2838,16 +2823,8 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
             goto end;
         }
 
-        __try
-        {
-            *(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
-            *(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
-        }
-        __except(EXCEPTION_EXECUTE_HANDLER)
-        {
-            DebugOutput("DumpImageInCurrentProcess: Exception occured writing PE signatures in region at 0x%p, dumping entire memory region.\n", pDosHeader);
-            goto end;
-        }
+		*(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
+		*(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
 	}
 
 
@@ -2871,25 +2848,8 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 	}
 
 end:
-	if (FirstPage)
-	{
-		// Copy the original headers back
-		__try
-		{
-			memcpy(BaseAddress, FirstPage, SystemInfo.dwPageSize);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER)
-		{
-			DebugOutput("DumpImageInCurrentProcess: Exception occurred restoring PE header at 0x%p\n", BaseAddress);
-			return 0;
-		}
-
-		// Restore original protection
-		if (!VirtualProtect((BYTE*)BaseAddress, SystemInfo.dwPageSize, dwProtect, &dwProtect))
-			ErrorOutput("DumpImageInCurrentProcess: Failed to restore previous memory page protection");
-
-		free(FirstPage);
-	}
+	if (RegionCopy)
+		free(RegionCopy);
 
 	if (RetVal)
 		DumpCount++;
