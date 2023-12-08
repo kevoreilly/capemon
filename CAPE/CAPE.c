@@ -1077,7 +1077,10 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 	else if (TrackedRegion->Entropy && fabs(TrackedRegion->Entropy - Entropy) > (double)ENTROPY_DELTA)
 		DebugOutput("ProcessImageBase: Modified image detected at image base 0x%p - new entropy %e.\n", TrackedRegion->AllocationBase, Entropy);
 	else
+	{
+		DebugOutput("ProcessImageBase: Main module image at 0x%p unmodified.\n", TrackedRegion->AllocationBase);
 		return;
+	}
 
 	TrackedRegion->EntryPoint = EntryPoint;
 	TrackedRegion->MinPESize = MinPESize;
