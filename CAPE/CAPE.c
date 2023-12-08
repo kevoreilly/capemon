@@ -2979,9 +2979,12 @@ int DoProcessDump()
 
 		if (IsAddressAccessible(ImageBase))
 		{
-			if (VerifyCodeSection(ImageBase, ImagePath) < 1)
+			if (g_config.procdump > 1 || VerifyCodeSection(ImageBase, ImagePath) < 1)
 			{
-				DebugOutput("DoProcessDump: Code modification detected, dumping Imagebase at 0x%p.\n", ImageBase);
+				if (g_config.procdump < 2)
+					DebugOutput("DoProcessDump: Code modification detected, dumping Imagebase at 0x%p.\n", ImageBase);
+				else
+					DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", ImageBase);
 				CapeMetaData->DumpType = PROCDUMP;
 				if (DumpCount > 0)
 					DumpCount--;

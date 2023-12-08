@@ -1085,7 +1085,7 @@ void parse_config_line(char* line)
 				DebugOutput("Config: RDTSCP nop enabled\n");
 		}
 		else if (!stricmp(key, "procdump")) {
-			g_config.procdump = value[0] == '1';
+			g_config.procdump = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.procdump)
 				DebugOutput("Process dumps enabled.\n");
 			else
