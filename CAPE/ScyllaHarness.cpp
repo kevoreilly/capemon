@@ -671,6 +671,23 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 				peFile->listPeSection[SectionIndex].sectionHeader.Misc.VirtualSize
 			);
 #endif
+			if (!peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData && peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
+			{
+#ifdef DEBUG_COMMENTS
+					DebugOutput("IsPeImageRaw: Missing PointerToRawData for section %d.\n", SectionIndex+1);
+#endif
+					delete peFile;
+					return 0;
+			}
+			else if (peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData && !peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
+			{
+#ifdef DEBUG_COMMENTS
+					DebugOutput("IsPeImageRaw: Missing VirtualAddress for section %d.\n", SectionIndex+1);
+#endif
+					delete peFile;
+					return 1;
+			}
+
 			if (peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData != peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
 			{
 				int SectionBoundary = LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData);
