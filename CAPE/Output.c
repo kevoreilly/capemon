@@ -32,11 +32,12 @@ TCHAR DebugBuffer[MAX_PATH];
 TCHAR PipeBuffer[MAX_PATH];
 TCHAR ErrorBuffer[MAX_PATH];
 CHAR DebuggerLine[MAX_PATH];
+CHAR StringsLine[MAX_PATH], *StringsFile;
 
 extern char* GetResultsPath(char* FolderName);
 extern struct CapeMetadata *CapeMetaData;
 extern ULONG_PTR base_of_dll_of_interest;
-HANDLE DebuggerLog;
+HANDLE DebuggerLog, Strings;
 extern SIZE_T LastWriteLength;
 extern BOOL StopTrace;
 
@@ -61,7 +62,7 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 	else
 	{
 		memset(PipeBuffer, 0, MAX_PATH*sizeof(CHAR));
-		_sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%s", DebugBuffer);
+		_sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%u: %s", GetCurrentProcessId(), DebugBuffer);
 		pipe(PipeBuffer, strlen(PipeBuffer));
 	}
 	return;
@@ -139,7 +140,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 	{
 		BufferSize = 4 * (MAX_PATH + MAX_INT_STRING_LEN + 2) + 2; //// max size string can be
 
-		MetadataString = malloc(BufferSize);
+		MetadataString = calloc(BufferSize, sizeof(BYTE));
 
 		// if our file of interest is a dll, we need to update cape module path now
 		if (base_of_dll_of_interest)
@@ -150,7 +151,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 				return;
 			}
 
-			CapeMetaData->ModulePath = (char*)malloc(MAX_PATH);
+			CapeMetaData->ModulePath = (char*)calloc(MAX_PATH, sizeof(BYTE));
 			WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)g_config.file_of_interest, (int)wcslen(g_config.file_of_interest)+1, CapeMetaData->ModulePath, MAX_PATH, NULL, NULL);
 		}
 		else
@@ -175,7 +176,7 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 	{
 		BufferSize = 4 * (MAX_PATH + MAX_INT_STRING_LEN + 2) + 2; //// max size string can be
 
-		MetadataString = malloc(BufferSize);
+		MetadataString = calloc(BufferSize, sizeof(BYTE));
 
 		if (!CapeMetaData->ProcessPath)
 			CapeMetaData->ProcessPath = "Unknown path";
@@ -248,7 +249,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 
 	FullPathName = GetResultsPath("debugger");
 
-	OutputFilename = (char*)malloc(MAX_PATH);
+	OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
 
 	if (OutputFilename == NULL)
 	{
@@ -295,6 +296,64 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 		Character++;
 	}
 	WriteFile(DebuggerLog, DebuggerLine, (DWORD)strlen(DebuggerLine), (LPDWORD)&LastWriteLength, NULL);
+
+	va_end(args);
+
+	return;
+}
+
+//**************************************************************************************
+void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
+//**************************************************************************************
+{
+	DebuggerOutput(lpOutputString);
+
+	va_list args;
+	char *OutputFilename, *Character;
+
+	va_start(args, lpOutputString);
+
+	StringsFile = GetResultsPath("CAPE");
+
+	OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
+
+	if (OutputFilename == NULL)
+	{
+		ErrorOutput("StringsOutput: failed to allocate memory for file name string");
+		return;
+	}
+
+	sprintf_s(OutputFilename, MAX_PATH, "%u.txt", GetCurrentProcessId());
+
+	PathAppend(StringsFile, OutputFilename);
+
+	free(OutputFilename);
+
+	if (!Strings)
+	{
+		Strings = CreateFile(StringsFile, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		if (Strings == INVALID_HANDLE_VALUE)
+		{
+			ErrorOutput("StringsOutput: Unable to open strings output file %s", StringsFile);
+			return;
+		}
+
+		DebugOutput("StringsOutput: Output file %s.\n", StringsFile);
+	}
+
+	memset(StringsLine, 0, MAX_PATH*sizeof(CHAR));
+	_vsnprintf_s(StringsLine, MAX_PATH, _TRUNCATE, lpOutputString, args);
+	Character = StringsLine;
+	while (*Character)
+	{   // Restrict to ASCII range
+		if (*Character < 0x0a || *Character > 0x7E)
+			*Character = 0x3F;  // '?'
+		Character++;
+	}
+	if (strlen(StringsLine) + 1 < MAX_PATH)
+		*Character = 0x0a;
+	WriteFile(Strings, StringsLine, (DWORD)strlen(StringsLine), (LPDWORD)&LastWriteLength, NULL);
 
 	va_end(args);
 

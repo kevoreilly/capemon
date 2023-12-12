@@ -94,8 +94,7 @@ bool IATSearch::findIATAdvanced( DWORD_PTR startAddress, DWORD_PTR* addressIAT, 
 		return false;
 	}
 
-	DebugOutput("IAT Search Adv: Found %d (0x%X) possible IAT entries.", iatPointers.size(), iatPointers.size());
-	DebugOutput("IAT Search Adv: Possible IAT first " PRINTF_DWORD_PTR_FULL " last " PRINTF_DWORD_PTR_FULL " entry.", *(iatPointers.begin()), *(--iatPointers.end()));
+	DebugOutput("IAT Search: Found %d possible IAT entries: first " PRINTF_DWORD_PTR_FULL " last " PRINTF_DWORD_PTR_FULL ".", iatPointers.size(), *(iatPointers.begin()), *(--iatPointers.end()));
 
 	delete [] dataBuffer;
 

@@ -64,7 +64,7 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = _hook_info;
 
-	if (addr && !inside_hook((PVOID)addr)) {
+	if (addr && !inside_hook((PVOID)addr) && !InsideMonitor(NULL, (PVOID)addr)) {
 		if (!hookinfo->main_caller_retaddr) {
 			hookinfo->main_caller_retaddr = addr;
 			return 0;
@@ -78,9 +78,22 @@ static int set_caller_info_fallback(void *_hook_info, ULONG_PTR addr)
 	return 0;
 }
 
+static int filter_callers(hook_info_t *hookinfo)
+{
+	if (!stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") && !wcsicmp(hookinfo->current_hook->library, L"ntdll"))
+		return 1;
+	if (!stricmp(hookinfo->current_hook->funcname, "NtContinue") && !wcsicmp(hookinfo->current_hook->library, L"ntdll"))
+		return 1;
+	if (!stricmp(hookinfo->current_hook->funcname, "compileMethod") && !wcsicmp(hookinfo->current_hook->library, L"clrjit"))
+		return 1;
+	return 0;
+}
+
 static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
-	if (g_config.tlsdump || !stricmp(hookinfo->current_hook->funcname, "RtlDispatchException") || !stricmp(hookinfo->current_hook->funcname, "NtContinue"))
+	if (g_config.tlsdump)
+		return;
+	if (filter_callers(hookinfo))
 		return;
 	if (!g_config.unpacker && !g_config.caller_regions)
 		return;
@@ -96,7 +109,9 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		if (!TrackedRegion) {
 			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 			if (!TrackedRegion) {
+#ifdef DEBUG_COMMENTS
 				DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+#endif
 				return;
 			}
 			DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
@@ -137,7 +152,7 @@ static int set_caller_info(void *_hook_info, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = _hook_info;
 
-	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr)) {
+	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr) && !InsideMonitor(NULL, (PVOID)addr)) {
 		caller_dispatch(hookinfo, addr);
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;
@@ -206,6 +221,8 @@ int called_by_hook(void)
 	return __called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer);
 }
 
+BOOL ModuleDumped;
+
 void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 {
 	unsigned int i;
@@ -217,13 +234,11 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 
 	if (g_config.debugger && DebuggerInitialised)
 	{
-		DWORD CurrentThreadId = GetCurrentThreadId();
-		InitNewThreadBreakpoints(CurrentThreadId, NULL);
 		for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
 			if (!g_config.base_on_apiname[i])
 				break;
 			if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
-				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], CurrentThreadId, main_caller_retaddr);
+				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
 				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
 					BreakpointsSet = SetInitialBreakpoints((PVOID)AllocationBase);
@@ -269,9 +284,9 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 
 	if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
 		DebugOutput("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
-		if (main_caller_retaddr)
+		if (main_caller_retaddr && !is_in_dll_range(main_caller_retaddr))
 			BreakpointOnReturn((PVOID)main_caller_retaddr);
-		else if (parent_caller_retaddr)
+		else if (parent_caller_retaddr && !is_in_dll_range(parent_caller_retaddr))
 			BreakpointOnReturn((PVOID)parent_caller_retaddr);
 		else
 			BreakpointOnReturn((PVOID)hookinfo->return_address);

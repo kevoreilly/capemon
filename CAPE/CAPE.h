@@ -24,6 +24,8 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
 
+typedef PVOID(WINAPI *_getJit)(void);
+
 void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -44,6 +46,7 @@ PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
+int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path);
 int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 int DumpMemory(PVOID Buffer, SIZE_T Size);
 int DumpCurrentProcessNewEP(PVOID NewEP);
@@ -52,6 +55,7 @@ int DumpCurrentProcessFixImports(PVOID NewEP);
 int DumpCurrentProcess();
 int DumpProcess(HANDLE hProcess, PVOID ImageBase, PVOID NewEP, BOOL FixImports);
 int DumpPE(PVOID Buffer);
+int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 int ScanForNonZero(PVOID Buffer, SIZE_T Size);
 int ScanPageForNonZero(PVOID Address);
 int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
@@ -63,7 +67,8 @@ int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
 BOOL DumpStackRegion(void);
 
-BOOL ProcessDumped, ModuleDumped;
+BOOL ProcessDumped;
+unsigned int DumpCount;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
@@ -133,8 +138,6 @@ enum {
 	STACK_REGION = 0x6c,
 
 	TYPE_STRING = 0x100,
-
-	UPX = 0x1000
 };
 
 typedef struct TrackedRegion
@@ -145,6 +148,7 @@ typedef struct TrackedRegion
 	BOOL						Committed;
 	BOOL						PagesDumped;
 	BOOL						CanDump;
+	BOOL						SubAllocation;
 	DWORD						EntryPoint;
 	double						Entropy;
 	SIZE_T						MinPESize;
@@ -169,3 +173,4 @@ BOOL ContextClearTrackedRegion(PCONTEXT Context, PTRACKEDREGION TrackedRegion);
 void ClearTrackedRegion(PTRACKEDREGION TrackedRegion);
 void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
+BOOL TrackExecution(PVOID CIP);

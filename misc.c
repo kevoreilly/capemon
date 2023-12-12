@@ -49,6 +49,7 @@ _NtProtectVirtualMemory pNtProtectVirtualMemory;
 _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
 _RtlNtStatusToDosError pRtlNtStatusToDosError;
+_RtlCompareMemory pRtlCompareMemory;
 
 void resolve_runtime_apis(void)
 {
@@ -75,6 +76,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
 	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
+	*(FARPROC *)&pRtlCompareMemory = GetProcAddress(ntdllbase, "RtlCompareMemory");
 }
 
 ULONG_PTR g_our_dll_base;
@@ -586,6 +588,42 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 	return 0;
 }
 
+BOOLEAN parent_has_path(char* path)
+{
+	DWORD ppid = parent_process_id();
+	HANDLE process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ppid);
+	if (process_handle == NULL) {
+		DebugOutput("parent_has_path: unable to open parent process %d", ppid);
+		return FALSE;
+	}
+
+	char process_path[MAX_PATH] = "";
+	DWORD result = GetModuleFileNameEx(process_handle, NULL, process_path, MAX_PATH);
+
+	CloseHandle(process_handle);
+
+	if (result > 0) {
+		DebugOutput("parent_has_path: parent path %s", process_path);
+		if (!stricmp(process_path, path))
+			return TRUE;
+	}
+	else
+		DebugOutput("parent_has_path: unable to get path for parent process %d", ppid);
+
+	return FALSE;
+}
+
+BOOLEAN can_open_parent()
+{
+	HANDLE process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, parent_process_id());
+	if (process_handle == NULL)
+		return FALSE;
+
+	CloseHandle(process_handle);
+
+	return TRUE;
+}
+
 DWORD pid_from_process_handle(HANDLE process_handle)
 {
 	PROCESS_BASIC_INFORMATION pbi;
@@ -604,13 +642,17 @@ DWORD pid_from_process_handle(HANDLE process_handle)
 
 	memset(&pbi, 0, sizeof(pbi));
 
-	duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
-
-	if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+	if (pNtQueryInformationProcess(process_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
 		PID = (DWORD)pbi.UniqueProcessId;
+	else {
+		duped = DuplicateHandle(GetCurrentProcess(), process_handle, GetCurrentProcess(), &dup_handle, PROCESS_QUERY_INFORMATION, FALSE, 0);
 
-	if (duped)
-		CloseHandle(dup_handle);
+		if (pNtQueryInformationProcess(dup_handle, 0, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
+			PID = (DWORD)pbi.UniqueProcessId;
+
+		if (duped)
+			CloseHandle(dup_handle);
+	}
 
 out:
 	set_lasterrors(&lasterror);
@@ -631,16 +673,22 @@ static BOOL cid_from_thread_handle(HANDLE thread_handle, PCLIENT_ID cid)
 
 	memset(&tbi, 0, sizeof(tbi));
 
-	duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
+	if (pNtQueryInformationThread(thread_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
+		memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
+		ret = TRUE;
+	}
+	else {
+		duped = DuplicateHandle(GetCurrentProcess(), thread_handle, GetCurrentProcess(), &dup_handle, THREAD_QUERY_INFORMATION, FALSE, 0);
 
-	if (duped) {
-        if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
-            memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
-            ret = TRUE;
-        }
+		if (duped) {
+			if (pNtQueryInformationThread(dup_handle, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && ulSize == sizeof(tbi)) {
+				memcpy(cid, &tbi.ClientId, sizeof(CLIENT_ID));
+				ret = TRUE;
+			}
 
-		CloseHandle(dup_handle);
-    }
+			CloseHandle(dup_handle);
+		}
+	}
 
 	set_lasterrors(&lasterror);
 
@@ -1552,7 +1600,7 @@ void specialname_map_init(void)
 int is_wow64_fs_redirection_disabled(void)
 {
 #ifdef _WIN64
-	return 1;
+	return 0;
 #else
 	if (is_64bit_os) {
 		__try {
@@ -2084,6 +2132,23 @@ BOOLEAN is_address_in_win32u(ULONG_PTR address)
 	return FALSE;
 }
 
+ULONG_PTR user32_base;
+DWORD user32_size;
+
+BOOLEAN is_address_in_user32(ULONG_PTR address)
+{
+	if (!user32_base)
+		return FALSE;
+
+	if (!user32_size)
+		user32_size = get_image_size(user32_base);
+
+	if (address >= user32_base && address < (user32_base + user32_size))
+		return TRUE;
+
+	return FALSE;
+}
+
 BOOLEAN prevent_module_unloading(PVOID BaseAddress) {
 	// Some code may attempt to unmap a previously mapped view of, say, ntdll
 	// e.g. Xenos dll injector (https://github.com/DarthTon/Xenos - def1c2f12307d598e42506a55f1a06ed5e652af0d260aac9572469429f10d04d)
@@ -2109,6 +2174,7 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 	wchar_t *whitelist[] = {
 		L"C:\\Windows\\System32\\ntdll.dll",
 		L"C:\\Windows\\SysWOW64\\ntdll.dll",
+		L"C:\\Windows\\sysnative\\ntdll.dll",
 		NULL
 	};
 
@@ -2126,11 +2192,14 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 		if (!wcsicmp(whitelist[i], absolutepath)) {
 			// is this a loaded module?
 			HMODULE address = GetModuleHandleW(absolutepath);
-			if (address != NULL) {
-				DebugOutput("Sample attempted to remap module '%ws' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
-				pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
-				*BaseAddress = (LPVOID)address;
-			}
+			if (address == NULL)
+				address = GetModuleHandleW(get_dll_basename(absolutepath));
+			if (address == NULL)
+				continue;
+			DebugOutput("Sample attempted to remap module '%ws' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
+			pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
+			*BaseAddress = (LPVOID)address;
+			g_config.ntdll_protect = 0;
 			break;
 		}
 	}

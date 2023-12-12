@@ -21,7 +21,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{15C69A24-71D1-4A1A-B39B-0466181ACD7E}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.22000.0</WindowsTargetPlatformVersion>
     <ProjectName>capemon</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -43,7 +43,7 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v141</PlatformToolset>
-    <CharacterSet>MultiByte</CharacterSet>
+    <CharacterSet>NotSet</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <UseOfMfc>false</UseOfMfc>
   </PropertyGroup>
@@ -180,7 +180,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;_WIN64;_CRT_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGSNDEBUG;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;_SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS;%(PreprocessorDefinitions);_SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WIN64;_CRT_SECURE_NO_WARNINGS;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;_SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -230,7 +230,6 @@
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp" />
     <ClCompile Include="CAPE\Trace.c" />
     <ClCompile Include="CAPE\Unpacker.c" />
-    <ClCompile Include="CAPE\UPX.c" />
     <ClCompile Include="CAPE\w64wow64\w64wow64.c" />
     <ClCompile Include="CAPE\wow64_fix.c" />
     <ClCompile Include="CAPE\YaraHarness.c" />
@@ -249,6 +248,7 @@
     <ClCompile Include="hooking_32.c" />
     <ClCompile Include="hooking_64.c" />
     <ClCompile Include="hooks.c" />
+    <ClCompile Include="hook_clr.c" />
     <ClCompile Include="hook_crypto.c" />
     <ClCompile Include="hook_file.c" />
     <ClCompile Include="hook_misc.c" />

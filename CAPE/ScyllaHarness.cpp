@@ -41,6 +41,7 @@ extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" int ScanForNonZero(LPVOID Buffer, unsigned int Size);
 extern "C" PVOID GetAllocationBase(PVOID Address);
 extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
+extern "C" BOOL IsAddressAccessible(PVOID Address);
 
 extern char CapeOutputPath[MAX_PATH];
 
@@ -175,7 +176,12 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	if (peFile->isValidPeFile())
 	{
 		if (NewEP)
-			entrypoint = NewEP;
+		{
+			if (ModuleBase && NewEP > ModuleBase)
+				entrypoint = NewEP - ModuleBase;
+			else
+				entrypoint = NewEP;
+		}
 		else
 			entrypoint = peFile->getEntryPoint();
 
@@ -504,6 +510,22 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 extern "C" int LooksLikeSectionBoundary(DWORD_PTR Buffer)
 //**************************************************************************************
 {
+	if (!IsAddressAccessible((PVOID)Buffer))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("LooksLikeSectionBoundary: Address 0x%p inaccessible.\n", Buffer);
+#endif
+		return -1;
+	}
+
+	if (!IsAddressAccessible((PVOID)((BYTE*)Buffer - 4)))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("LooksLikeSectionBoundary: Yes - end of previous region before candidate section at 0x%p inaccessible.\n", Buffer);
+#endif
+		return 1;
+	}
+
 	__try
 	{
 		if
@@ -649,6 +671,23 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 				peFile->listPeSection[SectionIndex].sectionHeader.Misc.VirtualSize
 			);
 #endif
+			if (!peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData && peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
+			{
+#ifdef DEBUG_COMMENTS
+					DebugOutput("IsPeImageRaw: Missing PointerToRawData for section %d.\n", SectionIndex+1);
+#endif
+					delete peFile;
+					return 0;
+			}
+			else if (peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData && !peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
+			{
+#ifdef DEBUG_COMMENTS
+					DebugOutput("IsPeImageRaw: Missing VirtualAddress for section %d.\n", SectionIndex+1);
+#endif
+					delete peFile;
+					return 1;
+			}
+
 			if (peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData != peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress)
 			{
 				int SectionBoundary = LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.PointerToRawData);
@@ -668,6 +707,7 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 					delete peFile;
 					return 1;
 				}
+
 				SectionBoundary = LooksLikeSectionBoundary((DWORD_PTR)Buffer + peFile->listPeSection[SectionIndex].sectionHeader.VirtualAddress);
 				if (SectionBoundary == -1)
 				{
@@ -689,6 +729,9 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 		}
 	}
 
+#ifdef DEBUG_COMMENTS
+	DebugOutput("IsPeImageRaw: Unable to find any section boundaries.\n");
+#endif
 	delete peFile;
 	return 0;
 }

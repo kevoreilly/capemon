@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "log.h"
 #include "hooking.h"
+#include "hook_sleep.h"
 #include "Shlwapi.h"
 #include "CAPE\CAPE.h"
 
@@ -38,6 +39,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
+extern char *our_process_name;
+extern int path_is_system(const wchar_t *path_w);
+extern int path_is_program_files(const wchar_t *path_w);
+extern BOOL PatchByte(LPVOID Address, BYTE Byte);
 extern wchar_t *our_process_path_w;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2;
@@ -45,8 +50,9 @@ extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX
 extern char *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char *procname0;
 extern char DumpSizeString[MAX_PATH];
-extern SIZE_T DumpSize;
+extern BOOL ImageBaseRemapped;
 extern DWORD ExportAddress;
+extern SIZE_T DumpSize;
 
 void parse_config_line(char* line)
 {
@@ -296,6 +302,88 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "export")) {
 			ExportAddress = strtoul(value, NULL, 0);
 			DebugOutput("Config: Export address set to 0x%x", ExportAddress);
+		}
+		else if (!stricmp(key, "patch")) {
+			p = strchr(value, ':');
+			if (p) {
+				*p = '\0';
+				char *p2 = p+1;
+				unsigned int byte = strtoul(value, NULL, 0);
+				int delta=0;
+				p = strchr(p2, '+');
+				if (p) {
+					delta = strtoul(p+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p = '\0';
+				}
+				else {
+					p = strchr(p2, '-');
+					if (p) {
+						delta = - (int)strtoul(p+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p = '\0';
+					}
+				}
+				PVOID address = (PVOID)(DWORD_PTR)strtoul(p2, NULL, 0);
+				if (address) {
+					DebugOutput("Config: patching address 0x%p with byte 0x%x", address, byte);
+					PatchByte(address, (BYTE)byte);
+				}
+				else
+					DebugOutput("Config: patch address missing invalid: %s", value);
+			}
+			else
+				DebugOutput("Config: patch byte missing");
+		}
+		else if (!stricmp(key, "bp")) {
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < BREAKPOINT_MAX) {
+				p2 = strchr(p, ':');
+				if (p2) {
+					*p2 = '\0';
+				}
+				int delta=0;
+				p2 = strchr(value, '+');
+				if (p2) {
+					delta = strtoul(p2+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p2 = '\0';
+				}
+				else {
+					p2 = strchr(value, '-');
+					if (p2) {
+						delta = - (int)strtoul(p2+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p2 = '\0';
+					}
+				}
+				g_config.bp[x++] = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
+				if (g_config.bp[x-1]) {
+					DebugOutput("Config: Added 0x%p to breakpoint list.\n", g_config.bp[x-1]);
+					g_config.debugger = 1;
+				}
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
+			}
+		}
+		else if (!stricmp(key, "action")) {
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < BREAKPOINT_MAX) {
+				p2 = strchr(p, '|');
+				if (p2) {
+					*p2 = '\0';
+				}
+				g_config.action[x++] = strdup(p);
+				DebugOutput("Config: Action %d set to %s.", x-1, g_config.action[x-1]);
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
+			}
 		}
 		else if (!stricmp(key, "bp0")) {
 			p = strchr(value, ':');
@@ -703,6 +791,47 @@ void parse_config_line(char* line)
 				DebugOutput("Config: br3 set to 0x%x (break-on-return)\n", g_config.br3);
 			}
 		}
+		else if (!stricmp(key, "sysbp")) {
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < SYSBP_MAX) {
+				p2 = strchr(p, ':');
+				if (p2) {
+					*p2 = '\0';
+				}
+				int delta=0;
+				p2 = strchr(value, '+');
+				if (p2) {
+					delta = strtoul(p2+1, NULL, 0);
+					DebugOutput("Config: Delta 0x%x.\n", delta);
+					*p2 = '\0';
+				}
+				else {
+					p2 = strchr(value, '-');
+					if (p2) {
+						delta = - (int)strtoul(p2+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p2 = '\0';
+					}
+				}
+				for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++) {
+					if (g_config.sysbp[x])
+						x++;
+					else
+						break;
+				}
+				if (x < SYSBP_MAX) {
+					PVOID address = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
+					g_config.sysbp[x] = address;
+					//DebugOutput("Config: Set syscall breakpoint at 0x%p\n", address);
+					g_config.debugger = 1;
+				}
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
+			}
+		}
 		else if (!stricmp(key, "count0")) {
 			g_config.count0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
 			DebugOutput("Config: Count for breakpoint 0 set to %d\n", g_config.count0);
@@ -956,7 +1085,7 @@ void parse_config_line(char* line)
 				DebugOutput("Config: RDTSCP nop enabled\n");
 		}
 		else if (!stricmp(key, "procdump")) {
-			g_config.procdump = value[0] == '1';
+			g_config.procdump = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.procdump)
 				DebugOutput("Process dumps enabled.\n");
 			else
@@ -993,7 +1122,7 @@ void parse_config_line(char* line)
 				DebugOutput("Branch tracing enabled.\n");
 		}
 		else if (!stricmp(key, "unpacker")) {
-			g_config.unpacker = (unsigned int)strtoul(value, NULL, 10);;
+			g_config.unpacker = (unsigned int)strtoul(value, NULL, 10);
 			if (g_config.unpacker == 1)
 				DebugOutput("Passive unpacking of payloads enabled\n");
 			else if (g_config.unpacker == 2)
@@ -1048,11 +1177,6 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Dumps & scans of caller regions disabled.\n");
 		}
-		else if (!stricmp(key, "upx")) {
-			g_config.upx = value[0] == '1';
-			if (g_config.upx)
-				DebugOutput("UPX unpacker enabled.\n");
-		}
 		else if (!stricmp(key, "yarascan")) {
 			g_config.yarascan = value[0] == '1';
 			if (g_config.yarascan)
@@ -1106,9 +1230,24 @@ void parse_config_line(char* line)
 			g_config.syscall = value[0] == '1';
 			if (g_config.syscall)
 				DebugOutput("Syscall hooks enabled.\n");
+			else
+				DebugOutput("Syscall hooks disabled.\n");
+		}
+		else if (!stricmp(key, "loopskip")) {
+			g_config.loopskip = value[0] == '1';
+			if (g_config.loopskip)
+				DebugOutput("Loop skipping enabled (instruction trace)\n");
+		}
+		else if (!stricmp(key, "break-on-jit")) {
+			g_config.break_on_jit = value[0] == '1';
+			if (g_config.break_on_jit)
+				DebugOutput("Break on .NET JIT native code enabled.\n");
 		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
+
+		// Replace the '=' we nulled for convenience
+		line[strlen(line)] = '=';
 	}
 }
 
@@ -1161,7 +1300,7 @@ int read_config(void)
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
 	g_config.amsidump = 1;
-	//g_config.syscall = 1;
+	g_config.syscall = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
@@ -1198,6 +1337,9 @@ int read_config(void)
 		DebugOutput("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
 	}
 
+	if (fp)
+		fclose(fp);
+
 	if (g_config.tlsdump) {
 		g_config.debugger = 0;
 		g_config.procdump = 0;
@@ -1226,8 +1368,166 @@ int read_config(void)
 		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
 	}
 
-	if (fp)
-		fclose(fp);
+	if (path_is_program_files(our_process_path_w))
+	{
+#ifndef _WIN64
+		if (!_stricmp(our_process_name, "firefox.exe"))
+        {
+			g_config.firefox = 1;
+			g_config.injection = 0;
+			g_config.unpacker = 0;
+			g_config.caller_regions = 0;
+			g_config.api_rate_cap = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
+			DebugOutput("Firefox-specific hook-set enabled.\n");
+        }
+		else
+#endif
+		if (!ImageBaseRemapped && !_stricmp(our_process_name, "iexplore.exe"))
+        {
+			g_config.iexplore = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			DebugOutput("Internet Explorer-specific hook-set enabled.\n");
+        }
+
+		if (!_stricmp(our_process_name, "msedge.exe"))
+		{
+			g_config.edge = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.yarascan = 0;
+			g_config.procmemdump = 0;
+			DebugOutput("Edge-specific hook-set enabled.\n");
+		}
+
+		if (!_stricmp(our_process_name, "chrome.exe"))
+		{
+			g_config.chrome = 1;
+			g_config.injection = 0;
+			g_config.api_rate_cap = 0;
+			g_config.ntdll_protect = 0;
+			g_config.yarascan = 0;
+			g_config.procmemdump = 0;
+			DebugOutput("Chrome-specific hook-set enabled.\n");
+		}
+
+		if (strstr(our_process_path, "Microsoft Office"))
+        {
+			g_config.office = 1;
+			g_config.unpacker = 0;
+			g_config.caller_regions = 0;
+			g_config.injection = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.ntdll_protect = 0;
+			DebugOutput("Microsoft Office settings enabled.\n");
+        }
+	}
+	else if (path_is_system(our_process_path_w))
+	{
+		if (!_stricmp(our_process_name, "msiexec.exe")) {
+			const char *excluded_apis[] = {
+				"NtAllocateVirtualMemory",
+				"NtProtectVirtualMemory",
+				"VirtualProtectEx",
+				"CryptDecodeMessage",
+				"CryptDecryptMessage",
+				"NtCreateThreadEx",
+				"SetWindowLongPtrA",
+				"SetWindowLongPtrW",
+				"NtWaitForSingleObject",
+				"NtSetTimer",
+				"NtSetTimerEx",
+				"RegOpenKeyExA",
+				"RegOpenKeyExW",
+				"RegCreateKeyExA",
+				"RegCreateKeyExW",
+				"RegDeleteKeyA",
+				"RegDeleteKeyW",
+				"RegEnumKeyW",
+				"RegEnumKeyExA",
+				"RegEnumKeyExW",
+				"RegEnumValueA",
+				"RegEnumValueW",
+				"RegSetValueExA",
+				"RegSetValueExW",
+				"RegQueryValueExA",
+				"RegQueryValueExW",
+				"RegDeleteValueA",
+				"RegDeleteValueW",
+				"RegQueryInfoKeyA",
+				"RegQueryInfoKeyW",
+				"RegCloseKey",
+				"RegNotifyChangeKeyValue",
+				"NtCreateKey",
+				"NtOpenKey",
+				"NtOpenKeyEx",
+				"NtRenameKey",
+				"NtReplaceKey",
+				"NtEnumerateKey",
+				"NtEnumerateValueKey",
+				"NtSetValueKey",
+				"NtQueryValueKey",
+				"NtQueryMultipleValueKey",
+				"NtDeleteKey",
+				"NtDeleteValueKey",
+				"NtLoadKey",
+				"NtLoadKey2",
+				"NtLoadKeyEx",
+				"NtQueryKey",
+				"NtSaveKey",
+				"NtSaveKeyEx"
+			};
+
+			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
+				if (!add_hook_exclusion(excluded_apis[i])) {
+					DebugOutput("Unable to set hook exclusion for msiexec.\n");
+					break;
+				}
+			}
+			g_config.ntdll_protect = 0;
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.msi = 1;
+			DebugOutput("MsiExec hook set enabled\n");
+		}
+		else if (
+			(!_stricmp(our_process_name, "services.exe") && parent_has_path("C:\\Windows\\System32\\wininit.exe")) ||
+			(!_stricmp(our_process_name, "svchost.exe") && parent_has_path("C:\\Windows\\System32\\services.exe") && (wcsstr(our_commandline, L"-k DcomLaunch") || wcsstr(our_commandline, L"-k netsvcs"))) ||
+			(!_stricmp(our_process_name, "WmiPrvSE.exe") && !can_open_parent() && wcsstr(our_commandline, L"-Embedding"))
+		) {
+			g_config.procmemdump = 0;
+			g_config.yarascan = 0;
+			g_config.unpacker = 0;
+			g_config.caller_regions = 0;
+			g_config.injection = 0;
+			g_config.minhook = 1;
+			disable_sleep_skip();
+			DebugOutput("Services hook set enabled\n");
+		}
+		else if (!_stricmp(our_process_name, "wscript.exe")) {
+			const char *excluded_apis[] = {
+				"memcpy",
+				"LoadResource",
+				"LockResource",
+				"SizeofResource",
+			};
+			for (unsigned int i = 0; i < sizeof(excluded_apis) / sizeof(excluded_apis[0]); i++) {
+				if (!add_hook_exclusion(excluded_apis[i])) {
+					DebugOutput("Unable to set hook exclusion for wscript\n");
+					break;
+				}
+			}
+			DebugOutput("wscript hook set enabled\n");
+		}
+	}
 
 	return 1;
 }

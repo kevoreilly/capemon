@@ -104,7 +104,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 		return;
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("Allocation: 0x%p - 0x%p, size: 0x%x, protection: 0x%x.\n", BaseAddress, (PUCHAR)BaseAddress + RegionSize, RegionSize, Protect);
+	DebugOutput("Allocation: 0x%p - 0x%p, size: 0x%x, protection: 0x%x, type 0x%x\n", BaseAddress, (PUCHAR)BaseAddress + RegionSize, RegionSize, Protect, AllocationType);
 #endif
 	hook_disable();
 
@@ -115,9 +115,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 	if (TrackedRegion && !TrackedRegion->Committed && (AllocationType & MEM_COMMIT))
 	{
 		DebugOutput("AllocationHandler: Previously reserved region at 0x%p, committing at: 0x%p.\n", TrackedRegion->AllocationBase, BaseAddress);
-
-		if (TrackedRegion->AllocationBase != BaseAddress)
-			TrackedRegion->Address = BaseAddress;
+		TrackedRegion->SubAllocation = TRUE;
 	}
 	else if (TrackedRegion && (AllocationType & MEM_RESERVE))
 	{
@@ -139,6 +137,8 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 		else
 			DebugOutput("AllocationHandler: Adding allocation to tracked region list: 0x%p, size: 0x%x.\n", BaseAddress, RegionSize);
 		TrackedRegion = AddTrackedRegion(BaseAddress, Protect);
+		if (!(AllocationType & MEM_RESERVE))
+			TrackedRegion->SubAllocation = TRUE;
 	}
 
 	if (!TrackedRegion)
@@ -147,6 +147,9 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 		hook_enable();
 		return;
 	}
+
+	if (TrackedRegion->AllocationBase != BaseAddress)
+		TrackedRegion->Address = BaseAddress;
 
 	if (CurrentRegion && CurrentRegion != TrackedRegion)
 	{
@@ -178,7 +181,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 	else
 	{   // Allocation not committed, so we can't set breakpoints yet
 		TrackedRegion->Committed = FALSE;
-		DebugOutput("AllocationHandler: Memory reserved but not committed at 0x%p.\n", BaseAddress);
+		DebugOutput("AllocationHandler: Memory region (size 0x%x) reserved but not committed at 0x%p.\n", RegionSize, BaseAddress);
 	}
 
 	hook_enable();
@@ -231,6 +234,9 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 		return;
 	}
 
+	if (TrackedRegion->AllocationBase != Address)
+		TrackedRegion->Address = Address;
+
 	if (CurrentRegion && CurrentRegion != TrackedRegion)
 	{
 		if (TraceRunning)
@@ -272,9 +278,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 
 	if (!TrackedRegion->PagesDumped && (NewRegion || *OldProtect & WRITABLE_FLAGS) && ScanForNonZero(Address, GetAccessibleSize(Address)))
 	{
-		DebugOutput("ProtectionHandler: New code detected at 0x%p, dumping.\n", TrackedRegion->AllocationBase);
-
-		TrackedRegion->Address = Address;
+		DebugOutput("ProtectionHandler: New code region detected at 0x%p.\n", TrackedRegion->AllocationBase);
 
 		ProcessTrackedRegion(TrackedRegion);
 

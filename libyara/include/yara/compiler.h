@@ -30,63 +30,65 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef YR_COMPILER_H
 #define YR_COMPILER_H
 
-#include <stdio.h>
 #include <setjmp.h>
-
+#include <stdio.h>
 #include <yara/ahocorasick.h>
 #include <yara/arena.h>
+#include <yara/filemap.h>
 #include <yara/hash.h>
 #include <yara/utils.h>
-#include <yara/filemap.h>
-
 
 #define YARA_ERROR_LEVEL_ERROR   0
 #define YARA_ERROR_LEVEL_WARNING 1
 
-
 // Expression type constants are powers of two because they are used as flags.
-#define EXPRESSION_TYPE_UNKNOWN   0
-#define EXPRESSION_TYPE_BOOLEAN   1
-#define EXPRESSION_TYPE_INTEGER   2
-#define EXPRESSION_TYPE_STRING    4
-#define EXPRESSION_TYPE_REGEXP    8
-#define EXPRESSION_TYPE_OBJECT    16
-#define EXPRESSION_TYPE_FLOAT     32
-
+#define EXPRESSION_TYPE_UNKNOWN    0
+#define EXPRESSION_TYPE_BOOLEAN    1
+#define EXPRESSION_TYPE_INTEGER    2
+#define EXPRESSION_TYPE_STRING     4
+#define EXPRESSION_TYPE_REGEXP     8
+#define EXPRESSION_TYPE_OBJECT     16
+#define EXPRESSION_TYPE_FLOAT      32
+#define EXPRESSION_TYPE_QUANTIFIER 64
 
 // The compiler uses an arena to store the data it generates during the
 // compilation. Each buffer in the arena is used for storing a different type
 // of data. The following identifiers indicate the purpose of each buffer.
-#define YR_NAMESPACES_TABLE           0
-#define YR_RULES_TABLE                1
-#define YR_METAS_TABLE                2
-#define YR_STRINGS_TABLE              3
-#define YR_EXTERNAL_VARIABLES_TABLE   4
-#define YR_SZ_POOL                    5
-#define YR_CODE_SECTION               6
-#define YR_RE_CODE_SECTION            7
-#define YR_AC_TRANSITION_TABLE        8
-#define YR_AC_STATE_MATCHES_TABLE     9
-#define YR_AC_STATE_MATCHES_POOL     10
-#define YR_SUMMARY_SECTION           11
-
+#define YR_NAMESPACES_TABLE         0
+#define YR_RULES_TABLE              1
+#define YR_METAS_TABLE              2
+#define YR_STRINGS_TABLE            3
+#define YR_EXTERNAL_VARIABLES_TABLE 4
+#define YR_SZ_POOL                  5
+#define YR_CODE_SECTION             6
+#define YR_RE_CODE_SECTION          7
+#define YR_AC_TRANSITION_TABLE      8
+#define YR_AC_STATE_MATCHES_TABLE   9
+#define YR_AC_STATE_MATCHES_POOL    10
+#define YR_SUMMARY_SECTION          11
 
 // This is the number of buffers used by the compiler, should match the number
 // of items in the list above.
-#define YR_NUM_SECTIONS              12
-
+#define YR_NUM_SECTIONS 12
 
 // Number of variables used by loops. This doesn't include user defined
 // variables.
-#define YR_INTERNAL_LOOP_VARS     3
+#define YR_INTERNAL_LOOP_VARS 3
 
+typedef struct _YR_ENUMERATION
+{
+  int type;
+  int count;
+} YR_ENUMERATION;
 
 typedef struct _YR_EXPRESSION
 {
   int type;
 
-  union {
+  union
+  {
     int64_t integer;
+    double double_;
     YR_OBJECT* object;
     YR_ARENA_REF sized_string_ref;
   } value;
@@ -96,13 +98,13 @@ typedef struct _YR_EXPRESSION
   // to the identifier within YR_SZ_POOL. When the identifier is in YR_SZ_POOL
   // a pointer can't be used as the YR_SZ_POOL can be moved to a different
   // memory location.
-  struct {
+  struct
+  {
     const char* ptr;
     YR_ARENA_REF ref;
-  } identifier ;
+  } identifier;
 
 } YR_EXPRESSION;
-
 
 typedef void (*YR_COMPILER_CALLBACK_FUNC)(
     int error_level,
@@ -112,18 +114,15 @@ typedef void (*YR_COMPILER_CALLBACK_FUNC)(
     const char* message,
     void* user_data);
 
-
 typedef const char* (*YR_COMPILER_INCLUDE_CALLBACK_FUNC)(
     const char* include_name,
     const char* calling_rule_filename,
     const char* calling_rule_namespace,
     void* user_data);
 
-
 typedef void (*YR_COMPILER_INCLUDE_FREE_FUNC)(
     const char* callback_result_ptr,
     void* user_data);
-
 
 typedef void (*YR_COMPILER_RE_AST_CALLBACK_FUNC)(
     const YR_RULE* rule,
@@ -131,14 +130,12 @@ typedef void (*YR_COMPILER_RE_AST_CALLBACK_FUNC)(
     const RE_AST* re_ast,
     void* user_data);
 
-
 typedef struct _YR_FIXUP
 {
   YR_ARENA_REF ref;
   struct _YR_FIXUP* next;
 
 } YR_FIXUP;
-
 
 // Each "for" loop in the condition has an associated context which holds
 // information about loop, like the target address for the jump instruction
@@ -154,15 +151,14 @@ typedef struct _YR_LOOP_CONTEXT
   // vars_count is the number of local variables defined by the loop, and vars
   // is an array of expressions with the identifier and type for each of those
   // local variables.
-  int               vars_count;
-  YR_EXPRESSION     vars[YR_MAX_LOOP_VARS];
+  int vars_count;
+  YR_EXPRESSION vars[YR_MAX_LOOP_VARS];
 
   // vars_internal_count is the number of variables used by the loop which are
   // not defined by the rule itself but that are necessary for keeping the
   // loop's state. One example is the iteration counter.
-  int               vars_internal_count;
+  int vars_internal_count;
 } YR_LOOP_CONTEXT;
-
 
 typedef struct _YR_COMPILER
 {
@@ -229,77 +225,93 @@ typedef struct _YR_COMPILER
   // Pointer to a YR_RULES structure that represents the compiled rules. This
   // is what yr_compiler_get_rules returns. Once these rules are generated you
   // can't call any of the yr_compiler_add_xxx functions.
-  YR_RULES*         rules;
+  YR_RULES* rules;
 
-  int               errors;
-  int               current_line;
-  int               last_error;
-  int               last_error_line;
+  int errors;
+  int current_line;
+  int last_error;
+  int last_error_line;
 
-  jmp_buf           error_recovery;
+  jmp_buf error_recovery;
 
-  YR_AC_AUTOMATON*  automaton;
-  YR_HASH_TABLE*    rules_table;
-  YR_HASH_TABLE*    objects_table;
-  YR_HASH_TABLE*    strings_table;
+  YR_AC_AUTOMATON* automaton;
+  YR_HASH_TABLE* rules_table;
+  YR_HASH_TABLE* objects_table;
+  YR_HASH_TABLE* strings_table;
 
-  YR_FIXUP*         fixup_stack_head;
+  // Hash table that contains all the identifiers with wildcards used in
+  // conditions. This is used to make sure we error out if we are parsing a
+  // rule _AFTER_ an existing rule has referenced it in a condition. For
+  // example:
+  //
+  // rule a1 { condition: true }
+  // rule b { condition: 1 of (a*) }
+  // rule a2 { condition: true }
+  //
+  // This must be a compiler error when parsing a2 because b has already been
+  // parsed and the instructions to check _ONLY_ a1 have been emitted. Rule b
+  // has no concept of a2 and would not work as expected.
+  YR_HASH_TABLE* wildcard_identifiers_table;
 
-  int               num_namespaces;
+  // Hash table that contains all the strings that has been written to the
+  // YR_SZ_POOL buffer in the compiler's arena. Values in the hash table are
+  // the offset within the YR_SZ_POOL where the string resides. This allows to
+  // know is some string has already been written in order to reuse instead of
+  // writting it again.
+  YR_HASH_TABLE* sz_table;
 
-  YR_LOOP_CONTEXT   loop[YR_MAX_LOOP_NESTING];
-  int               loop_index;
-  int               loop_for_of_var_index;
+  YR_FIXUP* fixup_stack_head;
 
-  char*             file_name_stack[YR_MAX_INCLUDE_DEPTH];
-  int               file_name_stack_ptr;
+  int num_namespaces;
 
-  char              last_error_extra_info[YR_MAX_COMPILER_ERROR_EXTRA_INFO];
+  YR_LOOP_CONTEXT loop[YR_MAX_LOOP_NESTING];
+  int loop_index;
+  int loop_for_of_var_index;
 
-  char              lex_buf[YR_LEX_BUF_SIZE];
-  char*             lex_buf_ptr;
-  unsigned short    lex_buf_len;
+  char* file_name_stack[YR_MAX_INCLUDE_DEPTH];
+  int file_name_stack_ptr;
 
-  char              include_base_dir[MAX_PATH];
-  void*             user_data;
-  void*             incl_clbk_user_data;
-  void*             re_ast_clbk_user_data;
+  char last_error_extra_info[YR_MAX_COMPILER_ERROR_EXTRA_INFO];
 
-  YR_COMPILER_CALLBACK_FUNC            callback;
-  YR_COMPILER_INCLUDE_CALLBACK_FUNC    include_callback;
-  YR_COMPILER_INCLUDE_FREE_FUNC        include_free;
-  YR_COMPILER_RE_AST_CALLBACK_FUNC     re_ast_callback;
-  YR_ATOMS_CONFIG                      atoms_config;
+  // This buffer is used by the lexer for accumulating text strings. Those
+  // strings are copied from flex's internal variables. lex_buf_ptr points to
+  // the end of the string and lex_buf_len contains the number of bytes that
+  // have been copied into lex_buf.
+  char lex_buf[YR_LEX_BUF_SIZE];
+  char* lex_buf_ptr;
+  unsigned short lex_buf_len;
+
+  char include_base_dir[MAX_PATH];
+  void* user_data;
+  void* incl_clbk_user_data;
+  void* re_ast_clbk_user_data;
+
+  YR_COMPILER_CALLBACK_FUNC callback;
+  YR_COMPILER_INCLUDE_CALLBACK_FUNC include_callback;
+  YR_COMPILER_INCLUDE_FREE_FUNC include_free;
+  YR_COMPILER_RE_AST_CALLBACK_FUNC re_ast_callback;
+  YR_ATOMS_CONFIG atoms_config;
 
 } YR_COMPILER;
 
-
 #define yr_compiler_set_error_extra_info(compiler, info) \
-    strlcpy( \
-        compiler->last_error_extra_info, \
-        info, \
-        sizeof(compiler->last_error_extra_info)); \
-
+  strlcpy(                                               \
+      compiler->last_error_extra_info,                   \
+      info,                                              \
+      sizeof(compiler->last_error_extra_info));
 
 #define yr_compiler_set_error_extra_info_fmt(compiler, fmt, ...) \
-    snprintf( \
-        compiler->last_error_extra_info, \
-        sizeof(compiler->last_error_extra_info), \
-        fmt, __VA_ARGS__);
+  snprintf(                                                      \
+      compiler->last_error_extra_info,                           \
+      sizeof(compiler->last_error_extra_info),                   \
+      fmt,                                                       \
+      __VA_ARGS__);
 
+int _yr_compiler_push_file_name(YR_COMPILER* compiler, const char* file_name);
 
-int _yr_compiler_push_file_name(
-    YR_COMPILER* compiler,
-    const char* file_name);
+void _yr_compiler_pop_file_name(YR_COMPILER* compiler);
 
-
-void _yr_compiler_pop_file_name(
-    YR_COMPILER* compiler);
-
-
-int _yr_compiler_get_var_frame(
-    YR_COMPILER* compiler);
-
+int _yr_compiler_get_var_frame(YR_COMPILER* compiler);
 
 const char* _yr_compiler_default_include_callback(
     const char* include_name,
@@ -307,24 +319,27 @@ const char* _yr_compiler_default_include_callback(
     const char* calling_rule_namespace,
     void* user_data);
 
+YR_RULE* _yr_compiler_get_rule_by_idx(YR_COMPILER* compiler, uint32_t rule_idx);
 
-YR_RULE* _yr_compiler_get_rule_by_idx(
-    YR_COMPILER* compiler, uint32_t rule_idx);
+int _yr_compiler_store_string(
+    YR_COMPILER* compiler,
+    const char* string,
+    YR_ARENA_REF* ref);
 
+int _yr_compiler_store_data(
+    YR_COMPILER* compiler,
+    const void* data,
+    size_t data_length,
+    YR_ARENA_REF* ref);
 
-YR_API int yr_compiler_create(
-    YR_COMPILER** compiler);
+YR_API int yr_compiler_create(YR_COMPILER** compiler);
 
-
-YR_API void yr_compiler_destroy(
-    YR_COMPILER* compiler);
-
+YR_API void yr_compiler_destroy(YR_COMPILER* compiler);
 
 YR_API void yr_compiler_set_callback(
     YR_COMPILER* compiler,
     YR_COMPILER_CALLBACK_FUNC callback,
     void* user_data);
-
 
 YR_API void yr_compiler_set_include_callback(
     YR_COMPILER* compiler,
@@ -332,12 +347,10 @@ YR_API void yr_compiler_set_include_callback(
     YR_COMPILER_INCLUDE_FREE_FUNC include_free,
     void* user_data);
 
-
 YR_API void yr_compiler_set_re_ast_callback(
     YR_COMPILER* compiler,
     YR_COMPILER_RE_AST_CALLBACK_FUNC re_ast_callback,
     void* user_data);
-
 
 YR_API void yr_compiler_set_atom_quality_table(
     YR_COMPILER* compiler,
@@ -345,12 +358,10 @@ YR_API void yr_compiler_set_atom_quality_table(
     int entries,
     unsigned char warning_threshold);
 
-
 YR_API int yr_compiler_load_atom_quality_table(
     YR_COMPILER* compiler,
     const char* filename,
     unsigned char warning_threshold);
-
 
 YR_API int yr_compiler_add_file(
     YR_COMPILER* compiler,
@@ -358,57 +369,44 @@ YR_API int yr_compiler_add_file(
     const char* namespace_,
     const char* file_name);
 
-
 YR_API int yr_compiler_add_fd(
     YR_COMPILER* compiler,
     YR_FILE_DESCRIPTOR rules_fd,
     const char* namespace_,
     const char* file_name);
 
-
 YR_API int yr_compiler_add_string(
     YR_COMPILER* compiler,
     const char* rules_string,
     const char* namespace_);
-
 
 YR_API char* yr_compiler_get_error_message(
     YR_COMPILER* compiler,
     char* buffer,
     int buffer_size);
 
-
-YR_API char* yr_compiler_get_current_file_name(
-    YR_COMPILER* compiler);
-
+YR_API char* yr_compiler_get_current_file_name(YR_COMPILER* compiler);
 
 YR_API int yr_compiler_define_integer_variable(
     YR_COMPILER* compiler,
     const char* identifier,
     int64_t value);
 
-
 YR_API int yr_compiler_define_boolean_variable(
     YR_COMPILER* compiler,
     const char* identifier,
     int value);
-
 
 YR_API int yr_compiler_define_float_variable(
     YR_COMPILER* compiler,
     const char* identifier,
     double value);
 
-
 YR_API int yr_compiler_define_string_variable(
     YR_COMPILER* compiler,
     const char* identifier,
     const char* value);
 
-
-YR_API int yr_compiler_get_rules(
-    YR_COMPILER* compiler,
-    YR_RULES** rules);
-
+YR_API int yr_compiler_get_rules(YR_COMPILER* compiler, YR_RULES** rules);
 
 #endif

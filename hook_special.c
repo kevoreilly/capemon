@@ -37,8 +37,6 @@ extern void set_hooks();
 extern void notify_successful_load(void);
 extern BOOL ProcessDumped;
 
-PVOID LastDllUnload;
-
 static int wmi_sent = 0;
 static int bits_sent = 0;
 static int tasksched_sent = 0;
@@ -140,18 +138,20 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 ) {
 	if (DllImageBase && DllImageBase == (PVOID)base_of_dll_of_interest && g_config.procdump && !ProcessDumped)
 	{
-		DebugOutput("Target DLL unloading from 0x%p, dumping\n", DllImageBase);
-		CapeMetaData->DumpType = PROCDUMP;
-		if (g_config.import_reconstruction)
-			ProcessDumped = DumpImageInCurrentProcessFixImports(DllImageBase, 0);
+		if (VerifyCodeSection(DllImageBase, g_config.file_of_interest) < 1)
+		{
+			DebugOutput("Target DLL unloading from 0x%p: code modification detected, dumping.\n", DllImageBase);
+			CapeMetaData->DumpType = PROCDUMP;
+			if (g_config.import_reconstruction)
+				ProcessDumped = DumpImageInCurrentProcessFixImports(DllImageBase, 0);
+			else
+				ProcessDumped = DumpImageInCurrentProcess(DllImageBase);
+		}
 		else
-			ProcessDumped = DumpImageInCurrentProcess(DllImageBase);
-	}
-
-	if (DllImageBase && DllImageBase != LastDllUnload)
-	{
-		DebugOutput("DLL unloaded from 0x%p.\n", DllImageBase);
-		LastDllUnload = DllImageBase;
+		{
+			DebugOutput("Target DLL unloading from 0x%p: Skipping dump as code is identical on disk.", DllImageBase);
+			ProcessDumped = TRUE;
+		}
 	}
 
 	return 0;

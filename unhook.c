@@ -34,7 +34,7 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern BOOL ProcessDumped;
 extern void ClearAllBreakpoints();
-extern void DebuggerShutdown();
+extern void DebuggerShutdown(), DumpStrings();
 extern HANDLE DebuggerLog, TlsLog;
 
 static HANDLE g_unhook_thread_handle, g_watcher_thread_handle;
@@ -266,6 +266,8 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	if (g_config.debugger)
 		DebuggerShutdown();
 
+	DumpStrings();
+
 	if (g_config.procdump || g_config.procmemdump) {
 		if (!ProcessDumped) {
 			DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);
@@ -362,12 +364,14 @@ int procname_watch_init()
 	PLDR_DATA_TABLE_ENTRY mod; PEB *peb = (PEB *)get_peb();
 	mod = (PLDR_DATA_TABLE_ENTRY)peb->LoaderData->InLoadOrderModuleList.Flink;
 
-	InitialProcessName.MaximumLength = InitialProcessName.Length = mod->BaseDllName.Length;
-	InitialProcessName.Buffer = malloc(InitialProcessName.Length);
+	InitialProcessName.MaximumLength = mod->BaseDllName.MaximumLength;
+	InitialProcessName.Length = mod->BaseDllName.Length;
+	InitialProcessName.Buffer = (PWSTR)calloc(mod->BaseDllName.MaximumLength, 1);
 	memcpy(InitialProcessName.Buffer, mod->BaseDllName.Buffer, InitialProcessName.Length);
 
-	InitialProcessPath.MaximumLength = InitialProcessPath.Length = mod->FullDllName.Length;
-	InitialProcessPath.Buffer = malloc(InitialProcessPath.Length);
+	InitialProcessPath.MaximumLength = mod->FullDllName.MaximumLength;
+	InitialProcessPath.Length = mod->FullDllName.Length;
+	InitialProcessPath.Buffer = (PWSTR)calloc(mod->FullDllName.MaximumLength, 1);
 	memcpy(InitialProcessPath.Buffer, mod->FullDllName.Buffer, InitialProcessPath.Length);
 
 	g_procname_watch_thread_handle =

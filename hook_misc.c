@@ -589,6 +589,16 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameW,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
+	__in	int NameType,
+	__out	LPWSTR lpBuffer,
+	__out	LPDWORD nSize
+) {
+	BOOL ret = Old_GetComputerNameExW(NameType, lpBuffer, nSize);
+	LOQ_bool("misc", "u", "ComputerName", lpBuffer);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, GetUserNameA,
 	_Out_	LPSTR lpBuffer,
 	_Inout_  LPDWORD lpnSize
@@ -1066,7 +1076,7 @@ HOOKDEF(BOOL, WINAPI, SystemTimeToTzSpecificLocalTime,
 	_In_	 LPSYSTEMTIME			lpUniversalTime,
 	_Out_	LPSYSTEMTIME			lpLocalTime
 ) {
-	BOOL ret = SystemTimeToTzSpecificLocalTime(lpTimeZone, lpUniversalTime, lpLocalTime);
+	BOOL ret = Old_SystemTimeToTzSpecificLocalTime(lpTimeZone, lpUniversalTime, lpLocalTime);
 	LOQ_bool("misc", "");
 	return ret;
 }
@@ -1075,7 +1085,7 @@ HOOKDEF(HRESULT, WINAPI, CLSIDFromProgID,
 	_In_ LPCOLESTR lpszProgID,
 	_Out_ LPCLSID lpclsid
 ) {
-	HRESULT ret = CLSIDFromProgID(lpszProgID, lpclsid);
+	HRESULT ret = Old_CLSIDFromProgID(lpszProgID, lpclsid);
 	LOQ_hresult("misc", "u", "ProgID", lpszProgID);
 	return ret;
 }
@@ -1163,12 +1173,7 @@ HOOKDEF(void, WINAPIV, memcpy,
    size_t count
 )
 {
-	int ret = 0;	// needed for LOQ_void
-
 	Old_memcpy(dest, src, count);
-
-	if (count > 0xa00)
-		LOQ_void("misc", "bppi", "DestinationBuffer", count, dest, "source", src, "destination", dest, "count", count);
 
 	if ((g_config.plugx || CompressedPE) && !PlugXConfigDumped &&
 	(
@@ -1194,6 +1199,7 @@ HOOKDEF(void, WINAPIV, memcpy,
 		DumpMemoryRaw((BYTE*)src, count);
 		PlugXConfigDumped = TRUE;
 	}
+
 	return;
 }
 

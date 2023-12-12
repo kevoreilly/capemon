@@ -82,7 +82,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	__in PIO_APC_ROUTINE ApcRoutine,
 	__in_opt PVOID ApcRoutineContext,
 	__in_opt PIO_STATUS_BLOCK ApcStatusBlock,
-	__in_opt ULONG ApcReserved
+	__in_opt PVOID ApcReserved
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
@@ -91,16 +91,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	NTSTATUS ret;
 
 	if (pid != GetCurrentProcessId())
-		ProcessMessage(pid, tid);
+		ProcessMessage(pid, 0);
 
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)ApcRoutine, &offset);
 
 	if (module_name)
-		LOQ_ntstatus("threading", "iips", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
+		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
 	else
-		LOQ_ntstatus("threading", "iip", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
+		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
 
 	if (module_name)
 		free(module_name);
@@ -126,7 +126,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	NTSTATUS ret;
 
 	if (pid != GetCurrentProcessId())
-		ProcessMessage(pid, tid);
+		ProcessMessage(pid, 0);
 
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
@@ -327,6 +327,22 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 		Context->Dr6 = 0;
 		Context->Dr7 = 0;
 	}
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
+) {
+	ENSURE_HANDLE(ThreadHandle);
+	ENSURE_STRUCT(Context, WOW64_CONTEXT);
+	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+
+	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
+
+	LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
 
 	return ret;
 }
@@ -663,6 +679,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
 	if (g_config.debugger)
 		NtContinueHandler(ThreadContext);
 	ret = Old_NtContinue(ThreadContext, RaiseAlert);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtContinueEx,
+	IN PCONTEXT ThreadContext,
+	IN PVOID ContinueArgument
+)
+{
+	NTSTATUS ret = 0;
+	NtContinueHandler(ThreadContext);
+	ret = Old_NtContinueEx(ThreadContext, ContinueArgument);
 	return ret;
 }
 

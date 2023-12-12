@@ -96,15 +96,13 @@ PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId)
 
 	if (InjectionInfoList == NULL)
 	{
-		InjectionInfoList = ((struct InjectionInfo*)malloc(sizeof(struct InjectionInfo)));
+		InjectionInfoList = ((struct InjectionInfo*)calloc(sizeof(struct InjectionInfo), sizeof(BYTE)));
 
 		if (InjectionInfoList == NULL)
 		{
 			DebugOutput("CreateInjectionInfo: failed to allocate memory for initial injection info list.\n");
 			return NULL;
 		}
-
-		memset(InjectionInfoList, 0, sizeof(struct InjectionInfo));
 
 		InjectionInfoList->ProcessId = ProcessId;
 	}
@@ -125,15 +123,13 @@ PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId)
 		// We haven't found it in the linked list, so create a new one
 		CurrentInjectionInfo = PreviousInjectionInfo;
 
-		CurrentInjectionInfo->NextInjectionInfo = ((struct InjectionInfo*)malloc(sizeof(struct InjectionInfo)));
+		CurrentInjectionInfo->NextInjectionInfo = ((struct InjectionInfo*)calloc(sizeof(struct InjectionInfo), sizeof(BYTE)));
 
 		if (CurrentInjectionInfo->NextInjectionInfo == NULL)
 		{
 			DebugOutput("CreateInjectionInfo: Failed to allocate new thread breakpoints.\n");
 			return NULL;
 		}
-
-		memset(CurrentInjectionInfo->NextInjectionInfo, 0, sizeof(struct InjectionInfo));
 
 		CurrentInjectionInfo = CurrentInjectionInfo->NextInjectionInfo;
 
@@ -214,15 +210,13 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 
 	if (SectionViewList == NULL)
 	{
-		SectionViewList = ((struct InjectionSectionView*)malloc(sizeof(struct InjectionSectionView)));
+		SectionViewList = ((struct InjectionSectionView*)calloc(sizeof(struct InjectionSectionView), sizeof(BYTE)));
 
 		if (SectionViewList == NULL)
 		{
 			DebugOutput("AddSectionView: failed to allocate memory for initial section view list.\n");
 			return NULL;
 		}
-
-		memset(SectionViewList, 0, sizeof(struct InjectionSectionView));
 
 		SectionViewList->SectionHandle = SectionHandle;
 		if (LocalView)
@@ -248,15 +242,13 @@ PINJECTIONSECTIONVIEW AddSectionView(HANDLE SectionHandle, PVOID LocalView, SIZE
 		// We haven't found it in the linked list, so create a new one
 		CurrentSectionView = PreviousSectionView;
 
-		CurrentSectionView->NextSectionView = ((struct InjectionSectionView*)malloc(sizeof(struct InjectionSectionView)));
+		CurrentSectionView->NextSectionView = ((struct InjectionSectionView*)calloc(sizeof(struct InjectionSectionView), sizeof(BYTE)));
 
 		if (CurrentSectionView->NextSectionView == NULL)
 		{
 			DebugOutput("CreateSectionView: Failed to allocate new injection sectionview structure.\n");
 			return NULL;
 		}
-
-		memset(CurrentSectionView->NextSectionView, 0, sizeof(struct InjectionSectionView));
 
 		CurrentSectionView = CurrentSectionView->NextSectionView;
 		CurrentSectionView->SectionHandle = SectionHandle;
@@ -672,7 +664,7 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 
 	if (lpApplicationName || lpCommandLine)
 	{
-		CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+		CapeMetaData->TargetProcess = (char*)calloc(MAX_PATH, sizeof(BYTE));
 		if (CapeMetaData->TargetProcess)
 		{
 			WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)TargetProcess, (int)wcslen(TargetProcess)+1, CapeMetaData->TargetProcess, MAX_PATH, NULL, NULL);
@@ -722,7 +714,7 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 			}
 			else
 			{
-				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				CapeMetaData->TargetProcess = (char*)calloc(MAX_PATH, sizeof(BYTE));
 				if (CapeMetaData->TargetProcess)
 					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
 				ErrorOutput("OpenProcessHandler: Error obtaining target process name");
@@ -822,7 +814,7 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			}
 			else
 			{
-				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				CapeMetaData->TargetProcess = (char*)calloc(MAX_PATH, sizeof(BYTE));
 				if (CapeMetaData->TargetProcess)
 					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
 				ErrorOutput("MapSectionViewHandler: Error obtaining target process name");
@@ -915,7 +907,7 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 			}
 			else
 			{
-				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				CapeMetaData->TargetProcess = (char*)calloc(MAX_PATH, sizeof(BYTE));
 				if (CapeMetaData->TargetProcess)
 					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
 				ErrorOutput("WriteMemoryHandler: Error obtaining target process name");
@@ -1058,7 +1050,7 @@ void DuplicationHandler(HANDLE SourceHandle, HANDLE TargetHandle)
 			}
 			else
 			{
-				CapeMetaData->TargetProcess = (char*)malloc(MAX_PATH);
+				CapeMetaData->TargetProcess = (char*)calloc(MAX_PATH, sizeof(BYTE));
 				if (CapeMetaData->TargetProcess)
 					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
 				ErrorOutput("DuplicationHandler: Error obtaining target process name");

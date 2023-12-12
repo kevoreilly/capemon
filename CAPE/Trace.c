@@ -30,7 +30,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_INSTRUCTIONS 0x10
 #define MAX_DUMP_SIZE 0x1000000
 #define CHUNKSIZE 0x10
-#define RVA_LIMIT 0x2000000
 #define DoClearZeroFlag 1
 #define DoSetZeroFlag   2
 #define PrintEAX		3
@@ -38,7 +37,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
-extern int DumpImageInCurrentProcess(LPVOID ImageBase);
+extern void StringsOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DumpMemory(LPVOID Buffer, SIZE_T Size);
 extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_anomaly(const char *subcategory, const char *msg);
@@ -56,10 +55,10 @@ extern void log_flush();
 extern PVOID _KiUserExceptionDispatcher;
 
 char *ModuleName, *PreviousModuleName;
-PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback;
+PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
-unsigned int DumpCount, Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister;
+unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
 unsigned int Type0, Type1, Type2, Type3;
@@ -198,24 +197,78 @@ void StringCheck(PVOID PossibleString)
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
 	if (Size > 64)
 		DebuggerOutput(" \"%.64s...\"", (PCHAR)OutputBuffer);
-	else if (Size > 3)
+	else if (Size)
 		DebuggerOutput(" \"%.64s\"", (PCHAR)OutputBuffer);
 	else
 	{
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
 		if (Size > 64)
 			DebuggerOutput(" L\"%.64ws...\"", (PWCHAR)OutputBufferW);
-		else if (Size > 3)
+		else if (Size)
 			DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
+	}
+}
+
+void DoOutputString(PVOID PossibleString)
+{
+	char OutputBuffer[MAX_PATH] = "";
+	WCHAR OutputBufferW[MAX_PATH] = L"";
+
+	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
+	if (Size >= MAX_PATH)
+		StringsOutput("%.256s...", (PCHAR)OutputBuffer);
+	else if (Size)
+		StringsOutput("%.256s", (PCHAR)OutputBuffer);
+	else
+	{
+		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
+		if (Size >= MAX_PATH)
+			StringsOutput("L%.256ws...", (PWCHAR)OutputBufferW);
+		else if (Size)
+			StringsOutput("L%.256ws", (PWCHAR)OutputBufferW);
+		else
+			StringsOutput("");
 	}
 }
 
 PVOID GetRegister(PCONTEXT Context, char* RegString)
 {
-	PVOID Register = NULL;
 	if (!Context || !RegString)
         return NULL;
-    __try
+
+	BOOL Pointer = FALSE;
+	PVOID Register = NULL;
+	int delta = 0;
+	char *q, r, *s;
+
+	if (*RegString == '[') {
+		RegString++;
+		s = strchr(RegString, ']');
+		if (s) {
+			*s = '\0';
+			Pointer = TRUE;
+		}
+	}
+
+	q = strchr(RegString, '+');
+	if (q)
+	{
+		delta = strtoul(q+1, NULL, 0);
+		r = *q;
+		*q = '\0';
+	}
+	else
+	{
+		q = strchr(RegString, '-');
+		if (q)
+		{
+			r = *q;
+			delta = - (int)strtoul(q+1, NULL, 0);
+			*q = '\0';
+		}
+	}
+
+	__try
     {
 #ifdef _WIN64
         if (!stricmp(RegString, "eax"))
@@ -254,6 +307,22 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 			Register = (PVOID)Context->Rbp;
         else if (!stricmp(RegString, "rip"))
 			Register = (PVOID)Context->Rip;
+        else if (!stricmp(RegString, "r8"))
+			Register = (PVOID)Context->R8;
+        else if (!stricmp(RegString, "r9"))
+			Register = (PVOID)Context->R9;
+        else if (!stricmp(RegString, "r10"))
+			Register = (PVOID)Context->R10;
+        else if (!stricmp(RegString, "r11"))
+			Register = (PVOID)Context->R11;
+        else if (!stricmp(RegString, "r12"))
+			Register = (PVOID)Context->R13;
+        else if (!stricmp(RegString, "r13"))
+			Register = (PVOID)Context->R13;
+        else if (!stricmp(RegString, "r14"))
+			Register = (PVOID)Context->R14;
+        else if (!stricmp(RegString, "r15"))
+			Register = (PVOID)Context->R15;
 #else
         if (!stricmp(RegString, "eax"))
 			Register = (PVOID)Context->Eax;
@@ -279,7 +348,16 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
     {
         ;
     }
-    return Register;
+
+	if (q)
+		*q = r;
+
+	if (Pointer) {
+		*s = ']';
+		return *(PVOID*)((PUCHAR)Register + delta);
+	}
+	else
+		return (PVOID)((PUCHAR)Register + delta);
 }
 
 OutputRegisterChanges(PCONTEXT Context)
@@ -467,6 +545,20 @@ OutputRegisterChanges(PCONTEXT Context)
 #endif
 }
 
+void SetOperand(PCONTEXT Context, PCHAR Operand, PVOID Target)
+{
+	if (*Operand != '[')
+		return;
+	PVOID *Pointer = GetRegister(Context, Operand+1);
+	if (Pointer)
+	{
+		*Pointer = (PVOID)Target;
+		DebuggerOutput("ActionDispatcher: Setting %s -> [0x%p] to 0x%x.\n", Operand, Pointer, Target);
+	}
+	else
+		DebuggerOutput("ActionDispatcher: Unable to set %s.\n", Operand);
+}
+
 void SkipInstruction(PCONTEXT Context)
 {
 	PVOID CIP;
@@ -559,6 +651,46 @@ void WriteRet(PCONTEXT Context)
 	return;
 }
 
+// For packers where there is a jmp to OEP (e.g. UPX)
+BOOL ProcessOEP(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP, AllocationBase;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+	AllocationBase = GetAllocationBase(CIP);
+	StopTrace = FALSE;
+
+	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	TraceOutput(CIP, DecodedInstruction);
+
+	CapeMetaData->Address = AllocationBase;
+	if (g_config.typestring)
+		CapeMetaData->TypeString = g_config.typestring;
+	else if (!CapeMetaData->DumpType)
+		CapeMetaData->DumpType = UNPACKED_PE;
+
+	if (DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction))
+		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p.\n", CIP);
+	else
+		DebuggerOutput("\nProcessOEP: Failed to dump module with OEP at 0x%p.\n", CIP);
+
+	YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
+
+	return TRUE;
+}
+
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, PCHAR Action)
 {
 	// This could be further optimised per action but this is safe at least
@@ -617,6 +749,17 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			{
 				TargetSet = TRUE;
 				TargetArg = GetRegister(ExceptionInfo->ContextRecord, q+2);
+				if (!TargetArg)
+				{
+					char *endptr;
+					errno = 0;
+					TargetArg = (PVOID)(DWORD_PTR)strtoul(q+2, &endptr, 0);
+					if (errno || endptr == q+2) {
+						TargetArg = GetModuleHandle(q+2);
+						if (!TargetArg)
+							DebuggerOutput("ActionDispatcher: Failed to get target arg: %s.\n", q+2);
+					}
+				}
 			}
 			//else
 			//	DebuggerOutput("ActionDispatcher: Failed to get base for target module (%s).\n", p+1);
@@ -670,10 +813,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rax = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rax);
+			DebuggerOutput("ActionDispatcher: setting RAX to 0x%x.\n", ExceptionInfo->ContextRecord->Rax);
 #else
 			ExceptionInfo->ContextRecord->Eax = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EAX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Eax);
+			DebuggerOutput("ActionDispatcher: setting EAX to 0x%x.\n", ExceptionInfo->ContextRecord->Eax);
 #endif
 		}
 		else
@@ -685,10 +828,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rbx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rbx);
+			DebuggerOutput("ActionDispatcher: setting RBX to 0x%x.\n", ExceptionInfo->ContextRecord->Rbx);
 #else
 			ExceptionInfo->ContextRecord->Ebx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EBX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ebx);
+			DebuggerOutput("ActionDispatcher: setting EBX to 0x%x.\n", ExceptionInfo->ContextRecord->Ebx);
 #endif
 		}
 		else
@@ -700,10 +843,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rcx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RCX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rcx);
+			DebuggerOutput("ActionDispatcher: setting RCX to 0x%x.\n", ExceptionInfo->ContextRecord->Rcx);
 #else
 			ExceptionInfo->ContextRecord->Ecx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting ECX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Ecx);
+			DebuggerOutput("ActionDispatcher: setting ECX to 0x%x.\n", ExceptionInfo->ContextRecord->Ecx);
 #endif
 		}
 		else
@@ -715,10 +858,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rdx = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdx);
+			DebuggerOutput("ActionDispatcher: setting RDX to 0x%x.\n", ExceptionInfo->ContextRecord->Rdx);
 #else
 			ExceptionInfo->ContextRecord->Edx = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EDX to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edx);
+			DebuggerOutput("ActionDispatcher: setting EDX to 0x%x.\n", ExceptionInfo->ContextRecord->Edx);
 #endif
 		}
 		else
@@ -730,10 +873,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rsi = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RSI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rsi);
+			DebuggerOutput("ActionDispatcher: setting RSI to 0x%x.\n", ExceptionInfo->ContextRecord->Rsi);
 #else
 			ExceptionInfo->ContextRecord->Esi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting ESI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Esi);
+			DebuggerOutput("ActionDispatcher: setting ESI to 0x%x.\n", ExceptionInfo->ContextRecord->Esi);
 #endif
 		}
 		else
@@ -745,59 +888,99 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
 #ifdef _WIN64
 			ExceptionInfo->ContextRecord->Rdi = (DWORD64)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting RDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Rdi);
+			DebuggerOutput("ActionDispatcher: setting RDI to 0x%x.\n", ExceptionInfo->ContextRecord->Rdi);
 #else
 			ExceptionInfo->ContextRecord->Edi = (DWORD)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting EDI to 0x%x.\n", DecodedInstruction.mnemonic.p, ExceptionInfo->ContextRecord->Edi);
+			DebuggerOutput("ActionDispatcher: setting EDI to 0x%x.\n", ExceptionInfo->ContextRecord->Edi);
 #endif
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set EDI - target value missing.\n");
 	}
+	else if (!strnicmp(Action, "SetPtr", 6))
+	{
+		if (Target || TargetSet)
+		{
+			PVOID *Pointer = Target;
+			*Pointer = (PVOID)TargetArg;
+			DebuggerOutput("ActionDispatcher: Setting value pointed at by 0x%p to 0x%x.\n", Target, TargetArg);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set 0x%p pointer value - target missing.\n", Target);
+	}
+	else if (!strnicmp(Action, "SetSrc", 6))
+	{
+		if (Target || TargetSet)
+		{
+			PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+			if (Dst)
+			{
+				*Dst = 0;
+				SetOperand(ExceptionInfo->ContextRecord, DecodedInstruction.operands.p, Target);
+				*Dst = ',';
+			}
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set operand value - target missing.\n", Target);
+	}
+	else if (!strnicmp(Action, "SetDst", 6))
+	{
+		if (Target || TargetSet)
+		{
+			PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+			if (Dst)
+			{
+				Dst += 2;
+				SetOperand(ExceptionInfo->ContextRecord, Dst, Target);
+			}
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot set operand value - target missing.\n", Target);
+	}
 	else if (!stricmp(Action, "ClearZeroFlag"))
 	{
 		ClearZeroFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, clearing zero flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: clearing zero flag.\n");
 	}
 	else if (!stricmp(Action, "SetZeroFlag"))
 	{
 		SetZeroFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, setting zero flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: setting zero flag.\n");
 	}
 	else if (!stricmp(Action, "FlipZeroFlag"))
 	{
 		FlipZeroFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, flipping zero flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: flipping zero flag.\n");
 	}
 	else if (!stricmp(Action, "ClearSignFlag"))
 	{
 		ClearSignFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, clearing Sign flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: clearing Sign flag.\n");
 	}
 	else if (!stricmp(Action, "SetSignFlag"))
 	{
 		SetSignFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, setting Sign flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: setting Sign flag.\n");
 	}
 	else if (!stricmp(Action, "FlipSignFlag"))
 	{
 		FlipSignFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, flipping Sign flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: flipping Sign flag.\n");
 	}
 	else if (!stricmp(Action, "ClearCarryFlag"))
 	{
 		ClearCarryFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, clearing Carry flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: clearing Carry flag.\n");
 	}
 	else if (!stricmp(Action, "SetCarryFlag"))
 	{
 		SetCarryFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, setting Carry flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: setting Carry flag.\n");
 	}
 	else if (!stricmp(Action, "FlipCarryFlag"))
 	{
 		FlipCarryFlag(ExceptionInfo->ContextRecord);
-		DebuggerOutput("ActionDispatcher: %s detected, flipping Carry flag.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("ActionDispatcher: flipping Carry flag.\n");
 	}
 	else if (!strnicmp(Action, "Jmp", 3))
 	{
@@ -837,7 +1020,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 #else
 			ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
 #endif
-			DebuggerOutput("\nActionDispatcher: %s detected, forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, Target);
+			DebuggerOutput("\nActionDispatcher: forcing jmp to 0x%p.\n", DecodedInstruction.mnemonic.p, Target);
 		}
 	}
 	else if (!strnicmp(Action, "Count", 5))
@@ -846,7 +1029,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		{
             TraceDepthCount = 0;
 			StepLimit = (unsigned int)(DWORD_PTR)Target;
-			DebuggerOutput("ActionDispatcher: %s detected, setting count to 0x%x.\n", DecodedInstruction.mnemonic.p, StepLimit);
+			DebuggerOutput("ActionDispatcher: setting count to 0x%x.\n", DecodedInstruction.mnemonic.p, StepLimit);
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set count - target value missing.\n");
@@ -856,19 +1039,19 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		// We want the skipped instruction to appear in the trace
 		TraceOutput(CIP, DecodedInstruction);
 		SkipInstruction(ExceptionInfo->ContextRecord);
-		DebuggerOutput("\nActionDispatcher: %s detected, skipping instruction.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: skipping instruction.\n");
 	}
 	else if (!strnicmp(Action, "Nop", 3))
 	{
 		// We want the nopped instruction to appear in the trace
 		TraceOutput(CIP, DecodedInstruction);
 		NopInstruction(ExceptionInfo->ContextRecord);
-		DebuggerOutput("\nActionDispatcher: %s detected, nopping instruction.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: nopping instruction.\n");
 	}
 	else if (!strnicmp(Action, "Wret", 4))
 	{
 		WriteRet(ExceptionInfo->ContextRecord);
-		DebuggerOutput("\nActionDispatcher: %s detected, ret written.\n", DecodedInstruction.mnemonic.p);
+		DebuggerOutput("\nActionDispatcher: ret written.\n");
 	}
 	else if (!strnicmp(Action, "GoTo", 4))
 	{
@@ -887,6 +1070,29 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot GoTo - target value missing.\n");
+	}
+	else if (!strnicmp(Action, "Call", 4))
+	{
+		if (Target)
+		{
+			TraceOutput(CIP, DecodedInstruction);
+			if (p)
+				DebuggerOutput("\nActionDispatcher: Call target 0x%p (%s).\n", Target, p+1);
+			else
+				DebuggerOutput("\nActionDispatcher: Call target 0x%p.\n", Target);
+			PVOID ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+#ifdef _WIN64
+			ExceptionInfo->ContextRecord->Rsp -= sizeof(QWORD);
+			*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = ReturnAddress;
+			ExceptionInfo->ContextRecord->Rip = (QWORD)Target;
+#else
+			ExceptionInfo->ContextRecord->Esp -= sizeof(DWORD);
+			*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = ReturnAddress;
+			ExceptionInfo->ContextRecord->Eip = (DWORD)Target;
+#endif
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Cannot call - target value missing.\n");
 	}
 	else if (!strnicmp(Action, "Push", 4))
 	{
@@ -987,8 +1193,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	else if (!stricmp(Action, "Stop"))
 	{
 		TraceOutput(CIP, DecodedInstruction);
-		DebuggerOutput("\nActionDispatcher: %s detected, stopping trace.\n", DecodedInstruction.mnemonic.p);
-		ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+		DebuggerOutput("\nActionDispatcher: stopping trace.\n");
 		ClearSingleStepMode(ExceptionInfo->ContextRecord);
 		memset(&LastContext, 0, sizeof(CONTEXT));
 		TraceRunning = FALSE;
@@ -1111,9 +1316,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("ActionDispatcher: Dump size set to 0x%x\n", DumpSize);
 		}
 
-		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Target, DumpSize))
+		if (Target && DumpSize && DumpSize < MAX_DUMP_SIZE)
 		{
-			DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
+			if (DumpCount > 0)
+				DumpCount--;
+			if (DumpMemory(Target, DumpSize))
+				DebuggerOutput("ActionDispatcher: Dumped region at 0x%p size 0x%x.\n", Target, DumpSize);
+			else
+				DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p size 0x%x.\n", Target, DumpSize);
 			return;
 		}
 		else if (Target && DumpRegion(Target))
@@ -1122,9 +1332,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			return;
 		}
 		else
-			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%d.\n", Target, DumpSize);
+			DebuggerOutput("ActionDispatcher: Failed to dump region at 0x%p, size 0x%x.\n", Target, DumpSize);
 		DumpAddress = 0;
 		DumpSize = 0;
+	}
+	else if (!stricmp(Action, "Step2OEP"))
+	{
+		SetSingleStepMode(ExceptionInfo->ContextRecord, ProcessOEP);
+		StepLimit = 0;
 	}
 	else if (!stricmp(Action, "Scan"))
 	{
@@ -1133,6 +1348,58 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			ScanAddress = GetAllocationBase(Target);
 		DebuggerOutput("ActionDispatcher: Scanning region at 0x%p.\n", ScanAddress);
 		YaraScan(ScanAddress, GetAccessibleSize(ScanAddress));
+	}
+	else if (!strnicmp(Action, "SetBp0", 6))
+	{
+		PVOID Base = GetAllocationBase(CIP);
+		if (Target)
+		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 0, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp0: Breakpoint 0 set to 0x%p.\n", Target);
+		}
+		else
+			DebuggerOutput("SetBp0: Failed to obtain breakpoint address.\n");
+	}
+	else if (!strnicmp(Action, "SetBp1", 6))
+	{
+		PVOID Base = GetAllocationBase(CIP);
+		if (Target)
+		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 1, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp1: Breakpoint 1 set to 0x%p.\n", Target);
+		}
+		else
+			DebuggerOutput("SetBp1: Failed to obtain breakpoint address.\n");
+	}
+	else if (!strnicmp(Action, "SetBp2", 6))
+	{
+		PVOID Base = GetAllocationBase(CIP);
+		if (Target)
+		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 2, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp2: Breakpoint 2 set to 0x%p.\n", Target);
+		}
+		else
+			DebuggerOutput("SetBp2: Failed to obtain breakpoint address.\n");
+	}
+	else if (!strnicmp(Action, "SetBp3", 6))
+	{
+		PVOID Base = GetAllocationBase(CIP);
+		if (Target)
+		{
+			if ((PUCHAR)Target < (PUCHAR)Base)
+				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
+			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 3, 0, Target, BP_EXEC, 0, BreakpointCallback);
+			DebuggerOutput("SetBp3: Breakpoint 3 set to 0x%p.\n", Target);
+		}
+		else
+			DebuggerOutput("SetBp3: Failed to obtain breakpoint address.\n");
 	}
 	else if (!stricmp(Action, "DumpStack"))
 	{
@@ -1167,6 +1434,34 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				}
 			}
 		}
+	}
+	else if (!strnicmp(Action, "String", 6))
+	{
+		if (Target)
+		{
+			DebuggerOutput("String captured at 0x%p: \"", Target);
+			DoOutputString(Target);
+			DebuggerOutput("\"\n", Target);
+		}
+		else
+			DebuggerOutput("String: Failed to obtain string address.\n");
+	}
+	else if (!strnicmp(Action, "Sleep", 5))
+	{
+		if (Target)
+		{
+			DebuggerOutput("ActionDispatcher: Sleeping for %d milliseconds.\n", Target);
+			LARGE_INTEGER Interval;
+			Interval.QuadPart = (DWORD64)Target*-10000;
+			Old_NtDelayExecution(0, &Interval);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Sleep duration not supploed.\n");
+	}
+	else if (!stricmp(Action, "Exit"))
+	{
+		DebuggerOutput("ActionDispatcher: Terminating process.\n");
+		New_NtTerminateProcess(NULL, 1);
 	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
@@ -1284,37 +1579,56 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
 		}
 #ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
+		else if (!strncmp(DecodedInstruction.operands.p, "R", 1))
 		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+			if (!strncmp(DecodedInstruction.operands.p, "RAX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rax;
+			else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
+			else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
+			else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
+			else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
+			else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
+			else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
+			else if (!strncmp(DecodedInstruction.operands.p, "R8", 2))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R8;
+			else if (!strncmp(DecodedInstruction.operands.p, "R9", 2))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R9;
+			else if (!strncmp(DecodedInstruction.operands.p, "R10", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R10;
+			else if (!strncmp(DecodedInstruction.operands.p, "R11", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R11;
+			else if (!strncmp(DecodedInstruction.operands.p, "R12", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R12;
+			else if (!strncmp(DecodedInstruction.operands.p, "R13", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R13;
+			else if (!strncmp(DecodedInstruction.operands.p, "R14", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R14;
+			else if (!strncmp(DecodedInstruction.operands.p, "R15", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->R15;
 #else
-		else if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
+		else if (!strncmp(DecodedInstruction.operands.p, "E", 1))
 		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
+			if (!strncmp(DecodedInstruction.operands.p, "EAX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Eax;
+			else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
+			else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
+			else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
+			else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
+			else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
+			else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
+				CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
 #endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RBX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbx;
 			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
 			if (ExportName)
 			{
@@ -1324,160 +1638,6 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			}
 			else if (!FilterTrace || g_config.trace_all)
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EBX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RCX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rcx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "ECX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ecx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RDX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EDX", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edx;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RBP", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rbp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EBP", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Ebp;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RSI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rsi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "ESI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Esi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#endif
-		}
-#ifdef _WIN64
-		else if (!strncmp(DecodedInstruction.operands.p, "RDI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Rdi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
-#else
-		else if (!strncmp(DecodedInstruction.operands.p, "EDI", 3))
-		{
-			CallTarget = (PVOID)ExceptionInfo->ContextRecord->Edi;
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
-			if (ExportName)
-			{
-				if (!FilterTrace || g_config.trace_all)
-					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
-				*StepOver = TRUE;
-			}
-			else if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);;
-#endif
 		}
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
@@ -1595,13 +1755,38 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		else if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
 	}
-	//else if (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 4) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
-	else if (!strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
+	else if (g_config.loopskip && !strncmp(DecodedInstruction.mnemonic.p, "REP ", 3) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
 	{
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
-		ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-		*ForceStepOver = TRUE;
+#ifdef _WIN64
+		if (ExceptionInfo->ContextRecord->Rcx > 1)
+#else
+		if (ExceptionInfo->ContextRecord->Ecx > 1)
+#endif
+		{
+			ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+			*ForceStepOver = TRUE;
+			DebuggerOutput(" *** skip *** ");
+		}
+	}
+	else if (g_config.loopskip && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1) && DecodedInstruction.size == 2)
+	{
+		int JumpOffset = (int)*((PCHAR)CIP + 1);
+		PVOID JumpTarget = (PVOID)((PUCHAR)CIP + DecodedInstruction.size + JumpOffset);
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
+		for (unsigned int i = 0; i < 4; i++)
+		{
+			if (JumpOffset < 0 && PreviousJumps[i] == CIP)
+			{
+				ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+				*ForceStepOver = TRUE;
+				DebuggerOutput(" *** skip *** ");
+			}
+		}
+		PreviousJumps[JumpCount % 4] = CIP;
+		JumpCount++;
 	}
 #ifndef _WIN64
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "CALL FAR") && !strncmp(DecodedInstruction.operands.p, "0x33", 4))
@@ -1957,35 +2142,6 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 	TraceOutput(CIP, DecodedInstruction);
 
-	if (!stricmp(Action0, "dumpebx"))
-	{
-		if (!stricmp(DumpSizeString, "eax"))
-		{
-#ifdef _WIN64
-			DumpSize = ExceptionInfo->ContextRecord->Rax;
-			PVOID Address = (PVOID)ExceptionInfo->ContextRecord->Rbx;
-#else
-			DumpSize = ExceptionInfo->ContextRecord->Eax;
-			PVOID Address = (PVOID)ExceptionInfo->ContextRecord->Ebx;
-#endif
-			if (g_config.dumptype0)
-				CapeMetaData->DumpType = g_config.dumptype0;
-			else if (g_config.dumptype1)
-				CapeMetaData->DumpType = g_config.dumptype1;
-			else if (g_config.dumptype2)
-				CapeMetaData->DumpType = g_config.dumptype2;
-			else
-				CapeMetaData->DumpType = UNPACKED_PE;
-
-			if (Address && DumpSize && DumpSize < MAX_DUMP_SIZE && DumpMemory(Address, DumpSize))
-				DebugOutput("StepOutCallback: Dumped region at 0x%p size 0x%x.\n", Address, DumpSize);
-			else
-				DebugOutput("StepOutCallback: Failed to dump region at 0x%p.\n", Address);
-		}
-	}
-
-	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
-
 	return TRUE;
 }
 
@@ -2201,8 +2357,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
-	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
-
 	if (!StepLimit || StepCount > StepLimit || StopTrace)
 	{
 		DebuggerOutput("\nBreakpointCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
@@ -2216,7 +2370,9 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	{
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+#endif
 			ReturnAddress = NULL;
 		}
 		else
@@ -2224,6 +2380,113 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 	else
 		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+
+	return TRUE;
+}
+
+BOOL SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+	BOOL StepOver = FALSE, ForceStepOver = FALSE;
+
+	StopTrace = FALSE;
+
+	BreakpointsHit = TRUE;
+
+	DebuggerOutput("Software breakpoint hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	if (g_config.log_breakpoints)
+	{
+		// Log breakpoint to behavior log
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+		_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+		log_breakpoint("Debugger", DebuggerBuffer);
+	}
+
+	FilterTrace = FALSE;
+
+	if (InsideMonitor(NULL, CIP) && g_config.trace_all == 1)
+		FilterTrace = TRUE;
+
+	if (inside_hook(CIP) && !g_config.trace_all)
+		FilterTrace = TRUE;
+
+	if (is_in_dll_range((ULONG_PTR)CIP) && !g_config.trace_all)
+		FilterTrace = TRUE;
+
+	StepCount++;
+
+	OutputRegisterChanges(ExceptionInfo->ContextRecord);
+
+	if (!FilterTrace)
+		DebuggerOutput("\n");
+
+	// We disassemble once for the action dispatcher
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	ReDisassemble = FALSE;
+
+	// Dispatch any actions
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.bp); i++)
+	{
+		if (g_config.action[i])
+			ActionDispatcher(ExceptionInfo, DecodedInstruction, g_config.action[i]);
+	}
+
+	// We disassemble a second time in case of any changes/patches
+	if (ReDisassemble)
+	{
+#ifdef _WIN64
+		CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+		CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+		if (CIP)
+			Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+	}
+
+	// Instruction handling
+	InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
+
+	LastContext = *ExceptionInfo->ContextRecord;
+
+	if (!StepLimit || StepCount > StepLimit || StopTrace)
+	{
+		DebuggerOutput("\nSoftwareBreakpointCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
+		memset(&LastContext, 0, sizeof(CONTEXT));
+		StopTrace = TRUE;
+		StepCount = 0;
+		TraceRunning = FALSE;
+		ReturnAddress = NULL;
+	}
+	else if (ReturnAddress && (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
+	{
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("SoftwareBreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+#endif
+			ReturnAddress = NULL;
+		}
+		else
+			DebugOutput("SoftwareBreakpointCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+	}
+	else
+		SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
 
 	return TRUE;
 }
@@ -2266,8 +2529,6 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 		DebugOutput("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
 	ReturnAddress = NULL;
-
-	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 
 	return TRUE;
 }
@@ -2329,8 +2590,7 @@ BOOL BreakpointOnReturn(PVOID Address)
 
 BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 {
-	PVOID Callback = NULL;
-	DWORD_PTR BreakpointVA = 0;
+	PVOID Callback = NULL, BreakpointVA = NULL;
 	unsigned int Type = 0, HitCount = 0;
 
 	if (g_config.file_offsets)
@@ -2341,15 +2601,10 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 			BreakpointsSet = FALSE;
 			return FALSE;
 		}
-		BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)Address);
+		BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)Address);
 	}
 	else
-	{
-		if ((SIZE_T)Address > RVA_LIMIT)
-			BreakpointVA = (DWORD_PTR)Address;
-		else
-			BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)Address;
-	}
+		BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)Address);
 
 	if (Register == 0)
 	{
@@ -2408,7 +2663,7 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 		HitCount = g_config.hc3;
 	}
 
-	if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, Type, HitCount, Callback))
+	if (SetBreakpoint(Register, 0, BreakpointVA, Type, HitCount, Callback))
 	{
 		DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, hit count %d, thread %d)\n", Register, BreakpointVA, Address, Type, HitCount, GetCurrentThreadId());
 		BreakpointsSet = TRUE;
@@ -2422,7 +2677,7 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 
 BOOL SetInitialBreakpoints(PVOID ImageBase)
 {
-	DWORD_PTR BreakpointVA = 0;
+	PVOID BreakpointVA = NULL;
 	DWORD Register = 0;
 
 	if (BreakpointsHit)
@@ -2527,17 +2782,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 				BreakpointsSet = FALSE;
 				return FALSE;
 			}
-			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
+			BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
 		}
 		else
-		{
-			if ((SIZE_T)g_config.br0 > RVA_LIMIT)
-				BreakpointVA = (DWORD_PTR)g_config.br0;
-			else
-				BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0;
-		}
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0);
 
-		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
+		if (SetBreakpoint(Register, 0, BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
 		{
 			DebugOutput("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br0, BP_EXEC);
 			BreakpointsSet = TRUE;
@@ -2562,17 +2812,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 				BreakpointsSet = FALSE;
 				return FALSE;
 			}
-			BreakpointVA = FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
+			BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
 		}
 		else
-		{
-			if ((SIZE_T)g_config.br1 > RVA_LIMIT)
-				BreakpointVA = (DWORD_PTR)g_config.br1;
-			else
-				BreakpointVA = (DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1;
-		}
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1);
 
-		if (SetBreakpoint(Register, 0, (BYTE*)BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
+		if (SetBreakpoint(Register, 0, BreakpointVA, BP_EXEC, 0, BreakOnReturnCallback))
 		{
 			DebugOutput("SetInitialBreakpoints: Breakpoint-on-return %d set on address 0x%p (RVA 0x%x, type %d)\n", Register, BreakpointVA, g_config.br1, BP_EXEC);
 			BreakpointsSet = TRUE;
@@ -2584,6 +2829,35 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			return FALSE;
 		}
 	}
+
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.bp); i++)
+	{
+		if (g_config.bp[i])
+		{
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
+			SetSoftwareBreakpoint(BreakpointVA);
+#ifdef DEBUG_COMMENTS
+			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
+#endif
+		}
+	}
+
+	BOOL SyscallBreakpointSet = FALSE;
+
+	for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++)
+	{
+		if (g_config.sysbp[i])
+		{
+			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp[i]);
+			SyscallBreakpointSet = SetSyscallBreakpoint(BreakpointVA);
+#ifdef DEBUG_COMMENTS
+			DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
+#endif
+		}
+	}
+
+	if (SyscallBreakpointSet)
+		DebugOutput("SetInitialBreakpoints: Syscall breakpoints set.\n");
 
 	return BreakpointsSet;
 }

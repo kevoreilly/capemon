@@ -39,10 +39,8 @@ extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
 extern void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtect);
-extern void FreeHandler(PVOID BaseAddress);
-extern void ProcessTrackedRegion();
-extern void DebuggerShutdown();
-extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void FreeHandler(PVOID BaseAddress), ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void ProcessTrackedRegion(), DebuggerShutdown(), DumpStrings();
 
 extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
@@ -51,7 +49,6 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern PVOID GetHookCallerBase();
 extern BOOL ProcessDumped;
-extern HANDLE DebuggerLog;
 
 static BOOL ntdll_protect_logged;
 
@@ -518,6 +515,29 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, NtOpenProcessToken,
+	__in HANDLE ProcessHandle,
+	__in ACCESS_MASK DesiredAccess,
+	__out PHANDLE TokenHandle
+) {
+	NTSTATUS ret;
+	ret = Old_NtOpenProcessToken(ProcessHandle, DesiredAccess, TokenHandle);
+	LOQ_ntstatus("process", "phP", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "TokenHandle", TokenHandle);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationToken,
+	IN HANDLE TokenHandle,
+	IN TOKEN_INFORMATION_CLASS TokenInformationClass,
+	OUT PVOID TokenInformation,
+	IN ULONG TokenInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
+) {
+	NTSTATUS ret = Old_NtQueryInformationToken(TokenHandle, TokenInformationClass, TokenInformation, TokenInformationLength, ReturnLength);
+	LOQ_ntstatus("process", "ib", "TokenInformationClass", TokenInformationClass, "TokenInformation", TokenInformationLength, TokenInformation);
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	__in  HANDLE ProcessHandle
 ) {
@@ -570,6 +590,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		}
 	}
 
+	if (Pid)
+		pipe("KILL:%d", Pid);
+
+	DumpStrings();
+
 	if (process_shutting_down && g_config.injection)
 		TerminateHandler();
 
@@ -580,9 +605,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
 		DoProcessDump();
 	}
-
-	if (Pid)
-		pipe("KILL:%d", Pid);
 
 	set_lasterrors(&lasterror);
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);
@@ -781,6 +803,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtUnmapViewOfSectionEx,
 
 	LOQ_ntstatus("process", "pppi", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress, "RegionSize", map_size, "Flags", Flags);
 
+	return ret;
+}
+
+HOOKDEF(HMODULE, WINAPI, LoadLibraryExW,
+	__in	  LPCWSTR lpLibFileName,
+	__in	  HANDLE  hFile,
+	__in	  DWORD   dwFlags
+) {
+	HMODULE ret = Old_LoadLibraryExW(lpLibFileName, hFile, dwFlags);
+	LOQ_nonnull("system", "uh", "lpLibFileName", lpLibFileName, "dwFlags", dwFlags);
 	return ret;
 }
 
@@ -1129,7 +1161,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(lpAddress);
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-		if (g_config.unpacker && !MappedModule)
+		if (g_config.unpacker)
 			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
 		if (g_config.caller_regions)
 		{
@@ -1338,6 +1370,8 @@ HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
 	return 0;
 }
 
+BOOL EnableFakeCount;
+
 HOOKDEF(UINT, WINAPI, GetWriteWatch,
 	__in		DWORD		dwFlags,
 	__in		PVOID		lpBaseAddress,
@@ -1347,9 +1381,15 @@ HOOKDEF(UINT, WINAPI, GetWriteWatch,
 	__out		LPDWORD		lpdwGranularity
 ) {
 	UINT ret = Old_GetWriteWatch(dwFlags, lpBaseAddress, dwRegionSize, lpAddresses, lpdwCount, lpdwGranularity);
-	LOQ_zero("process", "piiL", "BaseAddress", lpBaseAddress, "RegionSize", dwRegionSize, "Flags", dwFlags, "Count", lpdwCount);
-	if (lpdwCount && *lpdwCount)
+	LOQ_zero("process", "phiL", "BaseAddress", lpBaseAddress, "RegionSize", dwRegionSize, "Flags", dwFlags, "Count", lpdwCount);
+#ifndef _WIN64
+	// For Pikabot detonation, e.g. 2ebf4db49a8a7875e9c443482f82af1febd9751eee65be155355c3525331ae88
+	// ref https://github.com/BaumFX/cpp-anti-debug/blob/d6e84a09b21593a65a5d7545e0d3df876cb0a29a/anti_debug.cpp#L260
+	if (ret)
+		EnableFakeCount = TRUE;
+	else if (EnableFakeCount && lpdwCount && *lpdwCount == 1)
 		*lpdwCount = 0;
+#endif
 	return ret;
 }
 

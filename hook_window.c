@@ -1,3 +1,4 @@
+
 /*
 Cuckoo Sandbox - Automated Malware Analysis
 Copyright (C) 2010-2015 Cuckoo Sandbox Developers, Optiv, Inc. (brad.spengler@optiv.com)
@@ -47,6 +48,24 @@ DWORD WINAPI our_GetWindowThreadProcessId(
 		_GetWindowThreadProcessId = (__GetWindowThreadProcessId)GetProcAddress(LoadLibraryA("user32"), "GetWindowThreadProcessId");
 	}
 	ret = _GetWindowThreadProcessId(hWnd, lpdwProcessId);
+	set_lasterrors(&lasterror);
+	return ret;
+}
+
+DWORD WINAPI GetThreadProcessId(
+	__in DWORD ThreadId
+) {
+	lasterror_t lasterror;
+	DWORD ret = 0;
+
+	get_lasterrors(&lasterror);
+
+	HANDLE hThread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, ThreadId);
+	if (hThread) {
+		ret = GetProcessIdOfThread(hThread);
+		CloseHandle(hThread);
+	}
+
 	set_lasterrors(&lasterror);
 	return ret;
 }
@@ -179,7 +198,14 @@ HOOKDEF(BOOL, WINAPI, PostThreadMessageA,
 ) {
 	BOOL ret = Old_PostThreadMessageA(idThread, Msg, wParam, lParam);
 
-	LOQ_bool("windows", "pi", "ThreadId", idThread, "Message", Msg);
+	DWORD pid = GetThreadProcessId(idThread);
+
+	if (pid && pid != GetCurrentProcessId()) {
+		DumpSectionViewsForPid(pid);
+		ProcessMessage(pid, 0);
+	}
+
+	LOQ_bool("windows", "iii", "ProcessId", pid, "ThreadId", idThread, "Message", Msg);
 
 	return ret;
 }
@@ -192,7 +218,15 @@ HOOKDEF(BOOL, WINAPI, PostThreadMessageW,
 ) {
 	BOOL ret = Old_PostThreadMessageW(idThread, Msg, wParam, lParam);
 
-	LOQ_bool("windows", "pi", "ThreadId", idThread, "Message", Msg);
+	DWORD pid = GetThreadProcessId(idThread);
+
+	if (pid && pid != GetCurrentProcessId()) {
+		DumpSectionViewsForPid(pid);
+		ProcessMessage(pid, 0);
+	}
+
+	LOQ_bool("windows", "iii", "ProcessId", pid, "ThreadId", idThread, "Message", Msg);
+
 	return ret;
 }
 

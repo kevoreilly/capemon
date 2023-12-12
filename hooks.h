@@ -1077,6 +1077,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcessToken,
 	__out PHANDLE TokenHandle
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationToken,
+	IN HANDLE TokenHandle,
+	IN TOKEN_INFORMATION_CLASS TokenInformationClass,
+	OUT PVOID TokenInformation,
+	IN ULONG TokenInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	__in_opt  HANDLE ProcessHandle,
 	__in	  NTSTATUS ExitStatus
@@ -1276,6 +1284,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 	OUT PULONG ReturnLength OPTIONAL
 );
 
+HOOKDEF(HMODULE, WINAPI, LoadLibraryExW,
+	__in	  LPCWSTR lpLibFileName,
+	__in	  HANDLE  hFile,
+	__in	  DWORD   dwFlags
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	__in	 HANDLE ProcessHandle,
 	__inout  PVOID *BaseAddress,
@@ -1413,7 +1427,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	__in PIO_APC_ROUTINE ApcRoutine,
 	__in_opt PVOID ApcRoutineContext,
 	__in_opt PIO_STATUS_BLOCK ApcStatusBlock,
-	__in_opt ULONG ApcReserved
+	__in_opt PVOID ApcReserved
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
@@ -1460,6 +1474,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenThread,
 HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	__in	 HANDLE ThreadHandle,
 	__inout  LPCONTEXT Context
+);
+
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
@@ -1777,6 +1796,12 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameA,
 HOOKDEF(BOOL, WINAPI, GetComputerNameW,
 	_Out_	PCWSTR lpBuffer,
 	_Inout_  LPDWORD lpnSize
+);
+
+HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
+	__in	int NameType,
+	__out	LPWSTR lpBuffer,
+	__out	LPDWORD nSize
 );
 
 HOOKDEF(BOOL, WINAPI, GetUserNameA,
@@ -3302,6 +3327,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtContinue,
   IN BOOLEAN  RaiseAlert
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtContinueEx,
+	IN PCONTEXT ThreadContext,
+	IN PVOID ContinueArgument
+);
+
 HOOKDEF(BOOL, WINAPI, RtlDosPathNameToNtPathName_U,
 	_In_	   PCWSTR DosFileName,
 	_Out_	  PUNICODE_STRING NtFileName,
@@ -3486,4 +3516,13 @@ HOOKDEF(BOOL, WINAPI, UpdateProcThreadAttribute,
 	__in		SIZE_T		cbSize,
 	__out_opt	PVOID		lpPreviousValue,
 	__in_opt	PSIZE_T		lpReturnSize
+);
+
+HOOKDEF(int, WINAPI, compileMethod,
+	PVOID			this,
+	PVOID			compHnd,
+	PVOID			methodInfo,
+	unsigned int	flags,
+	uint8_t**		entryAddress,
+	uint32_t*		nativeSizeOfCode
 );
