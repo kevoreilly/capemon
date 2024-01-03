@@ -260,6 +260,7 @@
     <ClCompile Include="hook_sleep.c" />
     <ClCompile Include="hook_socket.c" />
     <ClCompile Include="hook_special.c" />
+    <ClCompile Include="hook_trace.c" />
     <ClCompile Include="hook_sync.c" />
     <ClCompile Include="hook_thread.c" />
     <ClCompile Include="hook_tls.c" />
