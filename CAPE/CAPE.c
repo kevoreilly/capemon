@@ -2423,14 +2423,22 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 	{
 		PIMAGE_IMPORT_DESCRIPTOR pImageImport = (PIMAGE_IMPORT_DESCRIPTOR)((PBYTE)ImageBase + NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 		pFirstThunk = pImageImport->FirstThunk;
-		while (pImageImport->FirstThunk)
+		while (pImageImport && pImageImport->FirstThunk)
 		{
 			PDWORD Thunks = (PDWORD)((PBYTE)ImageBase + pImageImport->FirstThunk);
-			while (*Thunks)
+			__try
 			{
-				ThunksSize += sizeof(DWORD);
-				++Thunks;
-			};
+				while (Thunks && *Thunks)
+				{
+					ThunksSize += sizeof(DWORD);
+					++Thunks;
+				};
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				DebugOutput("VerifyCodeSection: Exception counting import thunks");
+				break;
+			}
 			ThunksSize += sizeof(DWORD);
 			++pImageImport;
 		};
