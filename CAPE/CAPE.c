@@ -1637,7 +1637,7 @@ int DumpXorPE(LPBYTE Buffer, unsigned int Size)
 
 void DumpStrings()
 {
-	if (Strings) {
+	if (Strings && StringsFile) {
 		CloseHandle(Strings);
 		Strings = NULL;
 		CapeMetaData->DumpType = 0;
@@ -2421,27 +2421,27 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 	DWORD pFirstThunk = 0;
 	if (NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress)
 	{
-		PIMAGE_IMPORT_DESCRIPTOR pImageImport = (PIMAGE_IMPORT_DESCRIPTOR)((PBYTE)ImageBase + NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
-		pFirstThunk = pImageImport->FirstThunk;
-		while (pImageImport && pImageImport->FirstThunk)
+		__try
 		{
-			PDWORD Thunks = (PDWORD)((PBYTE)ImageBase + pImageImport->FirstThunk);
-			__try
+			PIMAGE_IMPORT_DESCRIPTOR pImageImport = (PIMAGE_IMPORT_DESCRIPTOR)((PBYTE)ImageBase + NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+			pFirstThunk = pImageImport->FirstThunk;
+			while (pImageImport && pImageImport->FirstThunk)
 			{
+				PDWORD Thunks = (PDWORD)((PBYTE)ImageBase + pImageImport->FirstThunk);
 				while (Thunks && *Thunks)
 				{
 					ThunksSize += sizeof(DWORD);
 					++Thunks;
 				};
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("VerifyCodeSection: Exception counting import thunks");
-				break;
-			}
-			ThunksSize += sizeof(DWORD);
-			++pImageImport;
-		};
+				ThunksSize += sizeof(DWORD);
+				++pImageImport;
+			};
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			DebugOutput("VerifyCodeSection: Exception counting import thunks");
+			pFirstThunk = 0;
+		}
 	}
 
 	if (pFirstThunk && pFirstThunk >= pFirstSectionHeader->VirtualAddress && pFirstThunk < (pFirstSectionHeader->VirtualAddress + SizeOfCode))
