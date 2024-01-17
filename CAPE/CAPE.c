@@ -2149,7 +2149,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		Size = AccessibleSize;
 
 	// we want to stop short of the max look-ahead in IsDisguisedPEHeader
-	for (p=0; p < Size - SystemInfo.dwPageSize; p++)
+	for (p=0; p <= Size - SystemInfo.dwPageSize ; p++)
 	{
 		RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
 
