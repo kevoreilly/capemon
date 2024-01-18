@@ -2136,7 +2136,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		return 0;
 	}
 
-	if (Size <= SystemInfo.dwPageSize)
+	if (Size <= PE_MIN_SIZE)
 	{
 		DebugOutput("ScanForDisguisedPE: Size too small.\n");
 		return 0;
