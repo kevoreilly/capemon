@@ -626,6 +626,79 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 	delete peFile;
 	return SectionBasedImageSize;
 }
+// Test based on validity of relocation table , if mapped images is as per virtual boundary then relocations will be parsed successfully 
+extern "C" int CheckRelocsTest(char *pMappedImage, PeParser *peFile)
+{
+	
+	
+	PIMAGE_BASE_RELOCATION RelocTable = NULL;
+	unsigned int iRelocVaddr = 0;
+	
+	IMAGE_DOS_HEADER DosHdr = {0};
+	IMAGE_FILE_HEADER FileHdr = {0};
+	IMAGE_OPTIONAL_HEADER OptHdr = {0};
+	PIMAGE_BASE_RELOCATION pRelocEntry = NULL;
+	unsigned int RelocBlockSize = 0;
+	unsigned int *FixUp = 0;
+	
+	int i = 0;
+	
+	if (peFile->hasRelocationDirectory())
+	{
+	
+		pRelocEntry = (PIMAGE_BASE_RELOCATION)((unsigned int)peFile->getCurrentNtHeader()->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress + (unsigned int)pMappedImage);
+
+		if (pRelocEntry->VirtualAddress >= peFile->getCurrentNtHeader()->OptionalHeader.SizeOfImage ||  pRelocEntry->VirtualAddress == 0) 
+		{
+		
+			return 0;
+		}
+		
+		while (pRelocEntry->VirtualAddress)
+		{
+			
+			iRelocVaddr = pRelocEntry->VirtualAddress;
+
+			RelocBlockSize = (pRelocEntry->SizeOfBlock - 8) / 2;
+			pRelocEntry = (PIMAGE_BASE_RELOCATION) ((unsigned char *)pRelocEntry + 8); // TypeOffset
+			
+			
+			
+			while (RelocBlockSize--)
+			{
+				if (*(unsigned short *)pRelocEntry == 0x3000)
+				{
+					pRelocEntry = (PIMAGE_BASE_RELOCATION)  ((unsigned char *)pRelocEntry + 2);
+					continue;
+				}
+				
+				FixUp = (unsigned int *)(*(unsigned short *)pRelocEntry & 0x0fff);
+				
+				FixUp = (unsigned int *)((unsigned int)FixUp + ((unsigned int)pMappedImage + (unsigned int)iRelocVaddr));
+				
+				pRelocEntry = (PIMAGE_BASE_RELOCATION)  ((unsigned char *)pRelocEntry + 2);
+				
+		
+			}
+			
+			if (pRelocEntry >= (PIMAGE_BASE_RELOCATION)peFile->getCurrentNtHeader()->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress)
+			{
+				break;	
+			}	
+
+			if (pRelocEntry->VirtualAddress >= peFile->getSectionHeaderBasedFileSize()) 
+			
+			{
+				
+				return 0;
+			}
+		}
+		
+		
+	}
+	
+	return 1; // Virtual Image
+}
 
 //**************************************************************************************
 extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
@@ -643,6 +716,14 @@ extern "C" int IsPeImageRaw(DWORD_PTR Buffer)
 
 	if (peFile->isValidPeFile())
 	{
+		if (peFile->hasRelocationDirectory() )
+		{
+			if (CheckRelocsTest((char*)Buffer, peFile) )// Virtual mapped image 
+				return 0;
+			else	
+				return 1;
+			
+		}
 		NumberOfSections = peFile->getNumberOfSections();
 		SectionBasedFileSize = peFile->getSectionHeaderBasedFileSize();
 #ifdef DEBUG_COMMENTS
