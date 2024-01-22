@@ -452,4 +452,7 @@
       <Filter>Source Files\CAPE</Filter>
     </MASM>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
 </Project>
