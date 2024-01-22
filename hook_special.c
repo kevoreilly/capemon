@@ -268,7 +268,6 @@ void inspect_clsid(REFCLSID rclsid) {
 			pipe("TASKSCHED:");
 		}
 	}
-#ifndef _WIN64
 	if (IsEqualCLSID(rclsid, &CLSID_WbemLocator) || IsEqualCLSID(rclsid, &CLSID_WbemClassObject) ||
 		IsEqualCLSID(rclsid, &CLSID_winmgmts) || IsEqualCLSID(rclsid, &CLSID_WbemDefaultPathParser)) {
 		if (!wmi_sent) {
@@ -285,7 +284,6 @@ void inspect_clsid(REFCLSID rclsid) {
 			pipe("INTEROP:");
 		}
 	}
-#endif
 }
 
 HOOKDEF(HRESULT, WINAPI, CoCreateInstance,

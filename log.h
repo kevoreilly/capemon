@@ -103,6 +103,7 @@ DWORD get_last_api(void);
 extern size_t buffer_log_max;
 extern size_t large_buffer_log_max;
 
+#ifdef _WIN64
 #define _LOQ(eval, cat, fmt, ...) \
 do { \
 	static volatile LONG _index; \
@@ -110,6 +111,21 @@ do { \
 		InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
 	loq(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
 } while (0)
+#else
+#define _LOQ(eval, cat, fmt, ...) \
+do { \
+	static volatile LONG _index; \
+	__asm { \
+		__asm pusha \
+	} \
+	if (_index == 0) \
+		InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
+	loq(_index, cat, &__FUNCTION__[4], eval, (ULONG_PTR)ret, fmt, ##__VA_ARGS__); \
+	__asm { \
+		__asm popa \
+	} \
+} while (0)
+#endif
 
 #define LOQ_ntstatus(cat, fmt, ...) _LOQ(NT_SUCCESS(ret), cat, fmt, ##__VA_ARGS__)
 #define LOQ_nonnull(cat, fmt, ...) _LOQ(ret != NULL, cat, fmt, ##__VA_ARGS__)

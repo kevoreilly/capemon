@@ -20,7 +20,7 @@ extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
 
 #define PE_MAX_SIZE	 ((ULONG)0x20000000)
-#define PE_MIN_SIZE	 ((ULONG)0x1000)
+#define PE_MIN_SIZE	 ((ULONG)0x800)
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
 
