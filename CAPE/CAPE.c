@@ -3155,7 +3155,7 @@ void CAPE_post_init()
 #ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Debugger initialised.\n");
 #endif
-		if (!g_config.base_on_apiname[0])
+		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name))
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 	}
 #ifdef DEBUG_COMMENTS
