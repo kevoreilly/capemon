@@ -1793,3 +1793,27 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	LOQ_nonnull("misc", "u", "CommandLine", ret);
 	return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
+	_In_	LPCSTR  lpDevice,
+	_In_	DWORD  iDevNum,
+	_Out_   PDISPLAY_DEVICEA lpDisplayDevice,
+	_In_	DWORD  dwFlags
+) {
+	BOOL ret = Old_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
+	snprintf(lpDisplayDevice->DeviceString, 128, "Super Advanced Display Adapter");
+	LOQ_bool("misc", "s", "NewDeviceString", lpDisplayDevice->DeviceString);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
+	_In_	LPCWSTR  lpDevice,
+	_In_	DWORD  iDevNum,
+	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
+	_In_	DWORD  dwFlags
+) {
+	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
+	swprintf(lpDisplayDevice->DeviceString, 128, L"Super Advanced Display Adapter");
+	LOQ_bool("misc", "u", "NewDeviceString", lpDisplayDevice->DeviceString);
+	return ret;
+}
