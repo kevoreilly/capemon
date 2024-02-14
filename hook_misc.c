@@ -1800,9 +1800,23 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	_Out_   PDISPLAY_DEVICEA lpDisplayDevice,
 	_In_	DWORD  dwFlags
 ) {
+	const char* keywords[] = {
+		"microsoft hyper-v video",
+		"virtual",
+		"vmware",
+		"standard vga graphics adapter",
+		"microsoft basic display adapter"
+	};
+
+	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
 	BOOL ret = Old_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	snprintf(lpDisplayDevice->DeviceString, 128, "Super Advanced Display Adapter");
-	LOQ_bool("misc", "s", "NewDeviceString", lpDisplayDevice->DeviceString);
+	for (int i = 0; i < keywords_size; i++) {
+		if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
+			snprintf(lpDisplayDevice->DeviceString, 128, "NVIDIA GeForce GPU");
+			LOQ_bool("misc", "s", "NewDeviceString", lpDisplayDevice->DeviceString);
+			break;
+		}
+	}
 	return ret;
 }
 
@@ -1812,8 +1826,21 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
 	_In_	DWORD  dwFlags
 ) {
+	const wchar_t* keywords[] = {
+		L"microsoft hyper-v video",
+		L"virtual",
+		L"vmware",
+		L"standard vga graphics adapter",
+		L"microsoft basic display adapter"
+	};
+	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
 	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	swprintf(lpDisplayDevice->DeviceString, 128, L"Super Advanced Display Adapter");
-	LOQ_bool("misc", "u", "NewDeviceString", lpDisplayDevice->DeviceString);
+	for (int i = 0; i < keywords_size; i++) {
+		if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
+			swprintf(lpDisplayDevice->DeviceString, 128, L"NVIDIA GeForce GPU");
+			LOQ_bool("misc", "u", "NewDeviceString", lpDisplayDevice->DeviceString);
+			break;
+		}
+	}
 	return ret;
 }
