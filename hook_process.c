@@ -1199,7 +1199,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
 	IN OUT  PSIZE_T RegionSize,
 	IN	  ULONG FreeType
 ) {
-	if (g_config.unpacker && !called_by_hook() && NtCurrentProcess() == ProcessHandle && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+	if (g_config.unpacker && !called_by_hook() && NtCurrentProcess() == ProcessHandle && RegionSize && *RegionSize == 0 && (FreeType & MEM_RELEASE))
 		FreeHandler(*BaseAddress);
 
 	NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
