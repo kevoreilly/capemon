@@ -1403,7 +1403,7 @@ HOOKDEF(BOOL, WINAPI, UpdateProcThreadAttribute,
 	__in_opt	PSIZE_T		lpReturnSize
 ) {
 	BOOL ret = 0;
-	if (!(Attribute == PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY && *(DWORD64*)lpValue == PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON))
+	if (!(Attribute == PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY && lpValue && *(DWORD64*)lpValue == PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON))
 		ret = Old_UpdateProcThreadAttribute(lpAttributeList, dwFlags, Attribute, lpValue, cbSize, lpPreviousValue, lpReturnSize);
 	LOQ_zero("process", "lL", "Attribute", Attribute, "Value", lpValue);
 	return ret;
