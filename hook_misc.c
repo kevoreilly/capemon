@@ -1816,7 +1816,7 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 			break;
 		}
 	}
-	LOQ_bool("misc", "s", "NewDeviceString", lpDisplayDevice->DeviceString);
+	LOQ_bool("misc", "s", "DeviceString", lpDisplayDevice->DeviceString);
 	return ret;
 }
 
@@ -1841,6 +1841,6 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 			break;
 		}
 	}
-	LOQ_bool("misc", "u", "NewDeviceString", lpDisplayDevice->DeviceString);
+	LOQ_bool("misc", "u", "DeviceString", lpDisplayDevice->DeviceString);
 	return ret;
 }
