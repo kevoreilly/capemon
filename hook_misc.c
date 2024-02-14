@@ -1813,10 +1813,10 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	for (int i = 0; i < keywords_size; i++) {
 		if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
 			snprintf(lpDisplayDevice->DeviceString, 128, "NVIDIA GeForce GPU");
-			LOQ_bool("misc", "s", "NewDeviceString", lpDisplayDevice->DeviceString);
 			break;
 		}
 	}
+	LOQ_bool("misc", "s", "NewDeviceString", lpDisplayDevice->DeviceString);
 	return ret;
 }
 
@@ -1838,9 +1838,9 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	for (int i = 0; i < keywords_size; i++) {
 		if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
 			swprintf(lpDisplayDevice->DeviceString, 128, L"NVIDIA GeForce GPU");
-			LOQ_bool("misc", "u", "NewDeviceString", lpDisplayDevice->DeviceString);
 			break;
 		}
 	}
+	LOQ_bool("misc", "u", "NewDeviceString", lpDisplayDevice->DeviceString);
 	return ret;
 }
