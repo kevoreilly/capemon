@@ -337,7 +337,7 @@ void FreeHandler(PVOID BaseAddress)
 
 	hook_disable();
 
-	if (TrackedRegion->Committed == TRUE && TrackedRegion->MemInfo.Protect & EXECUTABLE_FLAGS && ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)) && !TrackedRegion->PagesDumped)
+	if (!TrackedRegion->PagesDumped && TrackedRegion->Committed == TRUE && TrackedRegion->MemInfo.Protect & EXECUTABLE_FLAGS && ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)))
 	{
 		ProcessTrackedRegion(TrackedRegion);
 
