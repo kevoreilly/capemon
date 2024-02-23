@@ -828,10 +828,20 @@ void add_all_dlls_to_dll_ranges(void)
 			free(ModulePath.Buffer);
 			continue;
 		}
+		// skip dlls in 'coverage_modules'
+		for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
+			if (!g_config.coverage_modules[i])
+				break;
+			if (!wcsnicmp(mod->BaseDllName.Buffer, g_config.coverage_modules[i], wcslen(g_config.coverage_modules[i]))) {
+				free(ModulePath.Buffer);
+				goto exit;
+			}
+		}
 		free(ModulePath.Buffer);
 		add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
 
+exit:
 	free(ProcessPath.Buffer);
 }
 
