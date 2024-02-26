@@ -81,20 +81,20 @@ BOOL DoSetSingleStepMode(int Register, PCONTEXT Context, PVOID Handler)
 VOID TraceOutput(PVOID Address, _DecodedInst DecodedInstruction)
 {
 #ifdef _WIN64
-	DebuggerOutput("0x%X  %-24s %-6s%-4s%-30s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
+	DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
 #else
-	DebuggerOutput("0x%X  %-24s %-6s%-4s%-30s", (unsigned int)Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
+	DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", (unsigned int)Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
 #endif
 }
 
 VOID TraceOutputFuncName(PVOID Address, _DecodedInst DecodedInstruction, char* FuncName)
 {
-	DebuggerOutput("0x%X  %-24s %-6s%-4s%-30s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncName);
+	DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncName);
 }
 
 VOID TraceOutputFuncAddress(PVOID Address, _DecodedInst DecodedInstruction, PVOID FuncAddress)
 {
-	DebuggerOutput("0x%X  %-24s %-6s%-4s0x%-28X", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
+	DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
 }
 
 void DoTraceOutput(PVOID Address)
@@ -1534,14 +1534,14 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 					if (&Stack[i] == (ULONG_PTR*)(Frame + sizeof(ULONG_PTR))) {
 						Frame = *(ULONG_PTR*)Frame;
 						if (DllName)
-							DebuggerOutput("0x%X:\t 0x%p - %s::0x%x\t<========>\n", &Stack[i], Stack[i], DllName, Offset);
+							DebuggerOutput("0x%p:\t 0x%p - %s::0x%x\t<========>\n", &Stack[i], Stack[i], DllName, Offset);
 						else if (IsAddressAccessible((PVOID)Stack[i]))
-							DebuggerOutput("0x%X:\t 0x%p\t<========>\n", &Stack[i], Stack[i]);
+							DebuggerOutput("0x%p:\t 0x%p\t<========>\n", &Stack[i], Stack[i]);
 					}
 					else if (DllName)
-						DebuggerOutput("0x%X:\t 0x%p - %s::0x%x\n", &Stack[i], Stack[i], DllName, Offset);
+						DebuggerOutput("0x%p:\t 0x%p - %s::0x%x\n", &Stack[i], Stack[i], DllName, Offset);
 					else if (IsAddressAccessible((PVOID)Stack[i]))
-						DebuggerOutput("0x%X:\t 0x%p\n", &Stack[i], Stack[i]);
+						DebuggerOutput("0x%p:\t 0x%p\n", &Stack[i], Stack[i]);
 				}
 			}
 		}
@@ -1788,7 +1788,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			PCHAR FunctionName = GetNameBySsn((unsigned int)ExceptionInfo->ContextRecord->Eax);
 #endif
 			if (FunctionName)
-				DebuggerOutput("0x%X  %-24s %-6s%-3s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, "", FunctionName);
+				DebuggerOutput("0x%p  %-24s %-6s%-3s%-30s", CIP, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, "", FunctionName);
 			else
 				TraceOutput(CIP, DecodedInstruction);
 		}
