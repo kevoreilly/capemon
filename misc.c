@@ -596,11 +596,8 @@ BOOLEAN parent_has_path(char* path)
 
 	CloseHandle(process_handle);
 
-	if (result > 0) {
-		DebugOutput("parent_has_path: parent path %s", process_path);
-		if (!stricmp(process_path, path))
-			return TRUE;
-	}
+	if (result > 0 && !stricmp(process_path, path))
+		return TRUE;
 	else
 		DebugOutput("parent_has_path: unable to get path for parent process %d", ppid);
 
