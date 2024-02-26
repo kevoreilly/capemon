@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.h"
 #include "pipe.h"
 #include "config.h"
+#include "misc.h"
 
 static BOOLEAN servicename_from_handle(SC_HANDLE hService, PWCHAR servicename)
 {
@@ -190,8 +191,10 @@ HOOKDEF(BOOL, WINAPI, StartServiceA,
 	BOOLEAN dispret = servicename_from_handle(hService, servicename);
 	BOOL ret;
 
-	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path_w, g_config.file_of_interest)))
+	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path_w, g_config.file_of_interest))) {
 		pipe("SERVICE:%Z", servicename);
+		raw_sleep(1000);
+	}
 	ret = Old_StartServiceA(hService, dwNumServiceArgs,
 		lpServiceArgVectors);
 	LOQ_bool("services", "pua", "ServiceHandle", hService, "ServiceName", servicename, "Arguments", dwNumServiceArgs,
@@ -209,8 +212,10 @@ HOOKDEF(BOOL, WINAPI, StartServiceW,
 	BOOLEAN dispret = servicename_from_handle(hService, servicename);
 	BOOL ret;
 
-	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path_w, g_config.file_of_interest)))
+	if (dispret && !g_config.suspend_logging && (wcsicmp(servicename, L"osppsvc") || !g_config.file_of_interest || !wcsicmp(our_process_path_w, g_config.file_of_interest))) {
 		pipe("SERVICE:%Z", servicename);
+		raw_sleep(1000);
+	}
 	ret = Old_StartServiceW(hService, dwNumServiceArgs,
 		lpServiceArgVectors);
 	LOQ_bool("services", "puA", "ServiceHandle", hService, "ServiceName", servicename, "Arguments", dwNumServiceArgs,
