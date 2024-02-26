@@ -1807,12 +1807,14 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 		"standard vga graphics adapter",
 		"microsoft basic display adapter"
 	};
-
 	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
+
+	const char replacement[] = "NVIDIA GeForce RTX 3060";
+
 	BOOL ret = Old_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
 	for (int i = 0; i < keywords_size; i++) {
 		if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
-			snprintf(lpDisplayDevice->DeviceString, 128, "NVIDIA GeForce GPU");
+			snprintf(lpDisplayDevice->DeviceString, strlen(replacement) + 1, replacement);
 			break;
 		}
 	}
@@ -1834,10 +1836,13 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 		L"microsoft basic display adapter"
 	};
 	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
+
+	const wchar_t replacement[] = L"NVIDIA GeForce RTX 3060";
+
 	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
 	for (int i = 0; i < keywords_size; i++) {
 		if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
-			swprintf(lpDisplayDevice->DeviceString, 128, L"NVIDIA GeForce GPU");
+			swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
 			break;
 		}
 	}
