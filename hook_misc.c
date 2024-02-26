@@ -178,6 +178,7 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 	if (ExportAddress && Ordinal == 1 && path_is_system(our_process_path_w) && !_stricmp(our_process_name, "rundll32.exe")) {
 		*FunctionAddress = (PVOID)((PBYTE)ModuleHandle + ExportAddress);
 		DebugOutput("LdrGetProcedureAddress: Patched export address to 0x%p", *FunctionAddress);
+		ret = 0;
 	}
 
 	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
@@ -210,6 +211,7 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
 	if (ExportAddress && Ordinal == 1 && path_is_system(our_process_path_w) && !_stricmp(our_process_name, "rundll32.exe")) {
 		*FunctionAddress = (PVOID)((PBYTE)ModuleHandle + ExportAddress);
 		DebugOutput("LdrGetProcedureAddress: Patched export address to 0x%p", *FunctionAddress);
+		ret = 0;
 	}
 
 	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
