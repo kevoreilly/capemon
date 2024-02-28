@@ -481,11 +481,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	__in	  POBJECT_ATTRIBUTES ObjectAttributes,
 	__in_opt  PCLIENT_ID ClientId
 ) {
-	// although the documentation on msdn is a bit vague, this seems correct
-	// for both XP and Vista (the ClientId->UniqueProcess part, that is)
-
 	int pid = 0;
 	NTSTATUS ret;
+	char* ProcessName = NULL;
 
 	if (ClientId != NULL) {
 		__try {
@@ -506,11 +504,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 
 	if (NT_SUCCESS(ret) && g_config.injection)
-		OpenProcessHandler(*ProcessHandle, pid);
+		ProcessName = OpenProcessHandler(*ProcessHandle, pid);
 
-	LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle,
-		"DesiredAccess", DesiredAccess,
-		"ProcessIdentifier", pid);
+	if (ProcessName)
+		LOQ_ntstatus("process", "Phis", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid, "ProcessName", ProcessName);
+	else
+		LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid);
 
 	return ret;
 }

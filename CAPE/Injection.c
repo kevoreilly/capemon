@@ -677,14 +677,14 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 		DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
 }
 
-void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
+PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 {
 	struct InjectionInfo *CurrentInjectionInfo;
 	char DevicePath[MAX_PATH];
 	unsigned int PathLength;
 
 	if (Pid == GetCurrentProcessId())
-		return;
+		return NULL;
 
 	CurrentInjectionInfo = GetInjectionInfo(Pid);
 
@@ -693,8 +693,6 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 		CurrentInjectionInfo = CreateInjectionInfo(Pid);
 		if (CurrentInjectionInfo)
 		{
-			DebugOutput("OpenProcessHandler: Injection info created for Pid %d, handle 0x%x.\n", Pid, ProcessHandle);
-
 			CurrentInjectionInfo->ProcessHandle = ProcessHandle;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
@@ -719,6 +717,8 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Error obtaining target process name");
 				ErrorOutput("OpenProcessHandler: Error obtaining target process name");
 			}
+
+			DebugOutput("OpenProcessHandler: Injection info created for process %d, handle 0x%x: %s\n", Pid, ProcessHandle, CapeMetaData->TargetProcess);
 		}
 		else
 			DebugOutput("OpenProcessHandler: Error - cannot create new injection info.\n");
@@ -730,6 +730,9 @@ void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 		if (CurrentInjectionInfo->ImageBase)
 			DebugOutput("OpenProcessHandler: Image base for process %d (handle 0x%x): 0x%p.\n", Pid, ProcessHandle, CurrentInjectionInfo->ImageBase);
 	}
+
+	if (CapeMetaData->TargetProcess)
+		return CapeMetaData->TargetProcess;
 }
 
 void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize)
@@ -768,7 +771,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			{
 				CurrentSectionView->LocalView = BaseAddress;
 				CurrentSectionView->ViewSize = ViewSize;
+#ifdef DEBUG_COMMENTS
 				DebugOutput("MapSectionViewHandler: Updated local view to 0x%p for section view with handle 0x%x.\n", BaseAddress, SectionHandle);
+#endif
 			}
 		}
 	}
