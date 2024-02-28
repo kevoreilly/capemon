@@ -116,6 +116,9 @@ struct _g_config {
 	// ntdll write protection
 	unsigned int ntdll_protect;
 
+	// ntdll remap protection
+	unsigned int ntdll_remap;
+
 	// Dropped files limit
 	unsigned int dropped_limit;
 

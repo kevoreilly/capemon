@@ -210,6 +210,13 @@ void parse_config_line(char* line)
             else
                 DebugOutput("Config: ntdll write protection disabled.");
 		}
+		else if (!strcmp(key, "ntdll-remap")) {
+			g_config.ntdll_remap = (unsigned int)strtoul(value, NULL, 10);
+            if (g_config.ntdll_remap)
+                DebugOutput("Config: ntdll remap protection enabled.");
+            else
+                DebugOutput("Config: ntdll remap protection disabled.");
+		}
 		else if (!strcmp(key, "standalone")) {
 			g_config.standalone = value[0] == '1';
 		}
@@ -1285,11 +1292,11 @@ int read_config(void)
 	g_config.force_sleepskip = -1;
 #ifdef _WIN64
 	g_config.hook_type = HOOK_JMP_INDIRECT;
-	g_config.ntdll_protect = 1;
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
-	g_config.ntdll_protect = 1;
 #endif
+	g_config.ntdll_protect = 1;
+	g_config.ntdll_remap = 1;
 	g_config.procdump = 1;
 	g_config.procmemdump = 0;
 	g_config.dropped_limit = 0;

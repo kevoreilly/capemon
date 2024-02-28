@@ -713,7 +713,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
@@ -749,7 +749,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
