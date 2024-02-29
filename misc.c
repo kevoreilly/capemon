@@ -1894,7 +1894,7 @@ PCHAR get_exe_basename(PCHAR ModulePath)
 	PCHAR end, start;
 	end = strrchr(ModulePath, '.');
 	start = strrchr(ModulePath, '\\');
-	if (start && end && !stricmp(end, ".exe"))
+	if (start && end)
 		return start + 1;
 	return NULL;
 }
