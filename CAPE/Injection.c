@@ -733,6 +733,8 @@ PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 
 	if (CapeMetaData->TargetProcess)
 		return CapeMetaData->TargetProcess;
+
+	return NULL;
 }
 
 void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize)
