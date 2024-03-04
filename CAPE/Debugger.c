@@ -20,6 +20,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <tchar.h>
 #include <assert.h>
 #include "..\hooking.h"
+#include "..\hooks.h"
 #include "..\alloc.h"
 #include "..\config.h"
 #include "..\pipe.h"
@@ -500,12 +501,30 @@ BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 #ifdef DEBUG_COMMENTS
 	else
-		DebugOutput("SyscallBreakpointHandler: Calling %s at 0x%p\n", GetNameBySsn(SSN), Function);
+		DebugOutput("SyscallBreakpointHandler: Calling SSN 0x%x -> 0x%p: %s\n", SSN, Function, GetNameBySsn(SSN));
 #endif
 
+	unsigned int* pLength = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
+
+	if (!pLength)
+	{
+		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction length for 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+		return FALSE;
+	}
+
 #ifdef _WIN64
+	if (g_config.sysbpmode == 1)
+	{
+		ExceptionInfo->ContextRecord->Rsp -= sizeof(QWORD);
+		*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + *pLength);
+	}
 	ExceptionInfo->ContextRecord->Rip = (DWORD_PTR)Function;
 #else
+	if (g_config.sysbpmode == 1)
+	{
+		ExceptionInfo->ContextRecord->Esp -= sizeof(DWORD);
+		*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + *pLength);
+	}
 	ExceptionInfo->ContextRecord->Eip = (DWORD_PTR)Function;
 #endif
 
@@ -2263,27 +2282,45 @@ BOOL SetSyscallBreakpoint(LPVOID Address)
 	if (lookup_get(&SyscallBPs, (ULONG_PTR)Address, 0))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already in software breakpoint list", Address);
+		DebugOutput("SetSyscallBreakpoint: Address 0x%p already in software breakpoint list", Address);
 #endif
 		return FALSE;
 	}
 
-	lookup_add(&SyscallBPs, (ULONG_PTR)Address, 0);
+	if (*(PBYTE)Address == 0xCC)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetSyscallBreakpoint: Address 0x%p already contains 0xCC byte", Address);
+#endif
+		return FALSE;
+	}
+
+	unsigned int* pLength = lookup_add(&SyscallBPs, (ULONG_PTR)Address, 0);
+	if (!pLength)
+	{
+		DebugOutput("SetSyscallBreakpoint: Unable to store instruction byte at 0x%p", Address);
+		return FALSE;
+	}
+
+	*pLength = lde(Address);
+#ifdef DEBUG_COMMENTS
+	DebugOutput("SetSyscallBreakpoint: Instruction length at 0x%p: %d", Address, *pLength);
+#endif
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
-		DebugOutput("SetSoftwareBreakpoint: Unable to change memory protection at 0x%p", Address);
+		DebugOutput("SetSyscallBreakpoint: Unable to change memory protection at 0x%p", Address);
 		return FALSE;
 	}
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetSoftwareBreakpoint: Changed memory protection at 0x%p", Address);
+	DebugOutput("SetSyscallBreakpoint: Changed memory protection at 0x%p", Address);
 #endif
 
 	*(PBYTE)Address = 0xCC;
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetSoftwareBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+	DebugOutput("SetSyscallBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
 #endif
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 

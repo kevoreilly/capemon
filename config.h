@@ -252,6 +252,7 @@ struct _g_config {
 	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
 	char *action[BREAKPOINT_MAX];
 	BOOLEAN loopskip;
+	int sysbpmode;
 
 	int trace_all;
 	int step_out;

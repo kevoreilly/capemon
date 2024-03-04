@@ -839,6 +839,10 @@ void parse_config_line(char* line)
 				p = p2 + 1;
 			}
 		}
+		else if (!stricmp(key, "sysbpmode")) {
+			g_config.sysbpmode = (unsigned int)strtoul(value, NULL, 10);
+			DebugOutput("Syscall breakpoint mode set to %d.\n", g_config.sysbpmode);
+		}
 		else if (!stricmp(key, "count0")) {
 			g_config.count0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
 			DebugOutput("Config: Count for breakpoint 0 set to %d\n", g_config.count0);
