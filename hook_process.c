@@ -295,6 +295,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	memset(&_ProcessParameters, 0, sizeof(_ProcessParameters));
 
+	if (AttributeList)
+	{
+		PPS_ATTRIBUTE attributes = &AttributeList->Attributes[0];
+		for (unsigned int i = 0; i < (AttributeList->TotalLength - sizeof(unsigned int))/sizeof(PS_ATTRIBUTE); i++)
+		{
+			if (attributes->Attribute == PsAttributeValue(PsAttributeMitigationOptions, FALSE, TRUE, FALSE))
+				*(PULONGLONG)attributes->ValuePtr &= ~PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+			attributes++;
+		}
+	}
+
 	if (ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
 	ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,

@@ -433,7 +433,58 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS {
 	RTL_DRIVE_LETTER_CURDIR DLCurrentDirectory[0x20];
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
-typedef void *PPS_CREATE_INFO, *PPS_ATTRIBUTE_LIST;
+// https://github.com/DynamoRIO/dynamorio/blob/master/core/win32/ntdll.h
+typedef enum _PS_ATTRIBUTE_NUM {
+	PsAttributeParentProcess, // in HANDLE
+	PsAttributeDebugPort, // in HANDLE
+	PsAttributeToken, // in HANDLE
+	PsAttributeClientId, // out PCLIENT_ID
+	PsAttributeTebAddress, // out PTEB
+	PsAttributeImageName, // in PWSTR
+	PsAttributeImageInfo, // out PSECTION_IMAGE_INFORMATION
+	PsAttributeMemoryReserve, // in PPS_MEMORY_RESERVE
+	PsAttributePriorityClass, // in UCHAR
+	PsAttributeErrorMode, // in ULONG
+	PsAttributeStdHandleInfo, // 10, in PPS_STD_HANDLE_INFO
+	PsAttributeHandleList, // in PHANDLE
+	PsAttributeGroupAffinity, // in PGROUP_AFFINITY
+	PsAttributePreferredNode, // in PUSHORT
+	PsAttributeIdealProcessor, // in PPROCESSOR_NUMBER
+	PsAttributeUmsThread, // see UpdateProceThreadAttributeList in msdn (CreateProcessA/W...) in PUMS_CREATE_THREAD_ATTRIBUTES
+	PsAttributeMitigationOptions, // in UCHAR
+	PsAttributeProtectionLevel,
+	PsAttributeSecureProcess, // since THRESHOLD (Virtual Secure Mode, Device Guard)
+	PsAttributeJobList,
+	PsAttributeMax
+} PS_ATTRIBUTE_NUM;
+
+#define PS_ATTRIBUTE_NUMBER_MASK	0x0000ffff
+#define PS_ATTRIBUTE_THREAD			0x00010000
+#define PS_ATTRIBUTE_INPUT			0x00020000
+#define PS_ATTRIBUTE_ADDITIVE		0x00040000
+
+#define PsAttributeValue(Number, Thread, Input, Additive) \
+    (((Number) & PS_ATTRIBUTE_NUMBER_MASK) | \
+    ((Thread) ? PS_ATTRIBUTE_THREAD : 0) | \
+    ((Input) ? PS_ATTRIBUTE_INPUT : 0) | \
+    ((Additive) ? PS_ATTRIBUTE_ADDITIVE : 0))
+
+typedef struct _PS_ATTRIBUTE {
+	ULONG Attribute;					/// PROC_THREAD_ATTRIBUTE_XXX | PROC_THREAD_ATTRIBUTE_XXX modifiers, see ProcThreadAttributeValue macro and Windows Internals 6 (372)
+	SIZE_T Size;						/// Size of Value or *ValuePtr
+	union {
+		ULONG_PTR Value;				/// Reserve 8 bytes for data (such as a Handle or a data pointer)
+		PVOID ValuePtr;					/// data pointer
+	};
+	PSIZE_T ReturnLength;				/// Either 0 or specifies size of data returned to caller via "ValuePtr"
+} PS_ATTRIBUTE, *PPS_ATTRIBUTE;
+
+typedef struct _PS_ATTRIBUTE_LIST {
+	SIZE_T TotalLength;					/// sizeof(PS_ATTRIBUTE_LIST)
+	PS_ATTRIBUTE Attributes[2];			/// Depends on how many attribute entries should be supplied to NtCreateUserProcess
+} PS_ATTRIBUTE_LIST, *PPS_ATTRIBUTE_LIST;
+
+typedef void *PPS_CREATE_INFO;
 
 typedef struct _PROC_THREAD_ATTRIBUTE_ENTRY
 {
