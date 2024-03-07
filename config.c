@@ -1400,7 +1400,6 @@ int read_config(void)
 			g_config.ntdll_protect = 0;
 			DebugOutput("Firefox-specific hook-set enabled.\n");
         }
-		else
 #endif
 		if (!_stricmp(our_process_name, "iexplore.exe"))
         {
