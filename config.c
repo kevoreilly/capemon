@@ -1352,6 +1352,7 @@ int read_config(void)
 		fclose(fp);
 
 	if (g_config.tlsdump) {
+		g_config.syscall = 0;
 		g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
