@@ -197,14 +197,14 @@ void StringCheck(PVOID PossibleString)
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
 	if (Size > 64)
 		DebuggerOutput(" \"%.64s...\"", (PCHAR)OutputBuffer);
-	else if (Size)
+	else if (Size > 1)
 		DebuggerOutput(" \"%.64s\"", (PCHAR)OutputBuffer);
 	else
 	{
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
 		if (Size > 64)
 			DebuggerOutput(" L\"%.64ws...\"", (PWCHAR)OutputBufferW);
-		else if (Size)
+		else if (Size > 1)
 			DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
 	}
 }
@@ -224,7 +224,7 @@ void DoOutputString(PVOID PossibleString)
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
 		if (Size >= MAX_PATH)
 			StringsOutput("%.256ws...", (PWCHAR)OutputBufferW);
-		else if (Size)
+		else if (Size > 1)
 			StringsOutput("%.256ws", (PWCHAR)OutputBufferW);
 		else
 			StringsOutput("");
