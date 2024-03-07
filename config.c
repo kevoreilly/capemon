@@ -1379,7 +1379,12 @@ int read_config(void)
 		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
 	}
 
-	if (path_is_program_files(our_process_path_w))
+	PVOID ImageBase = GetModuleHandle(NULL);
+
+	if (is_image_base_remapped(ImageBase))
+		ImageBaseRemapped = TRUE;
+
+	if (!ImageBaseRemapped && path_is_program_files(our_process_path_w) && VerifyCodeSection(ImageBase, our_process_path_w) == 1)
 	{
 #ifndef _WIN64
 		if (!_stricmp(our_process_name, "firefox.exe"))
@@ -1396,7 +1401,7 @@ int read_config(void)
         }
 		else
 #endif
-		if (!ImageBaseRemapped && !_stricmp(our_process_name, "iexplore.exe"))
+		if (!_stricmp(our_process_name, "iexplore.exe"))
         {
 			g_config.iexplore = 1;
 			g_config.injection = 0;

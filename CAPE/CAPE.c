@@ -3211,10 +3211,8 @@ void CAPE_init()
 	if (g_config.yarascan)
 		YaraScan(ImageBase, GetAccessibleSize(ImageBase));
 
-	if (g_config.yarascan && is_image_base_remapped(ImageBase))
+	if (g_config.yarascan && ImageBaseRemapped)
 	{
-		ImageBaseRemapped = TRUE;
-
 		HANDLE FileHandle = CreateFileW(our_process_path_w, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (FileHandle == INVALID_HANDLE_VALUE)
 		{
