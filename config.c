@@ -1446,7 +1446,7 @@ int read_config(void)
 			DebugOutput("Microsoft Office settings enabled.\n");
         }
 	}
-	else if (path_is_system(our_process_path_w))
+	else if (!ImageBaseRemapped && path_is_system(our_process_path_w) && VerifyCodeSection(ImageBase, our_process_path_w) == 1)
 	{
 		if (!_stricmp(our_process_name, "msiexec.exe")) {
 			const char *excluded_apis[] = {
