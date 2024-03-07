@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include <ctype.h>
+#include <wctype.h>
 #include "ntapi.h"
 #include <Psapi.h>
 #include <shlwapi.h>
@@ -264,7 +265,7 @@ void replace_ci_wstring_in_buf(PWCHAR buf, ULONG len, PWCHAR findstr, PWCHAR rep
 }
 
 // https://stackoverflow.com/questions/27303062/strstr-function-like-that-ignores-upper-or-lower-case
-char* stristr(char* haystack, char* needle) {
+char* stristr(char* haystack, const char* needle) {
 	int c = tolower(*needle);
 	if (c == '\0')
 		return haystack;
@@ -274,6 +275,23 @@ char* stristr(char* haystack, char* needle) {
 				if (needle[++i] == '\0')
 					return haystack;
 				if (tolower(haystack[i]) != tolower(needle[i]))
+					break;
+			}
+		}
+	}
+	return NULL;
+}
+
+wchar_t* wcsistr(wchar_t* haystack, const wchar_t* needle) {
+	wint_t c = towlower(*needle);
+	if (c == L'\0')
+		return haystack;
+	for (; *haystack; haystack++) {
+		if (towlower(*haystack) == c) {
+			for (size_t i = 0;;) {
+				if (needle[++i] == L'\0')
+					return haystack;
+				if (towlower(haystack[i]) != towlower(needle[i]))
 					break;
 			}
 		}
@@ -602,11 +620,8 @@ BOOLEAN parent_has_path(char* path)
 
 	CloseHandle(process_handle);
 
-	if (result > 0) {
-		DebugOutput("parent_has_path: parent path %s", process_path);
-		if (!stricmp(process_path, path))
-			return TRUE;
-	}
+	if (result > 0 && !stricmp(process_path, path))
+		return TRUE;
 	else
 		DebugOutput("parent_has_path: unable to get path for parent process %d", ppid);
 
@@ -834,10 +849,20 @@ void add_all_dlls_to_dll_ranges(void)
 			free(ModulePath.Buffer);
 			continue;
 		}
+		// skip dlls in 'coverage_modules'
+		for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
+			if (!g_config.coverage_modules[i])
+				break;
+			if (!wcsnicmp(mod->BaseDllName.Buffer, g_config.coverage_modules[i], wcslen(g_config.coverage_modules[i]))) {
+				free(ModulePath.Buffer);
+				goto exit;
+			}
+		}
 		free(ModulePath.Buffer);
 		add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
 
+exit:
 	free(ProcessPath.Buffer);
 }
 
@@ -1875,7 +1900,7 @@ PCHAR get_exe_basename(PCHAR ModulePath)
 	PCHAR end, start;
 	end = strrchr(ModulePath, '.');
 	start = strrchr(ModulePath, '\\');
-	if (start && end && !stricmp(end, ".exe"))
+	if (start && end)
 		return start + 1;
 	return NULL;
 }

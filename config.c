@@ -210,6 +210,13 @@ void parse_config_line(char* line)
             else
                 DebugOutput("Config: ntdll write protection disabled.");
 		}
+		else if (!strcmp(key, "ntdll-remap")) {
+			g_config.ntdll_remap = (unsigned int)strtoul(value, NULL, 10);
+            if (g_config.ntdll_remap)
+                DebugOutput("Config: ntdll remap protection enabled.");
+            else
+                DebugOutput("Config: ntdll remap protection disabled.");
+		}
 		else if (!strcmp(key, "standalone")) {
 			g_config.standalone = value[0] == '1';
 		}
@@ -832,6 +839,10 @@ void parse_config_line(char* line)
 				p = p2 + 1;
 			}
 		}
+		else if (!stricmp(key, "sysbpmode")) {
+			g_config.sysbpmode = (unsigned int)strtoul(value, NULL, 10);
+			DebugOutput("Syscall breakpoint mode set to %d.\n", g_config.sysbpmode);
+		}
 		else if (!stricmp(key, "count0")) {
 			g_config.count0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
 			DebugOutput("Config: Count for breakpoint 0 set to %d\n", g_config.count0);
@@ -1285,11 +1296,11 @@ int read_config(void)
 	g_config.force_sleepskip = -1;
 #ifdef _WIN64
 	g_config.hook_type = HOOK_JMP_INDIRECT;
-	g_config.ntdll_protect = 1;
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
-	g_config.ntdll_protect = 1;
 #endif
+	g_config.ntdll_protect = 1;
+	g_config.ntdll_remap = 1;
 	g_config.procdump = 1;
 	g_config.procmemdump = 0;
 	g_config.dropped_limit = 0;
@@ -1341,6 +1352,7 @@ int read_config(void)
 		fclose(fp);
 
 	if (g_config.tlsdump) {
+		g_config.syscall = 0;
 		g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
@@ -1368,7 +1380,12 @@ int read_config(void)
 		DebugOutput("Dropped file limit defaulting to %d.\n", DROPPED_LIMIT);
 	}
 
-	if (path_is_program_files(our_process_path_w))
+	PVOID ImageBase = GetModuleHandle(NULL);
+
+	if (is_image_base_remapped(ImageBase))
+		ImageBaseRemapped = TRUE;
+
+	if (!ImageBaseRemapped && path_is_program_files(our_process_path_w) && VerifyCodeSection(ImageBase, our_process_path_w) == 1)
 	{
 #ifndef _WIN64
 		if (!_stricmp(our_process_name, "firefox.exe"))
@@ -1383,9 +1400,8 @@ int read_config(void)
 			g_config.ntdll_protect = 0;
 			DebugOutput("Firefox-specific hook-set enabled.\n");
         }
-		else
 #endif
-		if (!ImageBaseRemapped && !_stricmp(our_process_name, "iexplore.exe"))
+		if (!_stricmp(our_process_name, "iexplore.exe"))
         {
 			g_config.iexplore = 1;
 			g_config.injection = 0;
@@ -1430,7 +1446,7 @@ int read_config(void)
 			DebugOutput("Microsoft Office settings enabled.\n");
         }
 	}
-	else if (path_is_system(our_process_path_w))
+	else if (!ImageBaseRemapped && path_is_system(our_process_path_w) && VerifyCodeSection(ImageBase, our_process_path_w) == 1)
 	{
 		if (!_stricmp(our_process_name, "msiexec.exe")) {
 			const char *excluded_apis[] = {

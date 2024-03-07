@@ -295,6 +295,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	memset(&_ProcessParameters, 0, sizeof(_ProcessParameters));
 
+	if (AttributeList)
+	{
+		PPS_ATTRIBUTE attributes = &AttributeList->Attributes[0];
+		for (unsigned int i = 0; i < (AttributeList->TotalLength - sizeof(unsigned int))/sizeof(PS_ATTRIBUTE); i++)
+		{
+			if (attributes->Attribute == PsAttributeValue(PsAttributeMitigationOptions, FALSE, TRUE, FALSE))
+				*(PULONGLONG)attributes->ValuePtr &= ~PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+			attributes++;
+		}
+	}
+
 	if (ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
 	ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
@@ -481,11 +492,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	__in	  POBJECT_ATTRIBUTES ObjectAttributes,
 	__in_opt  PCLIENT_ID ClientId
 ) {
-	// although the documentation on msdn is a bit vague, this seems correct
-	// for both XP and Vista (the ClientId->UniqueProcess part, that is)
-
 	int pid = 0;
 	NTSTATUS ret;
+	char* ProcessName = NULL;
 
 	if (ClientId != NULL) {
 		__try {
@@ -506,11 +515,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 
 	if (NT_SUCCESS(ret) && g_config.injection)
-		OpenProcessHandler(*ProcessHandle, pid);
+		ProcessName = OpenProcessHandler(*ProcessHandle, pid);
 
-	LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle,
-		"DesiredAccess", DesiredAccess,
-		"ProcessIdentifier", pid);
+	if (ProcessName)
+		LOQ_ntstatus("process", "Phis", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid, "ProcessName", ProcessName);
+	else
+		LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid);
 
 	return ret;
 }
@@ -714,7 +724,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
@@ -750,7 +760,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
@@ -1199,7 +1209,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
 	IN OUT  PSIZE_T RegionSize,
 	IN	  ULONG FreeType
 ) {
-	if (g_config.unpacker && !called_by_hook() && NtCurrentProcess() == ProcessHandle && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+	if (g_config.unpacker && !called_by_hook() && NtCurrentProcess() == ProcessHandle && RegionSize && *RegionSize == 0 && (FreeType & MEM_RELEASE))
 		FreeHandler(*BaseAddress);
 
 	NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
@@ -1403,7 +1413,7 @@ HOOKDEF(BOOL, WINAPI, UpdateProcThreadAttribute,
 	__in_opt	PSIZE_T		lpReturnSize
 ) {
 	BOOL ret = 0;
-	if (!(Attribute == PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY && *(DWORD64*)lpValue == PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON))
+	if (!(Attribute == PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY && lpValue && *(DWORD64*)lpValue == PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON))
 		ret = Old_UpdateProcThreadAttribute(lpAttributeList, dwFlags, Attribute, lpValue, cbSize, lpPreviousValue, lpReturnSize);
 	LOQ_zero("process", "lL", "Attribute", Attribute, "Value", lpValue);
 	return ret;

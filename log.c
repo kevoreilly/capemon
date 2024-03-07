@@ -157,7 +157,7 @@ static void log_raw_direct(const char *buf, size_t length) {
 
 	while (copiedlen != length) {
 		EnterCriticalSection(&g_writing_log_buffer_mutex);
-		copylen = min(length - copiedlen, (size_t)(BUFFERSIZE - g_idx));
+		copylen = min((unsigned int)(length - copiedlen), (unsigned int)(BUFFERSIZE - g_idx));
 		memcpy(&g_buffer[g_idx], &buf[copiedlen], copylen);
 		g_idx += (int)copylen;
 		copiedlen += copylen;
@@ -316,7 +316,7 @@ static void log_wargv(int argc, const wchar_t ** argv) {
 }
 
 static void log_buffer(const char *buf, size_t length) {
-	size_t trunclength = min(length, buffer_log_max);
+	size_t trunclength = min((unsigned int)length, (unsigned int)buffer_log_max);
 
 	if (buf == NULL) {
 		trunclength = 0;
@@ -326,7 +326,7 @@ static void log_buffer(const char *buf, size_t length) {
 }
 
 static void log_large_buffer(const char *buf, size_t length) {
-	size_t trunclength = min(length, large_buffer_log_max);
+	size_t trunclength = min((unsigned int)length, (unsigned int)large_buffer_log_max);
 
 	if (buf == NULL) {
 		trunclength = 0;

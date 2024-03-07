@@ -323,6 +323,9 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	hookinfo = hook_info();
 
+	if (g_config.debugger && hookinfo->disable_count > 0 && h->new_func == &New_RtlDispatchException)
+		return 1;
+
 	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
 		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
