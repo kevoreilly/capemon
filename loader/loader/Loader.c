@@ -751,7 +751,7 @@ static int InjectDllViaIAT(HANDLE ProcessHandle, HANDLE ThreadHandle, const char
 	IMAGE_NT_HEADERS NtHeader;
 	CONTEXT Context;
 	MEMORY_BASIC_INFORMATION MemoryInfo;
-	DWORD NewImportDirectorySize, OriginalNumberOfDescriptors, NewNumberOfDescriptors, NewSizeOfImportDescriptors, SizeOfTables, NewImportsRVA, dwProtect, SizeOfHeaders, TotalSize;
+	DWORD NewImportDirectorySize, OriginalNumberOfDescriptors, NewSizeOfImportDescriptors, SizeOfTables, NewImportsRVA, dwProtect, SizeOfHeaders, TotalSize;
 	PBYTE BaseAddress, FreeAddress, EndOfImage, TargetImportTable, AllocationAddress, NewImportDirectory;
 	IMAGE_SECTION_HEADER ImportsSection;
 	PIMAGE_IMPORT_DESCRIPTOR pImageDescriptor;
@@ -864,10 +864,13 @@ rebase:
 			goto out;
 		}
 
-		BaseAddress = MemoryInfo.AllocationBase;
-		DebugOutput("InjectDllViaIAT: Modified EP detected, rebasing IAT patch to new image base 0x%p (context EP 0x%p)\n", BaseAddress, CIP);
-		ModifiedEP = TRUE;
-		goto rebase;
+		if (MemoryInfo.AllocationBase != BaseAddress)
+		{
+			BaseAddress = MemoryInfo.AllocationBase;
+			DebugOutput("InjectDllViaIAT: Modified EP detected, rebasing IAT patch to new image base 0x%p (context EP 0x%p)\n", BaseAddress, CIP);
+			ModifiedEP = TRUE;
+			goto rebase;
+		}
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -875,22 +878,21 @@ rebase:
 #endif
 
 	// Get the actual import directory size
+	DWORD Size = 0;
 	if (NtHeader.IMPORT_DIRECTORY.VirtualAddress)
 	{
-		NtHeader.IMPORT_DIRECTORY.Size = 0;
 		IMAGE_IMPORT_DESCRIPTOR ImageImport, *pImageImport = (IMAGE_IMPORT_DESCRIPTOR*)((PBYTE)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress);
 		while (ReadProcessMemory(ProcessHandle, pImageImport, &ImageImport, sizeof(ImageImport), NULL))
 		{
-			NtHeader.IMPORT_DIRECTORY.Size += sizeof(IMAGE_IMPORT_DESCRIPTOR);
+			Size += sizeof(IMAGE_IMPORT_DESCRIPTOR);
 			if (!ImageImport.Name)
 				break;
 			++pImageImport;
 		};
 	}
 
-	OriginalNumberOfDescriptors = NtHeader.IMPORT_DIRECTORY.Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
-	NewNumberOfDescriptors = OriginalNumberOfDescriptors + 1;
-	NewSizeOfImportDescriptors = NewNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR);
+	OriginalNumberOfDescriptors = Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
+	NewSizeOfImportDescriptors = Size + sizeof(IMAGE_IMPORT_DESCRIPTOR);
 	if (NewSizeOfImportDescriptors % sizeof(DWORD_PTR))
 		NewSizeOfImportDescriptors += sizeof(DWORD_PTR);
 
@@ -939,7 +941,7 @@ rebase:
 	{
 		DWORD ImportsRVA, ImportsSize, NtSignature;
 		ImportsRVA = NtHeader.IMPORT_DIRECTORY.VirtualAddress;
-		ImportsSize = NtHeader.IMPORT_DIRECTORY.Size + (DWORD)DllPathLength + (4 * sizeof(IMAGE_THUNK_DATAXX));
+		ImportsSize = Size + (DWORD)DllPathLength + (4 * sizeof(IMAGE_THUNK_DATAXX));
 
 		if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + ImportsRVA + ImportsSize, &NtSignature, sizeof(DWORD), &BytesRead) || BytesRead < sizeof(DWORD))
 			ErrorOutput("InjectDllViaIAT: Failed to check for PE header after existing import table at 0x%p", (PBYTE)BaseAddress + ImportsRVA + ImportsSize);
@@ -959,7 +961,7 @@ rebase:
 		if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + NtHeader.IMPORT_DIRECTORY.VirtualAddress, pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR), &BytesRead)
 			|| BytesRead < OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR))
 			DebugOutput("InjectDllViaIAT: Failed to read import descriptors.\n");
-		else if (!ScanForNonZero(pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR)))
+		else if (NtHeader.IMPORT_DIRECTORY.Size / sizeof(IMAGE_IMPORT_DESCRIPTOR) > 1 && OriginalNumberOfDescriptors == 1 && !ScanForNonZero(pImageDescriptor+1, OriginalNumberOfDescriptors * sizeof(IMAGE_IMPORT_DESCRIPTOR)))
 		{
 			DebugOutput("InjectDllViaIAT: Blank import descriptor, aborting IAT patch.\n");
 			if (!FirstProcess)
@@ -1089,7 +1091,7 @@ rebase:
 			else
 				NtHeader.IAT_DIRECTORY.Size = ImportsSection.SizeOfRawData;
 		}
-		// Required for Win10+ 
+		// Required for Win10+
 		else
 		{
 			NtHeader.IAT_DIRECTORY.VirtualAddress = pImageDescriptor->FirstThunk;
@@ -1098,8 +1100,8 @@ rebase:
 	}
 
 	// Now set the import table directory entry to point to the new table
+	NtHeader.IMPORT_DIRECTORY.Size = NewSizeOfImportDescriptors;
 	NtHeader.IMPORT_DIRECTORY.VirtualAddress = NewImportsRVA;
-	NtHeader.IMPORT_DIRECTORY.Size = NewImportDirectorySize;
 
 	// Set bound imports values to zero to prevent them overriding our new import table
 	NtHeader.BOUND_DIRECTORY.VirtualAddress = 0;

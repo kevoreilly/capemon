@@ -116,6 +116,9 @@ struct _g_config {
 	// ntdll write protection
 	unsigned int ntdll_protect;
 
+	// ntdll remap protection
+	unsigned int ntdll_remap;
+
 	// Dropped files limit
 	unsigned int dropped_limit;
 
@@ -249,6 +252,7 @@ struct _g_config {
 	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
 	char *action[BREAKPOINT_MAX];
 	BOOLEAN loopskip;
+	int sysbpmode;
 
 	int trace_all;
 	int step_out;

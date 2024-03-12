@@ -3689,3 +3689,17 @@ HOOKDEF(int, WINAPI, compileMethod,
 	uint8_t**		entryAddress,
 	uint32_t*		nativeSizeOfCode
 );
+
+HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
+	_In_	LPCSTR  lpDevice,
+	_In_	DWORD   iDevNum,
+	_Out_   PDISPLAY_DEVICEA lpDisplayDevice,
+	_In_	DWORD   dwFlags
+);
+
+HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
+	_In_	LPCWSTR  lpDevice,
+	_In_	DWORD    iDevNum,
+	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
+	_In_	DWORD    dwFlags
+);

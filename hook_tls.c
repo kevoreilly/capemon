@@ -192,7 +192,7 @@ HOOKDEF(NTSTATUS, WINAPI, SslHashHandshake,
 	unsigned int ClientRandomLength = 0;
 	NTSTATUS ret = Old_SslHashHandshake(hSslProvider, hHandshakeHash, pbInput, cbInput, dwFlags);
 	PWORD pwVersion = (PWORD)(pbInput+4);
-	if (*pbInput == 1 && *pwVersion == 0x0303) {
+	if (pbInput && *pbInput == 1 && *pwVersion == 0x0303) {
 		ThreadRandom *R = lookup_get(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
 		if (R == NULL) {
 			R = lookup_add(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), sizeof(ThreadRandom));

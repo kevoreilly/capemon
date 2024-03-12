@@ -123,12 +123,14 @@ extern int called_by_hook(void);
 extern DWORD parent_process_id();
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
+extern int loader_is_allowed(const char *loader_name);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern BOOL inside_hook(LPVOID Address);
 extern hook_info_t *hook_info();
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
+extern char *our_process_name;
 extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
@@ -338,15 +340,6 @@ PVOID GetAllocationBase(PVOID Address)
 	if (!Address)
 		return NULL;
 
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("GetAllocationBase: Failed to obtain system page size.\n");
-		return 0;
-	}
-
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
 		//ErrorOutput("GetAllocationBase: unable to query memory address 0x%p", Address);
@@ -367,15 +360,6 @@ PVOID GetBaseAddress(PVOID Address)
 
 	if (!Address)
 		return NULL;
-
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("GetBaseAddress: Failed to obtain system page size.\n");
-		return 0;
-	}
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
@@ -398,15 +382,6 @@ SIZE_T GetRegionSize(PVOID Address)
 	if (!Address)
 		return 0;
 
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("GetRegionSize: Failed to obtain system page size.\n");
-		return 0;
-	}
-
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
 		ErrorOutput("GetRegionSize: unable to query memory address 0x%p", Address);
@@ -426,15 +401,6 @@ SIZE_T GetAllocationSize(PVOID Address)
 
 	if (!Address)
 		return 0;
-
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("GetAllocationSize: Failed to obtain system page size.\n");
-		return 0;
-	}
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
@@ -468,15 +434,6 @@ void GetMemoryInfo(PVOID Address)
 	if (!Address)
 		return;
 
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("GetMemoryInfo: Failed to obtain system page size.\n");
-		return;
-	}
-
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
 		ErrorOutput("GetMemoryInfo: unable to query memory address 0x%p", Address);
@@ -499,15 +456,6 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 	if (!Address)
 		return 0;
-
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("GetAccessibleSize: Failed to obtain system page size.\n");
-		return 0;
-	}
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
@@ -533,7 +481,7 @@ SIZE_T GetAccessibleSize(PVOID Address)
 
 		if (!VirtualQuery((PUCHAR)AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 		{
-			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%p", (PUCHAR)AddressOfPage + SystemInfo.dwPageSize);
+			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%p", (PUCHAR)AddressOfPage + MemInfo.RegionSize);
 			return 0;
 		}
 
@@ -712,15 +660,6 @@ BOOL IsAddressAccessible(PVOID Address)
 
 	if (!Address || Address > (PVOID)0x7fffffffffff)
 		return FALSE;
-
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("IsAddressAccessible: Failed to obtain system page size.\n");
-		return FALSE;
-	}
 
 	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
@@ -1066,6 +1005,7 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 	EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
 	MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
 	Entropy = GetPEEntropy(TrackedRegion->AllocationBase);
+	double EntropyChange = fabs(TrackedRegion->Entropy - Entropy);
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("ProcessImageBase: EP 0x%p image base 0x%p size 0x%x entropy %e.\n", EntryPoint, TrackedRegion->AllocationBase, MinPESize, Entropy);
@@ -1074,11 +1014,11 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 		DebugOutput("ProcessImageBase: Modified entry point (0x%p) detected at image base 0x%p - dumping.\n", EntryPoint, TrackedRegion->AllocationBase);
 	else if (TrackedRegion->MinPESize && TrackedRegion->MinPESize != MinPESize)
 		DebugOutput("ProcessImageBase: Modified PE size detected at image base 0x%p - new size 0x%x.\n", TrackedRegion->AllocationBase, MinPESize);
-	else if (TrackedRegion->Entropy && fabs(TrackedRegion->Entropy - Entropy) > (double)ENTROPY_DELTA)
-		DebugOutput("ProcessImageBase: Modified image detected at image base 0x%p - new entropy %e.\n", TrackedRegion->AllocationBase, Entropy);
+	else if (TrackedRegion->Entropy && EntropyChange > (double)ENTROPY_DELTA)
+		DebugOutput("ProcessImageBase: Modified image detected at image base 0x%p - new entropy %e (change %e).\n", TrackedRegion->AllocationBase, Entropy, EntropyChange);
 	else
 	{
-		DebugOutput("ProcessImageBase: Main module image at 0x%p unmodified.\n", TrackedRegion->AllocationBase);
+		DebugOutput("ProcessImageBase: Main module image at 0x%p unmodified (entropy change %e)\n", TrackedRegion->AllocationBase, EntropyChange);
 		return;
 	}
 
@@ -1129,6 +1069,9 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 			return;
 		}
 	}
+
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
 
 	if (TrackedRegion->SubAllocation && Size < SystemInfo.dwPageSize)
 	{
@@ -2127,18 +2070,9 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		return 0;
 	}
 
-	if (!SystemInfo.dwPageSize)
-		GetSystemInfo(&SystemInfo);
-
-	if (!SystemInfo.dwPageSize)
-	{
-		ErrorOutput("ScanForDisguisedPE: Failed to obtain system page size.\n");
-		return 0;
-	}
-
 	if (Size <= PE_MIN_SIZE)
 	{
-		DebugOutput("ScanForDisguisedPE: Size too small.\n");
+		DebugOutput("ScanForDisguisedPE: Size too small: 0x%x bytes\n", Size);
 		return 0;
 	}
 
@@ -2148,8 +2082,8 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 	if (Size > AccessibleSize)
 		Size = AccessibleSize;
 
-	// we want to stop short of the max look-ahead in IsDisguisedPEHeader
-	for (p=0; p < Size - SystemInfo.dwPageSize; p++)
+	// we want to stop short of the minimum PE size we are interested in capturing
+	for (p=0; p <= Size - PE_MIN_SIZE; p++)
 	{
 		RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
 
@@ -3221,7 +3155,7 @@ void CAPE_post_init()
 #ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Debugger initialised.\n");
 #endif
-		if (!g_config.base_on_apiname[0])
+		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name))
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 	}
 #ifdef DEBUG_COMMENTS
@@ -3277,10 +3211,8 @@ void CAPE_init()
 	if (g_config.yarascan)
 		YaraScan(ImageBase, GetAccessibleSize(ImageBase));
 
-	if (g_config.yarascan && is_image_base_remapped(ImageBase))
+	if (g_config.yarascan && ImageBaseRemapped)
 	{
-		ImageBaseRemapped = TRUE;
-
 		HANDLE FileHandle = CreateFileW(our_process_path_w, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (FileHandle == INVALID_HANDLE_VALUE)
 		{

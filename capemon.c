@@ -87,6 +87,8 @@ int path_is_program_files(const wchar_t *path_w)
 
 int loader_is_allowed(const char *loader_name)
 {
+	if (!loader_name)
+		return 0;
 	if (!_stricmp(loader_name, "rundll32.exe") ||
 		!_stricmp(loader_name, "regsvr32.exe"))
 		return 1;

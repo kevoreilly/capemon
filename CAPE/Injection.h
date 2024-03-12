@@ -66,7 +66,7 @@ PINJECTIONINFO GetInjectionInfoFromHandle(HANDLE ProcessHandle);
 PINJECTIONINFO CreateInjectionInfo(DWORD ProcessId);
 BOOL DropInjectionInfo(HANDLE ProcessHandle);
 void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
-void OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
+PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
 void UnmapSectionViewHandler(PVOID BaseAddress);

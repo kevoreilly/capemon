@@ -314,7 +314,7 @@ void add_unwind_info(hook_t *h)
 		unwindinfo->SizeOfProlog = 0x7d;
 	}
 	else {
-		unwindinfo->SizeOfProlog = 50;
+		unwindinfo->SizeOfProlog = 57;
 	}
 	unwindinfo->FrameRegister = 0;
 	unwindinfo->FrameOffset = 0;
@@ -375,7 +375,7 @@ void add_unwind_info(hook_t *h)
 	}
 	else {
 		unwindinfo->UnwindCode[i].UnwindOp = UWOP_ALLOC_SMALL;
-		unwindinfo->UnwindCode[i].CodeOffset = 44;
+		unwindinfo->UnwindCode[i].CodeOffset = 51;
 		unwindinfo->UnwindCode[i].OpInfo = 3; // (3 + 1) * 8 = 0x20
 		i++;
 
@@ -423,6 +423,10 @@ static void hook_create_pre_tramp(hook_t *h)
 	unsigned int off;
 
 	unsigned char pre_tramp1[] = {
+		// test sp, 0xf - if stack unaligned...
+		0x66, 0xf7, 0xc4, 0x0f, 0x00,
+		// jz 81 - ... bail
+		0x74, 0x51,
 		// pushfq
 		0x9c,
 		// cld
