@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <Psapi.h>
 #include <shlwapi.h>
 #include <sddl.h>
+#include <ws2tcpip.h>
 #include "misc.h"
 #include "hooking.h"
 #include "log.h"
@@ -147,6 +148,11 @@ void addr_to_string(const IN_ADDR addr, char *string)
 	num_to_string(string+strlen(string), 4, chunk[2]);
 	strcat(string, ".");
 	num_to_string(string+strlen(string), 4, chunk[3]);
+}
+
+void addr6_to_string(const IN6_ADDR addr, char *string, int max_buffer_size)
+{
+	inet_ntop(AF_INET6, &addr, string, max_buffer_size);
 }
 
 wchar_t *ascii_to_unicode_dup(char *str)
