@@ -1052,10 +1052,18 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 
 	if (!Size)
 	{
+		Address = GetPageAddress(TrackedRegion->Address);
+		Size = GetAccessibleSize(Address);
+		if (!Size)
+		{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("ProcessTrackedRegion: Region at 0x%p is empty\n", Address);
+			DebugOutput("ProcessTrackedRegion: Region at 0x%p is empty\n", Address);
 #endif
-		return;
+			return;
+		}
+#ifdef DEBUG_COMMENTS
+		DebugOutput("ProcessTrackedRegion: Inaccesible outer range, inner range at 0x%p Size 0x%x\n", Address, Size);
+#endif
 	}
 
 	if (TrackedRegion->Address)
@@ -1685,6 +1693,12 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size)
 		return 0;
 	}
 
+	if (!Size)
+	{
+		DebugOutput("ScanForNonZero: Error - Supplied size zero.\n");
+		return 0;
+	}
+
 	if (!IsAddressAccessible(Buffer))
 		return 0;
 
@@ -1723,6 +1737,12 @@ int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size)
 	if (!Buffer)
 	{
 		DebugOutput("ReverseScanForNonZero: Error - Supplied address zero.\n");
+		return 0;
+	}
+
+	if (!Size)
+	{
+		DebugOutput("ReverseScanForNonZero: Error - Supplied size zero.\n");
 		return 0;
 	}
 
