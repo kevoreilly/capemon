@@ -1066,27 +1066,15 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 #endif
 	}
 
-	if (TrackedRegion->Address)
+	if (TrackedRegion->Address && lookup_get(&g_dotnet_jit, (ULONG_PTR)TrackedRegion->AllocationBase, 0))
 	{
-		PVOID BaseAddress = GetBaseAddress(TrackedRegion->Address);
-		SIZE_T Offset = (SIZE_T)((PUCHAR)BaseAddress - (DWORD_PTR)Address);
-
-		if (Size < Offset)
-		{
-			DebugOutput("ProcessTrackedRegion: Region at 0x%p skipped due to size 0x%x and offset 0x%x", BaseAddress, Size, Offset);
-			return;
-		}
+		DebugOutput("ProcessTrackedRegion: .NET cache region at 0x%p skipped", TrackedRegion->AllocationBase);
+		TrackedRegion->PagesDumped = TRUE;
+		return;
 	}
 
 	if (!SystemInfo.dwPageSize)
 		GetSystemInfo(&SystemInfo);
-
-	if (TrackedRegion->SubAllocation && Size < SystemInfo.dwPageSize)
-	{
-		DebugOutput("ProcessTrackedRegion: Sub-allocation at 0x%p skipped due to size 0x%x", Address, Size);
-		TrackedRegion->PagesDumped = TRUE;
-		return;
-	}
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("ProcessTrackedRegion: Address 0x%p Base 0x%p Size %d sub-allocation %d dump count %d\n", TrackedRegion->Address, Address, Size, TrackedRegion->SubAllocation, DumpCount);
