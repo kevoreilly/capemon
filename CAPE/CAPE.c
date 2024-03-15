@@ -2912,6 +2912,9 @@ int DoProcessDump()
 		return 0;
 	}
 
+	// DumpCount limit no longer wanted at this stage
+	DumpCount = 0;
+
 	if (g_config.procdump)
 	{
 		if (base_of_dll_of_interest)
@@ -2936,8 +2939,6 @@ int DoProcessDump()
 				else
 					DebugOutput("DoProcessDump: Dumping Imagebase at 0x%p.\n", ImageBase);
 				CapeMetaData->DumpType = PROCDUMP;
-				if (DumpCount > 0)
-					DumpCount--;
 				__try
 				{
 					if (g_config.import_reconstruction)
@@ -2965,8 +2966,6 @@ int DoProcessDump()
 		{
 			DebugOutput("DoProcessDump: Dumping 'new' Imagebase at 0x%p.\n", NewImageBase);
 			CapeMetaData->DumpType = PROCDUMP;
-			if (DumpCount > 0)
-				DumpCount--;
 			__try
 			{
 				if (g_config.import_reconstruction)
