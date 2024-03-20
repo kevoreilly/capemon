@@ -243,12 +243,12 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 
 	if (*RegString == '[') {
 		RegString++;
-		s = strchr(RegString, ']');
-		if (s) {
-			*s = '\0';
-			Pointer = TRUE;
-		}
+		Pointer = TRUE;
 	}
+
+	s = strchr(RegString, ']');
+	if (s)
+		*s = '\0';
 
 	q = strchr(RegString, '+');
 	if (q)
@@ -352,9 +352,11 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 	if (q)
 		*q = r;
 
+	if (s)
+		*s = ']';
+
 	if (Pointer)
 	{
-		*s = ']';
 		PVOID Value = NULL;
 		if (!IsAddressAccessible((PVOID)((PUCHAR)Register + delta)))
 			return NULL;
