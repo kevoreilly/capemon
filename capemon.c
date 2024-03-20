@@ -537,6 +537,15 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		set_os_bitness();
 
+		// initialize file stuff, needs to be performed prior to any file normalization
+		file_init();
+
+		get_our_dll_path();
+
+		get_our_process_path();
+
+		get_our_commandline();
+
 		if (g_config.standalone) {
 			// initialise CAPE
 			CAPE_init();
@@ -546,15 +555,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
-
-		// initialize file stuff, needs to be performed prior to any file normalization
-		file_init();
-
-		get_our_dll_path();
-
-		get_our_process_path();
-
-		get_our_commandline();
 
 		// read the config settings
 		if (!read_config())
