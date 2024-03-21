@@ -42,6 +42,9 @@
     <ClCompile Include="hook_file.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_trace.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hook_misc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
