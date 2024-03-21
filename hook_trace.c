@@ -51,7 +51,6 @@ void string_to_guid(char * s,GUID guid) {
 HOOKDEF(ULONG, WINAPI, CloseTrace,
 	_In_ TRACEHANDLE TraceHandle
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked CloseTrace\n");
 	ULONG ret = Old_CloseTrace(TraceHandle);
 	LOQ_zero("Trace", "i", "TraceHandle", TraceHandle);
 	return ret;
@@ -63,7 +62,6 @@ HOOKDEF(ULONG, WINAPI, ControlTraceA,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties,
 	_In_ ULONG ControlCode
 ) {
-    DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked ControlTrace\n");
     char *ControlValues[] = {"FLUSH","QUERY","STOP","UPDATE","INCREMENT_FILE","CONVERT_TO_REALTIME"};
     char *ControlValue = NULL;
     ControlValue = malloc(sizeof(char)*UNSIGNED_LONG_STRING_SIZE);
@@ -116,7 +114,6 @@ HOOKDEF(ULONG, WINAPI, ControlTraceW,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties,
 	_In_ ULONG ControlCode
 ) {
-    DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked ControlTrace\n");
 	char *ControlValues[] = {"FLUSH","QUERY","STOP","UPDATE","INCREMENT_FILE","CONVERT_TO_REALTIME"};
     char *ControlValue = NULL;
     ControlValue = malloc(sizeof(char)*UNSIGNED_LONG_STRING_SIZE);
@@ -170,7 +167,6 @@ HOOKDEF(ULONG, WINAPI, EnableTrace,
 	_In_ LPCGUID ControlGuid,
 	_In_ TRACEHANDLE SessionHandle
 ) {
-    DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EnableTrace\n");
     char *S_ControlGuid = NULL;
     S_ControlGuid = malloc(sizeof(char)*(GUID_SIZE+1));
     string_to_guid(S_ControlGuid,*ControlGuid);
@@ -191,7 +187,6 @@ HOOKDEF(ULONG, WINAPI, EnableTraceEx,
 	_In_ ULONG EnableProperty,
 	_In_opt_ PEVENT_FILTER_DESCRIPTOR EnableFilterDesc
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EnableTraceEx\n");
     char *S_ProviderId = NULL;
     S_ProviderId = malloc(sizeof(char)*(GUID_SIZE+1));
     string_to_guid(S_ProviderId,*ProviderId);
@@ -221,7 +216,6 @@ HOOKDEF(ULONG, WINAPI, EnableTraceEx2,
 	_In_ ULONG Timeout,
 	_In_opt_ PENABLE_TRACE_PARAMETERS EnableParameters
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EnableTraceEx2\n");
     char *S_ProviderId = NULL;
     S_ProviderId = malloc(sizeof(char)*(GUID_SIZE+1));
     string_to_guid(S_ProviderId,*ProviderId);
@@ -251,7 +245,6 @@ HOOKDEF(ULONG, WINAPI, EnableTraceEx2,
 HOOKDEF(TRACEHANDLE, WINAPI, OpenTraceA,
 	_Inout_ PEVENT_TRACE_LOGFILEA Logfile
 ){
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked OpenTrace\n");
 	TRACEHANDLE ret = Old_OpenTraceA(Logfile);
 	LOQ_void("Trace", "ss","LogFileName",Logfile->LogFileName,"LoggerName", Logfile->LoggerName); 
 	return ret;
@@ -260,7 +253,6 @@ HOOKDEF(TRACEHANDLE, WINAPI, OpenTraceA,
 HOOKDEF(TRACEHANDLE, WINAPI, OpenTraceW,
 	_Inout_ PEVENT_TRACE_LOGFILEW Logfile
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked OpenTrace\n");
 	TRACEHANDLE ret = Old_OpenTraceW(Logfile);
 	LOQ_void("Trace", "uu","LogFileName",Logfile->LogFileName,"LoggerName", Logfile->LoggerName); 
 	return ret;
@@ -271,7 +263,6 @@ HOOKDEF(ULONG, WINAPI, QueryAllTracesA,
 	_In_ ULONG PropertyArrayCount,
 	_Out_ PULONG LoggerCount
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked QueryAllTraces\n");
 	ULONG ret = Old_QueryAllTracesA(PropertyArray,PropertyArrayCount,LoggerCount);
 	return ret;
 }
@@ -281,7 +272,6 @@ HOOKDEF(ULONG, WINAPI, QueryAllTracesW,
 	_In_ ULONG PropertyArrayCount,
 	_Out_ PULONG LoggerCount
 ){
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked QueryAllTraces\n");
 	ULONG ret = Old_QueryAllTracesW(PropertyArray,PropertyArrayCount,LoggerCount);
 	return ret;
 }
@@ -291,7 +281,6 @@ HOOKDEF(ULONG, WINAPI, QueryTraceA,
 	_In_ LPCTSTR InstanceName,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked QueryTrace\n");
 	ULONG ret = Old_QueryTraceA(TraceHandle,InstanceName,Properties);
 	LOQ_zero("Trace", "is","TraceHandle", TraceHandle,"InstanceName", InstanceName);
 	return ret;
@@ -302,7 +291,6 @@ HOOKDEF(ULONG, WINAPI, QueryTraceW,
 	_In_ LPCWSTR InstanceName,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked QueryTrace\n");
 	ULONG ret = Old_QueryTraceW(TraceHandle,InstanceName,Properties);
 	LOQ_zero("Trace", "iu","TraceHandle", TraceHandle,"InstanceName", InstanceName);
 	return ret;
@@ -313,7 +301,6 @@ HOOKDEF(ULONG, WINAPI, StartTraceA,
 	_In_ LPCTSTR InstanceName,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked StartTrace\n");
 	ULONG ret = Old_StartTraceA(TraceHandle,InstanceName,Properties);
     char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -331,7 +318,6 @@ HOOKDEF(ULONG, WINAPI, StartTraceW,
 	_In_ LPCWSTR InstanceName,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked StartTrace\n");
 	ULONG ret = Old_StartTraceW(TraceHandle,InstanceName,Properties);
 	char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -349,7 +335,6 @@ HOOKDEF(ULONG, WINAPI, StopTraceA,
 	_In_ LPCTSTR InstanceName,
 	_Out_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked StopTrace\n");
 	ULONG ret = Old_StopTraceA(TraceHandle,InstanceName,Properties);
 	char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -367,7 +352,6 @@ HOOKDEF(ULONG, WINAPI, StopTraceW,
 	_In_ LPCWSTR InstanceName,
 	_Out_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked StopTrace\n");
 	ULONG ret = Old_StopTraceW(TraceHandle,InstanceName,Properties);
 	char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -385,7 +369,6 @@ HOOKDEF(ULONG, WINAPI, UpdateTraceA,
 	_In_ LPCTSTR InstanceName,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked UpdateTrace\n");
 	ULONG ret = Old_UpdateTraceA(TraceHandle,InstanceName,Properties);
 	if(Properties->LogFileNameOffset != 0){
         char *NewLogFileName = NULL;
@@ -405,7 +388,6 @@ HOOKDEF(ULONG, WINAPI, UpdateTraceW,
 	_In_ LPCWSTR InstanceName,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked UpdateTrace\n");
 	ULONG ret = Old_UpdateTraceW(TraceHandle,InstanceName,Properties);
 	if(Properties->LogFileNameOffset != 0){
         char *NewLogFileName = NULL;
@@ -424,7 +406,6 @@ HOOKDEF(LONG, WINAPI, CveEventWrite,
 	_In_ PCWSTR CveId,
 	_In_opt_ PCWSTR AdditionalDetails
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked CveEventWrite\n");
 	LONG ret = Old_CveEventWrite(CveId,AdditionalDetails);
     LOQ_zero("Trace", "uu", "CVE", CveId, "AdditionalDetails", AdditionalDetails);
 	return ret;
@@ -437,7 +418,6 @@ HOOKDEF(ULONG, WINAPI, EventAccessControl,
 	_In_ ULONG Rights,
 	_In_ BOOLEAN AllowOrDeny
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EventAccessControl\n");
 	ULONG ret = Old_EventAccessControl(Guid,Operation,Sid,Rights,AllowOrDeny);
 	char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -456,7 +436,6 @@ HOOKDEF(ULONG, WINAPI, EventAccessQuery,
 	_Inout_ PSECURITY_DESCRIPTOR Buffer,
 	_Inout_ PULONG BufferSize
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EventAccessQuery\n");
 	ULONG ret = Old_EventAccessQuery(Guid,Buffer,BufferSize);
 	char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -468,7 +447,6 @@ HOOKDEF(ULONG, WINAPI, EventAccessQuery,
 HOOKDEF(ULONG, WINAPI, EventAccessRemove,
 	_In_ LPGUID Guid
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EventAccessRemove\n");
 	ULONG ret = Old_EventAccessRemove(Guid);
 	char *S_GUID = NULL;
     S_GUID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -483,7 +461,6 @@ HOOKDEF(ULONG, WINAPI, EventRegister,
 	_In_opt_ PVOID CallbackContext,
 	_Out_ PREGHANDLE RegHandle
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EventRegister\n");
 	ULONG ret = Old_EventRegister(ProviderId,EnableCallback,CallbackContext,RegHandle);
 	char *S_ProviderID = NULL;
     S_ProviderID = malloc(sizeof(char)*(GUID_SIZE+1));
@@ -498,7 +475,6 @@ HOOKDEF(ULONG, WINAPI, EventSetInformation,
 	_In_ PVOID EventInformation,
 	_In_ ULONG InformationLength
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EventSetInformation\n");
 	ULONG ret = Old_EventSetInformation(RegHandle,InformationClass,EventInformation,InformationLength);
     char *InformationClasses[] = {"TRACKINFO","RESERVED","SETTRAITS","DESCRIPTORTYPE","INVALID"};
     char *S_InformationClass = NULL;
@@ -530,7 +506,6 @@ HOOKDEF(ULONG, WINAPI, EventSetInformation,
 HOOKDEF(ULONG, WINAPI, EventUnregister,
 	_In_ REGHANDLE RegHandle
 ) {
-	DebuggerOutput("[***** DEBUG MESSAGE - EXTENDED HOOKS *****] Hooked EventUnregister\n");
 	ULONG ret = Old_EventUnregister(RegHandle);
 	LOQ_zero("Trace", "l", "Handle", RegHandle );
 	return ret;
