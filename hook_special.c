@@ -71,13 +71,6 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 			free(absolutename);
 		}
 
-		if (!wcsncmp(library.Buffer, L"\\??\\", 4) || library.Buffer[1] == L':')
-			LOQ_ntstatus("system", "HFP", "Flags", Flags, "FileName", library.Buffer,
-			"BaseAddress", ModuleHandle);
-		else
-			LOQ_ntstatus("system", "HoP", "Flags", Flags, "FileName", &library,
-			"BaseAddress", ModuleHandle);
-
 		if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
 										  !wcsnicmp(library.Buffer, L"c:\\windows\\syswow64\\", 20) ||
 										  !wcsnicmp(library.Buffer, L"c:\\windows\\sysnative\\", 21))) {
@@ -127,6 +120,13 @@ HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_LdrLoadDll(PathToFile, Flags, ModuleFileName, ModuleHandle);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
+
+	if (!wcsncmp(library.Buffer, L"\\??\\", 4) || library.Buffer[1] == L':')
+		LOQ_ntstatus("system", "HFP", "Flags", Flags, "FileName", library.Buffer,
+		"BaseAddress", ModuleHandle);
+	else
+		LOQ_ntstatus("system", "HoP", "Flags", Flags, "FileName", &library,
+		"BaseAddress", ModuleHandle);
 
 	disable_tail_call_optimization();
 	return ret;
