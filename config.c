@@ -1267,30 +1267,6 @@ int read_config(void)
 	char buf[32768], config_fname[MAX_PATH];
 	FILE *fp;
 
-	// look for the config in monitor directory
-	memset(g_config.analyzer, 0, MAX_PATH);
-	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(g_config.analyzer); // remove filename
-	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
-
-	fp = fopen(config_fname, "r");
-
-	// backward compatibility
-	if (fp == NULL) {
-		memset(config_fname, 0, sizeof(config_fname));
-		sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
-		fp = fopen(config_fname, "r");
-	}
-
-	// for debugging purposes
-	if (fp == NULL) {
-		memset(config_fname, 0, sizeof(config_fname));
-		sprintf(config_fname, "%s\\config.ini", g_config.analyzer);
-		fp = fopen(config_fname, "r");
-		if (fp == NULL)
-			return 0;
-	}
-
 	// config defaults
 	g_config.debugger = 1;
 	g_config.force_sleepskip = -1;
@@ -1321,6 +1297,30 @@ int read_config(void)
 	memset(g_config.w_results, 0, sizeof(WCHAR)*MAX_PATH);
 	memset(g_config.w_analyzer, 0, sizeof(WCHAR)*MAX_PATH);
 	memset(g_config.w_pythonpath, 0, sizeof(WCHAR)*MAX_PATH);
+
+	// look for the config in monitor directory
+	memset(g_config.analyzer, 0, MAX_PATH);
+	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
+	PathRemoveFileSpec(g_config.analyzer); // remove filename
+	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
+
+	fp = fopen(config_fname, "r");
+
+	// backward compatibility
+	if (fp == NULL) {
+		memset(config_fname, 0, sizeof(config_fname));
+		sprintf(config_fname, "C:\\%u.ini", GetCurrentProcessId());
+		fp = fopen(config_fname, "r");
+	}
+
+	// for debugging purposes
+	if (fp == NULL) {
+		memset(config_fname, 0, sizeof(config_fname));
+		sprintf(config_fname, "%s\\config.ini", g_config.analyzer);
+		fp = fopen(config_fname, "r");
+		if (fp == NULL)
+			return 0;
+	}
 
 	memset(buf, 0, sizeof(buf));
 	if (fp) {
