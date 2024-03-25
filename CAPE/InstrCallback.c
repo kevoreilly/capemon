@@ -63,8 +63,10 @@ unsigned int ScanForSsn(PVOID Address)
 
 PCHAR GetNameBySsn(unsigned int Number)
 {
-	if (!Number || Number >= 0x1000)	// we ignore SSN 0
+	if (!Number)	// ignore SSN 0
 		return NULL;
+
+	Number &= 0xffff;
 
 	if (!ntdll_base)
 		return NULL;
