@@ -993,3 +993,25 @@ HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
 	LOQ_hresult("network", "u", "Url", pszUrl);
 	return ret;
 }
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayName,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+) {
+	HRESULT ret = Old_MkParseDisplayName(pbc, szName, pchEaten, ppmk);
+	LOQ_hresult("network", "u", "Name", szName);
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayNameEx,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+) {
+	HRESULT ret = Old_MkParseDisplayNameEx(pbc, szName, pchEaten, ppmk);
+	LOQ_hresult("network", "u", "Name", szName);
+	return ret;
+}
