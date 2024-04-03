@@ -1524,6 +1524,7 @@ int read_config(void)
 			g_config.unpacker = 0;
 			g_config.caller_regions = 0;
 			g_config.injection = 0;
+			g_config.syscall = 0;
 			g_config.minhook = 1;
 			disable_sleep_skip();
 			DebugOutput("Services hook set enabled\n");
