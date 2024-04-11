@@ -55,9 +55,9 @@ extern int DumpMemory(PVOID Buffer, SIZE_T Size);
 extern int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
 extern int ScanPageForNonZero(PVOID Address);
 
-PTRACKEDREGION CurrentRegion;
+static PTRACKEDREGION CurrentRegion;
+static DWORD CurrentThread;
 static DWORD_PTR LastEIP, CurrentEIP;
-
 //**************************************************************************************
 PIMAGE_NT_HEADERS GetNtHeaders(PVOID BaseAddress)
 //**************************************************************************************
@@ -151,7 +151,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 	if (TrackedRegion->AllocationBase != BaseAddress)
 		TrackedRegion->Address = BaseAddress;
 
-	if (CurrentRegion && CurrentRegion != TrackedRegion)
+	if (CurrentRegion && CurrentRegion != TrackedRegion && CurrentThread && CurrentThread == GetCurrentThreadId())
 	{
 		if (TraceRunning)
 			DebuggerOutput("AllocationHandler: Processing previous tracked region at: 0x%p.\n", CurrentRegion->AllocationBase);
@@ -161,6 +161,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 	}
 
 	CurrentRegion = TrackedRegion;
+	CurrentThread = GetCurrentThreadId();
 
 	if (AllocationType & MEM_COMMIT)
 	{
@@ -237,7 +238,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 	if (TrackedRegion->AllocationBase != Address)
 		TrackedRegion->Address = Address;
 
-	if (CurrentRegion && CurrentRegion != TrackedRegion)
+	if (CurrentRegion && CurrentRegion != TrackedRegion && CurrentThread && CurrentThread == GetCurrentThreadId())
 	{
 		if (TraceRunning)
 			DebuggerOutput("ProtectionHandler: Processing previous tracked region at: 0x%p.\n", CurrentRegion->AllocationBase);
@@ -247,6 +248,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 	}
 
 	CurrentRegion = TrackedRegion;
+	CurrentThread = GetCurrentThreadId();
 
 	if (!VirtualQuery(Address, &TrackedRegion->MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
 	{
