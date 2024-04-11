@@ -51,7 +51,7 @@ char InternalYara[] =
 	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
 	"condition:all of them}";
 
-BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
+BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 {
 	char *Value, *Key, *p, *q, *r, c = 0;
 	unsigned int ValueLength;
@@ -71,15 +71,27 @@ BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 		Value = p + 1;
 	q = strchr(Value, '+');
 	if (q)
+	{
 		delta = strtoul(q+1, NULL, 0);
+		if (*(q-1) == '*')
+			delta += Match->match_length - 1;
+	}
 	else
 	{
 		q = strchr(Value, '-');
 		if (q)
+		{
 			delta = - (int)strtoul(q+1, NULL, 0);
+			if (*(q-1) == '*')
+				delta += Match->match_length - 1;
+		}
 	}
 	if (q)
+	{
 		ValueLength = (unsigned int)(DWORD_PTR)(q-(DWORD_PTR)Value);
+		if (*(q-1) == '*')
+			ValueLength--;
+	}
 	else
 		ValueLength = (unsigned int)strlen(Value);
 
@@ -96,7 +108,7 @@ BOOL ParseOptionLine(char* Line, char* Identifier, PVOID Target)
 		*p = 0;
 	}
 	memset(NewLine, 0, sizeof(NewLine));
-	sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Target+delta);
+	sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
 	if (r)
 		*r = c;
 	else
@@ -145,7 +157,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 #ifdef DEBUG_COMMENTS
 								DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
 #endif
-								if (ParseOptionLine(OptionLine, (char*)String->identifier, (PVOID)Match->offset))
+								if (ParseOptionLine(OptionLine, (char*)String->identifier, Match))
 								{
 #ifdef DEBUG_COMMENTS
 									DebugOutput("YaraScan: NewLine %s", NewLine);
