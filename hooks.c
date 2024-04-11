@@ -1406,6 +1406,7 @@ void set_hooks()
 	PHANDLE suspended_threads = (PHANDLE)calloc(4096, sizeof(HANDLE));
 	DWORD our_tid = GetCurrentThreadId();
 	DWORD our_pid = GetCurrentProcessId();
+	unsigned int Hooked = 0;
 
 	BOOL TestHooks = FALSE;
 
@@ -1491,6 +1492,8 @@ void set_hooks()
 		//DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
 		if (hook_api(hooks+i, g_config.hook_type) < 0)
 			pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
+		else
+			Hooked++;
 	}
 
 	for (unsigned int i = 0; i < num_suspended_threads; i++) {
@@ -1504,6 +1507,8 @@ void set_hooks()
 		pLdrRegisterDllNotification(0, &New_DllLoadNotification, NULL, &g_dll_notify_cookie);
 	else
 		register_dll_notification_manually(&New_DllLoadNotification);
+
+	DebugOutput("Hooked %d functions\n", Hooked);
 
 	hook_enable();
 }
