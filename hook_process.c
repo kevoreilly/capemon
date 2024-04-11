@@ -41,6 +41,7 @@ extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULON
 extern void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtect);
 extern void FreeHandler(PVOID BaseAddress), ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void ProcessTrackedRegion(), DebuggerShutdown(), DumpStrings();
+extern LONG WINAPI mini_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
 
 extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
@@ -1320,6 +1321,12 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 	__in PEXCEPTION_RECORD ExceptionRecord,
 	__in PCONTEXT Context)
 {
+	struct _EXCEPTION_POINTERS ExceptionInfo;
+	ExceptionInfo.ExceptionRecord = ExceptionRecord;
+	ExceptionInfo.ContextRecord = Context;
+	if (g_config.log_exceptions > 1 && ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
+		mini_handler(&ExceptionInfo);
+
 	if (g_config.ntdll_protect) {
 		if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
 			ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
