@@ -765,7 +765,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 		if (!CurrentSectionView)
 		{
 			CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
+#ifdef DEBUG_COMMENTS
 			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x and local view 0x%p to global list.\n", SectionHandle, BaseAddress);
+#endif
 		}
 		else
 		{
@@ -791,7 +793,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 		{
 			CurrentSectionView->MapDetected = TRUE;
 			CurrentSectionView->TargetProcessId = Pid;
+#ifdef DEBUG_COMMENTS
 			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to existing target process %d.\n", SectionHandle, Pid);
+#endif
 		}
 		else
 			DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
@@ -833,7 +837,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			{
 				CurrentSectionView->MapDetected = TRUE;
 				CurrentSectionView->TargetProcessId = Pid;
+#ifdef DEBUG_COMMENTS
 				DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to new target process %d.\n", SectionHandle, Pid);
+#endif
 			}
 			else
 			{
@@ -842,7 +848,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 				if (CurrentSectionView)
 				{
 					CurrentSectionView->TargetProcessId = Pid;
+#ifdef DEBUG_COMMENTS
 					DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
+#endif
 				}
 				else
 					DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
