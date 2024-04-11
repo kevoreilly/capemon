@@ -1027,7 +1027,6 @@ int hook_api(hook_t *h, int type)
 
 	addr = handle_stub(h, addr);
 
-	/*
 	if (!wcscmp(h->library, L"ntdll") && !memcmp(addr, "\x4c\x8b\xd1\xb8", 4)) {
 		// hooking a native API, leave in the mov eax, <syscall nr> instruction
 		// as some malware depends on this for direct syscalls
@@ -1035,7 +1034,6 @@ int hook_api(hook_t *h, int type)
 		// at all
 		type = HOOK_NATIVE_JMP_INDIRECT;
 	}
-	*/
 
 	// check if this is a valid hook type
 	if (type < 0 && type >= ARRAYSIZE(hook_types)) {
