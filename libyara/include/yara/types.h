@@ -293,6 +293,8 @@ struct YR_RULE
   // Number of atoms generated for this rule.
   int32_t num_atoms;
 
+  uint32_t required_strings;
+
   DECLARE_REFERENCE(const char*, identifier);
   DECLARE_REFERENCE(const char*, tags);
   DECLARE_REFERENCE(YR_META*, metas);
@@ -563,7 +565,7 @@ struct YR_RULES
     // deprecated, which will raise a warning if used.
     // TODO(vmalvarez): Remove this field when a reasonable a few versions
     // after 4.1 has been released.
-    YR_RULE* rules_list_head YR_DEPRECATED;
+    YR_DEPRECATED(YR_RULE* rules_list_head);
   };
 
   // Array of pointers with an entry for each of the defined strings. The idx
@@ -576,7 +578,7 @@ struct YR_RULES
     // deprecated, which will raise a warning if used.
     // TODO(vmalvarez): Remove this field when a reasonable a few versions
     // after 4.1 has been released.
-    YR_STRING* strings_list_head YR_DEPRECATED;
+    YR_DEPRECATED(YR_STRING* strings_list_head);
   };
 
   // Array of pointers with an entry for each external variable.
@@ -588,7 +590,7 @@ struct YR_RULES
     // as deprecated, which will raise a warning if used.
     // TODO(vmalvarez): Remove this field when a reasonable a few versions
     // after 4.1 has been released.
-    YR_EXTERNAL_VARIABLE* externals_list_head YR_DEPRECATED;
+    YR_DEPRECATED(YR_EXTERNAL_VARIABLE* externals_list_head);
   };
 
   // Pointer to the Aho-Corasick transition table.
@@ -610,6 +612,10 @@ struct YR_RULES
   // conditions for all rules. The code is executed by yr_execute_code and
   // the instructions are defined by the OP_X macros in exec.h.
   const uint8_t* code_start;
+
+  // A bitmap with one bit per rule, bit N is set when the condition for rule
+  // might evaluate to true even without any string matches.
+  YR_BITMASK* no_required_strings;
 
   // Total number of rules.
   uint32_t num_rules;
@@ -699,6 +705,8 @@ struct YR_MEMORY_BLOCK
 
   YR_MEMORY_BLOCK_FETCH_DATA_FUNC fetch_data;
 };
+
+YR_API const uint8_t* yr_fetch_block_data(YR_MEMORY_BLOCK* self);
 
 ///////////////////////////////////////////////////////////////////////////////
 // YR_MEMORY_BLOCK_ITERATOR represents an iterator that returns a series of
@@ -814,6 +822,10 @@ struct YR_SCAN_CONTEXT
   // and chain_gap_max), so the matches for S1 are put in "unconfirmed_matches"
   // until they can be confirmed or discarded.
   YR_MATCHES* unconfirmed_matches;
+
+  // A bitmap with one bit per rule, bit N is set if the corresponding rule
+  // must evaluated.
+  YR_BITMASK* required_eval;
 
   // profiling_info is a pointer to an array of YR_PROFILING_INFO structures,
   // one per rule. Entry N has the profiling information for rule with index N.
