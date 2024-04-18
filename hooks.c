@@ -689,7 +689,6 @@ hook_t min_hooks[] = {
 	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
 
-	HOOK(ntdll, NtClose),
 	HOOK(ntdll, NtResumeThread),
 	HOOK(ntdll, NtResumeProcess),
 	HOOK(ntdll, NtTerminateProcess),
