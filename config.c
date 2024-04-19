@@ -1254,6 +1254,12 @@ void parse_config_line(char* line)
 			if (g_config.break_on_jit)
 				DebugOutput("Break on .NET JIT native code enabled.\n");
 		}
+		else if (!stricmp(key, "interactive")) {
+			if (!g_config.interactive)
+				g_config.interactive = value[0] == '1';
+			if (g_config.interactive == 1)
+				DebugOutput("Interactive desktop enabled.\n");
+		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
 
@@ -1384,6 +1390,14 @@ int read_config(void)
 
 	if (is_image_base_remapped(ImageBase))
 		ImageBaseRemapped = TRUE;
+
+	if (!_stricmp(our_process_name, "explorer.exe") && g_config.interactive == 1)
+	{
+		g_config.minhook = 1;
+		DebugOutput("Interactive desktop - injecting Explorer Shell\n");
+	}
+	else
+		g_config.interactive = 0;
 
 	if (!ImageBaseRemapped && path_is_program_files(our_process_path_w) && VerifyCodeSection(ImageBase, our_process_path_w) == 1)
 	{

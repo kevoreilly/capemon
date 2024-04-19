@@ -741,7 +741,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		}
 #endif
 
-		if (!g_config.tlsdump)
+		if (!g_config.tlsdump && !g_config.interactive)
 			notify_successful_load();
 	}
 	else if(dwReason == DLL_PROCESS_DETACH) {

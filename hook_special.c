@@ -97,6 +97,15 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 				notify_successful_load();
 			}
 		}
+		if (g_config.interactive) {
+			// explorer injected by malware - switch to 'normal' mode
+			g_config.interactive = 2;
+			g_config.minhook = 0;
+			if (read_config()) {
+				set_hooks();
+				notify_successful_load();
+			}
+		}
 		ret = 1;
 	}
 

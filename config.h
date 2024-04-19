@@ -164,6 +164,9 @@ struct _g_config {
 	// for monitor testing
 	int standalone;
 
+	// interactive desktop
+	int interactive;
+
 	// for dumping of crypto API buffers
 	int dump_crypto;
 
