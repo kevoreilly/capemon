@@ -990,6 +990,9 @@ HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
 )
 {
 	HRESULT ret = Old_UrlCanonicalizeW(pszUrl, pszCanonicalized, pcchCanonicalized, dwFlags);
-	LOQ_hresult("network", "u", "Url", pszUrl);
+	if (!wcsnicmp(pszUrl, L"C:", 2))
+		LOQ_hresult("filesystem", "u", "Url", pszUrl);
+	else
+		LOQ_hresult("network", "u", "Url", pszUrl);
 	return ret;
 }
