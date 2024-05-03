@@ -27,6 +27,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
+extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 extern void parse_config_line(char* line);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
@@ -181,6 +182,10 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							g_config.br1 = NULL;
 							g_config.br2 = NULL;
 							g_config.br3 = NULL;
+							memset(Action0, 0, MAX_PATH);
+							memset(Action1, 0, MAX_PATH);
+							memset(Action2, 0, MAX_PATH);
+							memset(Action3, 0, MAX_PATH);
 						}
 						if (!strchr(OptionLine, '$'))
 							parse_config_line(OptionLine);
