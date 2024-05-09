@@ -683,6 +683,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (pBreakpointInfo->Callback == NULL)
 		{
 			DebugOutput("CAPEExceptionFilter: Can't find callback, passing exception (thread %d)\n", CurrentThreadId);
+			if (BreakpointsSet)
+				ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 		else
