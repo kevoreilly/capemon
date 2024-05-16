@@ -166,6 +166,9 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 									parse_config_line(NewLine);
 									SetBreakpoints = TRUE;
 								}
+								else if (!strchr(OptionLine, '$') && _strnicmp(OptionLine, "bp", 2) || strncmp(OptionLine, "br", 2))
+									SetBreakpoints = TRUE;
+
 							}
 						}
 

@@ -2648,19 +2648,6 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 	TraceDepthLimit = 5;
 #endif
 
-	if (g_config.break_on_apiname_set)
-	{
-		HANDLE Module = GetModuleHandle(g_config.break_on_modname);
-		if (Module)
-			g_config.bp0 = GetProcAddress(Module, g_config.break_on_apiname);
-		else
-			DebuggerOutput("Failed to get base for module (%s).", g_config.break_on_modname);
-		if (g_config.bp0)
-			DebuggerOutput("bp0 set to 0x%p (%s::%s).", g_config.bp0, g_config.break_on_modname, g_config.break_on_apiname);
-		else
-			DebuggerOutput("Failed to get address for function %s::%s.", g_config.break_on_modname, g_config.break_on_apiname);
-	}
-
 	if (EntryPointRegister)
 	{
 		PVOID EntryPoint = (PVOID)GetEntryPointVA((DWORD_PTR)ImageBase);
@@ -2685,16 +2672,44 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		}
 	}
 	else if (g_config.bp0)
-		SetConfigBP(ImageBase, 0, g_config.bp0);
+	{
+		if (g_config.bpva0)
+			SetConfigBP(NULL, 0, g_config.bp0);
+		else
+			SetConfigBP(ImageBase, 0, g_config.bp0);
+	}
+
+	else if (g_config.bp0)
+	{
+		if (g_config.bpva0)
+			SetConfigBP(NULL, 0, g_config.bp0);
+		else
+			SetConfigBP(ImageBase, 0, g_config.bp0);
+	}
 
 	if (g_config.bp1)
-		SetConfigBP(ImageBase, 1, g_config.bp1);
+	{
+		if (g_config.bpva1)
+			SetConfigBP(NULL, 1, g_config.bp1);
+		else
+			SetConfigBP(ImageBase, 1, g_config.bp1);
+	}
 
 	if (g_config.bp2)
-		SetConfigBP(ImageBase, 2, g_config.bp2);
+	{
+		if (g_config.bpva2)
+			SetConfigBP(NULL, 2, g_config.bp2);
+		else
+			SetConfigBP(ImageBase, 2, g_config.bp2);
+	}
 
 	if (g_config.bp3)
-		SetConfigBP(ImageBase, 3, g_config.bp3);
+	{
+		if (g_config.bpva3)
+			SetConfigBP(NULL, 3, g_config.bp3);
+		else
+			SetConfigBP(ImageBase, 3, g_config.bp3);
+	}
 
 	if (g_config.zerobp0)
 		SetConfigBP(ImageBase, 0, 0);
@@ -2722,6 +2737,8 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			}
 			BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br0);
 		}
+		else if (g_config.bpva0)
+			BreakpointVA = (PVOID)((DWORD_PTR)NULL + (DWORD_PTR)g_config.br0);
 		else
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br0);
 
@@ -2752,6 +2769,8 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			}
 			BreakpointVA = (PVOID)FileOffsetToVA((DWORD_PTR)ImageBase, (DWORD_PTR)g_config.br1);
 		}
+		else if (g_config.bpva1)
+			BreakpointVA = (PVOID)((DWORD_PTR)NULL + (DWORD_PTR)g_config.br1);
 		else
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.br1);
 

@@ -234,14 +234,11 @@ struct _g_config {
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];
 	BOOLEAN break_on_return_set;
-	BOOLEAN break_on_apiname_set;
 	BOOLEAN break_on_jit;
 
 	// debugger breakpoints
 	PVOID bp0, bp1, bp2, bp3;
 	BOOLEAN zerobp0, zerobp1, zerobp2, zerobp3;
-	PVOID bp4, bp5, bp6, bp7;
-	BOOLEAN zerobp4, zerobp5, zerobp6, zerobp7;
 	// break-on-return: brX
 	PVOID br0, br1, br2, br3;
 	// count
@@ -250,6 +247,8 @@ struct _g_config {
 	unsigned int hc0, hc1, hc2, hc3;
 	// Dump type
 	int dumptype0, dumptype1, dumptype2, dumptype3;
+	// breakpoint address as VA instead of RVA
+	int bpva0, bpva1, bpva2, bpva3;
 	// Type strings
 	char typestring[MAX_PATH], typestring0[MAX_PATH], typestring1[MAX_PATH], typestring2[MAX_PATH], typestring3[MAX_PATH];
 	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
