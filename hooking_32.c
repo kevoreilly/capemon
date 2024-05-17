@@ -772,7 +772,7 @@ int hook_api(hook_t *h, int type)
 		}
 	}
 
-	if (!wcscmp(h->library, L"ntdll") && addr[0] == 0xb8) {
+	if (h->library && !wcscmp(h->library, L"ntdll") && addr[0] == 0xb8) {
 		// hooking a native API, leave in the mov eax, <syscall nr> instruction
 		// as some malware depends on this for direct syscalls
 		// missing a few syscalls is better than crashing and getting no information
