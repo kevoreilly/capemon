@@ -255,6 +255,8 @@ struct _g_config {
 	char *action[BREAKPOINT_MAX];
 	BOOLEAN loopskip;
 	int sysbpmode;
+	// search string
+	char *str[MAX_PATH];
 
 	int trace_all;
 	int step_out;

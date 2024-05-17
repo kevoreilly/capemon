@@ -997,6 +997,14 @@ void parse_config_line(char* line)
 			strncpy(g_config.typestring3, value, strlen(value));
 			DebugOutput("Config: typestring3 set to %s", g_config.typestring3);
 		}
+		else if (!stricmp(key, "str")) {
+			memset(g_config.str, 0, MAX_PATH);
+			strncpy((char*)g_config.str, value, strlen(value));
+			DebugOutput("Config: Search string set to %s", g_config.str);
+			if (strlen((char*)g_config.str))
+				g_config.no_logs = 2;
+
+		}
 		else if (!stricmp(key, "type0")) {
 			if (!_strnicmp(value, "w", 1)) {
 				DebugOutput("Config: Breakpoint 0 type set to write (Type0 = BP_WRITE).\n");
@@ -1273,6 +1281,7 @@ int read_config(void)
 
 	strcpy(g_config.results, g_config.analyzer);
 
+	memset(g_config.str, 0, MAX_PATH);
 	memset(g_config.pythonpath, 0, MAX_PATH);
 	memset(g_config.w_results, 0, sizeof(WCHAR)*MAX_PATH);
 	memset(g_config.w_analyzer, 0, sizeof(WCHAR)*MAX_PATH);

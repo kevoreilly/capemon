@@ -195,17 +195,33 @@ void StringCheck(PVOID PossibleString)
 	WCHAR OutputBufferW[MAX_PATH] = L"";
 
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
-	if (Size > 64)
-		DebuggerOutput(" \"%.64s...\"", (PCHAR)OutputBuffer);
-	else if (Size > 1)
-		DebuggerOutput(" \"%.64s\"", (PCHAR)OutputBuffer);
+	if (Size > 1)
+	{
+		if (strlen((char*)g_config.str) && stristr(OutputBuffer, (char*)g_config.str))
+			g_config.no_logs = 0;
+		if (Size > 64)
+			DebuggerOutput(" \"%.64s...\"", (PCHAR)OutputBuffer);
+		else
+			DebuggerOutput(" \"%.64s\"", (PCHAR)OutputBuffer);
+	}
 	else
 	{
 		Size = StrTestW(PossibleString, OutputBufferW, MAX_PATH*sizeof(WCHAR));
-		if (Size > 64)
-			DebuggerOutput(" L\"%.64ws...\"", (PWCHAR)OutputBufferW);
-		else if (Size > 1)
-			DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
+		if (Size > 1 )
+		{
+			if (strlen((char*)g_config.str))
+			{
+				wchar_t wstr[MAX_PATH];
+				memset(wstr, 0, sizeof(WCHAR)*MAX_PATH);
+				int convertResult = MultiByteToWideChar(CP_UTF8, 0, (char*)g_config.str, (int)strlen((char*)g_config.str), wstr, MAX_PATH);
+				if (convertResult > 0 && wcsistr(OutputBufferW, wstr))
+					g_config.no_logs = 0;
+			}
+			if (Size > 64)
+				DebuggerOutput(" L\"%.64ws...\"", (PWCHAR)OutputBufferW);
+			else
+				DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
+		}
 	}
 }
 
