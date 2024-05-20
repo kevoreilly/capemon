@@ -696,8 +696,6 @@ hook_t min_hooks[] = {
 
 	HOOK(ntdll, NtDuplicateObject),
 
-	HOOK_SPECIAL(kernel32, GetSystemTimeAsFileTime),
-
 	HOOK(advapi32, StartServiceA),
 	HOOK(advapi32, StartServiceW),
 	HOOK(sechost, StartServiceA),
@@ -1304,8 +1302,6 @@ hook_t ie_hooks[] = {
 	HOOK(ntdll, RtlReportSilentProcessExit),
 
 	HOOK(ntdll, NtDuplicateObject),
-
-	HOOK_SPECIAL(kernel32, GetSystemTimeAsFileTime),
 
 	HOOK(advapi32, StartServiceA),
 	HOOK(advapi32, StartServiceW),
