@@ -789,6 +789,26 @@ HOOKDEF(BOOL, WINAPI, InternetSetOptionA,
 	return ret;
 }
 
+PCHAR get_ip_list(PIP4_ARRAY server_list) {
+	if (!server_list || server_list->AddrCount)
+		return NULL;
+
+	size_t ip_list_size = server_list->AddrCount * (INET_ADDRSTRLEN + strlen(CRLF));
+	char* ip_list = (char*)calloc(1, ip_list_size);
+	if (ip_list) {
+		for (unsigned int i = 0; i < server_list->AddrCount; i++) {
+			struct in_addr ipAddr;
+			ipAddr.S_un.S_addr = server_list->AddrArray[i];
+			_snprintf_s(ip_list, ip_list_size, _TRUNCATE, "%s\n", inet_ntoa(ipAddr));
+		}
+		return ip_list;
+	}
+	else
+		DebugOutput("get_ip_list: Memory allocation failed.\n");
+
+	return NULL;
+}
+
 HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_A,
 	__in		 PCSTR lpstrName,
 	__in		 WORD wType,
@@ -803,7 +823,14 @@ HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_A,
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
 
-	LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
+	char* ip_list = get_ip_list(pExtra);
+
+	if (ip_list) {
+		LOQ_zero("network", "sihs", "Name", lpstrName, "Type", wType, "Options", Options, "DNS Servers", ip_list);
+		free(ip_list);
+	}
+	else
+		LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
 	return ret;
 }
 
@@ -821,7 +848,14 @@ HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_UTF8,
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
 
-	LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
+	char* ip_list = get_ip_list(pExtra);
+
+	if (ip_list) {
+		LOQ_zero("network", "sihs", "Name", lpstrName, "Type", wType, "Options", Options, "DNS Servers", ip_list);
+		free(ip_list);
+	}
+	else
+		LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
 	return ret;
 }
 
@@ -839,7 +873,14 @@ HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_W,
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
 
-	LOQ_zero("network", "uih", "Name", lpstrName, "Type", wType, "Options", Options);
+	char* ip_list = get_ip_list(pExtra);
+
+	if (ip_list) {
+		LOQ_zero("network", "uihs", "Name", lpstrName, "Type", wType, "Options", Options, "DNS Servers", ip_list);
+		free(ip_list);
+	}
+	else
+		LOQ_zero("network", "uih", "Name", lpstrName, "Type", wType, "Options", Options);
 	return ret;
 }
 

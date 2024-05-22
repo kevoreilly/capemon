@@ -178,6 +178,12 @@ int is_shutting_down();
 
 #define MAX_KEY_BUFLEN ((16384 + 256) * sizeof(WCHAR))
 
+#ifndef INET_ADDRSTRLEN
+#define INET_ADDRSTRLEN 16
+#endif
+
+#define CRLF "\r\n"
+
 struct dll_range {
 	ULONG_PTR start;
 	ULONG_PTR end;
