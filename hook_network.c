@@ -914,6 +914,27 @@ HOOKDEF(int, WINAPI, GetAddrInfoW,
 	return ret;
 }
 
+HOOKDEF(int, WINAPI, GetAddrInfoExW,
+	_In_opt_  PCWSTR pName,
+	_In_opt_  PCWSTR pServiceName,
+	_In_      DWORD dwNameSpace,
+	_In_opt_  LPGUID lpNspId,
+	_In_opt_  const ADDRINFOEXW *hints,
+	_Out_	  PADDRINFOEXW *ppResult,
+	_In_opt_  PVOID timeout,
+	_In_opt_  LPOVERLAPPED lpOverlapped,
+	_In_opt_  PVOID lpCompletionRoutine,
+	_In_opt_  LPHANDLE lpHandle
+) {
+	int ret = Old_GetAddrInfoExW(pName, pServiceName, dwNameSpace, lpNspId, hints, ppResult, timeout, lpOverlapped, lpCompletionRoutine, lpHandle);
+
+	if (g_config.url_of_interest && g_config.suspend_logging)
+		g_config.suspend_logging = FALSE;
+
+	LOQ_zero("network", "uu", "Name", pName, "ServiceName", pServiceName);
+	return ret;
+}
+
 HOOKDEF(DWORD, WINAPI, WNetUseConnectionW,
 	_In_	 HWND hwndOwner,
 	_In_	 LPNETRESOURCEW lpNetResource,

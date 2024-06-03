@@ -393,6 +393,7 @@ hook_t full_hooks[] = {
 	HOOK(rasapi32, RasConnectionNotificationW),
 	HOOK(kernel32, SystemTimeToTzSpecificLocalTime),
 	HOOK(ole32, CLSIDFromProgID),
+	HOOK(ole32, CLSIDFromProgIDEx),
 	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
@@ -486,6 +487,7 @@ hook_t full_hooks[] = {
 	HOOK(dnsapi, DnsQuery_W),
 	HOOK(ws2_32, getaddrinfo),
 	HOOK(ws2_32, GetAddrInfoW),
+	HOOK(ws2_32, GetAddrInfoExW),
 	HOOK(mpr, WNetUseConnectionW),
 	HOOK(cryptnet, CryptRetrieveObjectByUrlW),
 	HOOK(ncrypt, SslEncryptPacket),
@@ -1041,6 +1043,7 @@ hook_t office_hooks[] = {
 	HOOK(rasapi32, RasConnectionNotificationW),
 	HOOK(kernel32, SystemTimeToTzSpecificLocalTime),
 	HOOK(ole32, CLSIDFromProgID),
+	HOOK(ole32, CLSIDFromProgIDEx),
 	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
@@ -1134,6 +1137,7 @@ hook_t office_hooks[] = {
 	HOOK(dnsapi, DnsQuery_W),
 	HOOK(ws2_32, getaddrinfo),
 	HOOK(ws2_32, GetAddrInfoW),
+	HOOK(ws2_32, GetAddrInfoExW),
 	HOOK(mpr, WNetUseConnectionW),
 	HOOK(cryptnet, CryptRetrieveObjectByUrlW),
 	HOOK(ncrypt, SslEncryptPacket),
@@ -1494,7 +1498,7 @@ void set_hooks()
 #endif
 		//DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
 		if (hook_api(hooks+i, g_config.hook_type) < 0)
-			pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
+			DebugOutput("set_hooks: Unable to hook %s", (hooks+i)->funcname);
 		else
 			Hooked++;
 	}

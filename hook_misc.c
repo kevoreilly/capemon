@@ -1092,6 +1092,15 @@ HOOKDEF(HRESULT, WINAPI, CLSIDFromProgID,
 	return ret;
 }
 
+HOOKDEF(HRESULT, WINAPI, CLSIDFromProgIDEx,
+	_In_ LPCOLESTR lpszProgID,
+	_Out_ LPCLSID lpclsid
+) {
+	HRESULT ret = Old_CLSIDFromProgIDEx(lpszProgID, lpclsid);
+	LOQ_hresult("misc", "u", "ProgID", lpszProgID);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, GetCurrentHwProfileW,
 	_Out_ LPHW_PROFILE_INFO lpHwProfileInfo
 ) {

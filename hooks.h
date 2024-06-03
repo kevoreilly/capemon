@@ -1897,6 +1897,11 @@ HOOKDEF(HRESULT, WINAPI, CLSIDFromProgID,
 	_Out_ LPCLSID lpclsid
 );
 
+HOOKDEF(HRESULT, WINAPI, CLSIDFromProgIDEx,
+	_In_ LPCOLESTR lpszProgID,
+	_Out_ LPCLSID lpclsid
+);
+
 HOOKDEF(void, WINAPI, GlobalMemoryStatus,
 	_Out_ LPMEMORYSTATUS lpBuffer
 );
@@ -2296,6 +2301,19 @@ HOOKDEF(int, WSAAPI, GetAddrInfoW,
 	_In_opt_  PCWSTR pServiceName,
 	_In_opt_  const ADDRINFOW *pHints,
 	_Out_	 PADDRINFOW *ppResult
+);
+
+HOOKDEF(int, WINAPI, GetAddrInfoExW,
+	_In_opt_  PCWSTR pName,
+	_In_opt_  PCWSTR pServiceName,
+	_In_      DWORD dwNameSpace,
+	_In_opt_  LPGUID lpNspId,
+	_In_opt_  const ADDRINFOEXW *hints,
+	_Out_	  PADDRINFOEXW *ppResult,
+	_In_opt_  PVOID timeout,
+	_In_opt_  LPOVERLAPPED lpOverlapped,
+	_In_opt_  PVOID lpCompletionRoutine,
+	_In_opt_  LPHANDLE lpHandle
 );
 
 HOOKDEF(DWORD, WINAPI, WNetUseConnectionW,
