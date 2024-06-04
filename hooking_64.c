@@ -933,6 +933,9 @@ int hook_api(hook_t *h, int type)
 		if (hmod == NULL)
 			return 0;
 
+		if (!wcscmp(h->library, L"kernel32") && GetProcAddress(GetModuleHandle("KernelBase"), h->funcname))
+			hmod = GetModuleHandle("KernelBase");
+
 		if (!strcmp(h->funcname, "RtlDispatchException")) {
 			// RtlDispatchException is the first relative call in KiUserExceptionDispatcher
 			unsigned char *baseaddr = (unsigned char *)GetProcAddress(hmod, "KiUserExceptionDispatcher");
