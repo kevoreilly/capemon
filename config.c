@@ -398,7 +398,11 @@ void parse_config_line(char* line)
 				g_config.bp0 = 0;
 				*p = '\0';
 				*(p+1) = '\0';
-				HANDLE Module = GetModuleHandle(value);
+				HANDLE Module = NULL;
+				if (!stricmp(value, "capemon"))
+					Module = (HANDLE)g_our_dll_base;
+				else
+					Module = GetModuleHandle(value);
 				g_config.break_on_apiname = strdup(p+2);
 				g_config.break_on_modname = strdup(value);
 				if (Module)
@@ -415,6 +419,7 @@ void parse_config_line(char* line)
 					if (delta) {
 						g_config.bp0 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
+						g_config.bpva0 = 1;
 						DebugOutput("Config: bp0 set to 0x%p (%s::%s).\n", g_config.bp0, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
@@ -466,7 +471,11 @@ void parse_config_line(char* line)
 				g_config.bp1 = 0;
 				*p = '\0';
 				*(p+1) = '\0';
-				HANDLE Module = GetModuleHandle(value);
+				HANDLE Module = NULL;
+				if (!stricmp(value, "capemon"))
+					Module = (HANDLE)g_our_dll_base;
+				else
+					Module = GetModuleHandle(value);
 				g_config.break_on_apiname = strdup(p+2);
 				g_config.break_on_modname = strdup(value);
 				if (Module)
@@ -483,6 +492,7 @@ void parse_config_line(char* line)
 					if (delta) {
 						g_config.bp1 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
+						g_config.bpva1 = 1;
 						DebugOutput("Config: bp1 set to 0x%p (%s::%s).\n", g_config.bp1, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
@@ -534,7 +544,11 @@ void parse_config_line(char* line)
 				g_config.bp2 = 0;
 				*p = '\0';
 				*(p+1) = '\0';
-				HANDLE Module = GetModuleHandle(value);
+				HANDLE Module = NULL;
+				if (!stricmp(value, "capemon"))
+					Module = (HANDLE)g_our_dll_base;
+				else
+					Module = GetModuleHandle(value);
 				g_config.break_on_apiname = strdup(p+2);
 				g_config.break_on_modname = strdup(value);
 				if (Module)
@@ -551,6 +565,7 @@ void parse_config_line(char* line)
 					if (delta) {
 						g_config.bp2 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
+						g_config.bpva2 = 1;
 						DebugOutput("Config: bp2 set to 0x%p (%s::%s).\n", g_config.bp2, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
@@ -602,7 +617,11 @@ void parse_config_line(char* line)
 				g_config.bp3 = 0;
 				*p = '\0';
 				*(p+1) = '\0';
-				HANDLE Module = GetModuleHandle(value);
+				HANDLE Module = NULL;
+				if (!stricmp(value, "capemon"))
+					Module = (HANDLE)g_our_dll_base;
+				else
+					Module = GetModuleHandle(value);
 				g_config.break_on_apiname = strdup(p+2);
 				g_config.break_on_modname = strdup(value);
 				if (Module)
@@ -619,6 +638,7 @@ void parse_config_line(char* line)
 					if (delta) {
 						g_config.bp3= (PBYTE)Module + delta;
 						g_config.debugger = 1;
+						g_config.bpva3 = 1;
 						DebugOutput("Config: bp3 set to 0x%p (%s::%s).\n", g_config.bp3, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
@@ -670,7 +690,11 @@ void parse_config_line(char* line)
 				g_config.br0 = 0;
 				*p = '\0';
 				*(p+1) = '\0';
-				HANDLE Module = GetModuleHandle(value);
+				HANDLE Module = NULL;
+				if (!stricmp(value, "capemon"))
+					Module = (HANDLE)g_our_dll_base;
+				else
+					Module = GetModuleHandle(value);
 				g_config.break_on_apiname = strdup(p+2);
 				g_config.break_on_modname = strdup(value);
 				if (Module)
@@ -687,6 +711,7 @@ void parse_config_line(char* line)
 					if (delta) {
 						g_config.br0 = (PBYTE)Module + delta;
 						g_config.debugger = 1;
+						g_config.bpva0 = 1;
 						DebugOutput("Config: br0 set to 0x%p (%s::%s).\n", g_config.br0, g_config.break_on_modname, g_config.break_on_apiname);
 					}
 					else
