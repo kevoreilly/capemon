@@ -55,39 +55,14 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 	// well, then the unicode string (which is located in the TEB) will be
 	// overwritten, therefore we make a copy of it for our own use.
 	//
+	NTSTATUS ret = 1;
 	lasterror_t lasterror;
-	NTSTATUS ret = 0;
 
 	COPY_UNICODE_STRING(library, ModuleFileName);
 
 	get_lasterrors(&lasterror);
 
-	if (!g_config.tlsdump && !called_by_hook() && wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
-		if (g_config.file_of_interest && g_config.suspend_logging) {
-			wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
-			ensure_absolute_unicode_path(absolutename, library.Buffer);
-			if (!wcsicmp(absolutename, g_config.file_of_interest))
-				g_config.suspend_logging = FALSE;
-			free(absolutename);
-		}
-
-		if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
-										  !wcsnicmp(library.Buffer, L"c:\\windows\\syswow64\\", 20) ||
-										  !wcsnicmp(library.Buffer, L"c:\\windows\\sysnative\\", 21))) {
-			ret = 1;
-		}
-		else if (library.Buffer[1] != L':') {
-			WCHAR newlib[MAX_PATH] = { 0 };
-			DWORD concatlen = MIN((DWORD)wcslen(library.Buffer), MAX_PATH - 21);
-			wcscpy(newlib, L"c:\\windows\\system32\\");
-			wcsncat(newlib, library.Buffer, concatlen);
-			if (GetFileAttributesW(newlib) != INVALID_FILE_ATTRIBUTES)
-				ret = 1;
-		}
-
-	}
-	else if (!wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
-		// Don't log attempts to load monitor twice
+	if (!wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
 		if (g_config.tlsdump) {
 			// lsass injected a second time - switch to 'normal' mode
 			g_config.tlsdump = 0;
@@ -106,7 +81,26 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 				notify_successful_load();
 			}
 		}
-		ret = 1;
+		// Don't log attempts to load monitor twice
+		ret = 0;
+	}
+	else if (!g_config.tlsdump && !called_by_hook()) {
+		if (g_config.file_of_interest && g_config.suspend_logging) {
+			wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
+			ensure_absolute_unicode_path(absolutename, library.Buffer);
+			if (!wcsicmp(absolutename, g_config.file_of_interest))
+				g_config.suspend_logging = FALSE;
+			free(absolutename);
+		}
+
+		if (library.Buffer[1] != L':') {
+			WCHAR newlib[MAX_PATH] = { 0 };
+			DWORD concatlen = MIN((DWORD)wcslen(library.Buffer), MAX_PATH - 21);
+			wcscpy(newlib, L"c:\\windows\\system32\\");
+			wcsncat(newlib, library.Buffer, concatlen);
+			if (GetFileAttributesW(newlib) == INVALID_FILE_ATTRIBUTES)
+				ret = 0;
+		}
 	}
 
 	set_lasterrors(&lasterror);
