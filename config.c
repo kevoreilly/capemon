@@ -1409,7 +1409,6 @@ int read_config(void)
 
 	if (!ImageBaseRemapped && path_is_program_files(our_process_path_w) && VerifyCodeSection(ImageBase, our_process_path_w) == 1)
 	{
-#ifndef _WIN64
 		if (!_stricmp(our_process_name, "firefox.exe"))
         {
 			g_config.firefox = 1;
@@ -1422,7 +1421,6 @@ int read_config(void)
 			g_config.ntdll_protect = 0;
 			DebugOutput("Firefox-specific hook-set enabled.\n");
         }
-#endif
 		if (!_stricmp(our_process_name, "iexplore.exe"))
         {
 			g_config.iexplore = 1;
