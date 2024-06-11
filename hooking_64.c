@@ -31,6 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
 extern PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
+extern SIZE_T GetAllocationSize(PVOID Address);
 
 PVOID LdrpInvertedFunctionTableSRWLock;
 
@@ -906,6 +907,7 @@ int hook_api(hook_t *h, int type)
 	DWORD old_protect;
 	int ret = -1;
 	unsigned char *addr;
+	HMODULE hmod = NULL;
 
 	// table with all possible hooking types
 	static struct {
@@ -928,7 +930,7 @@ int hook_api(hook_t *h, int type)
 	addr = h->addr;
 
 	if (addr == NULL && h->library != NULL && h->funcname != NULL) {
-		HMODULE hmod = GetModuleHandleW(h->library);
+		hmod = GetModuleHandleW(h->library);
 		/* if the DLL isn't loaded, don't bother attempting anything else */
 		if (hmod == NULL)
 			return 0;
@@ -1078,9 +1080,10 @@ int hook_api(hook_t *h, int type)
 				if (h->old_func)
 					*h->old_func = h->hookdata->tramp;
 
-				// successful hook is successful
+				// hook is successful
 				h->is_hooked = 1;
 				h->hook_addr = addr;
+				add_dll_range((ULONG_PTR)hmod, (ULONG_PTR)hmod + GetAllocationSize(hmod));
 			}
 		}
 		else {

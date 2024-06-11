@@ -185,8 +185,6 @@ VOID CALLBACK New_DllLoadNotification(
 			WCHAR exportdirectory_w[MAX_PATH];
 			char* exportdirectory;
 
-			add_dll_range((ULONG_PTR)NotificationData->Loaded.DllBase, (ULONG_PTR)NotificationData->Loaded.DllBase + GetAllocationSize(NotificationData->Loaded.DllBase));
-
 			if (!set_hooks_dll(dllname)) {
 				exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
 				if (exportdirectory) {
