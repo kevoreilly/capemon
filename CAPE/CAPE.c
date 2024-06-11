@@ -2352,7 +2352,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    CodeSectionBuffer = (PBYTE)calloc(NtHeaders.OptionalHeader.SizeOfCode, sizeof(BYTE));
+    CodeSectionBuffer = (PBYTE)calloc(FirstSectionHeader.SizeOfRawData, sizeof(BYTE));
     if (CodeSectionBuffer == NULL)
 	{
 #ifdef DEBUG_COMMENTS
@@ -2364,7 +2364,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 	SetFilePointer(hFile, FirstSectionHeader.PointerToRawData, 0, FILE_BEGIN);
 
     DWORD BytesReadInSection;
-    if (!ReadFile(hFile, CodeSectionBuffer, NtHeaders.OptionalHeader.SizeOfCode, &BytesReadInSection, NULL))
+    if (!ReadFile(hFile, CodeSectionBuffer, FirstSectionHeader.SizeOfRawData, &BytesReadInSection, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("VerifyCodeSection: Error reading code section of %ws", Path);
@@ -2415,7 +2415,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 
 	PVOID pFirstSection = (PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress);
 
-	SIZE_T SizeOfCode = (SIZE_T)ReverseScanForNonZero((PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress), NtHeaders.OptionalHeader.SizeOfCode);
+	SIZE_T SizeOfSection = (SIZE_T)ReverseScanForNonZero((PVOID)((PBYTE)ImageBase + pFirstSectionHeader->VirtualAddress), FirstSectionHeader.SizeOfRawData);
 
 	SIZE_T ThunksSize = 0;
 	DWORD pFirstThunk = 0;
@@ -2444,7 +2444,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		}
 	}
 
-	if (pFirstThunk && pFirstThunk >= pFirstSectionHeader->VirtualAddress && pFirstThunk < (pFirstSectionHeader->VirtualAddress + SizeOfCode))
+	if (pFirstThunk && pFirstThunk >= pFirstSectionHeader->VirtualAddress && pFirstThunk < (pFirstSectionHeader->VirtualAddress + SizeOfSection))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyCodeSection: Restoring original thunks - size 0x%x", ThunksSize);
@@ -2452,9 +2452,9 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		memcpy(CodeSectionBuffer + pFirstThunk - pFirstSectionHeader->VirtualAddress, (PVOID)((PBYTE)ImageBase + pFirstThunk), ThunksSize);
 	}
 
-	SIZE_T Matching = pRtlCompareMemory((PVOID)CodeSectionBuffer, pFirstSection, SizeOfCode);
+	SIZE_T Matching = pRtlCompareMemory((PVOID)CodeSectionBuffer, pFirstSection, SizeOfSection);
 
-    if (Matching == SizeOfCode)
+    if (Matching == SizeOfSection)
 	{
 #ifdef DEBUG_COMMENTS
         DebugOutput("VerifyCodeSection: Executable code matches.\n");
@@ -2463,7 +2463,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
     }
 	else
 	{
-        DebugOutput("VerifyCodeSection: Executable code does not match, 0x%x of 0x%x matching\n", Matching, SizeOfCode);
+        DebugOutput("VerifyCodeSection: Executable code does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSection);
 		RetVal = 0;
     }
 
