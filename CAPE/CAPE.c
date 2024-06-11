@@ -331,6 +331,64 @@ PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath)
 	return DriveLetterFilePath;
 }
 
+//*********************************************************************************************************************************
+PWCHAR TranslatePathFromDeviceToLetterW(PWCHAR DeviceFilePath)
+//*********************************************************************************************************************************
+{
+	wchar_t DriveStrings[BUFSIZE];
+	DriveStrings[0] = L'\0';
+
+	PWCHAR DriveLetterFilePath = (PWCHAR)calloc(MAX_PATH, sizeof(BYTE));
+
+	if (!DriveLetterFilePath)
+	{
+		DebugOutput("TranslatePathFromDeviceToLetter: Unable to allocate buffer for DriveLetterFilePath");
+		return NULL;
+	}
+
+	if (GetLogicalDriveStringsW(BUFSIZE-1, DriveStrings))
+	{
+		wchar_t DeviceName[MAX_PATH];
+		wchar_t szDrive[3] = L" :";
+		BOOL FoundDevice = FALSE;
+		PWCHAR p = DriveStrings;
+
+		do
+		{
+			*szDrive = *p;
+
+			if (QueryDosDeviceW(szDrive, DeviceName, MAX_PATH))
+			{
+				size_t DeviceNameLength = wcslen(DeviceName);
+
+				if (DeviceNameLength < MAX_PATH)
+				{
+					FoundDevice = _wcsnicmp(DeviceFilePath, DeviceName, DeviceNameLength) == 0;
+
+					if (FoundDevice && *(DeviceFilePath + DeviceNameLength) == (L'\\'))
+					{
+						// Construct DriveLetterFilePath replacing device path with DOS path
+						wchar_t NewPath[MAX_PATH];
+						StringCchPrintfW(NewPath, MAX_PATH, TEXT(L"%s%s"), szDrive, DeviceFilePath+DeviceNameLength);
+						StringCchCopyNW(DriveLetterFilePath, MAX_PATH, NewPath, wcslen(NewPath));
+					}
+				}
+			}
+
+			// Go to the next NULL character.
+			while (*p++);
+		}
+		while (!FoundDevice && *p); // end of string
+	}
+	else
+	{
+		ErrorOutput("TranslatePathFromDeviceToLetter: GetLogicalDriveStrings failed");
+		return NULL;
+	}
+
+	return DriveLetterFilePath;
+}
+
 //**************************************************************************************
 PVOID GetAllocationBase(PVOID Address)
 //**************************************************************************************

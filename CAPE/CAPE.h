@@ -43,6 +43,7 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
 double GetPEEntropy(PUCHAR Buffer);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
+PWCHAR TranslatePathFromDeviceToLetterW(PWCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
