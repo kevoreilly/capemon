@@ -1158,13 +1158,16 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (g_config.yarascan)
 		YaraScan(Address, Size);
 
-	char ModulePath[MAX_PATH];
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), Address, ModulePath, MAX_PATH);
-	if (MappedModule)
+	wchar_t ModulePath[MAX_PATH];
+	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), Address, ModulePath, MAX_PATH);
+
+	if (MappedModule && is_in_dll_range((ULONG_PTR)Address) || VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
 	{
-		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %s, skipping", Address, ModulePath);
+		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws, skipping", Address, ModulePath);
 		return;
 	}
+	else if (MappedModule)
+		DebugOutput("ProcessTrackedRegion: Code modification detected in region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
@@ -2246,12 +2249,154 @@ DWORD GetTimeStamp(PVOID Address)
 }
 
 //**************************************************************************************
+int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
+//**************************************************************************************
+{
+    IMAGE_DOS_HEADER DosHeader;
+    IMAGE_NT_HEADERS NtHeaders;
+	PIMAGE_DOS_HEADER pDosHeader = NULL;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
+	PIMAGE_SECTION_HEADER SectionHeaders = NULL;
+    DWORD bytesRead;
+
+	int RetVal = -1;
+
+	if (!ImageBase)
+	{
+		DebugOutput("VerifyHeaders: Error - no address supplied.\n");
+		return RetVal;
+	}
+
+	if (IsDisguisedPEHeader(ImageBase) <= 0)
+		return RetVal;
+
+	pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
+
+	if (!IsAddressAccessible(ImageBase))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyHeaders: 0x%p inaccessible\n", ImageBase);
+#endif
+		return RetVal;
+	}
+
+	if (*(WORD*)ImageBase != IMAGE_DOS_SIGNATURE)
+		return RetVal;
+
+	pNtHeader = (PIMAGE_NT_HEADERS)((PBYTE)pDosHeader + pDosHeader->e_lfanew);
+
+	if (!IsAddressAccessible(pNtHeader))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyHeaders: NT headers at 0x%p inaccessible\n", pNtHeader);
+#endif
+		return RetVal;
+	}
+
+	if (*(DWORD*)pNtHeader != IMAGE_NT_SIGNATURE)
+		return RetVal;
+
+	DWORD SizeOfHeaders = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNtHeader->FileHeader.SizeOfOptionalHeader;
+	PIMAGE_SECTION_HEADER pSectionHeaders = (PIMAGE_SECTION_HEADER)((PBYTE)ImageBase + SizeOfHeaders);
+
+    HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+	{
+#ifdef DEBUG_COMMENTS
+		ErrorOutput("VerifyHeaders: Error opening file %ws", Path);
+#endif
+		return RetVal;
+    }
+
+    if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
+	{
+#ifdef DEBUG_COMMENTS
+		ErrorOutput("VerifyHeaders: Error reading file %ws", Path);
+#endif
+		goto end;
+	}
+
+    if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyHeaders: IMAGE_DOS_SIGNATURE");
+#endif
+		goto end;
+	}
+
+	SetFilePointer(hFile, DosHeader.e_lfanew, 0, FILE_BEGIN);
+
+    if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyHeaders: Error reading header of %ws", Path);
+#endif
+		goto end;
+	}
+
+    if (NtHeaders.FileHeader.NumberOfSections != pNtHeader->FileHeader.NumberOfSections)
+	{
+		DebugOutput("VerifyHeaders: Number of sections mismatch: %d vs %d", NtHeaders.FileHeader.NumberOfSections, pNtHeader->FileHeader.NumberOfSections);
+		goto end;
+	}
+
+    if (!NtHeaders.FileHeader.NumberOfSections)
+	{
+		DebugOutput("VerifyHeaders: Number of sections zero");
+		goto end;
+	}
+
+	SetFilePointer(hFile, SizeOfHeaders, 0, FILE_BEGIN);
+
+    SectionHeaders = calloc(NtHeaders.FileHeader.NumberOfSections, sizeof(IMAGE_SECTION_HEADER));
+    if (SectionHeaders == NULL)
+	{
+		DebugOutput("VerifyHeaders: Error allocating memory for %d section headers", NtHeaders.FileHeader.NumberOfSections);
+		return RetVal;
+    }
+
+	SIZE_T SizeOfSectionHeaders = sizeof(IMAGE_SECTION_HEADER) * NtHeaders.FileHeader.NumberOfSections;
+
+    if (!ReadFile(hFile, SectionHeaders, (DWORD)SizeOfSectionHeaders, &bytesRead, NULL))
+	{
+		DebugOutput("VerifyHeaders: Error reading section headers of %ws", Path);
+		goto end;
+	}
+
+	SIZE_T Matching = pRtlCompareMemory((PVOID)SectionHeaders, pSectionHeaders, SizeOfSectionHeaders);
+
+    if (Matching == SizeOfSectionHeaders)
+	{
+#ifdef DEBUG_COMMENTS
+        DebugOutput("VerifyHeaders: PE header matches.\n");
+#endif
+		RetVal = 1;
+    }
+	else
+	{
+        DebugOutput("VerifyHeaders: PE header does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSectionHeaders);
+		RetVal = 0;
+    }
+
+end:
+	if (SectionHeaders)
+		free(SectionHeaders);
+    CloseHandle(hFile);
+
+    return RetVal;
+}
+
+//**************************************************************************************
 int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 //**************************************************************************************
 {
-	PIMAGE_DOS_HEADER pDosHeader;
+	PIMAGE_DOS_HEADER pDosHeader = NULL;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 	PBYTE CodeSectionBuffer = NULL;
+	IMAGE_DOS_HEADER DosHeader;
+	IMAGE_NT_HEADERS NtHeaders;
+	DWORD bytesRead;
 	PIMAGE_BASE_RELOCATION Relocations;
 	ULONG RelocationSize = 0, Size = 0;
 	DWORD_PTR Delta;
@@ -2306,8 +2451,6 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		return RetVal;
     }
 
-    IMAGE_DOS_HEADER DosHeader;
-    DWORD bytesRead;
     if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
@@ -2326,7 +2469,6 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 
 	SetFilePointer(hFile, DosHeader.e_lfanew, 0, FILE_BEGIN);
 
-    IMAGE_NT_HEADERS NtHeaders;
     if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
