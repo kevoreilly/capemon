@@ -188,7 +188,7 @@ struct dll_range {
 	ULONG_PTR start;
 	ULONG_PTR end;
 };
-#define MAX_DLLS 100
+#define MAX_DLLS 500
 
 DWORD get_pid_by_tid(DWORD tid);
 
