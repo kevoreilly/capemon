@@ -221,8 +221,6 @@ int called_by_hook(void)
 	return __called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer);
 }
 
-BOOL ModuleDumped;
-
 void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 {
 	unsigned int i;
@@ -257,20 +255,17 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 	for (i = 0; i < ARRAYSIZE(g_config.dump_on_apinames); i++) {
 		if (!g_config.dump_on_apinames[i])
 			break;
-		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
+		if (!stricmp(h->funcname, g_config.dump_on_apinames[i])) {
 			DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.dump_on_apinames[i], GetCurrentThreadId(), main_caller_retaddr);
 			if (main_caller_retaddr) {
 				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
 					if (g_config.dump_on_api_type)
 						CapeMetaData->DumpType = g_config.dump_on_api_type;
-					if (DumpRegion(AllocationBase)) {
-						ModuleDumped = TRUE;
+					if (DumpRegion(AllocationBase))
 						DebugOutput("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-					}
-					else {
+					else
 						DebugOutput("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-					}
 				}
 				else
 					DebugOutput("Dump-on-API: Failed to obtain current module base address.\n");
