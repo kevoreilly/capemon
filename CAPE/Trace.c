@@ -191,6 +191,13 @@ SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
 
 void StringCheck(PVOID PossibleString)
 {
+	PCHAR ExportName = ScyllaGetExportNameByAddress(PossibleString, NULL);
+	if (ExportName)
+	{
+		DebuggerOutput(" %s ", ExportName);
+		return;
+	}
+
 	char OutputBuffer[MAX_PATH] = "";
 	WCHAR OutputBufferW[MAX_PATH] = L"";
 
