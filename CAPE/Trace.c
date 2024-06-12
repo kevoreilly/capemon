@@ -2107,13 +2107,13 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	BreakpointsHit = TRUE;
 
-	if (StepOverRegister && pBreakpointInfo->Register == StepOverRegister)
+	if (StepOverRegister != -1 && pBreakpointInfo->Register == StepOverRegister)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("BreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
 #endif
 		ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
-		StepOverRegister = 0;
+		StepOverRegister = -1;
 	}
 	else for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
 	{
