@@ -192,6 +192,13 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Exception logging disabled.\n");
 		}
+		else if (!stricmp(key, "log-vexcept")) {
+			g_config.log_vexcept = atoi(value);
+			if (g_config.log_vexcept)
+				DebugOutput("Vectored Exception logging enabled.\n");
+			else
+				DebugOutput("Vectored Exception logging disabled.\n");
+		}
 		else if (!stricmp(key, "log-breakpoints") || !stricmp(key, "log-bps")) {
 			g_config.log_breakpoints = value[0] == '1';
 			if (g_config.log_breakpoints)

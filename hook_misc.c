@@ -38,6 +38,10 @@ extern int path_is_system(const wchar_t *path_w);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 
+extern BOOL TraceRunning;
+
+extern BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
+
 LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 BOOL PlugXConfigDumped, CompressedPE;
 DWORD ExportAddress;
@@ -112,12 +116,34 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 
 PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 
-LONG WINAPI VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
+LONG WINAPI New_VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
+	LONG ret = 0;
 	if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size))
 		return EXCEPTION_CONTINUE_SEARCH;
 	else
-		return SampleVectoredHandler(ExceptionInfo);
+	{
+#ifdef _WIN64
+		PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+		PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+		ret = SampleVectoredHandler(ExceptionInfo);
+#ifdef _WIN64
+		PVOID NewCIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+		PVOID NewCIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+		if (ret == EXCEPTION_CONTINUE_EXECUTION) {
+			if (g_config.log_vexcept && NewCIP != CIP)
+				LOQ_void("system", "pppipppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "NumberParameters", ExceptionInfo->ExceptionRecord->NumberParameters, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1], "PreviousIP", CIP, "NewIP", NewCIP);
+			else if (g_config.log_vexcept)
+				LOQ_void("system", "pppipp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "NumberParameters", ExceptionInfo->ExceptionRecord->NumberParameters, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+			if (TraceRunning)
+				SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
+		}
+		return ret;
+	}
 }
 
 HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
@@ -128,7 +154,7 @@ HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
 
 	if (!SampleVectoredHandler) {
 		SampleVectoredHandler = Handler;
-		ret = Old_RtlAddVectoredExceptionHandler(First, VectoredExceptionFilter);
+		ret = Old_RtlAddVectoredExceptionHandler(First, New_VectoredExceptionFilter);
 	}
 	else
 		ret = Old_RtlAddVectoredExceptionHandler(First, Handler);

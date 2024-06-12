@@ -133,6 +133,8 @@ struct _g_config {
 
 	// exception logging (RtlDispatchException hook)
 	int log_exceptions;
+	// vectored exception handler hook
+	int log_vexcept;
 
 	// behavioural payload extraction options
 	int unpacker;
