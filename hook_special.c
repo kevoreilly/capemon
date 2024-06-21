@@ -71,6 +71,7 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 				set_hooks();
 				notify_successful_load();
 			}
+			ret = 0;
 		}
 		if (g_config.interactive) {
 			// explorer injected by malware - switch to 'normal' mode
@@ -80,9 +81,8 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 				set_hooks();
 				notify_successful_load();
 			}
+			ret = 0;
 		}
-		// Don't log attempts to load monitor twice
-		ret = 0;
 	}
 	else if (!g_config.tlsdump && !called_by_hook()) {
 		if (g_config.file_of_interest && g_config.suspend_logging) {
