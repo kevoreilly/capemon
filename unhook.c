@@ -24,7 +24,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include <Sddl.h>
+#include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
+#include "CAPE\Unpacker.h"
 
 #define UNHOOK_MAXCOUNT 2048
 #define UNHOOK_BUFSIZE 32
@@ -33,7 +36,6 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
 extern int DoProcessDump();
 extern BOOL ProcessDumped;
-extern void ClearAllBreakpoints();
 extern void DebuggerShutdown(), DumpStrings();
 extern HANDLE DebuggerLog, TlsLog;
 
@@ -278,6 +280,14 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	}
 	else
 		DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
+
+	if (CurrentRegion) {
+		DebugOutput("Terminate Event: Current region 0x%p\n", CurrentRegion);
+		ProcessTrackedRegion(CurrentRegion);
+		CurrentRegion = NULL;
+	}
+	else
+		DebugOutput("Terminate Event: Current region empty\n");
 
 	file_handle_terminate();
 

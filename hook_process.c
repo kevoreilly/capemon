@@ -617,6 +617,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 		DoProcessDump();
 	}
 
+	if (CurrentRegion) {
+		ProcessTrackedRegion(CurrentRegion);
+		CurrentRegion = NULL;
+	}
+
 	set_lasterrors(&lasterror);
 	ret = Old_NtTerminateProcess(ProcessHandle, ExitStatus);
 	return ret;

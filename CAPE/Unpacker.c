@@ -55,7 +55,6 @@ extern int DumpMemory(PVOID Buffer, SIZE_T Size);
 extern int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
 extern int ScanPageForNonZero(PVOID Address);
 
-static PTRACKEDREGION CurrentRegion;
 static DWORD CurrentThread;
 static DWORD_PTR LastEIP, CurrentEIP;
 //**************************************************************************************
