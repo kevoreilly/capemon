@@ -43,7 +43,7 @@ using namespace std;
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-extern "C" int DumpMemory(PVOID Buffer, SIZE_T Size);
+extern "C" int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 extern "C" BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
 HMODULE g_currentModule;
@@ -83,7 +83,7 @@ HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
     {
 		DebugOutput("AmsiDumper: Dumping AMSI buffer at 0x%p, size 0x%x\n", contentAddress, contentSize);
 		SetCapeMetaData(AMSIBUFFER, NULL, NULL, NULL);
-		DumpMemory(contentAddress, (SIZE_T)contentSize);
+		DumpMemoryRaw(contentAddress, (SIZE_T)contentSize);
     }
     else if (contentSize)
     {
@@ -115,7 +115,7 @@ HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
 
 			DebugOutput("AmsiDumper: Dumping AMSI stream at 0x%p, size 0x%x", streamCopy, contentSize);
 			SetCapeMetaData(AMSISTREAM, NULL, NULL, NULL);
-			DumpMemory(streamCopy, contentSize);
+			DumpMemoryRaw(streamCopy, contentSize);
 			free(streamCopy);
 		}
     }
