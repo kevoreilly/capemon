@@ -127,6 +127,7 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtContinueEx),
 	HOOK(kernel32, CreateThread),
 	HOOK(kernel32, CreateRemoteThread),
+	HOOK(kernel32, CreateRemoteThreadEx),
 	HOOK(kernel32, SwitchToThread),
 	//HOOK(kernel32, DisableThreadLibraryCalls),
 
@@ -659,6 +660,7 @@ hook_t min_hooks[] = {
 	HOOK(ntdll, NtSuspendThread),
 	HOOK(ntdll, RtlCreateUserThread),
 	HOOK(kernel32, CreateRemoteThread),
+	HOOK(kernel32, CreateRemoteThreadEx),
 	HOOK(user32, SendNotifyMessageA),
 	HOOK(user32, SendNotifyMessageW),
 	HOOK(user32, SetWindowLongA),
@@ -961,6 +963,7 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, NtContinue),
 	HOOK(kernel32, CreateThread),
 	HOOK(kernel32, CreateRemoteThread),
+	HOOK(kernel32, CreateRemoteThreadEx),
 	HOOK(kernel32, SwitchToThread),
 
 	// Misc Hooks

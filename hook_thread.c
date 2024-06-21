@@ -561,7 +561,54 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 		}
 	}
 
-	LOQ_nonnull("threading", "ppphI", "ProcessHandle", hProcess, "StartRoutine", lpStartAddress,
+	LOQ_nonnull("threading", "ppphIi", "ProcessHandle", hProcess, "StartRoutine", lpStartAddress,
+		"Parameter", lpParameter, "CreationFlags", dwCreationFlags,
+		"ThreadId", lpThreadId, "ProcessId", pid);
+
+	return ret;
+}
+
+HOOKDEF(HANDLE, WINAPI, CreateRemoteThreadEx,
+	__in		HANDLE hProcess,
+	__in		LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		SIZE_T dwStackSize,
+	__in		LPTHREAD_START_ROUTINE lpStartAddress,
+	__in		LPVOID lpParameter,
+	__in		DWORD dwCreationFlags,
+	__inout		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+	__out_opt	LPDWORD lpThreadId
+) {
+	DWORD pid;
+	HANDLE ret;
+	ENSURE_DWORD(lpThreadId);
+
+	pid = pid_from_process_handle(hProcess);
+	disable_sleep_skip();
+	ret = Old_CreateRemoteThreadEx(hProcess, lpThreadAttributes,
+		dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED,
+		lpAttributeList, lpThreadId);
+
+	if (ret != NULL) {
+		if (pid != GetCurrentProcessId()) {
+			CreateRemoteThreadHandler(pid);
+			ProcessMessage(pid, 0);
+		}
+		else if (g_config.debugger) {
+#ifdef DEBUG_COMMENTS
+			DebugOutput("CreateRemoteThreadEx: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
+#endif
+			InitNewThreadBreakpoints(*lpThreadId);
+		}
+
+		if (!(dwCreationFlags & CREATE_SUSPENDED)) {
+			lasterror_t lasterror;
+			get_lasterrors(&lasterror);
+			ResumeThread(ret);
+			set_lasterrors(&lasterror);
+		}
+	}
+
+	LOQ_nonnull("threading", "ppphIi", "ProcessHandle", hProcess, "StartRoutine", lpStartAddress,
 		"Parameter", lpParameter, "CreationFlags", dwCreationFlags,
 		"ThreadId", lpThreadId, "ProcessId", pid);
 
