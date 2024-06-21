@@ -485,7 +485,7 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 
 		if (peFile->saveCompletePeToDisk(NULL))
 		{
-			DebugOutput("DumpPE: PE file in memory dumped successfully - dump size 0x%x.\n", peFile->dumpSize);
+			DebugOutput("DumpPE: PE file at 0x%p dumped successfully - dump size 0x%x.\n", Buffer, peFile->dumpSize);
 		}
 		else
 		{
