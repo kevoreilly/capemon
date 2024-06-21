@@ -838,7 +838,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && NtCurrentProcess() == ProcessHandle) {
+	if (NT_SUCCESS(ret) && NtCurrentProcess() == ProcessHandle) {
 		if (g_config.unpacker)
 			AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
 
@@ -863,7 +863,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemoryEx(ProcessHandle, BaseAddress, RegionSize, AllocationType, PageProtection, Parameters, ParameterCount);
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && NtCurrentProcess() == ProcessHandle) {
+	if (NT_SUCCESS(ret) && NtCurrentProcess() == ProcessHandle) {
 		if (g_config.unpacker)
 			AllocationHandler(*BaseAddress, *RegionSize, AllocationType, PageProtection);
 
@@ -1079,7 +1079,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		NewAccessProtection = OriginalNewAccessProtection;
 	}
 
-	if (NT_SUCCESS(ret) && BaseAddress && !called_by_hook() && NtCurrentProcess() == ProcessHandle)
+	if (NT_SUCCESS(ret) && BaseAddress && NtCurrentProcess() == ProcessHandle)
 	{
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
 		if (g_config.unpacker)
@@ -1167,7 +1167,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		flNewProtect = OriginalNewProtect;
 	}
 
-	if (NT_SUCCESS(ret) && !called_by_hook() && NtCurrentProcess() == hProcess)
+	if (NT_SUCCESS(ret) && NtCurrentProcess() == hProcess)
 	{
 		char ModulePath[MAX_PATH];
 		PVOID AllocationBase = GetAllocationBase(lpAddress);
@@ -1210,7 +1210,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
 	IN OUT  PSIZE_T RegionSize,
 	IN	  ULONG FreeType
 ) {
-	if (g_config.unpacker && !called_by_hook() && NtCurrentProcess() == ProcessHandle && RegionSize && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+	if (g_config.unpacker && NtCurrentProcess() == ProcessHandle && RegionSize && *RegionSize == 0 && (FreeType & MEM_RELEASE))
 		FreeHandler(*BaseAddress);
 
 	NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,

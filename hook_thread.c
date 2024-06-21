@@ -167,7 +167,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThread,
 		//if (called_by_hook() && pid == GetCurrentProcessId())
 		//	add_ignored_thread(tid);
 
-		if (g_config.debugger && !called_by_hook() && BreakpointsSet) {
+		if (g_config.debugger && BreakpointsSet) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("NtCreateThread: Initialising breakpoints for thread %d.\n", tid);
 #endif
@@ -231,7 +231,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, 0);
 		}
-		else if (g_config.debugger && !called_by_hook()) {
+		else if (g_config.debugger) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("NtCreateThreadEx: Initialising breakpoints for thread %d.\n", tid);
 #endif
@@ -405,7 +405,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		tid == g_logwatcher_thread_id || tid == g_procname_watcher_thread_id)) {
 		ret = 0;
 		*PreviousSuspendCount = 0;
-		LOQ_ntstatus("threading", "pLsi", "ThreadHandle", ThreadHandle,
+		LOQ_ntstatus("threading", "pIsi", "ThreadHandle", ThreadHandle,
 			"SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread",
 			"ProcessId", pid);
 	}
@@ -413,7 +413,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		if (pid != GetCurrentProcessId())
 			ProcessMessage(pid, 0);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
-		LOQ_ntstatus("threading", "pLii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
+		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
 	}
 	return ret;
@@ -434,7 +434,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	}
 
 	ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
-	LOQ_ntstatus("threading", "pIi", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ProcessId", pid);
+	LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	return ret;
 }
 
@@ -493,7 +493,7 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	ret = Old_CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
 
 	if (ret != NULL) {
-		if (g_config.debugger && !called_by_hook()) {
+		if (g_config.debugger) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("CreateThread: Initialising breakpoints for thread %d.\n", *lpThreadId);
 #endif
@@ -546,7 +546,7 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, 0);
 		}
-		else if (g_config.debugger && !called_by_hook()) {
+		else if (g_config.debugger) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("CreateRemoteThread: Initialising breakpoints for (local) thread %d.\n", *lpThreadId);
 #endif
@@ -598,7 +598,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, 0);
 		}
-		else if (g_config.debugger && !called_by_hook()) {
+		else if (g_config.debugger) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("RtlCreateUserThread: Initialising breakpoints for (local) thread %d.\n", tid);
 #endif
