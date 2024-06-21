@@ -1895,7 +1895,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			{
 				ClearSingleStepMode(ExceptionInfo->ContextRecord);
 #ifdef DEBUG_COMMENTS
-				DebugOutput("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+				DebugOutput("Trace: Set breakpoint on return address 0x%p (step-over register %d)\n", ReturnAddress, StepOverRegister);
 #endif
 				LastContext = *ExceptionInfo->ContextRecord;
 				ReturnAddress = NULL;
@@ -2034,7 +2034,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("Trace: Set breakpoint on return address 0x%p\n", ReturnAddress);
+			DebugOutput("Trace: Set breakpoint on return address 0x%p (step-over register %d)\n", ReturnAddress, StepOverRegister);
 #endif
 			LastContext = *ExceptionInfo->ContextRecord;
 			ClearSingleStepMode(ExceptionInfo->ContextRecord);
@@ -2110,7 +2110,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	if (StepOverRegister != -1 && pBreakpointInfo->Register == StepOverRegister)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("BreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
+		DebugOutput("\nBreakpointCallback: Clearing step-over register %d\n", StepOverRegister);
 #endif
 		ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
 		StepOverRegister = -1;
@@ -2661,6 +2661,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 	InstructionCount = 0;
 	StopTrace = FALSE;
 	ModTimestamp = FALSE;
+	StepOverRegister = -1;
 	function_id = -1;
 	subfunction_id = -1;
 
