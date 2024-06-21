@@ -19,8 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "hooking.h"
 #include "hooks.h"
-#include "hook_sleep.h"
-#include "pipe.h"
 
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -57,31 +55,90 @@ void disable_tail_call_optimization(void)
 
 hook_t full_hooks[] = {
 
-	//
-	// Special Hooks
-	//
-	// NOTE: due to the fact that the "special" hooks don't use a hook count
-	// (whereas the "normal" hooks, those with allow_hook_recursion set to
-	// zero, do) we have to hook the "special" hooks first. Otherwise the
-	// execution flow will end up in an infinite loop, because of hook count
-	// and whatnot.
-	//
-	// In other words, do *NOT* place "special" hooks behind "normal" hooks.
-	//
-
+	// Process Hooks
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+	HOOK(ntdll, NtAllocateVirtualMemory),
+	HOOK(ntdll, NtAllocateVirtualMemoryEx),
+	HOOK(ntdll, NtReadVirtualMemory),
+	HOOK(kernel32, ReadProcessMemory),
+	HOOK(ntdll, NtWriteVirtualMemory),
+	HOOK(kernel32, WriteProcessMemory),
+	HOOK(ntdll, NtWow64WriteVirtualMemory64),
+	HOOK(ntdll, NtWow64ReadVirtualMemory64),
+	HOOK(ntdll, NtProtectVirtualMemory),
+	HOOK(kernel32, VirtualProtectEx),
+	HOOK(ntdll, NtFreeVirtualMemory),
+	HOOK(ntdll, NtCreateProcess),
+	HOOK(ntdll, NtCreateProcessEx),
+	HOOK(ntdll, RtlCreateUserProcess),
+	HOOK(ntdll, NtOpenProcess),
+	HOOK(ntdll, NtTerminateProcess),
+	HOOK(ntdll, RtlReportSilentProcessExit),
+	HOOK(ntdll, NtResumeProcess),
+	HOOK(ntdll, NtCreateSection),
+	HOOK(ntdll, NtDuplicateObject),
+	HOOK(ntdll, NtMakeTemporaryObject),
+	HOOK(ntdll, NtMakePermanentObject),
+	HOOK(ntdll, NtOpenSection),
+	HOOK(ntdll, NtMapViewOfSection),
+	HOOK(ntdll, NtMapViewOfSectionEx),
+	HOOK(ntdll, NtUnmapViewOfSection),
+	HOOK(ntdll, NtUnmapViewOfSectionEx),
+	HOOK(ntdll, NtOpenProcessToken),
+	HOOK(ntdll, NtQueryInformationToken),
+	HOOK(kernel32, WaitForDebugEvent),
+	HOOK(ntdll, DbgUiWaitStateChange),
+	HOOK(advapi32, CreateProcessWithLogonW),
+	HOOK(advapi32, CreateProcessWithTokenW),
+	HOOK(kernel32, CreateToolhelp32Snapshot),
+	HOOK(kernel32, Process32FirstW),
+	HOOK(kernel32, Process32NextW),
+	HOOK(kernel32, Module32FirstW),
+	HOOK(kernel32, Module32NextW),
+	HOOK(kernel32, CreateProcessA),
+	HOOK(kernel32, CreateProcessW),
+	HOOK(kernel32, WinExec),
+	HOOK(kernel32, LoadLibraryExW),
+	//HOOK(kernel32, VirtualFreeEx),
+	// all variants of ShellExecute end up in ShellExecuteExW
+	HOOK(shell32, ShellExecuteExW),
+	HOOK(msvcrt, system),
+
+	// Thread Hooks
+	HOOK_SPECIAL(ntdll, NtCreateThread),
+	HOOK_SPECIAL(ntdll, NtCreateThreadEx),
+	HOOK(ntdll, NtTerminateThread),
+	HOOK(ntdll, NtQueueApcThread),
+	HOOK(ntdll, NtQueueApcThreadEx),
+	HOOK(ntdll, NtOpenThread),
+	HOOK(ntdll, NtGetContextThread),
+	HOOK(ntdll, RtlWow64GetThreadContext),
+	HOOK(ntdll, NtSetContextThread),
+	HOOK(ntdll, NtSuspendThread),
+	HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, RtlCreateUserThread),
+	HOOK(ntdll, NtSetInformationThread),
+	HOOK(ntdll, NtQueryInformationThread),
+	HOOK(ntdll, NtYieldExecution),
+	HOOK(ntdll, NtContinue),
+	HOOK(ntdll, NtContinueEx),
+	HOOK(kernel32, CreateThread),
+	HOOK(kernel32, CreateRemoteThread),
+	HOOK(kernel32, SwitchToThread),
+	//HOOK(kernel32, DisableThreadLibraryCalls),
+
+	// Script hooks
 	HOOK_SPECIAL(clrjit, compileMethod),
 	HOOK_SPECIAL(urlmon, IsValidURL),
-	//HOOK(kernel32, lstrcpynA),
-	//HOOK(kernel32, lstrcmpiA),
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
 	HOOK_NOTAIL(jscript, JsEval, 5),
 	HOOK_SPECIAL(jscript9, JsParseScript),
 	HOOK_NOTAIL(jscript9, JsRunScript, 4),
 	HOOK_SPECIAL(mshtml, CDocument_write),
+
 	// COM object creation hook
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
@@ -91,12 +148,6 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
-	// lowest variant of MoveFile()
-	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
-	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
-	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
-	HOOK(kernel32, UpdateProcThreadAttribute),
-	HOOK(kernel32, GetWriteWatch),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
@@ -143,20 +194,23 @@ hook_t full_hooks[] = {
 	HOOK(version, GetFileVersionInfoW),
 	HOOK(version, GetFileVersionInfoSizeW),
 	HOOK(kernel32, FindFirstChangeNotificationW),
+	// lowest variant of MoveFile()
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressW, 5),
+	HOOK_NOTAIL_ALT(kernelbase, MoveFileWithProgressTransactedW, 6),
+	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
+	HOOK(kernel32, UpdateProcThreadAttribute),
+	HOOK(kernel32, GetWriteWatch),
 
 	// Registry Hooks
-	// Note: Most, if not all, of the Registry API go natively from both the
-	// A as well as the W versions. In other words, we have to hook all the
-	// ascii *and* unicode APIs of those functions.
+	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as 
+	// the 'W' versions. So we have to hook all the ascii *and* unicode APIs of those functions.
 	HOOK(advapi32, RegOpenKeyExA),
 	HOOK(advapi32, RegOpenKeyExW),
 	HOOK(advapi32, RegCreateKeyExA),
 	HOOK(advapi32, RegCreateKeyExW),
-	// Note that RegDeleteKeyEx() is available for 64bit XP/Vista+
 	HOOK(advapi32, RegDeleteKeyA),
 	HOOK(advapi32, RegDeleteKeyW),
-	// RegEnumKeyA() calls RegEnumKeyExA(), but RegEnumKeyW() does *not*
-	// call RegEnumKeyExW()
+	// RegEnumKeyA() calls RegEnumKeyExA(), but RegEnumKeyW() does *not* call RegEnumKeyExW()
 	HOOK(advapi32, RegEnumKeyW),
 	HOOK(advapi32, RegEnumKeyExA),
 	HOOK(advapi32, RegEnumKeyExW),
@@ -256,77 +310,6 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
 	HOOK(ntdll, NtQueryInformationAtom),
-
-	// Process Hooks
-	HOOK(ntdll, NtAllocateVirtualMemory),
-	HOOK(ntdll, NtAllocateVirtualMemoryEx),
-	HOOK(ntdll, NtReadVirtualMemory),
-	HOOK(kernel32, ReadProcessMemory),
-	HOOK(ntdll, NtWriteVirtualMemory),
-	HOOK(kernel32, WriteProcessMemory),
-	HOOK(ntdll, NtWow64WriteVirtualMemory64),
-	HOOK(ntdll, NtWow64ReadVirtualMemory64),
-	HOOK(ntdll, NtProtectVirtualMemory),
-	HOOK(kernel32, VirtualProtectEx),
-	HOOK(ntdll, NtFreeVirtualMemory),
-	HOOK(ntdll, NtCreateProcess),
-	HOOK(ntdll, NtCreateProcessEx),
-	HOOK(ntdll, RtlCreateUserProcess),
-	HOOK(ntdll, NtOpenProcess),
-	HOOK(ntdll, NtTerminateProcess),
-	HOOK(ntdll, RtlReportSilentProcessExit),
-	HOOK(ntdll, NtResumeProcess),
-	HOOK(ntdll, NtCreateSection),
-	HOOK(ntdll, NtDuplicateObject),
-	HOOK(ntdll, NtMakeTemporaryObject),
-	HOOK(ntdll, NtMakePermanentObject),
-	HOOK(ntdll, NtOpenSection),
-	HOOK(ntdll, NtMapViewOfSection),
-	HOOK(ntdll, NtMapViewOfSectionEx),
-	HOOK(ntdll, NtUnmapViewOfSection),
-	HOOK(ntdll, NtUnmapViewOfSectionEx),
-	HOOK(ntdll, NtOpenProcessToken),
-	HOOK(ntdll, NtQueryInformationToken),
-	HOOK(kernel32, WaitForDebugEvent),
-	HOOK(ntdll, DbgUiWaitStateChange),
-	HOOK(advapi32, CreateProcessWithLogonW),
-	HOOK(advapi32, CreateProcessWithTokenW),
-	HOOK(kernel32, CreateToolhelp32Snapshot),
-	HOOK(kernel32, Process32FirstW),
-	HOOK(kernel32, Process32NextW),
-	HOOK(kernel32, Module32FirstW),
-	HOOK(kernel32, Module32NextW),
-	HOOK(kernel32, CreateProcessA),
-	HOOK(kernel32, CreateProcessW),
-	HOOK(kernel32, WinExec),
-	HOOK(kernel32, LoadLibraryExW),
-	//HOOK(kernel32, VirtualFreeEx),
-	// all variants of ShellExecute end up in ShellExecuteExW
-	HOOK(shell32, ShellExecuteExW),
-	HOOK(msvcrt, system),
-
-	// Thread Hooks
-	HOOK(ntdll, NtCreateThread),
-	HOOK(ntdll, NtCreateThreadEx),
-	HOOK(ntdll, NtTerminateThread),
-	HOOK(ntdll, NtQueueApcThread),
-	HOOK(ntdll, NtQueueApcThreadEx),
-	HOOK(ntdll, NtOpenThread),
-	HOOK(ntdll, NtGetContextThread),
-	HOOK(ntdll, RtlWow64GetThreadContext),
-	HOOK(ntdll, NtSetContextThread),
-	HOOK(ntdll, NtSuspendThread),
-	HOOK(ntdll, NtResumeThread),
-	HOOK(ntdll, RtlCreateUserThread),
-	HOOK(ntdll, NtSetInformationThread),
-	HOOK(ntdll, NtQueryInformationThread),
-	HOOK(ntdll, NtYieldExecution),
-	HOOK(ntdll, NtContinue),
-	HOOK(ntdll, NtContinueEx),
-	HOOK(kernel32, CreateThread),
-	HOOK(kernel32, CreateRemoteThread),
-	HOOK(kernel32, SwitchToThread),
-	//HOOK(kernel32, DisableThreadLibraryCalls),
 
 	// Misc Hooks
 #ifndef _WIN64
@@ -1360,7 +1343,7 @@ BOOL set_hooks_dll(const wchar_t *library)
 		if (!wcsicmp((hooks+i)->library, library)) {
 			ret = TRUE;
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
-				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
+				DebugOutput("set_hooks_dll: Unable to hook %s", (hooks+i)->funcname);
 		}
 	}
 	return ret;
@@ -1376,7 +1359,7 @@ void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t
 			hook->addr = NULL;
 			hook->is_hooked = 0;
 			if (hook_api(hook, g_config.hook_type) < 0)
-				pipe("WARNING:Unable to hook %z", (hooks+i)->funcname);
+				DebugOutput("set_hooks_by_export_directory: Unable to hook %s", (hooks+i)->funcname);
 		}
 	}
 }
