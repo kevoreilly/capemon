@@ -246,21 +246,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		}
 
 		if (module_name)
-			LOQ_ntstatus("threading", "Ppphiis", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
-				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
+			LOQ_ntstatus("threading", "Pppphiis", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "ThreadId", tid,
 				"ProcessId", pid, "Module", module_name);
 		else
-			LOQ_ntstatus("threading", "Ppphii", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
-				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "ThreadId", tid,
+			LOQ_ntstatus("threading", "Pppphii", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "ThreadId", tid,
 				"ProcessId", pid);
 	}
 	else {
 		if (module_name)
-			LOQ_ntstatus("threading", "Ppphs", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
-				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags, "Module", module_name);
+			LOQ_ntstatus("threading", "Pppphs", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "Module", module_name);
 		else
-			LOQ_ntstatus("threading", "Ppph", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
-				"StartAddress", lpStartAddress, "CreateFlags", CreateFlags);
+			LOQ_ntstatus("threading", "Pppph", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags);
 	}
 
 	if (module_name)
