@@ -175,15 +175,12 @@ VOID CALLBACK New_DllLoadNotification(
 				SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
 			}
 		}
-		//else if (path_is_shared(our_process_path_w, library.Buffer)) {
-		//	DebugOutput("Local DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
-		//	if (g_config.debugger)
-		//		SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
-		//}
 		else {
 			SIZE_T numconverted, size;
 			WCHAR exportdirectory_w[MAX_PATH];
 			char* exportdirectory;
+
+			add_dll_range((ULONG_PTR)NotificationData->Loaded.DllBase, (ULONG_PTR)NotificationData->Loaded.DllBase + GetAllocationSize(NotificationData->Loaded.DllBase));
 
 			if (!set_hooks_dll(dllname)) {
 				exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
@@ -199,16 +196,6 @@ VOID CALLBACK New_DllLoadNotification(
 				}
 			}
 
-			//if (g_config.debugger) {
-			//	if (g_config.break_on_apiname && g_config.break_on_modname) {
-			//		dllname = (char*)malloc(MAX_PATH);
-			//		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)dllname_w, (int)wcslen(dllname_w)+1, dllname, MAX_PATH, NULL, NULL);
-			//		if (!_stricmp(dllname, g_config.break_on_modname)) {
-			//			BreakpointsHit = FALSE;
-			//			SetInitialBreakpoints(NotificationData->Loaded.DllBase);
-			//		}
-			//	}
-			//}
 			DebugOutput("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
 		}
 	}
