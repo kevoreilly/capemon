@@ -291,6 +291,10 @@ BOOL InitNewThreadBreakpoints(DWORD ThreadId)
 			DebugOutput("InitNewThreadBreakpoints error: failed to set breakpoint %d for new thread %d.\n", Register, ThreadId);
 			return FALSE;
 		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("InitNewThreadBreakpoints: Breakpoint %d set at 0x%p for thread %d.\n", Register, MainThreadBreakpointList->BreakpointInfo[Register].Address, ThreadId);
+#endif
 
 		if (!NewThreadBreakpoints->BreakpointInfo[Register].Address)
 			DebugOutput("InitNewThreadBreakpoints error: problem detected setting breakpoint %d for new thread %d.\n", Register, ThreadId);
