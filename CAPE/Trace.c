@@ -330,21 +330,21 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 			Register = (PVOID)Context->Rbp;
         else if (!stricmp(RegString, "rip"))
 			Register = (PVOID)Context->Rip;
-        else if (!stricmp(RegString, "r8"))
+        else if (!strnicmp(RegString, "r8", 2))
 			Register = (PVOID)Context->R8;
-        else if (!stricmp(RegString, "r9"))
+        else if (!strnicmp(RegString, "r9", 2))
 			Register = (PVOID)Context->R9;
-        else if (!stricmp(RegString, "r10"))
+        else if (!strnicmp(RegString, "r10", 3))
 			Register = (PVOID)Context->R10;
-        else if (!stricmp(RegString, "r11"))
+        else if (!strnicmp(RegString, "r11", 3))
 			Register = (PVOID)Context->R11;
-        else if (!stricmp(RegString, "r12"))
+        else if (!strnicmp(RegString, "r12", 3))
 			Register = (PVOID)Context->R13;
-        else if (!stricmp(RegString, "r13"))
+        else if (!strnicmp(RegString, "r13", 3))
 			Register = (PVOID)Context->R13;
-        else if (!stricmp(RegString, "r14"))
+        else if (!strnicmp(RegString, "r14", 3))
 			Register = (PVOID)Context->R14;
-        else if (!stricmp(RegString, "r15"))
+        else if (!strnicmp(RegString, "r15", 3))
 			Register = (PVOID)Context->R15;
 #else
         if (!stricmp(RegString, "eax"))
@@ -395,6 +395,97 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
 	}
 	else
 		return (PVOID)((PUCHAR)Register + delta);
+}
+
+void SetRegister(PCONTEXT Context, char* RegString, PVOID Target)
+{
+	if (!Context || !RegString)
+        return;
+
+	__try
+    {
+#ifdef _WIN64
+        if (!stricmp(RegString, "eax"))
+			(PVOID)Context->Rax = Target;
+        else if (!stricmp(RegString, "ebx"))
+			(PVOID)Context->Rbx = Target;
+        else if (!stricmp(RegString, "ecx"))
+			(PVOID)Context->Rcx = Target;
+        else if (!stricmp(RegString, "edx"))
+			(PVOID)Context->Rdx = Target;
+        else if (!stricmp(RegString, "esi"))
+			(PVOID)Context->Rsi = Target;
+        else if (!stricmp(RegString, "edi"))
+			(PVOID)Context->Rdi = Target;
+        else if (!stricmp(RegString, "esp"))
+			(PVOID)Context->Rsp = Target;
+        else if (!stricmp(RegString, "ebp"))
+			(PVOID)Context->Rbp = Target;
+        else if (!stricmp(RegString, "eip"))
+			(PVOID)Context->Rip = Target;
+        else if (!stricmp(RegString, "rax"))
+			(PVOID)Context->Rax = Target;
+        else if (!stricmp(RegString, "rbx"))
+			(PVOID)Context->Rbx = Target;
+        else if (!stricmp(RegString, "rcx"))
+			(PVOID)Context->Rcx = Target;
+        else if (!stricmp(RegString, "rdx"))
+			(PVOID)Context->Rdx = Target;
+        else if (!stricmp(RegString, "rsi"))
+			(PVOID)Context->Rsi = Target;
+        else if (!stricmp(RegString, "rdi"))
+			(PVOID)Context->Rdi = Target;
+        else if (!stricmp(RegString, "rsp"))
+			(PVOID)Context->Rsp = Target;
+        else if (!stricmp(RegString, "rbp"))
+			(PVOID)Context->Rbp = Target;
+        else if (!stricmp(RegString, "rip"))
+			(PVOID)Context->Rip = Target;
+        else if (!strnicmp(RegString, "r8", 2))
+			(PVOID)Context->R8 = Target;
+        else if (!strnicmp(RegString, "r9", 2))
+			(PVOID)Context->R9 = Target;
+        else if (!strnicmp(RegString, "r10", 3))
+			(PVOID)Context->R10 = Target;
+        else if (!strnicmp(RegString, "r11", 3))
+			(PVOID)Context->R11 = Target;
+        else if (!strnicmp(RegString, "r12", 3))
+			(PVOID)Context->R13 = Target;
+        else if (!strnicmp(RegString, "r13", 3))
+			(PVOID)Context->R13 = Target;
+        else if (!strnicmp(RegString, "r14", 3))
+			(PVOID)Context->R14 = Target;
+        else if (!strnicmp(RegString, "r15", 3))
+			(PVOID)Context->R15 = Target;
+#else
+        if (!stricmp(RegString, "eax"))
+			(PVOID)Context->Eax = Target;
+        else if (!stricmp(RegString, "ebx"))
+			(PVOID)Context->Ebx = Target;
+        else if (!stricmp(RegString, "ecx"))
+			(PVOID)Context->Ecx = Target;
+        else if (!stricmp(RegString, "edx"))
+			(PVOID)Context->Edx = Target;
+        else if (!stricmp(RegString, "esi"))
+			(PVOID)Context->Esi = Target;
+        else if (!stricmp(RegString, "edi"))
+			(PVOID)Context->Edi = Target;
+        else if (!stricmp(RegString, "esp"))
+			(PVOID)Context->Esp = Target;
+        else if (!stricmp(RegString, "ebp"))
+			(PVOID)Context->Ebp = Target;
+        else if (!stricmp(RegString, "eip"))
+			(PVOID)Context->Eip = Target;
+#endif
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        DebuggerOutput("ActionDispatcher: Unable to set register %s.\n", RegString);
+		return;
+    }
+
+	DebuggerOutput("ActionDispatcher: Register %s set to 0x%p.\n", RegString, Target);
+	return;
 }
 
 PVOID GetPointer(char* PointerString)
@@ -660,16 +751,19 @@ OutputRegisterChanges(PCONTEXT Context)
 
 void SetOperand(PCONTEXT Context, PCHAR Operand, PVOID Target)
 {
-	if (*Operand != '[')
-		return;
-	PVOID *Pointer = GetRegister(Context, Operand+1);
-	if (Pointer)
+	if (*Operand == '[')
 	{
-		*Pointer = (PVOID)Target;
-		DebuggerOutput("ActionDispatcher: Setting %s -> [0x%p] to 0x%x.\n", Operand, Pointer, Target);
+		PVOID *Pointer = GetRegister(Context, Operand+1);
+		if (Pointer)
+		{
+			*Pointer = (PVOID)Target;
+			DebuggerOutput("ActionDispatcher: Setting %s -> [0x%p] to 0x%x.\n", Operand, Pointer, Target);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Unable to set %s.\n", Operand);
 	}
 	else
-		DebuggerOutput("ActionDispatcher: Unable to set %s.\n", Operand);
+		SetRegister(Context, Operand, Target);
 }
 
 void SkipInstruction(PCONTEXT Context)
