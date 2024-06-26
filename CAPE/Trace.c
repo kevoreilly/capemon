@@ -201,6 +201,15 @@ void StringCheck(PVOID PossibleString)
 	char OutputBuffer[MAX_PATH] = "";
 	WCHAR OutputBufferW[MAX_PATH] = L"";
 
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), PossibleString, OutputBuffer, MAX_PATH);
+	if (MappedModule)
+	{
+		char* ModuleName = strrchr(OutputBuffer, '\\') + 1;
+		if (ModuleName)
+			DebuggerOutput(" %.64s", ModuleName);
+		return;
+	}
+
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
 	if (Size > 1)
 	{
