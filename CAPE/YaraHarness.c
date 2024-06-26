@@ -96,6 +96,12 @@ BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 	else
 		ValueLength = (unsigned int)strlen(Value);
 
+	if (*(Value+ValueLength-1) == '*')
+	{
+		ValueLength--;
+		delta += Match->match_length - 1;
+	}
+
 	if (strncmp(Value, Identifier, ValueLength))
 		return FALSE;
 
