@@ -56,7 +56,7 @@ extern PVOID _KiUserExceptionDispatcher;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble, SyscallBreakpointSet;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
@@ -201,15 +201,6 @@ void StringCheck(PVOID PossibleString)
 	char OutputBuffer[MAX_PATH] = "";
 	WCHAR OutputBufferW[MAX_PATH] = L"";
 
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), PossibleString, OutputBuffer, MAX_PATH);
-	if (MappedModule)
-	{
-		char* ModuleName = strrchr(OutputBuffer, '\\') + 1;
-		if (ModuleName)
-			DebuggerOutput(" %.64s", ModuleName);
-		return;
-	}
-
 	SIZE_T Size = StrTest(PossibleString, OutputBuffer, MAX_PATH);
 	if (Size > 1)
 	{
@@ -238,6 +229,14 @@ void StringCheck(PVOID PossibleString)
 			else
 				DebuggerOutput(" L\"%.64ws\"", (PWCHAR)OutputBufferW);
 		}
+	}
+
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), PossibleString, OutputBuffer, MAX_PATH);
+	if (MappedModule)
+	{
+		char* ModuleName = strrchr(OutputBuffer, '\\') + 1;
+		if (ModuleName)
+			DebuggerOutput(" %.64s", ModuleName);
 	}
 }
 
@@ -2089,7 +2088,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				DebuggerOutput("\n");
 			if (FunctionName)
 			{
-				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p, Stack 0x%p-0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
 
 				ForceStepOver = DoStepOver(FunctionName);
 
@@ -2104,7 +2103,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else if (!g_config.branch_trace)
 			{
-				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, ImageBase 0x%p, Stack 0x%p-0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
 				PreviousModuleName = ModuleName;
 				FunctionName = NULL;
 				ModuleName = NULL;
@@ -2320,7 +2319,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 				DebuggerOutput("\n");
 			if (FunctionName)
 			{
-				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, ImageBase 0x%p, Stack 0x%p-0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
 
 				ForceStepOver = DoStepOver(FunctionName);
 
@@ -2333,7 +2332,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 				}
 			}
 			else
-				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, ImageBase 0x%p, Stack 0x%p-0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
 			if (PreviousModuleName)
 				free (PreviousModuleName);
 			PreviousModuleName = ModuleName;
@@ -2425,7 +2424,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+			DebugOutput("BreakpointCallback: Set breakpoint on return address 0x%p (step-over register %d)\n", ReturnAddress, StepOverRegister);
 #endif
 			ReturnAddress = NULL;
 		}
@@ -2926,17 +2925,21 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		}
 	}
 
-	BOOL SyscallBreakpointSet = FALSE;
-
 	for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++)
 	{
 		if (g_config.sysbp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp[i]);
 			SyscallBreakpointSet = SetSyscallBreakpoint(BreakpointVA);
-#ifdef DEBUG_COMMENTS
-			DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
-#endif
+			if (SyscallBreakpointSet)
+			{
+//#ifdef DEBUG_COMMENTS
+				DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
+//#endif
+			}
+			else
+				DebugOutput("SetInitialBreakpoints: Failed to set syscall breakpoint %d at 0x%p", i, BreakpointVA);
+			g_config.sysbp[i] = 0;
 		}
 	}
 
