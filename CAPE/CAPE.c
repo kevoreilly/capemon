@@ -1155,9 +1155,6 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	BOOL TraceIsRunning = TraceRunning;
 	TraceRunning = FALSE;
 
-	if (g_config.yarascan)
-		YaraScan(Address, Size);
-
 	wchar_t ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), Address, ModulePath, MAX_PATH);
 
@@ -1192,6 +1189,9 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
+
+	if (g_config.yarascan)
+		YaraScan(Address, Size);
 }
 
 //**************************************************************************************
