@@ -43,12 +43,14 @@ extern SYSTEM_INFO SystemInfo;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
 extern BOOLEAN is_address_in_ntdll(ULONG_PTR address);
+extern void add_force_hook_thread_func(const char* function);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
 extern LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
 extern BOOL UnpackerGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern PTRACKEDREGION GetTrackedRegion(PVOID Address);
 extern PVOID GetPageAddress(PVOID Address);
 extern PCHAR GetNameBySsn(unsigned int Number);
+extern void log_direct_syscall(const char *function, PVOID addr);
 extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL WoW64fix(void);
 extern BOOL WoW64PatchBreakpoint(unsigned int Register);
@@ -59,7 +61,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POIN
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
-extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue;
+extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue, SyscallBreakpointSet;
 extern PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 extern PVOID BreakOnNtContinueCallback;
 extern int StepOverRegister;
@@ -490,47 +492,50 @@ BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 #ifdef _WIN64
 	unsigned int SSN = (unsigned int)(DWORD_PTR)ExceptionInfo->ContextRecord->Rax;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 #else
 	unsigned int SSN = (unsigned int)(DWORD_PTR)ExceptionInfo->ContextRecord->Eax;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 #endif
 
-	PVOID Function = GetProcAddress(GetModuleHandle("ntdll"), GetNameBySsn(SSN));
+	PCHAR FunctionName = GetNameBySsn(SSN);
+	PVOID Function = GetProcAddress(GetModuleHandle("ntdll"), FunctionName);
 
-	if (!Function)
+	if (!FunctionName || !Function)
 	{
-#ifdef DEBUG_COMMENTS
 		DebugOutput("SyscallBreakpointHandler: Unable to find function for SSN 0x%x\n", SSN);
-#endif
 		return FALSE;
 	}
 #ifdef DEBUG_COMMENTS
 	else
-		DebugOutput("SyscallBreakpointHandler: Calling SSN 0x%x -> 0x%p: %s\n", SSN, Function, GetNameBySsn(SSN));
+		DebugOutput("SyscallBreakpointHandler: Calling SSN 0x%x -> 0x%p: %s\n", SSN, Function, FunctionName);
 #endif
 
-	unsigned int* pLength = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
+	log_direct_syscall(FunctionName, (PVOID)CIP);
 
-	if (!pLength)
-	{
-		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction length for 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
-		return FALSE;
-	}
-
-#ifdef _WIN64
 	if (g_config.sysbpmode == 1)
 	{
+		unsigned int* pLength = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
+
+		if (!pLength)
+		{
+			DebugOutput("SyscallBreakpointHandler: Unable to retrieve instruction length for 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+			return FALSE;
+		}
+
+#ifdef _WIN64
 		ExceptionInfo->ContextRecord->Rsp -= sizeof(QWORD);
 		*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + *pLength);
 	}
 	ExceptionInfo->ContextRecord->Rip = (DWORD_PTR)Function;
 #else
-	if (g_config.sysbpmode == 1)
-	{
 		ExceptionInfo->ContextRecord->Esp -= sizeof(DWORD);
 		*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + *pLength);
 	}
 	ExceptionInfo->ContextRecord->Eip = (DWORD_PTR)Function;
 #endif
+
+	add_force_hook_thread_func(FunctionName);
 
 	return TRUE;
 }
@@ -735,7 +740,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 
 		// Is it a 'syscall' breakpoint
-		if (lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
+		if (lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0) || (SyscallBreakpointSet && !g_config.sysbpmode))
 		{
 #ifdef DEBUG_COMMENTS
 			DebugOutput("CAPEExceptionFilter: 'syscall' breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
@@ -2606,6 +2611,10 @@ BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register)
 	pBreakpointInfo->Type		= 0;
 	pBreakpointInfo->HitCount	= 0;
 	pBreakpointInfo->Callback	= NULL;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ClearThreadBreakpoint: Clearing thead %d, register %d\n", ThreadId, Register);
+#endif
 
 	return TRUE;
 }

@@ -42,6 +42,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define HOOK_RATE_LIMIT 0x100
 
 static lookup_t g_hook_info;
+static lookup_t g_force_hook_threads;
 lookup_t g_caller_regions;
 
 extern BOOL inside_hook(LPVOID Address);
@@ -288,7 +289,27 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 	}
 }
 
-extern BOOLEAN is_ignored_thread(DWORD tid);
+void add_force_hook_thread_func(const char* function)
+{
+	DWORD tid = GetCurrentThreadId();
+	const char** funcname = lookup_get(&g_force_hook_threads, (unsigned int)tid, NULL);
+	if (!funcname)
+		funcname = lookup_add(&g_force_hook_threads, tid, sizeof(char*));
+	if (funcname)
+		*funcname = function;
+}
+
+BOOLEAN force_hook_thread_func(const char* hookname)
+{
+	DWORD tid = GetCurrentThreadId();
+	const char** funcname = lookup_get(&g_force_hook_threads, (unsigned int)tid, NULL);
+	if (funcname && !stricmp(hookname, *funcname)) {
+		lookup_del(&g_force_hook_threads, tid);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 static hook_info_t tmphookinfo;
 DWORD tmphookinfo_threadid;
 FILETIME ft;
@@ -321,7 +342,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 	if (g_config.debugger && hookinfo->disable_count > 0 && h->new_func == &New_RtlDispatchException)
 		return 1;
 
-	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
+	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || force_hook_thread_func(h->funcname) || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
 		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
 			if (h->hook_disabled)

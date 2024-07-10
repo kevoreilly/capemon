@@ -1159,6 +1159,14 @@ void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DW
 	}
 }
 
+void log_direct_syscall(const char *function, PVOID addr)
+{
+	loq(LOG_ID_SYSCALL, "__notification__", SYSCALL_NAME, 1, 0, "isp",
+		"ThreadIdentifier", GetCurrentThreadId(),
+		"Function", function,
+		"Address", addr);
+}
+
 void log_procname_anomaly(PUNICODE_STRING InitialName, PUNICODE_STRING InitialPath, PUNICODE_STRING CurrentName, PUNICODE_STRING CurrentPath)
 {
 	loq(LOG_ID_ANOMALY_PROCNAME, "__notification__", "__anomaly__", 1, 0, "isoooo",
