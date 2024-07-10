@@ -355,35 +355,30 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 
-	if (pid == GetCurrentProcessId() && g_config.debugger && Context && Context->ContextFlags & CONTEXT_CONTROL) {
-		CONTEXT CurrentContext;
-		CurrentContext.ContextFlags = CONTEXT_CONTROL;
-		ret = Old_NtGetContextThread(ThreadHandle, &CurrentContext);
-		if (NT_SUCCESS(ret)) {
-			PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(tid);
-			if (ThreadBreakpoints)
-			{
-				DebugOutput("NtSetContextThread hook: protecting breakpoints for thread %d.\n", tid);
-				ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
-			}
+	if (pid == GetCurrentProcessId() && g_config.debugger && Context) {
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(tid);
+		if (ThreadBreakpoints)
+		{
+			DebugOutput("NtSetContextThread: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+			ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
 		}
-		else {
-			SetLastError(pRtlNtStatusToDosError(ret));
-			ErrorOutput("NtSetContextThread: Failed to protect debugger breakpoints");
-		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("NtSetContextThread hook: No breakpoints to protect for thread %d.\n", tid);
+#endif
 	}
 
 	ret = Old_NtSetContextThread(ThreadHandle, Context);
 
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "ppp", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Rcx, "CurrentInstructionPointer", Context->Rip);
+		LOQ_ntstatus("threading", "pppp", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Rcx, "CurrentInstructionPointer", Context->Rip, "Flags", Context->ContextFlags);
 #else
-		LOQ_ntstatus("threading", "ppp", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Eax, "CurrentInstructionPointer", Context->Eip);
+		LOQ_ntstatus("threading", "pppp", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Eax, "CurrentInstructionPointer", Context->Eip, "Flags", Context->ContextFlags);
 #endif
 	else
 		LOQ_ntstatus("threading", "p", "ThreadHandle", ThreadHandle);
-	//if (g_config.injection)
+
 	SetThreadContextHandler(pid, Context);
 	if (pid != GetCurrentProcessId())
 		ProcessMessage(pid, 0);
