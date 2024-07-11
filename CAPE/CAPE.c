@@ -908,16 +908,15 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	if (Protect)
 		TrackedRegion->MemInfo.Protect = Protect;
 
+	TrackedRegion->Entropy = GetEntropy((PUCHAR)TrackedRegion->AllocationBase);
+
+	if (!TrackedRegion->Entropy)
+		DebugOutput("AddTrackedRegion: GetEntropy failed.");
+
 	// If the region is a PE image
 	TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
 	if (TrackedRegion->EntryPoint)
 	{
-		TrackedRegion->Entropy = GetPEEntropy((PUCHAR)TrackedRegion->AllocationBase);
-#ifdef DEBUG_COMMENTS
-		if (!TrackedRegion->Entropy)
-			DebugOutput("AddTrackedRegion: GetPEEntropy failed.");
-#endif
-
 		TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
 		if (TrackedRegion->MinPESize)
 			DebugOutput("AddTrackedRegion: Min PE size 0x%x", TrackedRegion->MinPESize);
@@ -1062,7 +1061,7 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 
 	EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
 	MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
-	Entropy = GetPEEntropy(TrackedRegion->AllocationBase);
+	Entropy = GetEntropy(TrackedRegion->AllocationBase);
 	double EntropyChange = fabs(TrackedRegion->Entropy - Entropy);
 
 #ifdef DEBUG_COMMENTS
@@ -1141,9 +1140,9 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->PagesDumped)
 	{
 		// Allow a big enough change in entropy to trigger another dump
-		if (TrackedRegion->EntryPoint && TrackedRegion->Entropy)
+		if (TrackedRegion->Entropy)
 		{
-			double Entropy = GetPEEntropy(Address);
+			double Entropy = GetEntropy(Address);
 			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
 				return;
 		}
@@ -1484,52 +1483,33 @@ BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffe
 }
 
 //**************************************************************************************
-double GetPEEntropy(PUCHAR Buffer)
+double GetEntropy(PUCHAR Buffer)
 //**************************************************************************************
 {
-	PIMAGE_DOS_HEADER pDosHeader;
-	PIMAGE_NT_HEADERS pNtHeader = NULL;
 	unsigned long TotalCounts[256];
 	double p, lp, Entropy = 0;
 	double log_2 = log((double)2);
-	SIZE_T Length = 0;
 	unsigned int i;
 
 	if (!Buffer)
 	{
-		DebugOutput("GetPEEntropy: Error - no address supplied.\n");
+		DebugOutput("GetEntropy: Error - no address supplied.\n");
 		return 0;
 	}
 
 	if (!IsAddressAccessible(Buffer))
 	{
-		DebugOutput("GetPEEntropy: Error - Supplied address inaccessible: 0x%p\n", Buffer);
+		DebugOutput("GetEntropy: Error - Supplied address inaccessible: 0x%p\n", Buffer);
 		return 0;
 	}
 
-	if (IsDisguisedPEHeader((PVOID)Buffer) <= 0)
-		return 0;
-
-	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
-
 	__try
 	{
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
-
-		if (pNtHeader && TestPERequirements(pNtHeader))
-			Length = pNtHeader->OptionalHeader.SizeOfImage;
-
-		if (!Length)
-			return 0;
-
 		SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
-		if (AccessibleSize < Length)
-			Length = AccessibleSize;
 
 		memset(TotalCounts, 0, sizeof(TotalCounts));
 
-		for (i = 0; i < Length; i++)
+		for (i = 0; i < AccessibleSize; i++)
 		{
 			TotalCounts[Buffer[i]]++;
 		}
@@ -1538,7 +1518,7 @@ double GetPEEntropy(PUCHAR Buffer)
 		{
 			if (TotalCounts[i] == 0) continue;
 
-			p = 1.0 * TotalCounts[i] / Length;
+			p = 1.0 * TotalCounts[i] / AccessibleSize;
 
 			lp = log(p)/log_2;
 
@@ -1547,7 +1527,7 @@ double GetPEEntropy(PUCHAR Buffer)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("GetPEEntropy: Exception occurred attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
+		DebugOutput("GetEntropy: Exception occurred attempting to get PE entropy at 0x%p\n", (PUCHAR)Buffer+i);
 		return 0;
 	}
 

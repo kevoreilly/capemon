@@ -105,7 +105,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	if (g_config.unpacker)
 	{
 		TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-		if (TrackedRegion && (TrackedRegion->Address || TrackedRegion->PagesDumped))
+		if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
 			return;
 		if (!TrackedRegion) {
 			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
@@ -117,7 +117,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 			}
 			DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 		}
-		TrackedRegion->Address = (PVOID)addr;
+		TrackedRegion->Caller = (PVOID)addr;
 	}
 	if (g_config.caller_regions) {
 		if (lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))

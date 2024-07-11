@@ -23,6 +23,7 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MIN_SIZE	 ((ULONG)0x800)
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
+#define ENTROPY_DELTA  0.5
 
 typedef PVOID(WINAPI *_getJit)(void);
 
@@ -41,7 +42,7 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
-double GetPEEntropy(PUCHAR Buffer);
+double GetEntropy(PUCHAR Buffer);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 PWCHAR TranslatePathFromDeviceToLetterW(PWCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
@@ -147,6 +148,7 @@ typedef struct TrackedRegion
 {
 	PVOID						AllocationBase;
 	PVOID						Address;
+	PVOID						Caller;
 	MEMORY_BASIC_INFORMATION	MemInfo;
 	BOOL						Committed;
 	BOOL						PagesDumped;

@@ -277,28 +277,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 		return;
 	}
 
-	if (!TrackedRegion->PagesDumped && (NewRegion || *OldProtect & WRITABLE_FLAGS) && ScanForNonZero(Address, GetAccessibleSize(Address)))
-	{
-		DebugOutput("ProtectionHandler: New code region detected at 0x%p.\n", TrackedRegion->AllocationBase);
-
-		ProcessTrackedRegion(TrackedRegion);
-
-		if (TrackedRegion->PagesDumped)
-		{
-			DebugOutput("ProtectionHandler: Dumped region at 0x%p.\n", TrackedRegion->AllocationBase);
-			ClearTrackedRegion(TrackedRegion);
-			hook_enable();
-			return;
-		}
-#ifdef DEBUG_COMMENTS
-		else
-			DebugOutput("ProtectionHandler: No PE images found in region at 0x%p.\n", TrackedRegion->AllocationBase);
-#endif
-	}
-#ifdef DEBUG_COMMENTS
-	else
-		DebugOutput("ProtectionHandler: No action taken on empty protected region at 0x%p.\n", Address);
-#endif
+	ProcessTrackedRegion(TrackedRegion);
 
 	if (g_config.unpacker > 1 && !TrackedRegion->PagesDumped)
 	{
