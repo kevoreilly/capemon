@@ -3569,3 +3569,17 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
 	_In_	DWORD    dwFlags
 );
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayName,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+);
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayNameEx,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+);

@@ -479,6 +479,8 @@ hook_t full_hooks[] = {
 	HOOK(iphlpapi, GetAdaptersAddresses),
 	HOOK(iphlpapi, GetAdaptersInfo),
 	HOOK(urlmon, CoInternetSetFeatureEnabled),
+	HOOK(ole32, MkParseDisplayName),
+	HOOK(urlmon, MkParseDisplayNameEx),
 
 	// Service Hooks
 	HOOK(advapi32, OpenSCManagerA),
