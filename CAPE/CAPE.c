@@ -740,6 +740,32 @@ BOOL IsAddressAccessible(PVOID Address)
 }
 
 //**************************************************************************************
+BOOL IsAddressExecutable(PVOID Address)
+//**************************************************************************************
+{
+	MEMORY_BASIC_INFORMATION MemInfo;
+
+	if (!Address || Address > (PVOID)0x7fffffffffff)
+		return FALSE;
+
+	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+#ifdef DEBUG_COMMENTS
+		ErrorOutput("IsAddressAccessible: unable to query memory address 0x%p", Address);
+#endif
+		return FALSE;
+	}
+
+	if (!(MemInfo.Protect & EXECUTABLE_FLAGS))
+		return FALSE;
+
+	if (!MemInfo.Protect)
+		return FALSE;
+
+	return TRUE;
+}
+
+//**************************************************************************************
 BOOL IsInTrackedRegion(PTRACKEDREGION TrackedRegion, PVOID Address)
 //**************************************************************************************
 {

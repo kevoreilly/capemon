@@ -53,10 +53,11 @@ extern void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 extern void log_flush();
 extern PVOID _KiUserExceptionDispatcher;
+extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble, SyscallBreakpointSet;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
@@ -1579,7 +1580,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		SetSingleStepMode(ExceptionInfo->ContextRecord, ProcessOEP);
 		StepLimit = 0;
 	}
-	else if (!stricmp(Action, "Scan"))
+	else if (!strnicmp(Action, "Scan", 4))
 	{
 		PVOID ScanAddress = GetAllocationBase(CIP);
 		if (Target)
@@ -2918,10 +2919,9 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (g_config.bp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
-			SetSoftwareBreakpoint(BreakpointVA);
-#ifdef DEBUG_COMMENTS
-			DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
-#endif
+			if (SetSoftwareBreakpoint(&SoftBPs, BreakpointVA))
+				DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
+			g_config.bp[i] = 0;
 		}
 	}
 
@@ -2930,21 +2930,11 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (g_config.sysbp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp[i]);
-			SyscallBreakpointSet = SetSyscallBreakpoint(BreakpointVA);
-			if (SyscallBreakpointSet)
-			{
-//#ifdef DEBUG_COMMENTS
+			if (SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA))
 				DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
-//#endif
-			}
-			else
-				DebugOutput("SetInitialBreakpoints: Failed to set syscall breakpoint %d at 0x%p", i, BreakpointVA);
 			g_config.sysbp[i] = 0;
 		}
 	}
-
-	if (SyscallBreakpointSet)
-		DebugOutput("SetInitialBreakpoints: Syscall breakpoints set.\n");
 
 	return BreakpointsSet;
 }

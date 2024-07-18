@@ -74,8 +74,8 @@ unsigned int TrapIndex, DepthCount;
 PVOID _KiUserExceptionDispatcher;
 HANDLE hCapePipe;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
-static lookup_t SoftBPs, SyscallBPs;
-
+lookup_t SoftBPs, SyscallBPs;
+SOFTBP SyscallBP;
 void ApplyQueuedBreakpoints();
 
 //**************************************************************************************
@@ -443,7 +443,7 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #ifdef DEBUG_COMMENTS
 	DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
-	return SetSoftwareBreakpoint(ExceptionInfo->ExceptionRecord->ExceptionAddress);
+	return SetSoftwareBreakpoint(&SoftBPs, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 }
 
 //**************************************************************************************
@@ -503,8 +503,9 @@ BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (!FunctionName || !Function)
 	{
-		DebugOutput("SyscallBreakpointHandler: Unable to find function for SSN 0x%x\n", SSN);
-		return FALSE;
+		DebugOutput("SyscallBreakpointHandler: Unable to find function for SSN 0x%x, removing breakpoint\n", SSN);
+		ClearSoftwareBreakpoint(&SyscallBPs, ExceptionInfo->ExceptionRecord->ExceptionAddress);
+		return TRUE;
 	}
 #ifdef DEBUG_COMMENTS
 	else
@@ -515,22 +516,30 @@ BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (g_config.sysbpmode == 1)
 	{
-		unsigned int* pLength = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
+		PSOFTBP SyscallBP = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
 
-		if (!pLength)
+		if (!SyscallBP)
+		{
+			DebugOutput("SyscallBreakpointHandler: Unable to retrieve syscall breakpoint info for address 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+			ClearSoftwareBreakpoint(&SyscallBPs, ExceptionInfo->ExceptionRecord->ExceptionAddress);
+			return TRUE;
+		}
+
+		if (!SyscallBP->Length)
 		{
 			DebugOutput("SyscallBreakpointHandler: Unable to retrieve instruction length for 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
-			return FALSE;
+			ClearSoftwareBreakpoint(&SyscallBPs, ExceptionInfo->ExceptionRecord->ExceptionAddress);
+			return TRUE;
 		}
 
 #ifdef _WIN64
 		ExceptionInfo->ContextRecord->Rsp -= sizeof(QWORD);
-		*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + *pLength);
+		*(PVOID*)(ExceptionInfo->ContextRecord->Rsp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + SyscallBP->Length);
 	}
 	ExceptionInfo->ContextRecord->Rip = (DWORD_PTR)Function;
 #else
 		ExceptionInfo->ContextRecord->Esp -= sizeof(DWORD);
-		*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + *pLength);
+		*(PVOID*)(ExceptionInfo->ContextRecord->Esp) = (PVOID)((PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress + SyscallBP->Length);
 	}
 	ExceptionInfo->ContextRecord->Eip = (DWORD_PTR)Function;
 #endif
@@ -740,7 +749,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		}
 
 		// Is it a 'syscall' breakpoint
-		if (lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0) || (SyscallBreakpointSet && !g_config.sysbpmode))
+		if (lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
 		{
 #ifdef DEBUG_COMMENTS
 			DebugOutput("CAPEExceptionFilter: 'syscall' breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
@@ -1215,7 +1224,6 @@ BOOL ContextClearAllBreakpointsEx(PCONTEXT Context, BOOL NoSetThreadContext)
 
 	for (i=0; i < NUMBER_OF_DEBUG_REGISTERS; i++)
 	{
-		CurrentThreadBreakpoints->BreakpointInfo[i].Register = 0;
 		CurrentThreadBreakpoints->BreakpointInfo[i].Size = 0;
 		CurrentThreadBreakpoints->BreakpointInfo[i].Address = NULL;
 		CurrentThreadBreakpoints->BreakpointInfo[i].Type = 0;
@@ -1276,6 +1284,8 @@ BOOL ClearAllBreakpoints()
 
 	CurrentThreadBreakpoints = MainThreadBreakpointList;
 
+	DebugOutput("ClearAllBreakpoints");
+
 	while (CurrentThreadBreakpoints)
 	{
 		if (!CurrentThreadBreakpoints->ThreadId)
@@ -1292,7 +1302,6 @@ BOOL ClearAllBreakpoints()
 
 		for (Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++)
 		{
-			CurrentThreadBreakpoints->BreakpointInfo[Register].Register = 0;
 			CurrentThreadBreakpoints->BreakpointInfo[Register].Size = 0;
 			CurrentThreadBreakpoints->BreakpointInfo[Register].Address = NULL;
 			CurrentThreadBreakpoints->BreakpointInfo[Register].Type = 0;
@@ -1300,15 +1309,8 @@ BOOL ClearAllBreakpoints()
 			CurrentThreadBreakpoints->BreakpointInfo[Register].Callback = NULL;
 		}
 
+		memset(&Context, 0, sizeof(CONTEXT));
 		Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-
-		if (!GetThreadContext(CurrentThreadBreakpoints->ThreadHandle, &Context))
-		{
-#ifdef DEBUG_COMMENTS
-			DebugOutput("ClearAllBreakpoints: Error getting thread context (thread %d, handle 0x%x).\n", CurrentThreadBreakpoints->ThreadId, CurrentThreadBreakpoints->ThreadHandle);
-#endif
-			return FALSE;
-		}
 
 		Context.Dr0 = 0;
 		Context.Dr1 = 0;
@@ -1322,6 +1324,8 @@ BOOL ClearAllBreakpoints()
 			DebugOutput("ClearAllBreakpoints: Error setting thread context (thread %d).\n", CurrentThreadBreakpoints->ThreadId);
 			return FALSE;
 		}
+		else
+			DebugOutput("ClearAllBreakpoints: Cleared breakpoints for thread %d (handle 0x%x).\n", CurrentThreadBreakpoints->ThreadId, CurrentThreadBreakpoints->ThreadHandle);
 
 		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 	}
@@ -1501,7 +1505,6 @@ BOOL ContextClearBreakpointsInRangeEx(PCONTEXT Context, PVOID BaseAddress, SIZE_
 					Dr7->L3 = 0;
 				}
 
-				CurrentThreadBreakpoints->BreakpointInfo[Register].Register = 0;
 				CurrentThreadBreakpoints->BreakpointInfo[Register].Size = 0;
 				CurrentThreadBreakpoints->BreakpointInfo[Register].Address = NULL;
 				CurrentThreadBreakpoints->BreakpointInfo[Register].Type = 0;
@@ -2232,15 +2235,18 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 }
 
 //**************************************************************************************
-BOOL SetSoftwareBreakpoint(LPVOID Address)
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 //**************************************************************************************
 {
 	DWORD OldProtect;
 
-	if (!Address || !IsAddressAccessible(Address))
+	if (!Address || !IsAddressExecutable(Address))
 		return FALSE;
 
-	if (lookup_get(&SoftBPs, (ULONG_PTR)Address, 0))
+	if (GetAllocationBase(Address) == GetModuleHandle("ntdll"))
+		return FALSE;
+
+	if (lookup_get(BPs, (ULONG_PTR)Address, 0))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already in software breakpoint list", Address);
@@ -2257,16 +2263,19 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 		return FALSE;
 	}
 
-	PBYTE pInsByte = lookup_add(&SoftBPs, (ULONG_PTR)Address, 0);
-	if (!pInsByte)
+	PSOFTBP SoftBP = lookup_add(BPs, (ULONG_PTR)Address, sizeof(SOFTBP));
+
+	if (!SoftBP)
 	{
-		DebugOutput("SetSoftwareBreakpoint: Unable to store instruction byte at 0x%p", Address);
+		DebugOutput("SetSoftwareBreakpoint: Unable to store software breakpoint info for address 0x%p", Address);
 		return FALSE;
 	}
 
-	*pInsByte = InsByte;
+	SoftBP->InstructionByte = InsByte;
+	SoftBP->Length = lde(Address);
+
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
+	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);
 #endif
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
@@ -2290,7 +2299,7 @@ BOOL SetSoftwareBreakpoint(LPVOID Address)
 }
 
 //**************************************************************************************
-BOOL SetSyscallBreakpoint(LPVOID Address)
+BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 //**************************************************************************************
 {
 	DWORD OldProtect;
@@ -2301,48 +2310,42 @@ BOOL SetSyscallBreakpoint(LPVOID Address)
 	if (GetAllocationBase(Address) == GetModuleHandle("ntdll"))
 		return FALSE;
 
-	if (lookup_get(&SyscallBPs, (ULONG_PTR)Address, 0))
+	PSOFTBP SoftBP = lookup_get(BPs, (ULONG_PTR)Address, 0);
+
+	if (!SoftBP)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("SetSyscallBreakpoint: Address 0x%p already in software breakpoint list", Address);
+		DebugOutput("ClearSoftwareBreakpoint: Address 0x%p not in breakpoint list", Address);
 #endif
 		return FALSE;
 	}
 
-	if (*(PBYTE)Address == 0xCC)
+	if (*(PBYTE)Address != 0xCC)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("SetSyscallBreakpoint: Address 0x%p already contains 0xCC byte", Address);
+		DebugOutput("ClearSoftwareBreakpoint: Address 0x%p does not contain 0xCC byte", Address);
 #endif
 		return FALSE;
 	}
 
-	unsigned int* pLength = lookup_add(&SyscallBPs, (ULONG_PTR)Address, 0);
-	if (!pLength)
-	{
-		DebugOutput("SetSyscallBreakpoint: Unable to store instruction byte at 0x%p", Address);
-		return FALSE;
-	}
-
-	*pLength = lde(Address);
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetSyscallBreakpoint: Instruction length at 0x%p: %d", Address, *pLength);
+	DebugOutput("ClearSoftwareBreakpoint: Instruction length at 0x%p: %d", Address, SoftBP->Length);
 #endif
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
-		DebugOutput("SetSyscallBreakpoint: Unable to change memory protection at 0x%p", Address);
+		DebugOutput("ClearSoftwareBreakpoint: Unable to change memory protection at 0x%p", Address);
 		return FALSE;
 	}
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetSyscallBreakpoint: Changed memory protection at 0x%p", Address);
+	DebugOutput("ClearSoftwareBreakpoint: Changed memory protection at 0x%p", Address);
 #endif
 
-	*(PBYTE)Address = 0xCC;
+	*(PBYTE)Address = SoftBP->InstructionByte;
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SetSyscallBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+	DebugOutput("ClearSoftwareBreakpoint: Restored instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
 #endif
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
