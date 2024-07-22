@@ -43,7 +43,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 static lookup_t g_hook_info;
 static lookup_t g_force_hook_threads;
-lookup_t g_caller_regions;
 
 extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
@@ -96,7 +95,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		return;
 	if (filter_callers(hookinfo))
 		return;
-	if (!g_config.unpacker && !g_config.caller_regions)
+	if (!g_config.unpacker)
 		return;
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
 	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
@@ -119,12 +118,6 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		}
 		TrackedRegion->Caller = (PVOID)addr;
 	}
-	if (g_config.caller_regions) {
-		if (lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
-			return;
-		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
-	}
 	if (g_config.base_on_caller)
 		SetInitialBreakpoints((PVOID)AllocationBase);
 	if (!g_config.loaderlock_scans && loader_lock_held()) {
@@ -137,12 +130,6 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 	if (g_config.unpacker)
 		ProcessTrackedRegion(TrackedRegion);
-	else if (g_config.caller_regions) {
-		if (g_config.yarascan)
-			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-		if (!MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
-			DumpRegion((PVOID)addr);
-	}
 	else if (MappedModule)
 		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
 	else

@@ -134,7 +134,6 @@ extern char *our_process_name;
 extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
-extern lookup_t g_caller_regions;
 
 extern void NirvanaInit();
 extern void AmsiDumperInit(HMODULE module);
@@ -3401,9 +3400,6 @@ void CAPE_post_init()
 
 	if (g_config.unpacker)
 		UnpackerInit();
-
-	if (g_config.caller_regions)
-		lookup_add(&g_caller_regions, (ULONG_PTR)g_our_dll_base, 0);
 
 	// Restore headers in case of IAT patching
 	RestoreHeaders();

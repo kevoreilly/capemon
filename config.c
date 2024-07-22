@@ -1195,13 +1195,6 @@ void parse_config_line(char* line)
 			if (g_config.dump_keys)
 				DebugOutput("Dumping of crypto API ImportKey buffers enabled.\n");
 		}
-		else if (!stricmp(key, "caller-dump")) {
-			g_config.caller_regions = value[0] == '1';
-			if (g_config.caller_regions)
-				DebugOutput("Dumps & scans of caller regions enabled.\n");
-			else
-				DebugOutput("Dumps & scans of caller regions disabled.\n");
-		}
 		else if (!stricmp(key, "yarascan")) {
 			g_config.yarascan = value[0] == '1';
 			if (g_config.yarascan)
@@ -1421,7 +1414,6 @@ int read_config(void)
 			g_config.firefox = 1;
 			g_config.injection = 0;
 			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
 			g_config.api_rate_cap = 0;
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
@@ -1465,7 +1457,6 @@ int read_config(void)
         {
 			g_config.office = 1;
 			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
 			g_config.injection = 0;
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
@@ -1549,7 +1540,6 @@ int read_config(void)
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.unpacker = 0;
-			g_config.caller_regions = 0;
 			g_config.injection = 0;
 			g_config.syscall = 0;
 			g_config.minhook = 1;

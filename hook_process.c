@@ -43,7 +43,6 @@ extern void FreeHandler(PVOID BaseAddress), ProcessMessage(DWORD ProcessId, DWOR
 extern void ProcessTrackedRegion(), DebuggerShutdown(), DumpStrings();
 extern LONG WINAPI mini_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
 
-extern lookup_t g_caller_regions;
 extern HANDLE g_terminate_event_handle;
 extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 extern void file_handle_terminate();
@@ -1089,14 +1088,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
 		if (g_config.unpacker)
 			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
-		if (g_config.caller_regions)
-		{
-			if (g_config.yarascan && lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
-			{
-				DebugOutput("NtProtectVirtualMemory: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
-				lookup_del(&g_caller_regions, (ULONG_PTR)AllocationBase);
-			}
-		}
 	}
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
@@ -1179,14 +1170,6 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 		if (g_config.unpacker)
 			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
-		if (g_config.caller_regions)
-		{
-			if (g_config.yarascan && lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
-			{
-				DebugOutput("VirtualProtectEx: Rescinding caller region at 0x%p due to protection change.\n", AllocationBase);
-				lookup_del(&g_caller_regions, (ULONG_PTR)AllocationBase);
-			}
-		}
 	}
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && NtCurrentProcess() == hProcess &&

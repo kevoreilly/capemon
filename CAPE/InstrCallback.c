@@ -33,7 +33,6 @@ extern void log_syscall(PUNICODE_STRING module, const char *function, PVOID reta
 extern int __called_by_hook(ULONG_PTR stack_pointer, ULONG_PTR frame_pointer);
 extern _NtSetInformationProcess pNtSetInformationProcess;
 extern ULONG_PTR ntdll_base, win32u_base, user32_base;
-extern lookup_t g_caller_regions;
 extern ULONG_PTR base_of_dll_of_interest;
 extern PVOID ImageBase;
 
@@ -177,30 +176,6 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 				}
 				if (TrackedRegion)
 					ProcessTrackedRegion(TrackedRegion);
-			}
-			else if (g_config.caller_regions && AllocationBase && !lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
-			{
-				lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-				DebugOutput("InstrumentationCallback: Adding region at 0x%p to caller regions list (returns to 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
-				char ModulePath[MAX_PATH];
-				BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-				if (g_config.yarascan && (!MappedModule || AllocationBase == ImageBase || AllocationBase == (PVOID)base_of_dll_of_interest))
-					YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-				if (g_config.unpacker)
-				{
-					PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)CIP);
-					if (TrackedRegion)
-					{
-						TrackedRegion->CanDump = 1;
-						ProcessTrackedRegion(TrackedRegion);
-					}
-				}
-				else if (g_config.caller_regions && !MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
-					DumpRegion((PVOID)CIP);
-				else if (MappedModule)
-					DebugOutput("InstrumentationCallback: Dump of calling region at 0x%p skipped (returns to 0x%p mapped as %s).\n", AllocationBase, CIP, ModulePath);
-				else
-					DebugOutput("InstrumentationCallback: Dump of calling region at 0x%p skipped (returns to 0x%p).\n", AllocationBase, CIP);
 			}
 
 			//if (g_config.debugger && !__called_by_hook(Context->Rsp, CIP) && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
