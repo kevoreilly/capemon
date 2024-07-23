@@ -1522,22 +1522,28 @@ double GetEntropy(PUCHAR Buffer)
 		return 0;
 	}
 
-	if (!IsAddressAccessible(Buffer))
+	SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
+
+	if (!AccessibleSize)
 	{
 		DebugOutput("GetEntropy: Error - Supplied address inaccessible: 0x%p\n", Buffer);
 		return 0;
 	}
 
+	if (!ScanForNonZero(Buffer, AccessibleSize))
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("GetEntropy: Supplied address range at 0x%p is empty\n", Buffer);
+#endif
+		return 0;
+	}
+
 	__try
 	{
-		SIZE_T AccessibleSize = GetAccessibleSize(Buffer);
-
 		memset(TotalCounts, 0, sizeof(TotalCounts));
 
 		for (i = 0; i < AccessibleSize; i++)
-		{
 			TotalCounts[Buffer[i]]++;
-		}
 
 		for (i = 0; i < 256; i++)
 		{
