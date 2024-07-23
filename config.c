@@ -1399,6 +1399,9 @@ int read_config(void)
 	if (is_image_base_remapped(ImageBase))
 		ImageBaseRemapped = TRUE;
 
+	if (!our_process_name)
+		return 1;
+
 	if (!_stricmp(our_process_name, "explorer.exe") && g_config.interactive == 1)
 	{
 		g_config.minhook = 1;
