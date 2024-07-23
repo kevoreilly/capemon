@@ -1284,8 +1284,6 @@ BOOL ClearAllBreakpoints()
 
 	CurrentThreadBreakpoints = MainThreadBreakpointList;
 
-	DebugOutput("ClearAllBreakpoints");
-
 	while (CurrentThreadBreakpoints)
 	{
 		if (!CurrentThreadBreakpoints->ThreadId)
@@ -1324,8 +1322,10 @@ BOOL ClearAllBreakpoints()
 			DebugOutput("ClearAllBreakpoints: Error setting thread context (thread %d).\n", CurrentThreadBreakpoints->ThreadId);
 			return FALSE;
 		}
+#ifdef DEBUG_COMMENTS
 		else
 			DebugOutput("ClearAllBreakpoints: Cleared breakpoints for thread %d (handle 0x%x).\n", CurrentThreadBreakpoints->ThreadId, CurrentThreadBreakpoints->ThreadHandle);
+#endif
 
 		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
 	}
