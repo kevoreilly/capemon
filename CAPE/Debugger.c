@@ -2344,12 +2344,33 @@ BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 
 	*(PBYTE)Address = SoftBP->InstructionByte;
 
-#ifdef DEBUG_COMMENTS
-	DebugOutput("ClearSoftwareBreakpoint: Restored instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
-#endif
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
+	DebugOutput("ClearSoftwareBreakpoint: Restored instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+
+	lookup_del(BPs, (ULONG_PTR)Address);
+
 	return TRUE;
+}
+
+//**************************************************************************************
+void ClearSoftwareBreakpointsInRange(LPVOID Base, SIZE_T Size)
+//**************************************************************************************
+{
+	entry_t *Entry;
+	for (Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
+	{
+		PBYTE Address = (PBYTE)Entry->id;
+		if (Address >= (PBYTE)Base && Address < (PBYTE)Base + Size)
+			ClearSoftwareBreakpoint(&SoftBPs, Address);
+	}
+	for (Entry = SyscallBPs.root; Entry != NULL; Entry = Entry->next)
+	{
+		PBYTE Address = (PBYTE)Entry->id;
+		DebugOutput("ClearSoftwareBreakpointsInRange: Testing address 0x%p (0x%p 0x%x)", Address, Base, Size);
+		if (Address >= (PBYTE)Base && Address < (PBYTE)Base + Size)
+			ClearSoftwareBreakpoint(&SyscallBPs, Address);
+	}
 }
 
 //**************************************************************************************

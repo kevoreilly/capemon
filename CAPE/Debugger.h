@@ -170,6 +170,7 @@ BOOL ContextClearAllBreakpoints(PCONTEXT Context);
 BOOL ContextClearDebugRegisters(PCONTEXT Context);
 BOOL ClearSingleStepMode(PCONTEXT Context);
 BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
+void ClearSoftwareBreakpointsInRange(LPVOID Base, SIZE_T Size);
 
 // Misc
 BOOL InitNewThreadBreakpoints(DWORD ThreadId);
