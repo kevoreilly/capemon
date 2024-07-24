@@ -57,7 +57,7 @@ extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble, SyscallBreakpointSet;
 BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
@@ -2930,7 +2930,8 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (g_config.sysbp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp[i]);
-			if (SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA))
+			SyscallBreakpointSet = SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA);
+			if (SyscallBreakpointSet)
 				DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
 			g_config.sysbp[i] = 0;
 		}
