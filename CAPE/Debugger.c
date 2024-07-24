@@ -1279,32 +1279,32 @@ BOOL ClearAllBreakpoints()
 //**************************************************************************************
 {
 	CONTEXT	Context;
-	PTHREADBREAKPOINTS CurrentThreadBreakpoints;
+	PTHREADBREAKPOINTS ThreadBreakpoints;
 	unsigned int Register;
 
-	CurrentThreadBreakpoints = MainThreadBreakpointList;
+	ThreadBreakpoints = MainThreadBreakpointList;
 
-	while (CurrentThreadBreakpoints)
+	while (ThreadBreakpoints)
 	{
-		if (!CurrentThreadBreakpoints->ThreadId)
+		if (!ThreadBreakpoints->ThreadId)
 		{
-			DebugOutput("ClearAllBreakpoints: Error: no thread id for thread breakpoints 0x%x.\n", CurrentThreadBreakpoints);
+			DebugOutput("ClearAllBreakpoints: Error: no thread id for thread breakpoints 0x%x.\n", ThreadBreakpoints);
 			return FALSE;
 		}
 
-		if (!CurrentThreadBreakpoints->ThreadHandle)
+		if (!ThreadBreakpoints->ThreadHandle)
 		{
-			DebugOutput("ClearAllBreakpoints: Error no thread handle for thread %d.\n", CurrentThreadBreakpoints->ThreadId);
+			DebugOutput("ClearAllBreakpoints: Error no thread handle for thread %d.\n", ThreadBreakpoints->ThreadId);
 			return FALSE;
 		}
 
 		for (Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++)
 		{
-			CurrentThreadBreakpoints->BreakpointInfo[Register].Size = 0;
-			CurrentThreadBreakpoints->BreakpointInfo[Register].Address = NULL;
-			CurrentThreadBreakpoints->BreakpointInfo[Register].Type = 0;
-			CurrentThreadBreakpoints->BreakpointInfo[Register].HitCount = 0;
-			CurrentThreadBreakpoints->BreakpointInfo[Register].Callback = NULL;
+			ThreadBreakpoints->BreakpointInfo[Register].Size = 0;
+			ThreadBreakpoints->BreakpointInfo[Register].Address = NULL;
+			ThreadBreakpoints->BreakpointInfo[Register].Type = 0;
+			ThreadBreakpoints->BreakpointInfo[Register].HitCount = 0;
+			ThreadBreakpoints->BreakpointInfo[Register].Callback = NULL;
 		}
 
 		memset(&Context, 0, sizeof(CONTEXT));
@@ -1317,18 +1317,20 @@ BOOL ClearAllBreakpoints()
 		Context.Dr6 = 0;
 		Context.Dr7 = 0;
 
-		if (!SetThreadContext(CurrentThreadBreakpoints->ThreadHandle, &Context))
+		if (!SetThreadContext(ThreadBreakpoints->ThreadHandle, &Context))
 		{
-			DebugOutput("ClearAllBreakpoints: Error setting thread context (thread %d).\n", CurrentThreadBreakpoints->ThreadId);
+			DebugOutput("ClearAllBreakpoints: Error setting thread context (thread %d).\n", ThreadBreakpoints->ThreadId);
 			return FALSE;
 		}
 #ifdef DEBUG_COMMENTS
 		else
-			DebugOutput("ClearAllBreakpoints: Cleared breakpoints for thread %d (handle 0x%x).\n", CurrentThreadBreakpoints->ThreadId, CurrentThreadBreakpoints->ThreadHandle);
+			DebugOutput("ClearAllBreakpoints: Cleared breakpoints for thread %d (handle 0x%x).\n", ThreadBreakpoints->ThreadId, ThreadBreakpoints->ThreadHandle);
 #endif
 
-		CurrentThreadBreakpoints = CurrentThreadBreakpoints->NextThreadBreakpoints;
+		ThreadBreakpoints = ThreadBreakpoints->NextThreadBreakpoints;
 	}
+
+	ClearSoftwareBreakpoints();
 
 	return TRUE;
 }
@@ -2367,10 +2369,19 @@ void ClearSoftwareBreakpointsInRange(LPVOID Base, SIZE_T Size)
 	for (Entry = SyscallBPs.root; Entry != NULL; Entry = Entry->next)
 	{
 		PBYTE Address = (PBYTE)Entry->id;
-		DebugOutput("ClearSoftwareBreakpointsInRange: Testing address 0x%p (0x%p 0x%x)", Address, Base, Size);
 		if (Address >= (PBYTE)Base && Address < (PBYTE)Base + Size)
 			ClearSoftwareBreakpoint(&SyscallBPs, Address);
 	}
+}
+
+//**************************************************************************************
+void ClearSoftwareBreakpoints()
+//**************************************************************************************
+{
+	for (entry_t* Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
+		ClearSoftwareBreakpoint(&SoftBPs, (LPVOID)Entry->id);
+	for (entry_t* Entry = SyscallBPs.root; Entry != NULL; Entry = Entry->next)
+		ClearSoftwareBreakpoint(&SyscallBPs, (LPVOID)Entry->id);
 }
 
 //**************************************************************************************
