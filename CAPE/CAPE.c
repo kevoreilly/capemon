@@ -1126,7 +1126,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		return;
 	}
 
-	if (!TrackedRegion->CanDump && !TrackedRegion->Address && g_terminate_event_handle)
+	if (!TrackedRegion->CanDump && !TrackedRegion->Caller && g_terminate_event_handle)
 		return;
 
 	PVOID Address = TrackedRegion->AllocationBase;
@@ -1134,7 +1134,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 
 	if (!Size)
 	{
-		Address = GetPageAddress(TrackedRegion->Address);
+		Address = GetPageAddress(TrackedRegion->Caller);
 		Size = GetAccessibleSize(Address);
 		if (!Size)
 		{
@@ -1148,7 +1148,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 #endif
 	}
 
-	if (TrackedRegion->Address && lookup_get(&g_dotnet_jit, (ULONG_PTR)TrackedRegion->AllocationBase, 0))
+	if (TrackedRegion->Caller && lookup_get(&g_dotnet_jit, (ULONG_PTR)TrackedRegion->AllocationBase, 0))
 	{
 		DebugOutput("ProcessTrackedRegion: .NET cache region at 0x%p skipped", TrackedRegion->AllocationBase);
 		TrackedRegion->PagesDumped = TRUE;
@@ -1159,7 +1159,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		GetSystemInfo(&SystemInfo);
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("ProcessTrackedRegion: Address 0x%p Base 0x%p Size %d sub-allocation %d dump count %d\n", TrackedRegion->Address, Address, Size, TrackedRegion->SubAllocation, DumpCount);
+	DebugOutput("ProcessTrackedRegion: Address 0x%p Base 0x%p Size %d sub-allocation %d dump count %d\n", TrackedRegion->Caller, Address, Size, TrackedRegion->SubAllocation, DumpCount);
 #endif
 
 	if (TrackedRegion->PagesDumped)
@@ -1234,7 +1234,7 @@ BOOL TrackExecution(PVOID CIP)
 	}
 
 	PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-	if (!TrackedRegion || (TrackedRegion && !TrackedRegion->Address && !TrackedRegion->PagesDumped))
+	if (!TrackedRegion || (TrackedRegion && !TrackedRegion->Caller && !TrackedRegion->PagesDumped))
 	{
 		TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 		if (!TrackedRegion)
@@ -1243,7 +1243,7 @@ BOOL TrackExecution(PVOID CIP)
 			return FALSE;
 		}
 		DebugOutput("TrackExecution: Added region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
-		TrackedRegion->Address = CIP;
+		TrackedRegion->Caller = CIP;
 		ProcessTrackedRegion(TrackedRegion);
 	}
 	return TRUE;
