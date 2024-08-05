@@ -399,6 +399,12 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
 
+	// Language related hooks
+	HOOK(ntdll, NtQueryDefaultUILanguage),
+	HOOK(ntdll, NtQueryInstallUILanguage),
+	HOOK(kernel32, GetSystemDefaultLangID),
+	HOOK(kernel32, GetUserDefaultLCID),
+
 	// PE resource related functions
 	HOOK(kernel32, FindResourceExA),
 	HOOK(kernel32, FindResourceExW),

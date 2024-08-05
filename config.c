@@ -185,6 +185,10 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "large-buffer-max")) {
 			large_buffer_log_max = (unsigned int)strtoul(value, NULL, 10);
 		}
+		else if (!strcmp(key, "lang")) {
+			g_config.lang = strtoul(value, NULL, 0);
+			DebugOutput("Language override code set to 0x%x", g_config.lang);
+		}
 		else if (!stricmp(key, "log-exceptions")) {
 			g_config.log_exceptions = atoi(value);
 			if (g_config.log_exceptions)

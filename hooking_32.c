@@ -773,6 +773,10 @@ int hook_api(hook_t *h, int type)
 			}
 		}
 	}
+	else if (!memcmp(addr, "\xff\x25", 2)) {
+		addr = **(unsigned char ***)(addr + 2);
+		delay_loaded = TRUE;
+	}
 
 	if (h->library && !wcscmp(h->library, L"ntdll") && addr[0] == 0xb8) {
 		// hooking a native API, leave in the mov eax, <syscall nr> instruction

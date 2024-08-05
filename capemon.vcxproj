@@ -251,6 +251,7 @@
     <ClCompile Include="hook_clr.c" />
     <ClCompile Include="hook_crypto.c" />
     <ClCompile Include="hook_file.c" />
+    <ClCompile Include="hook_lang.c" />
     <ClCompile Include="hook_misc.c" />
     <ClCompile Include="hook_network.c" />
     <ClCompile Include="hook_process.c" />

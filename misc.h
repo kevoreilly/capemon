@@ -262,3 +262,5 @@ struct envstruct {
 	ULONG nullval;
 	LPWSTR envstr;
 };
+
+const char* GetLanguageName(LANGID langID);

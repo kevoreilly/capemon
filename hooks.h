@@ -3343,6 +3343,22 @@ HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
   _In_ DWORD idThread
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtQueryDefaultUILanguage,
+	__out	LANGID *DefaultUILanguageId
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInstallUILanguage,
+	__out	LANGID *InstallUILanguageId
+);
+
+HOOKDEF(int, WINAPI, GetUserDefaultLCID,
+	void
+);
+
+HOOKDEF(int, WINAPI, GetSystemDefaultLangID,
+	void
+);
+
 HOOKDEF (void, WINAPI, OutputDebugStringA,
   LPCSTR lpOutputString
 );

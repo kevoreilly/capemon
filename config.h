@@ -113,6 +113,9 @@ struct _g_config {
 	//unsigned int host_ip;
 	//unsigned short host_port;
 
+	// Language override
+	int lang;
+
 	// ntdll write protection
 	unsigned int ntdll_protect;
 

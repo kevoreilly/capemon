@@ -37,6 +37,7 @@ extern char *our_process_name;
 extern int path_is_system(const wchar_t *path_w);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern const char* GetLanguageName(LANGID langID);
 
 extern BOOL TraceRunning;
 
@@ -1654,7 +1655,15 @@ HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
 )
 {
 	HKL ret = Old_GetKeyboardLayout(idThread);
-	LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD_PTR)ret & 0xFFFF);
+	if (g_config.lang)
+		ret = (HKL)(DWORD_PTR)g_config.lang;
+	const char* LanguageName = NULL;
+	if (ret)
+		LanguageName = GetLanguageName((LANGID)ret);
+	if (LanguageName)
+		LOQ_nonnull("misc", "ps", "KeyboardLayout", (DWORD_PTR)ret & 0xFFFF, "LanguageName", LanguageName);
+	else
+		LOQ_nonnull("misc", "p", "KeyboardLayout", (DWORD_PTR)ret & 0xFFFF);
 	return ret;
 }
 
