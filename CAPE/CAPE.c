@@ -1229,7 +1229,9 @@ BOOL TrackExecution(PVOID CIP)
 	AllocationBase = GetAllocationBase(CIP);
 	if (!AllocationBase)
 	{
+#ifdef DEBUG_COMMENTS
 		DebugOutput("TrackExecution: Failed to add address region for 0x%p to tracked regions list (thread %d).\n", CIP, GetCurrentThreadId());
+#endif
 		return FALSE;
 	}
 
