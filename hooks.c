@@ -1360,6 +1360,7 @@ BOOL set_hooks_dll(const wchar_t *library)
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
 {
+	unsigned int Hooked = 0;
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
 		if (!wcsicmp((hooks+i)->library, exportdirectory)) {
 			hook_t *hook = hooks+i;
@@ -1367,10 +1368,19 @@ void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t
 			hook->exportdirectory = exportdirectory;
 			hook->addr = NULL;
 			hook->is_hooked = 0;
-			if (hook_api(hook, g_config.hook_type) < 0)
+
+			if (g_config.hook_range && i > g_config.hook_range)
+				break;
+
+			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				DebugOutput("set_hooks_by_export_directory: Unable to hook %s", (hooks+i)->funcname);
+			else {
+				Hooked++;
+				//DebugOutput("set_hooks_by_export_directory: Hooked %s", (hooks+i)->funcname);
+			}
 		}
 	}
+	DebugOutput("set_hooks_by_export_directory: Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
 }
 
 extern void invalidate_regions_for_hook(const hook_t *hook);
@@ -1488,6 +1498,9 @@ void set_hooks()
 			}
 		}
 #endif
+		//if (g_config.hook_range && i > g_config.hook_range)
+		//	break;
+
 		//DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
 		if (hook_api(hooks+i, g_config.hook_type) < 0)
 			DebugOutput("set_hooks: Unable to hook %s", (hooks+i)->funcname);
@@ -1507,7 +1520,7 @@ void set_hooks()
 	else
 		register_dll_notification_manually(&New_DllLoadNotification);
 
-	DebugOutput("Hooked %d functions\n", Hooked);
+	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
 
 	hook_enable();
 }

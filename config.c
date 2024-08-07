@@ -128,6 +128,10 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "debug")) { // Set to 1 to enable reporting of critical exceptions occurring during analysis, set to 2 to enable reporting of all exceptions.
 			g_config.debug = atoi(value);
 		}
+		else if (!strcmp(key, "hook-range")) {
+			g_config.hook_range = atoi(value);
+			DebugOutput("Config: hook range limit set to %d", g_config.hook_range);
+		}
 		else if (!strcmp(key, "hook-type")) { //Valid for 32-bit analyses only. Specifies the hook type to use: direct, indirect, or safe. Safe attempts a Detours-style hook.
 #ifndef _WIN64
 			if (!strcmp(value, "direct"))
