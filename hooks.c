@@ -1372,6 +1372,9 @@ void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t
 			if (g_config.hook_range && i > g_config.hook_range)
 				break;
 
+			if (!stricmp((hooks+i)->funcname, "LdrGetDllHandle"))
+				continue;
+
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				DebugOutput("set_hooks_by_export_directory: Unable to hook %s", (hooks+i)->funcname);
 			else {
