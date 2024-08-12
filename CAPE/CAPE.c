@@ -1081,8 +1081,10 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->AllocationBase != GetModuleHandle(NULL) && TrackedRegion->AllocationBase != ImageBase)
 		return;
 
+	SIZE_T AccessibleSize = GetAccessibleSize(TrackedRegion->AllocationBase);
+
 	if (g_config.yarascan)
-		YaraScan(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase));
+		YaraScan(TrackedRegion->AllocationBase, AccessibleSize);
 
 	EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
 	MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
@@ -1110,7 +1112,8 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 
 	SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
-	DumpImageInCurrentProcess(TrackedRegion->AllocationBase);
+	if (!DumpImageInCurrentProcess(TrackedRegion->AllocationBase))
+		DumpMemory(TrackedRegion->AllocationBase, AccessibleSize);
 }
 
 //**************************************************************************************
