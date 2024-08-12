@@ -1319,7 +1319,9 @@ BOOL ClearAllBreakpoints()
 
 		if (!SetThreadContext(ThreadBreakpoints->ThreadHandle, &Context))
 		{
+#ifdef DEBUG_COMMENTS
 			DebugOutput("ClearAllBreakpoints: Error setting thread context (thread %d).\n", ThreadBreakpoints->ThreadId);
+#endif
 			return FALSE;
 		}
 #ifdef DEBUG_COMMENTS

@@ -1158,6 +1158,8 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 				SetOperand(ExceptionInfo->ContextRecord, DecodedInstruction.operands.p, Target);
 				*Dst = ',';
 			}
+			else
+			   SetOperand(ExceptionInfo->ContextRecord, DecodedInstruction.operands.p, Target);
 		}
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set operand value - target missing.\n", Target);
@@ -1440,7 +1442,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		StepCount = 0;
 	}
 #ifndef _WIN64
-	else if (!strnicmp(Action, "Print:", 6))
+	else if (!strnicmp(Action, "Print", 5))
 	{
 		char OutputBuffer[MAX_PATH] = "";
 		if (Target && StrTest((char*)Target, OutputBuffer, MAX_PATH))
