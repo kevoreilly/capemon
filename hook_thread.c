@@ -776,6 +776,5 @@ HOOKDEF(BOOL, WINAPI, NtTestAlert,
 	NTSTATUS ret = 0;
 	LOQ_void("threading", "");
 	ret = Old_NtTestAlert();
-	OutputThreadBreakpoints(MainThreadBreakpointList->ThreadId);
 	return ret;
 }
