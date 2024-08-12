@@ -523,6 +523,7 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtQuerySystemTime),
 	HOOK(user32, GetLastInputInfo),
 	HOOK_SPECIAL(winmm, timeGetTime),
+	HOOK(winmm, timeSetEvent),
 	HOOK(ntdll, NtSetTimer),
 	HOOK(ntdll, NtSetTimerEx),
 	HOOK(user32, MsgWaitForMultipleObjectsEx),

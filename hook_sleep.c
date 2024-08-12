@@ -603,6 +603,18 @@ HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 	return;
 }
 
+HOOKDEF(DWORD, WINAPI, timeSetEvent,
+   UINT           uDelay,
+   UINT           uResolution,
+   LPTIMECALLBACK lpTimeProc,
+   DWORD_PTR      dwUser,
+   UINT           fuEvent
+) {
+	DWORD ret = Old_timeSetEvent(uDelay, uResolution, lpTimeProc, dwUser, fuEvent);
+	LOQ_bool("system", "ip", "Delay", uDelay, "TimeProc", lpTimeProc);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, CreateTimerQueueTimer,
   _Out_		PHANDLE				phNewTimer,
   _In_opt_	HANDLE				TimerQueue,

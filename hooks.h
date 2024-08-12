@@ -2547,6 +2547,14 @@ HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 	_Out_ LPFILETIME lpSystemTimeAsFileTime
 );
 
+HOOKDEF(DWORD, WINAPI, timeSetEvent,
+   UINT           uDelay,
+   UINT           uResolution,
+   LPTIMECALLBACK lpTimeProc,
+   DWORD_PTR      dwUser,
+   UINT           fuEvent
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtQueryPerformanceCounter,
 	_Out_	 PLARGE_INTEGER PerformanceCounter,
 	_Out_opt_ PLARGE_INTEGER PerformanceFrequency
