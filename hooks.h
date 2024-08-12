@@ -895,6 +895,14 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 	_In_ LONG_PTR dwNewLong
 );
 
+HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
+	__in HWND hwndOwner,
+	__in LPCWSTR lpszText,
+	__in LPCWSTR lpszCaption,
+	__in UINT wStyle,
+	__in WORD wLanguageId,
+	__in DWORD dwTimeout
+);
 
 //
 // Sync Hooks

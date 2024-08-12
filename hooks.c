@@ -298,6 +298,7 @@ hook_t full_hooks[] = {
 	// calls to any functions that we won't end up logging. We need another hook type which
 	// logs the hook and then every function called by that hook (modulo perhaps some blacklisted
 	// functions for this specific hook type)
+	HOOK(user32, MessageBoxTimeoutW),
 
 	// Sync Hooks
 	HOOK(ntdll, NtCreateMutant),
