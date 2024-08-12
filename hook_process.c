@@ -1353,10 +1353,7 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 			LOQ_void("system", "ppppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionRecord->ExceptionInformation[1]);
 	}
 
-	if (CAPEExceptionDispatcher(ExceptionRecord, Context))
-		return TRUE;
-	else
-		return Old_RtlDispatchException(ExceptionRecord, Context);
+	return CAPEExceptionDispatcher(ExceptionRecord, Context) ? TRUE : Old_RtlDispatchException(ExceptionRecord, Context);
 }
 
 HOOKDEF_NOTAIL(WINAPI, NtRaiseException,
