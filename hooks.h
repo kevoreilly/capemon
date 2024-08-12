@@ -1499,6 +1499,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	__out_opt  ULONG *PreviousSuspendCount
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
+	__in		HANDLE ThreadHandle,
+	__out_opt   ULONG *SuspendCount
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	__in		HANDLE ThreadHandle,
 	__out_opt   ULONG *SuspendCount
@@ -1555,6 +1560,10 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	IN PVOID StartParameter OPTIONAL,
 	OUT PHANDLE ThreadHandle,
 	OUT PCLIENT_ID ClientId
+);
+
+HOOKDEF(BOOL, WINAPI, NtTestAlert,
+	VOID
 );
 
 //

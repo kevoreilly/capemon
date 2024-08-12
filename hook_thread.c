@@ -433,6 +433,25 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
+	__in		HANDLE ThreadHandle,
+	__out_opt   ULONG *SuspendCount
+) {
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	NTSTATUS ret;
+	ENSURE_ULONG(SuspendCount);
+	if (pid != GetCurrentProcessId()) {
+		if (g_config.injection)
+			ResumeThreadHandler(pid);
+		pipe("RESUME:%d,%d", pid, tid);
+	}
+
+	ret = Old_NtAlertResumeThread(ThreadHandle, SuspendCount);
+	LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
+	return ret;
+}
+
 extern DWORD tmphookinfo_threadid;
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
@@ -748,5 +767,15 @@ HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
 ) {
 	BOOL ret = Old_DisableThreadLibraryCalls(hLibModule);
 	LOQ_bool("threading", "p", "Module", hLibModule);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, NtTestAlert,
+	VOID
+) {
+	NTSTATUS ret = 0;
+	LOQ_void("threading", "");
+	ret = Old_NtTestAlert();
+	OutputThreadBreakpoints(MainThreadBreakpointList->ThreadId);
 	return ret;
 }
