@@ -76,7 +76,6 @@ HANDLE hCapePipe;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
 lookup_t SoftBPs, SyscallBPs;
 SOFTBP SyscallBP;
-void ApplyQueuedBreakpoints();
 
 //**************************************************************************************
 PTHREADBREAKPOINTS GetThreadBreakpoints(DWORD ThreadId)
@@ -705,7 +704,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				DebugOutput("CAPEExceptionFilter: Clearing breakpoint %d due to hit count.\n", pBreakpointInfo->Register);
 #endif
 				ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
-				//ApplyQueuedBreakpoints(ExceptionInfo->ContextRecord, pBreakpointInfo);
 			}
 		}
 
@@ -2878,9 +2876,4 @@ void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Prote
 		DebugOutput("DebuggerAllocationHandler: Breakpoints set on new executable region at: 0x%p size 0x%p.\n", BaseAddress, RegionSize);
 	else
 		DebugOutput("DebuggerAllocationHandler: Error, failed to set breakpoints on new executable region at: 0x%p size 0x%p.\n", BaseAddress, RegionSize);
-}
-
-void ApplyQueuedBreakpoints()
-{
-	// To be implemented
 }
