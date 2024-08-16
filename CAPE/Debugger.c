@@ -2797,7 +2797,8 @@ void DebuggerShutdown()
 		CloseHandle(DebuggerLog);
 		DebuggerLog = NULL;
 	}
-	ClearAllBreakpoints();
+	if (BreakpointsSet)
+		ClearAllBreakpoints();
 	g_config.debugger = 0;
 }
 
