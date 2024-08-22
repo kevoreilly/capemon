@@ -1349,8 +1349,8 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 			LOQ_void("system", "ppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags);
 		else if (ExceptionRecord->NumberParameters == 1 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
 			LOQ_void("system", "pppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionRecord->ExceptionInformation[0]);
-		else if (ExceptionRecord->NumberParameters == 2 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
-			LOQ_void("system", "ppppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionRecord->ExceptionInformation[1]);
+		else if (ExceptionRecord->NumberParameters > 1 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+			LOQ_void("system", "pppppi", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionRecord->ExceptionInformation[1], "Parameters", ExceptionRecord->NumberParameters);
 	}
 
 	return CAPEExceptionDispatcher(ExceptionRecord, Context) ? TRUE : Old_RtlDispatchException(ExceptionRecord, Context);

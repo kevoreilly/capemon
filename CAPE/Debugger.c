@@ -836,20 +836,20 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (ModuleName)
 		{
 			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x ", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
-			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information 0x%p ", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+			else
+				DebuggerOutput("\nException 0x%x at 0x%p in %s (RVA 0x%x, thread %d), flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p (%d parameters) ", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, ModuleName, RVA, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1], ExceptionInfo->ExceptionRecord->NumberParameters);
 		}
 		else
 		{
 			if (!ExceptionInfo->ExceptionRecord->NumberParameters)
-				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x ", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags);
 			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1)
-				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
-			else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2)
-				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information 0x%p ", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+			else
+				DebuggerOutput("\nException 0x%x at 0x%p, thread %d, flags 0x%x, exception information[0] 0x%p, exception information[1] 0x%p (%d parameters) ", ExceptionInfo->ExceptionRecord->ExceptionCode, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1], ExceptionInfo->ExceptionRecord->NumberParameters);
 		}
 #ifdef _WIN64
 		DebuggerOutput(
