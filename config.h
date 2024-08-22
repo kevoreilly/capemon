@@ -272,6 +272,7 @@ struct _g_config {
 	int disable_logging;
 	int base_on_alloc;
 	int base_on_caller;
+	int trace_times;
 	char *trace_into_api[EXCLUSION_MAX];
 };
 

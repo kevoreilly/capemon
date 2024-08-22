@@ -214,6 +214,13 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Breakpoint logging to behavior log disabled.\n");
 		}
+		else if (!stricmp(key, "trace-times") || !stricmp(key, "tt")) {
+			g_config.trace_times = value[0] == '1';
+			if (g_config.trace_times)
+				DebugOutput("Trace timing enabled.\n");
+			else
+				DebugOutput("Trace timing disabled.\n");
+		}
 		else if (!strcmp(key, "dropped-limit")) { //Override the default dropped file limit of 100 files
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Dropped file limit set to %d.\n", g_config.dropped_limit);

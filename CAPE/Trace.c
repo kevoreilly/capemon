@@ -45,7 +45,6 @@ extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset);
 extern DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase);
-extern BOOL ScyllaGetSectionByName(PVOID ImageBase, char* Name, PVOID* SectionData, SIZE_T* SectionSize);
 extern PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName);
 extern ULONG_PTR g_our_dll_base;
 extern BOOL inside_hook(LPVOID Address);
@@ -57,8 +56,7 @@ extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble, SyscallBreakpointSet;
-BOOL GetSystemTimeAsFileTimeImported, PayloadMarker, PayloadDumped, TraceRunning, BreakOnNtContinue;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble, SyscallBreakpointSet, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
@@ -68,6 +66,7 @@ static CONTEXT LastContext;
 SIZE_T DumpSize, LastWriteLength;
 char DumpSizeString[MAX_PATH], DebuggerBuffer[MAX_PATH];
 LARGE_INTEGER LastTimestamp;
+FILETIME LastTime;
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
@@ -121,7 +120,6 @@ void DoTraceOutput(PVOID Address)
 		return;
 
 	TraceOutput(Address, DecodedInstruction);
-	DebuggerOutput("\n");
 }
 
 SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
@@ -756,6 +754,15 @@ OutputRegisterChanges(PCONTEXT Context)
 		}
 	}
 #endif
+	if (g_config.trace_times)
+	{
+		FILETIME CurrentTime;
+		GetSystemTimePreciseAsFileTime(&CurrentTime);
+		DWORD Delta = (CurrentTime.dwLowDateTime - LastTime.dwLowDateTime)/10000;
+		if (Delta)
+			DebuggerOutput(" %dms", Delta);
+		LastTime = CurrentTime;
+	}
 }
 
 void SetOperand(PCONTEXT Context, PCHAR Operand, PVOID Target)
@@ -1834,7 +1841,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			}
 		}
 	}
-	else if (g_config.loopskip && !strncmp(DecodedInstruction.mnemonic.p, "REP ", 3) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4))
+	else if (g_config.loopskip && (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 3) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4)))
 	{
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutput(CIP, DecodedInstruction);
