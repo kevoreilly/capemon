@@ -70,6 +70,7 @@ int IsDotNetImage(PVOID Buffer);
 int IsDisguisedPEHeader(PVOID Buffer);
 int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
+BOOL DumpRange(PVOID Address, SIZE_T Size);
 BOOL DumpStackRegion(void);
 
 BOOL ProcessDumped;

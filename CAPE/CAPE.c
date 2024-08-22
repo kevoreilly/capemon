@@ -2922,6 +2922,46 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 }
 
 //**************************************************************************************
+BOOL DumpRange(PVOID Address, SIZE_T Size)
+//**************************************************************************************
+{
+	if (DumpCount >= DUMP_MAX)
+	{
+		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, DUMP_MAX);
+		return FALSE;
+	}
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("DumpRange: Address 0x%p\n", Address);
+#endif
+
+	CapeMetaData->Address = Address;
+
+	if (!(CapeMetaData->TypeString && strlen(CapeMetaData->TypeString)) && (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE))
+		CapeMetaData->DumpType = UNPACKED_PE;
+
+	if (DumpPEsInRange(Address, Size) && (IsDisguisedPEHeader(Address)) > 0)
+	{
+		DebugOutput("DumpRange: Dumped PE image(s) from address 0x%p, size %d bytes.\n", Address, Size);
+		return TRUE;
+	}
+
+	if (CapeMetaData->DumpType == UNPACKED_PE)
+		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
+
+	if (DumpMemory(Address, Size))
+	{
+		DebugOutput("DumpRange: Dumped 0x%p, size %d bytes.\n", Address, Size);
+		return TRUE;
+	}
+	else
+	{
+		DebugOutput("DumpRange: Failed to dump from 0x%p size %d bytes.\n", Address, Size);
+		return FALSE;
+	}
+}
+
+//**************************************************************************************
 int DumpPE(PVOID Buffer)
 //**************************************************************************************
 {
