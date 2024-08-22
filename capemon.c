@@ -63,8 +63,6 @@ extern PCHAR ScyllaGetExportDirectory(PVOID Address);
 extern PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZE_T ScanSize);
 extern void YaraScan(PVOID Address, SIZE_T Size);
 extern BOOL IsAddressAccessible(PVOID Address);
-extern void DoTraceOutput(PVOID Address);
-extern BOOL DumpRegion(PVOID Address);
 
 extern BOOL set_hooks_dll(const wchar_t *library);
 extern void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library);
