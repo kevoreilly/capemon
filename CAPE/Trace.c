@@ -122,6 +122,23 @@ void DoTraceOutput(PVOID Address)
 	TraceOutput(Address, DecodedInstruction);
 }
 
+void GetSystemTimeSafeAsFileTime(LPFILETIME lpFileTime)
+{
+	static GetSystemTimePreciseAsFileTime_t pGetSystemTimePreciseAsFileTime = NULL;
+
+	if (!pGetSystemTimePreciseAsFileTime)
+	{
+		HMODULE hModule = GetModuleHandle("kernel32.dll");
+		if (hModule)
+			pGetSystemTimePreciseAsFileTime = (GetSystemTimePreciseAsFileTime_t)GetProcAddress(hModule, "GetSystemTimePreciseAsFileTime");
+	}
+
+	if (pGetSystemTimePreciseAsFileTime)
+		pGetSystemTimePreciseAsFileTime(lpFileTime);
+	else
+		GetSystemTimeAsFileTime(lpFileTime);
+}
+
 SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
 {
 	if (!IsAddressAccessible((PVOID)StrCandidate))
@@ -757,7 +774,7 @@ OutputRegisterChanges(PCONTEXT Context)
 	if (g_config.trace_times)
 	{
 		FILETIME CurrentTime;
-		GetSystemTimePreciseAsFileTime(&CurrentTime);
+		GetSystemTimeSafeAsFileTime(&CurrentTime);
 		DWORD Delta = (CurrentTime.dwLowDateTime - LastTime.dwLowDateTime)/10000;
 		if (Delta)
 			DebuggerOutput(" %dms", Delta);

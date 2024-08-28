@@ -101,6 +101,8 @@ typedef BOOL (cdecl *SAMPLE_HANDLER)(struct _EXCEPTION_POINTERS*);
 
 typedef void (WINAPI *PWIN32ENTRY)();
 
+typedef void (WINAPI *GetSystemTimePreciseAsFileTime_t)(LPFILETIME);
+
 #ifdef __cplusplus
 extern "C" {
 #endif
