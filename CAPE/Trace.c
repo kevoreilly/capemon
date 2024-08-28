@@ -122,10 +122,10 @@ void DoTraceOutput(PVOID Address)
 	TraceOutput(Address, DecodedInstruction);
 }
 
+static GetSystemTimePreciseAsFileTime_t pGetSystemTimePreciseAsFileTime;
+
 void GetSystemTimeSafeAsFileTime(LPFILETIME lpFileTime)
 {
-	static GetSystemTimePreciseAsFileTime_t pGetSystemTimePreciseAsFileTime = NULL;
-
 	if (!pGetSystemTimePreciseAsFileTime)
 	{
 		HMODULE hModule = GetModuleHandle("kernel32.dll");
