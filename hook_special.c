@@ -261,6 +261,7 @@ static _ProgIDFromCLSID pProgIDFromCLSID;
 /* C08AFD90-F2A1-11D1-8455-00A0C91F3880 */ DEFINE_GUID(CLSID_ShellBrowserWindow, 0xC08AFD90, 0xF2A1, 0x11D1, 0x84, 0x55, 0x00, 0xA0, 0xC9, 0x1F, 0x38, 0x80);
 /* 9BA05972-F6A8-11CF-A442-00A0C90A8F39 */ DEFINE_GUID(CLSID_ShellWindows, 0x9BA05972, 0xF6A8, 0x11CF, 0xA4, 0x42, 0x00, 0xA0, 0xC9, 0x0A, 0x8F, 0x39);
 /* FBF23B40-E3F0-101B-8488-00AA003E56F8 */ DEFINE_GUID(CLSID_InternetShortcut, 0xFBF23B40, 0xE3F0, 0x101B, 0x84, 0x88, 0x00, 0xAA, 0x00, 0x3E, 0x56, 0xF8);
+/* 3050F4D8-98B5-11CF-BB82-00AA00BDCE0B */ DEFINE_GUID(CLSID_HtaFile, 0x3050F4D8, 0x98B5, 0x11CF, 0xBB, 0x82, 0x00, 0xAA, 0x00, 0xBD, 0xCE, 0x0B);
 
 void inspect_clsid(REFCLSID rclsid) {
 	if (!bits_sent && IsEqualCLSID(rclsid, &CLSID_BITSControlClass_v1_0) || IsEqualCLSID(rclsid, &CLSID_BITS_Unknown) || IsEqualCLSID(rclsid, &CLSID_BITS_LegacyControlClass)) {
@@ -279,7 +280,8 @@ void inspect_clsid(REFCLSID rclsid) {
 	if (!interop_sent && IsEqualCLSID(rclsid, &CLSID_WordObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_ExcelObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_Unknown246FF)
 		|| IsEqualCLSID(rclsid, &CLSID_OutlookObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_Equation2) || IsEqualCLSID(rclsid, &CLSID_InternetExplorer)
 		|| IsEqualCLSID(rclsid, &CLSID_MsiInstallServer) || IsEqualCLSID(rclsid, &CLSID_StdGlobalInterfaceTable) || IsEqualCLSID(rclsid, &CLSID_PowerPointObjectLibrary)
-		|| IsEqualCLSID(rclsid, &CLSID_SeparateMultipleProcessExplorerHost) || IsEqualCLSID(rclsid, &CLSID_ShellBrowserWindow) || IsEqualCLSID(rclsid, &CLSID_InternetShortcut)) {
+		|| IsEqualCLSID(rclsid, &CLSID_SeparateMultipleProcessExplorerHost) || IsEqualCLSID(rclsid, &CLSID_ShellBrowserWindow) || IsEqualCLSID(rclsid, &CLSID_InternetShortcut)
+		|| IsEqualCLSID(rclsid, &CLSID_HtaFile)) {
 		interop_sent = 1;
 		pipe("INTEROP:");
 	}
