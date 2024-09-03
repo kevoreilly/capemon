@@ -3610,3 +3610,5 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
 	_In_	DWORD    dwFlags
 );
+
+#include "hook_vbscript.h"

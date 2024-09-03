@@ -2024,6 +2024,54 @@ next_iter:
 	return 0;
 }
 
+ULONG_PTR get_vbscript_addr(HMODULE mod, const char * function)
+{
+	unsigned int widelen = 0;
+	wchar_t *widefunc = NULL;
+	PUCHAR start, end;
+	wchar_t *u;
+	const char *c;
+
+	if (!function)
+		return 0;
+
+	widelen = (unsigned int)((strlen(function) + 1) * sizeof(wchar_t));
+	widefunc = calloc(1, widelen);
+	if (!widefunc)
+		return 0;
+
+	for (u = widefunc, c = function; *c; c++, u++)
+		*u = (wchar_t)(unsigned short)*c;
+
+	if (!get_section_bounds(mod, ".text", &start, &end))
+		return 0;
+
+	for (PUCHAR p = start; p < end - 10; p++) {
+#ifdef _WIN64
+		if (p[0] == 0x4c && p[1] == 0x8d && p[2] == 0x1d && p[26] == 0x48 && p[27] == 0x8d && p[28] == 0x3d ) {
+			wchar_t* name = *(wchar_t**)(&p[7] + *(unsigned int*)&p[3]);
+			__try {
+				if (name && !wcsicmp(widefunc, name))
+					return *((ULONG_PTR*)(&p[33] + *(unsigned int*)&p[29]) + 1);
+#else
+		if (p[0] == 0xc7 && p[1] == 0x45 && p[2] == 0x08 && p[7] == 0xc7 && p[8] == 0x45 && p[9] == 0xfc ) {
+			wchar_t** name = *(wchar_t***)&p[3];
+			__try {
+				if (*name && !wcsicmp(widefunc, *name))
+					return *((ULONG_PTR*)*(ULONG_PTR*)&p[10] + 1);
+#endif
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				continue;
+			}
+		}
+	}
+
+	free(widefunc);
+
+	return 0;
+}
+
 typedef struct _DLL_NOTIFICATION_STRUCT {
 	struct _DLL_NOTIFICATION_STRUCT *Next;
 	DWORD Unused;

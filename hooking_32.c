@@ -697,6 +697,11 @@ int hook_api(hook_t *h, int type)
 			if (addr && (PVOID)addr != getprocaddr)
 				DebugOutput("hook_api: combase::%s export address 0x%p differs from GetProcAddress -> 0x%p\n", h->funcname, addr, getprocaddr);
 		}
+		else if (!wcscmp(h->library, L"vbscript")) {
+			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+			if (!addr)
+				addr = (unsigned char *)get_vbscript_addr(hmod, (PCHAR)h->funcname);
+		}
 		else {
 			PVOID exportaddr = GetExportAddress(hmod, (PCHAR)h->funcname);
 			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);

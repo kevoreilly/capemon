@@ -264,6 +264,7 @@
     <ClCompile Include="hook_sync.c" />
     <ClCompile Include="hook_thread.c" />
     <ClCompile Include="hook_tls.c" />
+    <ClCompile Include="hook_vbscript.c" />
     <ClCompile Include="hook_window.c" />
     <ClCompile Include="ignore.c" />
     <ClCompile Include="log.c" />
