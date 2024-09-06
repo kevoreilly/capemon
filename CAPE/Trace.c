@@ -1978,7 +1978,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
 	unsigned int DllRVA;
-	PVOID BranchTarget;
+	PVOID LastBranchFromIp = NULL;
 
 	StopTrace = FALSE;
 	TraceRunning = TRUE;
@@ -2081,11 +2081,20 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return TRUE;
 	}
 
-	//if (g_config.branch_trace && ExceptionInfo->ExceptionRecord->ExceptionInformation[0] > 0x20000)
-	if (g_config.branch_trace && ExceptionInfo->ExceptionRecord->ExceptionInformation[0])
+	if (g_config.branch_trace && IsAddressAccessible((PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0]))
 	{
-		BranchTarget = CIP;
-		CIP = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
+		LastBranchFromIp = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
+		Result = distorm_decode(Offset, (const unsigned char*)LastBranchFromIp, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+#ifdef _WIN64
+		ExceptionInfo->ContextRecord->Rip = (DWORD64)LastBranchFromIp;
+		InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
+		ExceptionInfo->ContextRecord->Rip = (DWORD64)CIP;
+#else
+		ExceptionInfo->ContextRecord->Eip = (DWORD)LastBranchFromIp;
+		InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
+		ExceptionInfo->ContextRecord->Eip = (DWORD)CIP;
+#endif
+		DebuggerOutput("\n");
 	}
 
 	PCHAR FunctionName = NULL;
@@ -2128,7 +2137,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				}
 				PreviousModuleName = ModuleName;
 			}
-			else if (!g_config.branch_trace)
+			else
 			{
 				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
 				PreviousModuleName = ModuleName;
@@ -2147,14 +2156,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC") && g_config.fake_rdtsc)
 		ModTimestamp = TRUE;
-
-	if (g_config.branch_trace && BranchTarget)
-	{
-		Result = distorm_decode(Offset, (const unsigned char*)BranchTarget, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
-
-		if (strcmp(DecodedInstruction.mnemonic.p, "CALL") && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
-			TraceOutput(CIP, DecodedInstruction);
-	}
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
