@@ -2811,7 +2811,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			// break-on-entrypoint uses bp0
 			Register = EntryPointRegister - 1;
 
-			if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, 0, BreakpointCallback))
+			if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, 1, BreakpointCallback))
 			{
 				DebuggerOutput("Breakpoint %d set on entry point at 0x%p\n", Register, EntryPoint);
 				BreakpointsSet = TRUE;
