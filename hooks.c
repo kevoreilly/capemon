@@ -1621,7 +1621,8 @@ void set_hooks()
 		if (g_config.hook_range && i > g_config.hook_range)
 			break;
 
-		//DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
+		if (g_config.hook_range)
+			DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
 		if (hook_api(hooks+i, g_config.hook_type) < 0)
 			DebugOutput("set_hooks: Unable to hook %s", (hooks+i)->funcname);
 		else
