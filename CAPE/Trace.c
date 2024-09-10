@@ -2615,33 +2615,6 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 	return TRUE;
 }
 
-BOOL WriteCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
-{
-	PVOID CIP;
-	_DecodeType DecodeType;
-	_DecodeResult Result;
-	_OffsetType Offset = 0;
-	_DecodedInst DecodedInstruction;
-	unsigned int DecodedInstructionsCount = 0;
-	char OutputBuffer[MAX_PATH] = "";
-
-	BreakpointsHit = TRUE;
-
-#ifdef _WIN64
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
-	DecodeType = Decode64Bits;
-#else
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
-	DecodeType = Decode32Bits;
-#endif
-
-	Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
-
-	TraceOutput(CIP, DecodedInstruction);
-
-	return TRUE;
-}
-
 BOOL BreakpointOnReturn(PVOID Address)
 {
 	// Reset trace depth count
@@ -2681,7 +2654,7 @@ BOOL BreakpointOnReturn(PVOID Address)
 
 BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 {
-	PVOID Callback = NULL, BreakpointVA = NULL;
+	PVOID BreakpointVA = NULL;
 	unsigned int Type = 0, HitCount = 0;
 
 	if (g_config.file_offsets)
@@ -2699,62 +2672,26 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 
 	if (Register == 0)
 	{
-		if (!Type0)
-		{
-			Type = BP_EXEC;
-			Callback = BreakpointCallback;
-		}
-		else if (Type0 == BP_WRITE)
-		{
-			Type = BP_WRITE;
-			Callback = WriteCallback;
-		}
+		Type = Type0;
 		HitCount = g_config.hc0;
 	}
 	else if (Register == 1)
 	{
-		if (!Type1)
-		{
-			Type = BP_EXEC;
-			Callback = BreakpointCallback;
-		}
-		else if (Type1 == BP_WRITE)
-		{
-			Type = BP_WRITE;
-			Callback = WriteCallback;
-		}
+		Type = Type1;
 		HitCount = g_config.hc1;
 	}
 	else if (Register == 2)
 	{
-		if (!Type2)
-		{
-			Type = BP_EXEC;
-			Callback = BreakpointCallback;
-		}
-		else if (Type2 == BP_WRITE)
-		{
-			Type = BP_WRITE;
-			Callback = WriteCallback;
-		}
+		Type = Type2;
 		HitCount = g_config.hc2;
 	}
 	else if (Register == 3)
 	{
-		if (!Type3)
-		{
-			Type = BP_EXEC;
-			Callback = BreakpointCallback;
-		}
-		else if (Type3 == BP_WRITE)
-		{
-			Type = BP_WRITE;
-			Callback = WriteCallback;
-		}
+		Type = Type3;
 		HitCount = g_config.hc3;
 	}
 
-	if (SetBreakpoint(Register, 0, BreakpointVA, Type, HitCount, Callback))
+	if (SetBreakpoint(Register, 0, BreakpointVA, Type, HitCount, BreakpointCallback))
 	{
 		DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, hit count %d, thread %d)\n", Register, BreakpointVA, Address, Type, HitCount, GetCurrentThreadId());
 		BreakpointsSet = TRUE;
