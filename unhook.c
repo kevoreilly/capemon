@@ -132,6 +132,22 @@ void invalidate_regions_for_hook(const hook_t *hook)
 	}
 }
 
+void remove_hook(const char *funcname)
+{
+	for (uint32_t idx = 0; idx < g_index; idx++) {
+		DWORD old_protect;
+		if (g_addr[idx] && !stricmp(g_unhook_hooks[idx]->funcname, funcname)) {
+			if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+				return;
+			memcpy(g_addr[idx], g_orig[idx], g_length[idx]);
+			VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
+			/* get the unhook watcher to ignore this region */
+			g_hook_reported[idx] = 1;
+			g_addr[idx] = 0;
+		}
+	}
+}
+
 void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
 {
 	lasterror_t lasterror;

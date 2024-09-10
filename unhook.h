@@ -25,6 +25,7 @@ int terminate_event_init();
 int procname_watch_init();
 int init_watchdog();
 void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end);
+void remove_hook(const char *funcname);
 
 extern DWORD g_unhook_detect_thread_id;
 extern DWORD g_unhook_watcher_thread_id;
