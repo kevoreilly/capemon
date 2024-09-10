@@ -156,6 +156,8 @@ void parse_config_line(char* line)
 		*/
 		else if (!strcmp(key, "force-sleepskip")) { // Override default sleep skipping behavior: 0 disables all sleep skipping, 1 skips all sleeps.
 			g_config.force_sleepskip = value[0] == '1';
+			if (!g_config.force_sleepskip)
+				disable_sleep_skip();
 		}
 		else if (!strcmp(key, "serial")) { //Spoof the serial of the system volume as the provided hex value
 			g_config.serial_number = (unsigned int)strtoul(value, NULL, 16);
