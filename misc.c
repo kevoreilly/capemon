@@ -2051,15 +2051,18 @@ ULONG_PTR get_vbscript_addr(HMODULE mod, const char * function)
 		if (p[0] == 0x4c && p[1] == 0x8d && p[2] == 0x1d && p[26] == 0x48 && p[27] == 0x8d && p[28] == 0x3d ) {
 			wchar_t* name = *(wchar_t**)(&p[7] + *(unsigned int*)&p[3]);
 			__try {
-				if (name && !wcsicmp(widefunc, name))
+				if (name && !wcsicmp(widefunc, name)) {
+					free(widefunc);
 					return *((ULONG_PTR*)(&p[33] + *(unsigned int*)&p[29]) + 1);
 #else
 		if (p[0] == 0xc7 && p[1] == 0x45 && p[2] == 0x08 && p[7] == 0xc7 && p[8] == 0x45 && p[9] == 0xfc ) {
 			wchar_t** name = *(wchar_t***)&p[3];
 			__try {
-				if (*name && !wcsicmp(widefunc, *name))
+				if (*name && !wcsicmp(widefunc, *name)) {
+					free(widefunc);
 					return *((ULONG_PTR*)*(ULONG_PTR*)&p[10] + 1);
 #endif
+				}
 			}
 			__except (EXCEPTION_EXECUTE_HANDLER) {
 				continue;
