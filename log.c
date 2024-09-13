@@ -1066,7 +1066,7 @@ void log_environ()
 		sysvolguid = strdup("");
 
 
-	loq(LOG_ID_ENVIRON, "__notification__", "__environ__", 1, 0, "ssissssssiisssph",
+	loq(LOG_ID_ENVIRON, "__notification__", "__environ__", 1, 0, "ssissssssiisssphs",
 		"UserName", username,
 		"ComputerName", computername,
 		"InstallDate", installdate,
@@ -1082,7 +1082,12 @@ void log_environ()
 		"SystemVolumeGUID", sysvolguid,
 		"MachineGUID", machineguid,
 		"MainExeBase", mainbase,
-		"MainExeSize", get_image_size((ULONG_PTR)mainbase)
+		"MainExeSize", get_image_size((ULONG_PTR)mainbase),
+#ifdef _WIN64
+		"Bitness", "64-bit"
+#else
+		"Bitness", "32-bit"
+#endif
 		);
 
 	free(username);
