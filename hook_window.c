@@ -519,6 +519,9 @@ HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
 	__in DWORD dwTimeout
 ) {
 	int ret = Old_MessageBoxTimeoutW(hwndOwner, lpszText, lpszCaption, wStyle, wLanguageId, dwTimeout);
-	LOQ_zero("windows", "uui", "Text", lpszText, "Caption", lpszCaption, "Timeout", dwTimeout);
+	if (dwTimeout == INFINITE)
+		LOQ_zero("windows", "uus", "Text", lpszText, "Caption", lpszCaption, "Timeout", "Infinite");
+	else
+		LOQ_zero("windows", "uui", "Text", lpszText, "Caption", lpszCaption, "Timeout", dwTimeout);
 	return ret;
 }
