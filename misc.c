@@ -2064,6 +2064,10 @@ ULONG_PTR get_vbscript_addr(HMODULE mod, const char * function)
 	if (!function)
 		return 0;
 
+	// function names are prefixed with 'Vbs' to match vbscript.dll symbols
+	if (function[0] == 'V' && function[1] == 'b' && function[2] == 's')
+		function += 3;
+
 	widelen = (unsigned int)((strlen(function) + 1) * sizeof(wchar_t));
 	widefunc = calloc(1, widelen);
 	if (!widefunc)
