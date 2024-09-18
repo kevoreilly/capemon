@@ -136,10 +136,12 @@ LONG WINAPI New_VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInf
 		PVOID NewCIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 #endif
 		if (ret == EXCEPTION_CONTINUE_EXECUTION) {
+			char disassembly[256] = {0};
+			disassemble(CIP, disassembly, sizeof(disassembly));
 			if (g_config.log_vexcept && NewCIP != CIP)
-				LOQ_void("system", "pppipppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "NumberParameters", ExceptionInfo->ExceptionRecord->NumberParameters, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1], "PreviousIP", CIP, "NewIP", NewCIP);
+				LOQ_void("system", "pppipppps", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "NumberParameters", ExceptionInfo->ExceptionRecord->NumberParameters, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1], "PreviousIP", CIP, "NewIP", NewCIP, "Instruction", disassembly);
 			else if (g_config.log_vexcept)
-				LOQ_void("system", "pppipp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "NumberParameters", ExceptionInfo->ExceptionRecord->NumberParameters, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+				LOQ_void("system", "pppipps", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "NumberParameters", ExceptionInfo->ExceptionRecord->NumberParameters, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation, "Instruction", disassembly);
 			if (TraceRunning)
 				SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
 		}

@@ -1345,12 +1345,14 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 
 	if (g_config.log_exceptions && !((ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) && !(g_config.debugger && SingleStepHandler && (ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP || ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION || ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION))) {
 		int ret = 0;
+		char disassembly[256] = {0};
+		disassemble(ExceptionRecord->ExceptionAddress, disassembly, sizeof(disassembly));
 		if (!ExceptionRecord->NumberParameters && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
-			LOQ_void("system", "ppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags);
+			LOQ_void("system", "ppps", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "Instruction", disassembly);
 		else if (ExceptionRecord->NumberParameters == 1 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
-			LOQ_void("system", "pppp", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionRecord->ExceptionInformation[0]);
+			LOQ_void("system", "pppps", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionRecord->ExceptionInformation[0], "Instruction", disassembly);
 		else if (ExceptionRecord->NumberParameters > 1 && (ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
-			LOQ_void("system", "pppppi", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionRecord->ExceptionInformation[1], "Parameters", ExceptionRecord->NumberParameters);
+			LOQ_void("system", "pppppis", "ExceptionCode", ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionRecord->ExceptionInformation[1], "Parameters", ExceptionRecord->NumberParameters, "Instruction", disassembly);
 	}
 
 	return CAPEExceptionDispatcher(ExceptionRecord, Context) ? TRUE : Old_RtlDispatchException(ExceptionRecord, Context);

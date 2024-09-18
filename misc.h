@@ -208,6 +208,7 @@ void set_dll_of_interest(ULONG_PTR BaseAddress);
 PCHAR get_exe_basename(PCHAR ModulePath);
 PWCHAR get_dll_basename(PWCHAR ModulePath);
 void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify);
+void disassemble(PVOID address, char* buffer, size_t bufferSize);
 
 extern char *our_process_path;
 extern wchar_t *our_process_path_w;

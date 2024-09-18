@@ -1922,6 +1922,35 @@ PWCHAR get_dll_basename(PWCHAR ModulePath)
 	return dllname;
 }
 
+void disassemble(PVOID address, char* buffer, size_t bufferSize)
+{
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	DecodeType = Decode64Bits;
+#else
+	DecodeType = Decode32Bits;
+#endif
+
+	if (!address)
+		return;
+
+	Result = distorm_decode(Offset, (const unsigned char*)address, 0x10, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	if (!DecodedInstruction.size)
+		return;
+
+#ifdef _WIN64
+	snprintf(buffer, bufferSize, "%-24s %-6s%-4s%-30s", (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
+#else
+	snprintf(buffer, bufferSize, "%-24s %-6s%-4s%-30s", (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
+#endif
+}
+
 ULONG_PTR get_olescript_parsescripttext_addr(HMODULE mod)
 {
 	PUCHAR start, end;
