@@ -3060,8 +3060,6 @@ int DumpImageInCurrentProcess(PVOID Address)
 	}
 
 
-	DebugOutput("DumpImageInCurrentProcess: pre-raw");
-
 	if (IsPeImageRaw(Address))
 	{
 		DebugOutput("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image (process %d)\n", GetCurrentProcessId());
