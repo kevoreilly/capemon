@@ -3005,11 +3005,9 @@ int DumpImageInCurrentProcess(PVOID Address)
 
     if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
     {
-		DebugOutput("DumpImageInCurrentProcess: pre-GetAccessibleSize");
         // We want to fix the PE header in the dump (for e.g. disassembly etc)
 		SIZE_T RegionSize = GetAccessibleSize(Address) - ((PBYTE)Address - (PBYTE)GetAllocationBase(Address));
 
-		DebugOutput("DumpImageInCurrentProcess: RegionSize 0x%x", RegionSize);
         RegionCopy = calloc(RegionSize, sizeof(BYTE));
 
         if (!RegionCopy)
@@ -3017,7 +3015,6 @@ int DumpImageInCurrentProcess(PVOID Address)
             ErrorOutput("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
             return 0;
         }
-		DebugOutput("DumpImageInCurrentProcess: post-calloc");
 
         __try
         {
