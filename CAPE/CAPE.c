@@ -2986,7 +2986,7 @@ int DumpPE(PVOID Buffer)
 }
 
 //**************************************************************************************
-int DumpImageInCurrentProcess(PVOID BaseAddress)
+int DumpImageInCurrentProcess(PVOID Address)
 //**************************************************************************************
 {
 	PIMAGE_DOS_HEADER pDosHeader;
@@ -2995,19 +2995,21 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 	DWORD dwProtect = 0;
 	int RetVal = 0;
 
-	pDosHeader = (PIMAGE_DOS_HEADER)BaseAddress;
+	pDosHeader = (PIMAGE_DOS_HEADER)Address;
 
 	if (DumpCount >= DUMP_MAX)
 	{
-		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", BaseAddress, DUMP_MAX);
+		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, DUMP_MAX);
 		return 0;
 	}
 
     if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
     {
+		DebugOutput("DumpImageInCurrentProcess: pre-GetAccessibleSize");
         // We want to fix the PE header in the dump (for e.g. disassembly etc)
-		SIZE_T RegionSize = GetAccessibleSize(BaseAddress);
+		SIZE_T RegionSize = GetAccessibleSize(Address) - ((PBYTE)Address - (PBYTE)GetAllocationBase(Address));
 
+		DebugOutput("DumpImageInCurrentProcess: RegionSize 0x%x", RegionSize);
         RegionCopy = calloc(RegionSize, sizeof(BYTE));
 
         if (!RegionCopy)
@@ -3015,21 +3017,22 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
             ErrorOutput("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
             return 0;
         }
+		DebugOutput("DumpImageInCurrentProcess: post-calloc");
 
         __try
         {
-            memcpy(RegionCopy, BaseAddress, RegionSize);
+            memcpy(RegionCopy, Address, RegionSize);
         }
         __except(EXCEPTION_EXECUTE_HANDLER)
         {
-            DebugOutput("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", BaseAddress);
+            DebugOutput("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", Address);
             free(RegionCopy);
             return 0;
         }
 
         pDosHeader = (PIMAGE_DOS_HEADER)RegionCopy;
 
-        DebugOutput("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", BaseAddress);
+        DebugOutput("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", Address);
 
         if (!pDosHeader->e_lfanew)
         {
@@ -3060,12 +3063,14 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 	}
 
 
-	if (IsPeImageRaw(BaseAddress))
+	DebugOutput("DumpImageInCurrentProcess: pre-raw");
+
+	if (IsPeImageRaw(Address))
 	{
 		DebugOutput("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image (process %d)\n", GetCurrentProcessId());
 
-		if (!DumpPE(BaseAddress))
-			DebugOutput("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", BaseAddress);
+		if (!DumpPE(Address))
+			DebugOutput("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", Address);
 		else
 			RetVal = 1;
 	}
@@ -3073,8 +3078,8 @@ int DumpImageInCurrentProcess(PVOID BaseAddress)
 	{
 		DebugOutput("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
 
-		if (!DumpProcess(GetCurrentProcess(), BaseAddress, 0, FALSE))
-			DebugOutput("DumpImageInCurrentProcess: Failed to dump virtual PE image from 0x%p, dumping memory region.\n", BaseAddress);
+		if (!DumpProcess(GetCurrentProcess(), Address, 0, FALSE))
+			DebugOutput("DumpImageInCurrentProcess: Failed to dump virtual PE image from 0x%p, dumping memory region.\n", Address);
 		else
 			RetVal = 1;
 	}
