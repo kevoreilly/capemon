@@ -552,7 +552,7 @@ SIZE_T GetAccessibleSize(PVOID Address)
 			break;
 	}
 
-	return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)OriginalAllocationBase);
+	return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)Address);
 }
 
 //**************************************************************************************
@@ -3006,7 +3006,7 @@ int DumpImageInCurrentProcess(PVOID Address)
     if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
     {
         // We want to fix the PE header in the dump (for e.g. disassembly etc)
-		SIZE_T RegionSize = GetAccessibleSize(Address) - ((PBYTE)Address - (PBYTE)GetAllocationBase(Address));
+		SIZE_T RegionSize = GetAccessibleSize(Address);
 
         RegionCopy = calloc(RegionSize, sizeof(BYTE));
 
