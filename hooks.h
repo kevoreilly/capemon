@@ -1241,6 +1241,13 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 	_Out_	LPVOID	   *ppv
 );
 
+HOOKDEF(HRESULT, WINAPI, CoGetObject,
+	_In_		LPCWSTR pszName,
+	_In_opt_	BIND_OPTS *pBindOptions,
+	_In_		REFIID riid,
+	_Out_		LPVOID *ppv
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in	 HANDLE SectionHandle,
 	__in	 HANDLE ProcessHandle,

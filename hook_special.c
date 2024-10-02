@@ -428,7 +428,7 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 			memcpy(&id1, rclsid, sizeof(id1));
-		if (is_valid_address_range((ULONG_PTR)riid, 16))
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
 		memcpy(&id2, riid, sizeof(id2));
 	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
 		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
@@ -451,6 +451,41 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 		pCoTaskMemFree(resolv);
 
 	set_lasterrors(&lasterror);
+
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, CoGetObject,
+	_In_		LPCWSTR pszName,
+	_In_opt_	BIND_OPTS *pBindOptions,
+	_In_		REFIID riid,
+	_Out_		LPVOID *ppv
+) {
+	HRESULT ret;
+	lasterror_t lasterror;
+	IID id = CLSID_NULL;
+	char idbuf[40];
+
+	get_lasterrors(&lasterror);
+
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id, riid, sizeof(id));
+
+	sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id.Data1, id.Data2, id.Data3,
+		id.Data4[0], id.Data4[1], id.Data4[2], id.Data4[3], id.Data4[4], id.Data4[5], id.Data4[6], id.Data4[7]);
+
+	set_lasterrors(&lasterror);
+
+	if (!interop_sent) {
+		interop_sent = 1;
+		pipe("INTEROP:");
+	}
+
+	raw_sleep(1000);
+
+	ret = Old_CoGetObject(pszName, pBindOptions, riid, ppv);
+
+	LOQ_hresult("com", "us", "Name", pszName, "riid", idbuf);
 
 	return ret;
 }
