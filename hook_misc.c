@@ -801,7 +801,7 @@ normal_call:
 
 		if (!g_config.no_stealth && SystemInformationClass == SystemBasicInformation && SystemInformationLength >= sizeof(SYSTEM_BASIC_INFORMATION) && NT_SUCCESS(ret)) {
 			PSYSTEM_BASIC_INFORMATION p = (PSYSTEM_BASIC_INFORMATION)SystemInformation;
-			p->NumberOfProcessors = 2;
+			p->NumberOfProcessors = 4;
 		}
 
 		/* This is nearly arbitrary and simply designed to test whether the Upatre author(s) or others
@@ -1151,8 +1151,8 @@ HOOKDEF(void, WINAPI, GlobalMemoryStatus,
 ) {
 	BOOL ret = TRUE;
 	Old_GlobalMemoryStatus(lpBuffer);
-	if (!g_config.no_stealth && lpBuffer->dwTotalPhys < 0x80000000)
-		lpBuffer->dwTotalPhys = (SIZE_T)0x200000000;
+	if (!g_config.no_stealth && lpBuffer->dwTotalPhys < 0x400000000)
+		lpBuffer->dwTotalPhys = (SIZE_T)0x400000000;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->dwTotalPhys / (1024 * 1024));
 }
 
@@ -1160,8 +1160,8 @@ HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 	_Out_ LPMEMORYSTATUSEX lpBuffer
 ) {
 	BOOL ret = Old_GlobalMemoryStatusEx(lpBuffer);
-	if (ret && !g_config.no_stealth && lpBuffer->ullTotalPhys < 0x80000000)
-		lpBuffer->ullTotalPhys = 0x200000000;
+	if (ret && !g_config.no_stealth && lpBuffer->ullTotalPhys < 0x400000000)
+		lpBuffer->ullTotalPhys = 0x400000000;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->ullTotalPhys / (1024 * 1024));
 	return ret;
 }
