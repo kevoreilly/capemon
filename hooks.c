@@ -146,9 +146,11 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(ole32, CoGetObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoGetObject),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
@@ -751,9 +753,11 @@ hook_t min_hooks[] = {
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(ole32, CoGetObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoGetObject),
 
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
