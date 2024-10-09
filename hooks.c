@@ -56,6 +56,8 @@ void disable_tail_call_optimization(void)
 hook_t full_hooks[] = {
 
 	// Process Hooks
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
@@ -151,8 +153,6 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoGetObject),
-	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
-	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
@@ -1622,7 +1622,7 @@ void set_hooks()
 			}
 		}
 #endif
-		if (g_config.hook_range && i > g_config.hook_range)
+		if (g_config.hook_range && i >= g_config.hook_range)
 			break;
 
 		if (g_config.hook_range)
