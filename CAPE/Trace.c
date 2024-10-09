@@ -111,7 +111,7 @@ void DoTraceOutput(PVOID Address)
 	DecodeType = Decode32Bits;
 #endif
 
-	if (!Address)
+	if (!Address || !IsAddressAccessible(Address))
 		return;
 
 	Result = distorm_decode(Offset, (const unsigned char*)Address, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
