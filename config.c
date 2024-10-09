@@ -407,9 +407,16 @@ void parse_config_line(char* line)
 						*p2 = '\0';
 					}
 				}
-				g_config.bp[x++] = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
-				if (g_config.bp[x-1]) {
-					DebugOutput("Config: Added 0x%p to breakpoint list.\n", g_config.bp[x-1]);
+				for (unsigned int i = 0; i < ARRAYSIZE(g_config.bp); i++) {
+					if (g_config.bp[x])
+						x++;
+					else
+						break;
+				}
+				if (x < BREAKPOINT_MAX) {
+					PVOID address = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
+					g_config.bp[x] = address;
+					DebugOutput("Config: Added 0x%p to breakpoint list.\n", address);
 					g_config.debugger = 1;
 				}
 				if (p2 == NULL)
