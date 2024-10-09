@@ -56,7 +56,7 @@ extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ModTimestamp, ReDisassemble, SyscallBreakpointSet, TraceRunning, BreakOnNtContinue;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ReDisassemble, SyscallBreakpointSet, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
@@ -1963,6 +1963,26 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			*ForceStepOver = TRUE;
 		}
     }
+	else if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC") && g_config.fake_rdtsc)
+	{
+		if (!FilterTrace || g_config.trace_all)
+			TraceOutput(CIP, DecodedInstruction);
+
+		if (!LastTimestamp.QuadPart)
+			LastTimestamp.QuadPart = __rdtsc();
+		else
+			LastTimestamp.QuadPart = LastTimestamp.QuadPart + g_config.fake_rdtsc;
+#ifdef _WIN64
+		ExceptionInfo->ContextRecord->Rax = LastTimestamp.LowPart;
+		ExceptionInfo->ContextRecord->Rdx = LastTimestamp.HighPart;
+#else
+		ExceptionInfo->ContextRecord->Eax = LastTimestamp.LowPart;
+		ExceptionInfo->ContextRecord->Edx = LastTimestamp.HighPart;
+#endif
+		SkipInstruction(ExceptionInfo->ContextRecord);
+		if (lookup_get(&SoftBPs, (ULONG_PTR)CIP, 0))
+			PatchByte(CIP, 0xCC);
+	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
 	{
 		if (!FilterTrace || g_config.trace_all)
@@ -2032,32 +2052,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 			else
 				DebugOutput("Trace: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
-		}
-	}
-
-	if (ModTimestamp)
-	{
-		ModTimestamp = FALSE;
-		if (!LastTimestamp.QuadPart)
-		{
-#ifdef _WIN64
-			LastTimestamp.LowPart = (DWORD)ExceptionInfo->ContextRecord->Rax;
-			LastTimestamp.HighPart = (DWORD)ExceptionInfo->ContextRecord->Rdx;
-#else
-			LastTimestamp.LowPart = ExceptionInfo->ContextRecord->Eax;
-			LastTimestamp.HighPart = ExceptionInfo->ContextRecord->Edx;
-#endif
-		}
-		else
-		{
-			LastTimestamp.QuadPart = LastTimestamp.QuadPart + g_config.fake_rdtsc;
-#ifdef _WIN64
-			ExceptionInfo->ContextRecord->Rax = LastTimestamp.LowPart;
-			ExceptionInfo->ContextRecord->Rdx = LastTimestamp.HighPart;
-#else
-			ExceptionInfo->ContextRecord->Eax = LastTimestamp.LowPart;
-			ExceptionInfo->ContextRecord->Edx = LastTimestamp.HighPart;
-#endif
 		}
 	}
 
@@ -2153,9 +2147,6 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	// Instruction handling
 	InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
-
-	if (!strcmp(DecodedInstruction.mnemonic.p, "RDTSC") && g_config.fake_rdtsc)
-		ModTimestamp = TRUE;
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
@@ -2727,7 +2718,6 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 	TraceDepthCount = 0;
 	InstructionCount = 0;
 	StopTrace = FALSE;
-	ModTimestamp = FALSE;
 	StepOverRegister = -1;
 	function_id = -1;
 	subfunction_id = -1;
