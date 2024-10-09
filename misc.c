@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.h"
 #include "pipe.h"
 #include "config.h"
+#include "CAPE\CAPE.h"
 
 extern char *our_process_name;
 extern int path_is_system(const wchar_t *path_w);
