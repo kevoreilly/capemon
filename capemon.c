@@ -243,7 +243,7 @@ void Disassemble(PVOID Address)
 	DecodeType = Decode32Bits;
 #endif
 
-	if (!Address)
+	if (!Address || !IsAddressAccessible(Address))
 		return;
 
 	Result = distorm_decode(Offset, (const unsigned char*)Address, 0x10, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
