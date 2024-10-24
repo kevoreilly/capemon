@@ -2397,16 +2397,18 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	ReDisassemble = FALSE;
 
 	// Dispatch any actions
-	if ((Instruction0 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction0, strlen(Instruction0))) || (!Instruction0 && pBreakpointInfo->Register == 0 && strlen(Action0)))
+	if (pBreakpointInfo->Register == 0 && strlen(Action0))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action0);
 
-	if ((Instruction1 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction1, strlen(Instruction1))) || (!Instruction1 && pBreakpointInfo->Register == 1 && strlen(Action1)))
+	if (pBreakpointInfo->Register == 1 && strlen(Action1))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action1);
 
-	if ((Instruction2 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction2, strlen(Instruction2))) || (!Instruction2 && pBreakpointInfo->Register == 2 && strlen(Action2)))
+	if (pBreakpointInfo->Register == 2 && strlen(Action2))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
+	else if (pBreakpointInfo->Register == 2)
+		DebuggerOutput("Action2 empty! %s\n", Action2);
 
-	if ((Instruction3 && !strnicmp(DecodedInstruction.mnemonic.p, Instruction3, strlen(Instruction3))) || (!Instruction3 && pBreakpointInfo->Register == 3 && strlen(Action3)))
+	if (pBreakpointInfo->Register == 3 && strlen(Action3))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
 
 	// We disassemble a second time in case of any changes/patches

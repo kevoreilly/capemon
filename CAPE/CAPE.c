@@ -614,14 +614,74 @@ PVOID GetCLRAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	return NULL;
 }
 
+#ifdef _WIN64
 //**************************************************************************************
-PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
+PVOID GetNonExportedFunctionAddress(HMODULE ModuleBase, PCHAR ExportName, int Offset)
+//**************************************************************************************
+{
+	if (!ModuleBase || !ExportName)
+		return NULL;
+
+    DWORD ExportRVA = (DWORD)((ULONG_PTR)GetProcAddress(ModuleBase, ExportName) - (ULONG_PTR)ModuleBase);
+    if (!ExportRVA)
+        return NULL;
+
+	PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)ModuleBase + (ULONG)((PIMAGE_DOS_HEADER)ModuleBase)->e_lfanew);
+    PIMAGE_RUNTIME_FUNCTION_ENTRY Table = (PIMAGE_RUNTIME_FUNCTION_ENTRY)((PUCHAR)ModuleBase + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress);
+
+	for (unsigned int i = 0; Table[i].BeginAddress; i++)
+		if (Table[i].BeginAddress == ExportRVA)
+			return (PVOID)((PBYTE)ModuleBase + Table[Offset + i].BeginAddress);
+
+    return NULL;
+}
+#endif
+
+//**************************************************************************************
+PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
+//**************************************************************************************
+{
+#ifdef _WIN64
+	typedef struct
+	{
+		PCHAR FunctionName;
+		PCHAR ExportName;
+		int Offset;
+	} RuntimeTableMapping;
+
+	RuntimeTableMapping RuntimeTable[] =
+	{
+		// Function name, Exported neighbour, offset in RUNTIME_FUNCTION table
+		{"LdrpCallInitRoutine", "RtlActivateActivationContextUnsafeFast", 1},
+	};
+
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+	{
+		for (int i = 0; i < sizeof(RuntimeTable) / sizeof(RuntimeTableMapping); i++)
+			if (strcmp(RuntimeTable[i].FunctionName, FunctionName) == 0)
+				return GetNonExportedFunctionAddress(ModuleBase, RuntimeTable[i].ExportName, RuntimeTable[i].Offset);
+	}
+#endif
+	const char *YaraFunctions[] =
+	{
+		"LdrpCallInitRoutine",
+	};
+
+	for (int i = 0; i < sizeof(YaraFunctions) / sizeof(YaraFunctions[0]); i++)
+		if (strcmp(YaraFunctions[i], FunctionName) == 0)
+			return GetAddressByYara(ModuleBase, FunctionName);
+
+	return NULL;
+}
+
+//**************************************************************************************
+PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 //**************************************************************************************
 {
 	PIMAGE_DOS_HEADER DosHeader;
 	PIMAGE_NT_HEADERS NtHeader;
 	PIMAGE_EXPORT_DIRECTORY ImageExportDirectory;
-	PVOID ExportAddress = NULL;
+	PVOID FunctionAddress = NULL;
 
 	if (!ModuleBase || !FunctionName)
 		return NULL;
@@ -629,7 +689,7 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (!IsAddressAccessible(ModuleBase))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("GetExportAddress: 0x%p inaccessible\n", ModuleBase);
+		DebugOutput("GetFunctionAddress: 0x%p inaccessible\n", ModuleBase);
 #endif
 		return NULL;
 	}
@@ -643,7 +703,7 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (!IsAddressAccessible(NtHeader))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("GetExportAddress: NT headers at 0x%p inaccessible\n", NtHeader);
+		DebugOutput("GetFunctionAddress: NT headers at 0x%p inaccessible\n", NtHeader);
 #endif
 		return NULL;
 	}
@@ -662,7 +722,7 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (ImageExportDirectory->AddressOfNames > NtHeader->OptionalHeader.SizeOfImage)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("GetExportAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ImageExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
+		DebugOutput("GetFunctionAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ImageExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
 #endif
 		return NULL;
 	}
@@ -676,37 +736,40 @@ PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName)
 			if (NameRVA[i])
 			{
 				if (!strcmp((PCHAR)((PBYTE)ModuleBase + NameRVA[i]), FunctionName))
-					ExportAddress = (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+					FunctionAddress = (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
 			}
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("GetExportAddress: Exception occurred around 0x%p\n", NameRVA);
+		DebugOutput("GetFunctionAddress: Exception occurred around 0x%p\n", NameRVA);
 		return NULL;
 	}
 
 
-	if (!ExportAddress && ModuleBase == GetModuleHandle("clr"))
+	if (!FunctionAddress && ModuleBase == GetModuleHandle("clr"))
 		return GetCLRAddress(ModuleBase, FunctionName);
 
-	if (!ExportAddress && ModuleBase == GetModuleHandle("clrjit"))
+	if (!FunctionAddress && ModuleBase == GetModuleHandle("clrjit"))
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("GetExportAddress: Looking up %s\n", FunctionName);
+		DebugOutput("GetFunctionAddress: Looking up %s\n", FunctionName);
 #endif
 		_getJit pgetJit;
-		*(FARPROC *)&pgetJit = GetExportAddress(ModuleBase, "getJit");
+		*(FARPROC *)&pgetJit = GetFunctionAddress(ModuleBase, "getJit");
 		if (!pgetJit) {
-			DebugOutput("GetExportAddress: failed to resolve getJit\n");
+			DebugOutput("GetFunctionAddress: failed to resolve getJit\n");
 			return NULL;
 		}
 		PVOID** CILJitBuff = (PVOID**)pgetJit();
 		if (CILJitBuff)
-			ExportAddress = (unsigned char *)**CILJitBuff;
+			FunctionAddress = (unsigned char *)**CILJitBuff;
 	}
 
-	return ExportAddress;
+	if (!FunctionAddress)
+		FunctionAddress = GetFunctionByName(ModuleBase, FunctionName);
+
+	return FunctionAddress;
 }
 
 //**************************************************************************************

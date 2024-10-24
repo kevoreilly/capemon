@@ -986,6 +986,12 @@ typedef struct _TIMER_SET_COALESCABLE_TIMER_INFO {
 
 typedef BOOL(WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
 
+typedef BOOL (WINAPI *PDLL_INIT_ROUTINE)(
+    _In_  HINSTANCE hinstDLL,
+    _In_  DWORD fdwReason,
+    _In_  LPVOID lpvReserved
+);
+
 static __inline UNICODE_STRING *unistr_from_objattr(OBJECT_ATTRIBUTES *obj)
 {
 	return obj != NULL ? obj->ObjectName : NULL;
