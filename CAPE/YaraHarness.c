@@ -35,7 +35,7 @@ extern char *our_dll_path;
 extern BOOL BreakpointsHit;
 
 YR_RULES* Rules = NULL;
-BOOL YaraActivated, YaraLogging, CapemonRulesDetected;
+BOOL YaraActivated, YaraLogging;
 #ifdef _WIN64
 extern PVOID LdrpInvertedFunctionTableSRWLock;
 #endif
@@ -48,9 +48,47 @@ char InternalYara[] =
 	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
 	"$10_0_10240_16384 = {48 8D 0D [4] 48 8B E8 E8 [4] 33 C9 E8 [4] 8B 15 [4] 3B 15 [4] 0F 84}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule LdrpCallInitRoutine"
+	"{strings:$function = {55 8B EC 56 57 53 8B F4 [0-2] FF 75 14 FF 75 10 FF 75 0C FF 55 08 8B E6 5B 5F 5E 5D C2 10 00}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule capemon"
 	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
 	"condition:all of them}";
+
+void ScannerError(int Error)
+{
+	switch (Error)
+	{
+		case ERROR_SUCCESS:
+			break;
+		case ERROR_COULD_NOT_MAP_FILE:  // exception scanning region
+#ifdef DEBUG_COMMENTS
+			DebugOutput("Yara error: exception scanning region.\n");
+#endif
+			break;
+		case ERROR_COULD_NOT_ATTACH_TO_PROCESS:
+			DebugOutput("Yara error: 'Cannot attach to process'\n");
+			break;
+		case ERROR_INSUFICIENT_MEMORY:
+			DebugOutput("Yara error: Not enough memory\n");
+			break;
+		case ERROR_SCAN_TIMEOUT:
+			DebugOutput("Yara error: Scanning timed out\n");
+			break;
+		case ERROR_COULD_NOT_OPEN_FILE:
+			DebugOutput("Yara error: Could not open file\n");
+			break;
+		case ERROR_UNSUPPORTED_FILE_VERSION:
+			DebugOutput("Yara error: Rules were compiled with a newer version of YARA.\n");
+			break;
+		case ERROR_CORRUPT_FILE:
+			DebugOutput("Yara error: Corrupt compiled rules file.\n");
+			break;
+		default:
+			DebugOutput("Yara error: Internal error: %d\n", Error);
+			break;
+	}
+}
 
 BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 {
@@ -224,7 +262,13 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 	return CALLBACK_ERROR;
 }
 
-int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
+typedef struct
+{
+	PCHAR FunctionName;
+	PVOID Address;
+} NameByAddress;
+
+int GetAddressByYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
 {
 	switch(message)
 	{
@@ -239,27 +283,26 @@ int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_da
 			YR_STRING* String;
 			YR_RULE* Rule = (YR_RULE*)message_data;
 
-			if (YaraLogging)
-				DebugOutput("InternalYaraScan hit: %s\n", Rule->identifier);
+#ifdef DEBUG_COMMENTS
+			DebugOutput("GetAddressByYaraCallback hit: %s\n", Rule->identifier);
+#endif
 
 			yr_rule_strings_foreach(Rule, String)
 			{
 				yr_string_matches_foreach(context, String, Match)
 				{
-#ifdef _WIN64
-					if (!strcmp(Rule->identifier, "RtlInsertInvertedFunctionTable"))
+					NameByAddress *AddressInfo = user_data;
+
+					if (!strcmp(Rule->identifier, AddressInfo->FunctionName))
 					{
-						if (!strcmp(String->identifier, "$10_0_19041_662") || !strcmp(String->identifier, "$10_0_18362_1350") || !strcmp(String->identifier, "$10_0_10240_16384"))
-						{
-							PVOID RtlInsertInvertedFunctionTable = (PVOID)((PBYTE)user_data + Match->offset);
-							LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
-							DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
-						}
-					}
+#ifdef DEBUG_COMMENTS
+						DebugOutput("GetAddressByYaraCallback: Function %s found at RVA 0x%x", AddressInfo->FunctionName, Match->offset);
 #endif
-					if (!strcmp(Rule->identifier, "capemon"))
-						if (!strcmp(String->identifier, "$hash"))
-							CapemonRulesDetected = TRUE;
+						AddressInfo->Address = (PVOID)Match->offset;
+						break;
+					}
+					else
+						DebugOutput("GetAddressByYaraCallback: Function %s not found", AddressInfo->FunctionName);
 				}
 			}
 			return CALLBACK_CONTINUE;
@@ -268,39 +311,72 @@ int InternalYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_da
 	return CALLBACK_ERROR;
 }
 
-void ScannerError(int Error)
+PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName)
 {
-	switch (Error)
+	if (!YaraActivated)
+		return NULL;
+
+	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+	DebugOutput("GetAddressByYara: ModuleBase 0x%p FunctionName %s\n", ModuleBase, FunctionName);
+
+
+	SIZE_T Size = GetAccessibleSize(ModuleBase);
+
+	if (!Size)
+		return NULL;
+
+	Size = (SIZE_T)ReverseScanForNonZero(ModuleBase, Size);
+
+	if (!Size)
 	{
-		case ERROR_SUCCESS:
-			break;
-		case ERROR_COULD_NOT_MAP_FILE:  // exception scanning region
-#ifdef DEBUG_COMMENTS
-			DebugOutput("Yara error: exception scanning region.\n");
-#endif
-			break;
-		case ERROR_COULD_NOT_ATTACH_TO_PROCESS:
-			DebugOutput("Yara error: 'Cannot attach to process'\n");
-			break;
-		case ERROR_INSUFICIENT_MEMORY:
-			DebugOutput("Yara error: Not enough memory\n");
-			break;
-		case ERROR_SCAN_TIMEOUT:
-			DebugOutput("Yara error: Scanning timed out\n");
-			break;
-		case ERROR_COULD_NOT_OPEN_FILE:
-			DebugOutput("Yara error: Could not open file\n");
-			break;
-		case ERROR_UNSUPPORTED_FILE_VERSION:
-			DebugOutput("Yara error: Rules were compiled with a newer version of YARA.\n");
-			break;
-		case ERROR_CORRUPT_FILE:
-			DebugOutput("Yara error: Corrupt compiled rules file.\n");
-			break;
-		default:
-			DebugOutput("Yara error: Internal error: %d\n", Error);
-			break;
+		if (YaraLogging)
+			DebugOutput("GetAddressByYara: Nothing to scan at 0x%p!\n", ModuleBase);
+		return NULL;
 	}
+
+	NameByAddress AddressInfo;
+	AddressInfo.FunctionName = FunctionName;
+	AddressInfo.Address = NULL;
+
+	__try
+	{
+		Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressByYaraCallback, &AddressInfo, Timeout);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		if (YaraLogging)
+			DebugOutput("GetAddressByYara: Unable to scan 0x%p\n", ModuleBase);
+		return NULL;
+	}
+
+	if (Result != ERROR_SUCCESS)
+		if (YaraLogging)
+			ScannerError(Result);
+#ifdef DEBUG_COMMENTS
+	else
+		DebugOutput("GetAddressByYara: successfully scanned 0x%p\n", ModuleBase);
+#endif
+
+	if (!AddressInfo.Address)
+		return NULL;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("GetAddressByYara: %s found at 0x%x", FunctionName, (ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
+#endif
+
+	return (PVOID)((ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
+}
+
+void YaraShutdown()
+{
+	YaraActivated = FALSE;
+
+	if (Rules != NULL)
+		yr_rules_destroy(Rules);
+
+	yr_finalize();
+
+	return;
 }
 
 void YaraScan(PVOID Address, SIZE_T Size)
@@ -369,60 +445,13 @@ void SilentYaraScan(PVOID Address, SIZE_T Size)
 #endif
 }
 
-void InternalYaraScan(PVOID Address, SIZE_T Size)
-{
-	if (!YaraActivated)
-		return;
-
-	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
-
-	if (!Size)
-		return;
-
-	SIZE_T AccessibleSize = GetAccessibleSize(Address);
-
-	if (!AccessibleSize)
-		return;
-
-	if (AccessibleSize < Size)
-		Size = AccessibleSize;
-
-	Size = (SIZE_T)ReverseScanForNonZero(Address, Size);
-
-	if (!Size)
-	{
-		if (YaraLogging)
-			DebugOutput("InternalYaraScan: Nothing to scan at 0x%p!\n", Address);
-		return;
-	}
-
-	if (YaraLogging)
-		DebugOutput("InternalYaraScan: Scanning 0x%p, size 0x%x\n", Address, Size);
-
-	__try
-	{
-		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, InternalYaraCallback, Address, Timeout);
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		if (YaraLogging)
-			DebugOutput("InternalYaraScan: Unable to scan 0x%p\n", Address);
-		return;
-	}
-	if (Result != ERROR_SUCCESS && YaraLogging)
-		ScannerError(Result);
-#ifdef DEBUG_COMMENTS
-	else
-		DebugOutput("InternalYaraScan: successfully scanned 0x%p\n", Address);
-#endif
-}
-
 BOOL ScanForRulesCanary(PVOID Address, SIZE_T Size)
 {
 	BOOL PreviousYaraLogging = YaraLogging;
 	YaraLogging = FALSE;
-	CapemonRulesDetected = FALSE;
-	InternalYaraScan(Address, Size);
+	BOOL CapemonRulesDetected = FALSE;
+	if (GetAddressByYara(Address, "capemon"))
+		CapemonRulesDetected = TRUE;
 	YaraLogging = PreviousYaraLogging;
 	return CapemonRulesDetected;
 }
@@ -562,11 +591,17 @@ BOOL YaraInit()
 		return TRUE;
 	}
 
+#ifdef _WIN64
 	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
 	{
-		PVOID Ntdll = GetModuleHandleA("ntdll");
-		InternalYaraScan(Ntdll, GetAllocationSize(Ntdll));
+		PVOID RtlInsertInvertedFunctionTable = GetAddressByYara(GetModuleHandleA("ntdll"), "RtlInsertInvertedFunctionTable");
+		if (RtlInsertInvertedFunctionTable)
+		{
+			LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
+			DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
+		}
 	}
+#endif
 
 	return TRUE;
 exit:
@@ -579,16 +614,4 @@ exit:
 	yr_finalize();
 
 	return FALSE;
-}
-
-void YaraShutdown()
-{
-	YaraActivated = FALSE;
-
-	if (Rules != NULL)
-		yr_rules_destroy(Rules);
-
-	yr_finalize();
-
-	return;
 }

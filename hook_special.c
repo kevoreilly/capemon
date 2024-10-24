@@ -27,6 +27,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include "CAPE\CAPE.h"
+#include "CAPE\YaraHarness.h"
+#include <psapi.h>
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
@@ -159,6 +161,28 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	}
 
 	return 0;
+}
+
+HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
+	__in PDLL_INIT_ROUTINE InitRoutine,
+	__in PVOID DllHandle,
+	__in ULONG Reason,
+	__in_opt PCONTEXT Context
+) {
+	char OutputBuffer[MAX_PATH] = "";
+	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), DllHandle, OutputBuffer, MAX_PATH);
+
+	if (Reason == 1 && g_config.yarascan && !is_in_dll_range((ULONG_PTR)DllHandle))
+		YaraScan(DllHandle, GetAccessibleSize(DllHandle));
+
+	BOOL ret = Old_LdrpCallInitRoutine(InitRoutine, DllHandle, Reason, Context);
+
+	if (Reason == 1 && MappedModule)
+		LOQ_bool("system", "shhi", "MappedPath", OutputBuffer, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+	else if (Reason == 1)
+		LOQ_bool("system", "hhi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+
+	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,

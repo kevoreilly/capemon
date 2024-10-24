@@ -3149,6 +3149,13 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
 );
 
+HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
+	__in PDLL_INIT_ROUTINE InitRoutine,
+	__in PVOID DllHandle,
+	__in ULONG Reason,
+	__in_opt PCONTEXT Context
+);
+
 HOOKDEF_NOTAIL(WINAPI, JsEval,
 	PVOID Arg1,
 	PVOID Arg2,

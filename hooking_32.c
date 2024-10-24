@@ -29,7 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 extern DWORD GetTimeStamp(LPVOID Address);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
+extern PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 extern SIZE_T GetAllocationSize(PVOID Address);
 
 // length disassembler engine
@@ -693,7 +693,7 @@ int hook_api(hook_t *h, int type)
 		}
 		else if (!wcscmp(h->library, L"combase")) {
 			PVOID getprocaddr = (PVOID)GetProcAddress(hmod, h->funcname);
-			addr = (unsigned char *)GetExportAddress(hmod, (PCHAR)h->funcname);
+			addr = (unsigned char *)GetFunctionAddress(hmod, (PCHAR)h->funcname);
 			if (addr && (PVOID)addr != getprocaddr)
 				DebugOutput("hook_api: combase::%s export address 0x%p differs from GetProcAddress -> 0x%p\n", h->funcname, addr, getprocaddr);
 		}
@@ -703,16 +703,19 @@ int hook_api(hook_t *h, int type)
 				addr = (unsigned char *)get_vbscript_addr(hmod, (PCHAR)h->funcname);
 		}
 		else {
-			PVOID exportaddr = GetExportAddress(hmod, (PCHAR)h->funcname);
+			PVOID exportaddr = GetFunctionAddress(hmod, (PCHAR)h->funcname);
 			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
 			if (exportaddr && addr && (PVOID)addr != exportaddr) {
 				unsigned int offset;
 				char *module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)addr, &offset);
 				DebugOutput("hook_api: Warning - %s export address 0x%p differs from GetProcAddress -> 0x%p (%s::0x%x)\n", h->funcname, exportaddr, addr, module_name, offset);
 			}
-			else if (exportaddr && !addr && !wcscmp(h->library, L"clrjit")) {
+			else if (exportaddr && !addr) {
 				addr = exportaddr;
-				DebugOutput("hook_api: clrjit::%s export address 0x%p obtained via GetExportAddress\n", h->funcname, addr);
+				if  (!wcscmp(h->library, L"clrjit"))
+					DebugOutput("hook_api: clrjit::%s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
+				else
+					DebugOutput("hook_api: %s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
 			}
 		}
 

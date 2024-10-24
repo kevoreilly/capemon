@@ -432,7 +432,7 @@ bool PeParser::readPeSectionsFromProcess()
 		readOffset = listPeSection[i].sectionHeader.VirtualAddress + moduleBaseAddress;
 
 		if (!readSectionFromProcess(readOffset, listPeSection[i]))
-			DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess failed offset 0x%x, section %d\n", readOffset, i+1);
+			DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess failed address 0x%p, section %d\n", readOffset, i+1);
 #ifdef DEBUG_COMMENTS
 		else
 			DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess success, section %d\n", i+1);
