@@ -22,6 +22,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include <tlhelp32.h>
 #include <ncrypt.h>
+#include <RestartManager.h>
+#pragma comment(lib ,"Rstrtmgr.lib")
 
 //
 // File Hooks
@@ -1627,6 +1629,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtLoadDriver,
 
 HOOKDEF(SHORT, WINAPI, GetAsyncKeyState,
 	__in int vKey
+);
+
+HOOKDEF(DWORD, WINAPI, RmStartSession,
+	__out DWORD* pSessionHandle,
+	DWORD   dwSessionFlags,
+	__out WCHAR strSessionKey[]
 );
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
