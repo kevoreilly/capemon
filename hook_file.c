@@ -1595,3 +1595,18 @@ HOOKDEF(HANDLE, WINAPI, FindFirstChangeNotificationW,
 
 	return ret;
 }
+
+HOOKDEF(DWORD, WINAPI, RmStartSession,
+	__out DWORD *pSessionHandle,
+	_Reserved_ DWORD dwSessionFlags,
+	__out WCHAR strSessionKey[]
+) {
+	DWORD ret = Old_RmStartSession(pSessionHandle, dwSessionFlags, strSessionKey);
+
+	if (NT_SUCCESS(ret))
+		LOQ_ntstatus("filesystem", "u", "SessionKey", strSessionKey);
+	else
+		LOQ_ntstatus("filesystem", "");
+
+	return ret;
+}

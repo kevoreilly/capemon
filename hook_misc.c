@@ -30,8 +30,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\Injection.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
-#include <RestartManager.h>
-#pragma comment(lib ,"Rstrtmgr.lib")
 
 #define STATUS_BAD_COMPRESSION_BUFFER ((NTSTATUS)0xC0000242L)
 
@@ -672,17 +670,6 @@ HOOKDEF(SHORT, WINAPI, GetAsyncKeyState,
 		asynckeystate_logcount++;
 		LOQ_nonzero("windows", "is", "KeyCode", vKey, "Status", "Log limit reached");
 	}
-	return ret;
-}
-
-HOOKDEF(DWORD, WINAPI, RmStartSession,
-	__out DWORD *pSessionHandle,
-	_Reserved_ DWORD dwSessionFlags,
-	__out WCHAR strSessionKey[]
-) {
-	DWORD ret = Old_RmStartSession(pSessionHandle, dwSessionFlags, strSessionKey);
-
-	LOQ_ntstatus("misc", "u", "SessionKey", strSessionKey);
 	return ret;
 }
 

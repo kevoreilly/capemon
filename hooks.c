@@ -20,9 +20,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hooking.h"
 #include "hooks.h"
 
-#pragma comment(lib ,"Rstrtmgr.lib")
-
-
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -208,6 +205,7 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL_ALT(kernel32, MoveFileWithProgressTransactedW, 6),
 	HOOK(kernel32, UpdateProcThreadAttribute),
 	HOOK(kernel32, GetWriteWatch),
+	HOOK(rstrtmgr, RmStartSession),
 
 	// Registry Hooks
 	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as 
@@ -364,7 +362,6 @@ hook_t full_hooks[] = {
 	HOOK(advapi32, GetUserNameA),
 	HOOK(advapi32, GetUserNameW),
 	HOOK(user32, GetAsyncKeyState),
-	HOOK(rstrtmgr, RmStartSession),
 	HOOK(ntdll, NtLoadDriver),
 	HOOK(ntdll, NtSetInformationProcess),
 	//HOOK(ntdll, NtQueryInformationProcess),
