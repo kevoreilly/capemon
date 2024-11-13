@@ -301,8 +301,10 @@ int GetAddressByYaraCallback(YR_SCAN_CONTEXT* context, int message, void* messag
 						AddressInfo->Address = (PVOID)Match->offset;
 						break;
 					}
+#ifdef DEBUG_COMMENTS
 					else
 						DebugOutput("GetAddressByYaraCallback: Function %s not found", AddressInfo->FunctionName);
+#endif
 				}
 			}
 			return CALLBACK_CONTINUE;
