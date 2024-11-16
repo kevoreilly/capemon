@@ -22,6 +22,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include <tlhelp32.h>
 #include <ncrypt.h>
+#include <RestartManager.h>
+#pragma comment(lib ,"Rstrtmgr.lib")
 
 //
 // File Hooks
