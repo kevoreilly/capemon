@@ -80,7 +80,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 
 	newint.QuadPart = Timeout->QuadPart;
 
-	if (newint.QuadPart > 0LL) {
+	if (sleep_skip_active && newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
 		GetSystemTimeAsFileTime(&ft);
 
@@ -99,13 +99,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 	li.LowPart = ft.dwLowDateTime;
 
 	/* clamp sleeps between 30 seconds and 1 hour down to 10 seconds  as long as we didn't force off sleep skipping */
-	if (milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
+	if (sleep_skip_active && milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
 		newint.QuadPart = -(10000 * 10000);
 		time_skipped.QuadPart += interval - (10000 * 10000);
 		LOQ_ntstatus("system", "pis", "Handle", Handle, "Milliseconds", milli, "Status", "Skipped");
 		goto docall;
 	}
-	else if (g_config.force_sleepskip > 0) {
+	else if (sleep_skip_active && g_config.force_sleepskip > 0) {
 		time_skipped.QuadPart += interval;
 		LOQ_ntstatus("system", "pis", "Handle", Handle, "Milliseconds", milli, "Status", "Skipped");
 		newint.QuadPart = 0;
@@ -114,7 +114,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 	else {
 		disable_sleep_skip();
 	}
-	if (milli <= 10) {
+	if (sleep_skip_active && milli <= 10) {
 		if (num_wait_small < 20) {
 			LOQ_ntstatus("system", "pi", "Handle", Handle, "Milliseconds", milli);
 			num_wait_small++;
@@ -165,7 +165,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 		goto docall;
 	}
 
-	if (newint.QuadPart > 0LL) {
+	if (sleep_skip_active && newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
 		if (Old_GetSystemTimeAsFileTime)
 			Old_GetSystemTimeAsFileTime(&ft);
@@ -190,7 +190,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 	li.LowPart = ft.dwLowDateTime;
 
 	// check if we're still within the hardcoded limit
-	if(sleep_skip_active && (li.QuadPart < time_start.QuadPart + MAX_SLEEP_SKIP_DIFF * 10000)) {
+	if (sleep_skip_active && (li.QuadPart < time_start.QuadPart + MAX_SLEEP_SKIP_DIFF * 10000)) {
 		time_skipped.QuadPart += interval;
 
 		if (num_skipped < 20) {
@@ -205,13 +205,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 		goto skipcall;
 	}
 	/* clamp sleeps between 30 seconds and 1 hour down to 10 seconds  as long as we didn't force off sleep skipping */
-	else if (milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
+	else if (sleep_skip_active && milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
 		newint.QuadPart = -(10000 * 10000);
 		time_skipped.QuadPart += interval - (10000 * 10000);
 		LOQ_ntstatus("system", "is", "Milliseconds", milli, "Status", "Skipped");
 		goto docall;
 	}
-	else if (g_config.force_sleepskip > 0) {
+	else if (sleep_skip_active && g_config.force_sleepskip > 0) {
 		time_skipped.QuadPart += interval;
 		LOQ_ntstatus("system", "is", "Milliseconds", milli, "Status", "Skipped");
 		newint.QuadPart = 0;
@@ -220,7 +220,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 	else {
 		disable_sleep_skip();
 	}
-	if (milli <= 10) {
+	if (sleep_skip_active && milli <= 10) {
 		if (num_small < 20) {
 			LOQ_ntstatus("system", "i", "Milliseconds", milli);
 			num_small++;
@@ -259,13 +259,13 @@ HOOKDEF(DWORD, WINAPI, MsgWaitForMultipleObjectsEx,
 		goto docall;
 
 	/* clamp sleeps between 30 seconds and 1 hour down to 10 seconds  as long as we didn't force off sleep skipping */
-	else if (dwMilliseconds >= 30000 && dwMilliseconds <= 3600000 && g_config.force_sleepskip != 0) {
+	else if (sleep_skip_active && dwMilliseconds >= 30000 && dwMilliseconds <= 3600000 && g_config.force_sleepskip != 0) {
 		time_skipped.QuadPart += (dwMilliseconds - 10000) * 10000;
 		LOQ_msgwait("system", "is", "Milliseconds", dwMilliseconds, "Status", "Skipped");
 		dwMilliseconds = 10000;
 		goto docall;
 	}
-	else if (g_config.force_sleepskip > 0) {
+	else if (sleep_skip_active && g_config.force_sleepskip > 0) {
 		LOQ_msgwait("system", "is", "Milliseconds", dwMilliseconds, "Status", "Skipped");
 		dwMilliseconds = 0;
 		goto docall;
@@ -274,7 +274,7 @@ HOOKDEF(DWORD, WINAPI, MsgWaitForMultipleObjectsEx,
 		disable_sleep_skip();
 	}
 
-	if (dwMilliseconds <= 10) {
+	if (sleep_skip_active && dwMilliseconds <= 10) {
 		if (num_msg_small < 20) {
 			LOQ_msgwait("system", "i", "Milliseconds", dwMilliseconds);
 			num_msg_small++;
@@ -326,7 +326,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
 		goto docall;
 	}
 
-	if (newint.QuadPart > 0LL) {
+	if (sleep_skip_active && newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
 		GetSystemTimeAsFileTime(&ft);
 
@@ -341,13 +341,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
 	milli = (unsigned long)(interval / 10000);
 
 	/* clamp sleeps between 30 seconds and 1 hour down to 10 seconds  as long as we didn't force off sleep skipping */
-	if (milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
+	if (sleep_skip_active && milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
 		newint.QuadPart = -(10000 * 10000);
 		time_skipped.QuadPart += interval - (10000 * 10000);
 		LOQ_ntstatus("system", "is", "Milliseconds", milli, "Status", "Skipped");
 		goto docall;
 	}
-	else if (g_config.force_sleepskip > 0) {
+	else if (sleep_skip_active && g_config.force_sleepskip > 0) {
 		time_skipped.QuadPart += interval;
 		LOQ_ntstatus("system", "is", "Milliseconds", milli, "Status", "Skipped");
 		newint.QuadPart = 0;
@@ -393,7 +393,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetTimerEx,
 		goto docall;
 	}
 
-	if (newint.QuadPart > 0LL) {
+	if (sleep_skip_active && newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
 		GetSystemTimeAsFileTime(&ft);
 
@@ -410,14 +410,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetTimerEx,
 	milli = (unsigned long)(interval / 10000);
 
 	/* clamp sleeps between 30 seconds and 1 hour down to 10 seconds  as long as we didn't force off sleep skipping */
-	if (milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
+	if (sleep_skip_active && milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
 		timerinfo->DueTime.QuadPart = -(10000 * 10000);
 		time_skipped.QuadPart += interval - (10000 * 10000);
 		LOQ_ntstatus("system", "is", "Milliseconds", milli, "Status", "Skipped");
 		modified_delay = TRUE;
 		goto docall;
 	}
-	else if (g_config.force_sleepskip > 0) {
+	else if (sleep_skip_active && g_config.force_sleepskip > 0) {
 		time_skipped.QuadPart += interval;
 		LOQ_ntstatus("system", "is", "Milliseconds", milli, "Status", "Skipped");
 		timerinfo->DueTime.QuadPart = 0;
@@ -447,7 +447,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryPerformanceCounter,
 
 	ret = Old_NtQueryPerformanceCounter(PerformanceCounter, PerformanceFrequency);
 
-	if (NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret) && sleep_skip_active) {
 		if (!perf_multiplier.QuadPart)
 			perf_multiplier.QuadPart = PerformanceFrequency->QuadPart / 1000;
 		PerformanceCounter->QuadPart += (time_skipped.QuadPart / 10000) * perf_multiplier.QuadPart;
@@ -468,13 +468,15 @@ HOOKDEF(void, WINAPI, GetLocalTime,
 
 	get_lasterrors(&lasterror);
 
-	SystemTimeToFileTime(lpSystemTime, &ft);
-	li.HighPart = ft.dwHighDateTime;
-	li.LowPart = ft.dwLowDateTime;
-	li.QuadPart += time_skipped.QuadPart;
-	ft.dwHighDateTime = li.HighPart;
-	ft.dwLowDateTime = li.LowPart;
-	FileTimeToSystemTime(&ft, lpSystemTime);
+	if (sleep_skip_active) {
+		SystemTimeToFileTime(lpSystemTime, &ft);
+		li.HighPart = ft.dwHighDateTime;
+		li.LowPart = ft.dwLowDateTime;
+		li.QuadPart += time_skipped.QuadPart;
+		ft.dwHighDateTime = li.HighPart;
+		ft.dwLowDateTime = li.LowPart;
+		FileTimeToSystemTime(&ft, lpSystemTime);
+	}
 
 	LOQ_void("system", "");
 
@@ -492,13 +494,15 @@ HOOKDEF(void, WINAPI, GetSystemTime,
 
 	get_lasterrors(&lasterror);
 
-	SystemTimeToFileTime(lpSystemTime, &ft);
-	li.HighPart = ft.dwHighDateTime;
-	li.LowPart = ft.dwLowDateTime;
-	li.QuadPart += time_skipped.QuadPart;
-	ft.dwHighDateTime = li.HighPart;
-	ft.dwLowDateTime = li.LowPart;
-	FileTimeToSystemTime(&ft, lpSystemTime);
+	if (sleep_skip_active) {
+		SystemTimeToFileTime(lpSystemTime, &ft);
+		li.HighPart = ft.dwHighDateTime;
+		li.LowPart = ft.dwLowDateTime;
+		li.QuadPart += time_skipped.QuadPart;
+		ft.dwHighDateTime = li.HighPart;
+		ft.dwLowDateTime = li.LowPart;
+		FileTimeToSystemTime(&ft, lpSystemTime);
+	}
 
 	LOQ_void("system", "");
 
@@ -534,7 +538,8 @@ HOOKDEF(DWORD, WINAPI, GetTickCount,
 	ret = raw_gettickcount();
 
 	// add the time we've skipped
-	ret += (DWORD)(time_skipped.QuadPart / 10000);
+	if (sleep_skip_active)
+		ret += (DWORD)(time_skipped.QuadPart / 10000);
 
 	return ret;
 }
@@ -549,7 +554,8 @@ HOOKDEF(ULONGLONG, WINAPI, GetTickCount64,
 	ret = raw_gettickcount64();
 
 	// add the time we've skipped
-	ret += (time_skipped.QuadPart / 10000);
+	if (sleep_skip_active)
+		ret += (time_skipped.QuadPart / 10000);
 
 	return ret;
 }
@@ -560,7 +566,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemTime,
 ) {
 	NTSTATUS ret = Old_NtQuerySystemTime(SystemTime);
 	LOQ_ntstatus("system", "");
-	if(NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret) && sleep_skip_active) {
 		SystemTime->QuadPart += time_skipped.QuadPart;
 	}
 	return 0;
@@ -576,7 +582,8 @@ HOOKDEF(DWORD, WINAPI, timeGetTime,
 	ret = Old_timeGetTime();
 
 	// add the time we've skipped
-	ret += (DWORD)(time_skipped.QuadPart / 10000);
+	if (sleep_skip_active)
+		ret += (DWORD)(time_skipped.QuadPart / 10000);
 
 	return ret;
 }
@@ -590,11 +597,13 @@ HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 
 	Old_GetSystemTimeAsFileTime(&ft);
 
-	li.HighPart = ft.dwHighDateTime;
-	li.LowPart = ft.dwLowDateTime;
-	li.QuadPart += time_skipped.QuadPart;
-	ft.dwHighDateTime = li.HighPart;
-	ft.dwLowDateTime = li.LowPart;
+	if (sleep_skip_active) {
+		li.HighPart = ft.dwHighDateTime;
+		li.LowPart = ft.dwLowDateTime;
+		li.QuadPart += time_skipped.QuadPart;
+		ft.dwHighDateTime = li.HighPart;
+		ft.dwLowDateTime = li.LowPart;
+	}
 
 	memcpy(lpSystemTimeAsFileTime, &ft, sizeof(ft));
 
@@ -655,7 +664,7 @@ void init_sleep_skip(int first_process)
 	time_start.LowPart = ft.dwLowDateTime;
 
 	// we don't want to skip sleep calls in child processes
-	if(first_process == 0) {
+	if (first_process == 0) {
 		disable_sleep_skip();
 	}
 }
