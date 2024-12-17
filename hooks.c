@@ -193,6 +193,7 @@ hook_t full_hooks[] = {
 	HOOK(kernel32, GetDiskFreeSpaceW),
 	HOOK(kernel32, GetVolumeNameForVolumeMountPointW),
 	HOOK(kernel32, GetVolumeInformationByHandleW),
+	HOOK(kernel32, SetFileInformationByHandle),
 	HOOK(shell32, SHGetFolderPathW),
 	HOOK(shell32, SHGetKnownFolderPath),
 	HOOK(shell32, SHGetFileInfoW),
