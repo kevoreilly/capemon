@@ -625,7 +625,25 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
 	__out	LPWSTR lpBuffer,
 	__out	LPDWORD nSize
 ) {
+	const wchar_t* ComputerNames[ComputerNameMax] = {
+		L"NETBIOS",
+		L"hostname",
+		L"domain",
+		L"fully.qualified.name",
+		L"PHYSICAL-NETBIOS",
+		L"physical-hostname",
+		L"physical-domain",
+		L"physical.fqdn"
+	};
+	DWORD bufsize = 0;
+	if (nSize && *nSize)
+		bufsize = *nSize;
 	BOOL ret = Old_GetComputerNameExW(NameType, lpBuffer, nSize);
+	if (ret && nSize && !*nSize && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
+		bufsize = (DWORD)wcslen(ComputerNames[NameType]);
+		wcsncpy(lpBuffer, ComputerNames[NameType], bufsize + 1);
+		*nSize = bufsize;
+	}
 	LOQ_bool("misc", "u", "ComputerName", lpBuffer);
 	return ret;
 }
