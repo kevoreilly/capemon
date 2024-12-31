@@ -459,6 +459,12 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
 		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
 
+	if (!called_by_hook()) {
+		inspect_clsid(&id1);
+	}
+
+	disable_sleep_skip();
+
 	set_lasterrors(&lasterror);
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
