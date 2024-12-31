@@ -412,6 +412,13 @@ HOOKDEF(BOOL, WINAPI, GetVolumeInformationByHandleW,
 	_In_	  DWORD   nFileSystemNameSize
 );
 
+HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
+	_In_		HANDLE                    hFile,
+	_In_		FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
+	_In_		LPVOID                    lpFileInformation,
+	_In_		DWORD                     dwBufferSize
+);
+
 HOOKDEF(DWORD, WINAPI, RmStartSession,
 	__out DWORD* pSessionHandle,
 	DWORD   dwSessionFlags,
