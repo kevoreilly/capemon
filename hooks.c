@@ -62,6 +62,7 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+	HOOK(ntdll, LdrpCallInitRoutine),
 	HOOK(ntdll, NtAllocateVirtualMemory),
 	HOOK(ntdll, NtAllocateVirtualMemoryEx),
 	HOOK(ntdll, NtReadVirtualMemory),
