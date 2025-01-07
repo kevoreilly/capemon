@@ -2845,7 +2845,6 @@ end:
 
 	if (ret)
 	{
-		DumpCount++;
 		CapeMetaData->Address = Buffer;
 		CapeMetaData->Size = Size;
 		CapeOutputFile(FullPathName);
@@ -2887,7 +2886,12 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 		return 0;
 	}
 
-	return DumpMemoryRaw(Buffer, Size);
+	if (!DumpMemoryRaw(Buffer, Size))
+		return 0;
+
+	DumpCount++;
+
+	return 1;
 }
 
 //**************************************************************************************
