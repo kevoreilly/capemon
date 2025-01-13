@@ -1309,7 +1309,7 @@ void parse_config_line(char* line)
 				DebugOutput("Interactive desktop enabled.\n");
 		}
 		else if (stricmp(key, "no-iat"))
-			DebugOutput("CAPE debug - unrecognised key %s.\n", key);
+			DebugOutput("Monitor config - unrecognised key %s.\n", key);
 
 		// Replace the '=' we nulled for convenience
 		line[strlen(line)] = '=';

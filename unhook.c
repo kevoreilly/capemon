@@ -317,7 +317,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	if (g_terminate_event_handle) {
 		SetEvent(g_terminate_event_handle);
 		CloseHandle(g_terminate_event_handle);
-		DebugOutput("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
+		DebugOutput("Terminate Event: monitor shutdown complete for process %d\n", ProcessId);
 	}
 	else
 		DebugOutput("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
