@@ -25,7 +25,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_UNICODE_PATH 32768
 
 #define BUFSIZE				 1024	// For hashing
-#define DUMP_MAX				10
 #define CAPE_OUTPUT_FILE "CapeOutput.bin"
 //#define SUSPENDED_THREAD_MAX	4096
 
@@ -1210,7 +1209,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 			return;
 		}
 #ifdef DEBUG_COMMENTS
-		DebugOutput("ProcessTrackedRegion: Inaccesible outer range, inner range at 0x%p Size 0x%x\n", Address, Size);
+		DebugOutput("ProcessTrackedRegion: Inaccessible outer range, inner range at 0x%p Size 0x%x\n", Address, Size);
 #endif
 	}
 
@@ -2733,9 +2732,9 @@ BOOL DumpStackRegion(void)
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, DUMP_MAX);
+		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
 		return FALSE;
 	}
 
@@ -2861,9 +2860,9 @@ end:
 int DumpMemory(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, DUMP_MAX);
+		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
 		return 0;
 	}
 
@@ -2898,9 +2897,9 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 BOOL DumpRegion(PVOID Address)
 //**************************************************************************************
 {
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, DUMP_MAX);
+		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
 		return FALSE;
 	}
 
@@ -2931,7 +2930,7 @@ BOOL DumpRegion(PVOID Address)
 	if (CapeMetaData->DumpType == UNPACKED_PE)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
 
-	if (DumpMemory(AllocationBase, AccessibleSize))
+	if ((SIZE_T)((PUCHAR)Address - (PUCHAR)AllocationBase) < AccessibleSize && DumpMemory(AllocationBase, AccessibleSize))
 	{
 		if (address_is_in_stack(AllocationBase))
 			DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
@@ -2968,9 +2967,9 @@ BOOL DumpRegion(PVOID Address)
 int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports)
 //**************************************************************************************
 {
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, DUMP_MAX);
+		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, g_config.dump_limit);
 		return 0;
 	}
 
@@ -2992,9 +2991,9 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 BOOL DumpRange(PVOID Address, SIZE_T Size)
 //**************************************************************************************
 {
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, DUMP_MAX);
+		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
 		return FALSE;
 	}
 
@@ -3032,9 +3031,9 @@ BOOL DumpRange(PVOID Address, SIZE_T Size)
 int DumpPE(PVOID Buffer)
 //**************************************************************************************
 {
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, DUMP_MAX);
+		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
 		return 0;
 	}
 
@@ -3064,9 +3063,9 @@ int DumpImageInCurrentProcess(PVOID Address)
 
 	pDosHeader = (PIMAGE_DOS_HEADER)Address;
 
-	if (DumpCount >= DUMP_MAX)
+	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
-		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, DUMP_MAX);
+		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
 		return 0;
 	}
 

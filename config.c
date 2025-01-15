@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define SINGLE_STEP_LIMIT 0x4000  // default unless specified in web ui
 #define DROPPED_LIMIT 100
+#define DUMP_LIMIT 10
 
 #define BP_EXEC		0x00
 #define BP_WRITE	   0x01
@@ -223,6 +224,10 @@ void parse_config_line(char* line)
 				DebugOutput("Trace timing enabled.\n");
 			else
 				DebugOutput("Trace timing disabled.\n");
+		}
+		else if (!strcmp(key, "dump-limit")) { //Override the default dump limit of 10 payloads
+			g_config.dump_limit = (unsigned int)strtoul(value, NULL, 10);
+			DebugOutput("Dropped file limit set to %d.\n", g_config.dump_limit);
 		}
 		else if (!strcmp(key, "dropped-limit")) { //Override the default dropped file limit of 100 files
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
@@ -1333,6 +1338,7 @@ int read_config(void)
 	g_config.ntdll_remap = 1;
 	g_config.procdump = 1;
 	g_config.procmemdump = 0;
+	g_config.dump_limit = DUMP_LIMIT;
 	g_config.dropped_limit = 0;
 	g_config.injection = 1;
 	g_config.unpacker = 1;
@@ -1411,6 +1417,7 @@ int read_config(void)
 		g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
+		g_config.dump_limit = DUMP_LIMIT;
 		g_config.dropped_limit = DROPPED_LIMIT;
 		g_config.injection = 0;
 		g_config.unpacker = 0;
