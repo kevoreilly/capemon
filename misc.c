@@ -44,6 +44,7 @@ static _NtQueryKey pNtQueryKey;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
 static _RtlEqualUnicodeString pRtlEqualUnicodeString;
+static _RtlInitUnicodeString pRtlInitUnicodeString;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
@@ -75,6 +76,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
 	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
 	*(FARPROC *)&pRtlEqualUnicodeString = GetProcAddress(ntdllbase, "RtlEqualUnicodeString");
+	*(FARPROC *)&pRtlInitUnicodeString = GetProcAddress(ntdllbase, "RtlInitUnicodeString");
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
 	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
@@ -1036,6 +1038,17 @@ uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
 	memcpy(&path[length], obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
 	path[length + copylen] = L'\0';
 	return length + copylen;
+}
+
+BOOL is_path_from_object_attributes(const OBJECT_ATTRIBUTES *obj, wchar_t *path)
+{
+	if (obj && obj->ObjectName) {
+		UNICODE_STRING target;
+		pRtlInitUnicodeString(&target, path);
+		if (pRtlEqualUnicodeString(obj->ObjectName, &target, TRUE))
+			return TRUE;
+	}
+	return FALSE;
 }
 
 static char *system32dir_a;

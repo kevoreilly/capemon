@@ -73,6 +73,9 @@ typedef NTSTATUS(WINAPI *_RtlEqualUnicodeString)(
 	const PUNICODE_STRING String1,
 	const PUNICODE_STRING String2,
 	BOOLEAN CaseInSensitive);
+typedef VOID (WINAPI *_RtlInitUnicodeString)(
+    PUNICODE_STRING DestinationString,
+    PCWSTR SourceString);
 typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA {
 	ULONG Flags;
 	const PUNICODE_STRING FullDllName;
@@ -147,12 +150,9 @@ void hide_module_from_peb(HMODULE module_handle);
 BOOLEAN is_suspended(DWORD pid, DWORD tid);
 BOOLEAN parent_has_path(char* path);
 BOOLEAN can_open_parent();
-
-uint32_t path_from_handle(HANDLE handle,
-	wchar_t *path, uint32_t path_buffer_len);
-
-uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
-	wchar_t *path, uint32_t buffer_length);
+uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
+uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj, wchar_t *path, uint32_t buffer_length);
+BOOL is_path_from_object_attributes(const OBJECT_ATTRIBUTES *obj, wchar_t *path);
 
 struct {
 	wchar_t *hkcu_string;
