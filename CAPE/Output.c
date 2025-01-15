@@ -20,19 +20,19 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <tchar.h>
 #include <windows.h>
 #include <Shlwapi.h>
-#include "cape.h"
+#include "CAPE.h"
 #include "..\pipe.h"
 #include "..\config.h"
 
 //#define DEBUG_COMMENTS
 #define MAX_INT_STRING_LEN	10 // 4294967294
-#define BUFFER_SIZE			0x200
+#define BUFFER_SIZE			2*MAX_PATH
 
-TCHAR DebugBuffer[MAX_PATH];
-TCHAR PipeBuffer[MAX_PATH];
-TCHAR ErrorBuffer[MAX_PATH];
-CHAR DebuggerLine[MAX_PATH];
-CHAR StringsLine[MAX_PATH], *StringsFile;
+TCHAR DebugBuffer[BUFFER_SIZE];
+TCHAR PipeBuffer[BUFFER_SIZE];
+TCHAR ErrorBuffer[BUFFER_SIZE];
+CHAR DebuggerLine[BUFFER_SIZE];
+CHAR StringsLine[BUFFER_SIZE], *StringsFile;
 
 extern char* GetResultsPath(char* FolderName);
 extern struct CapeMetadata *CapeMetaData;
@@ -48,21 +48,15 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 	if (g_config.disable_logging)
 		return;
 
-	TCHAR *Character = DebugBuffer;
-	memset(DebugBuffer, 0, MAX_PATH*sizeof(CHAR));
-	_vsntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, lpOutputString, args);
-	while (*Character)
-	{   // Restrict to ASCII range
-		if (*Character < 0x0a || *Character > 0x7E)
-			*Character = 0x3F;  // '?'
-		Character++;
-	}
+	memset(DebugBuffer, 0, sizeof(DebugBuffer));
+	_vsntprintf_s(DebugBuffer, BUFFER_SIZE, _TRUNCATE, lpOutputString, args);
+
 	if (g_config.standalone)
 		OutputDebugString(DebugBuffer);
 	else
 	{
-		memset(PipeBuffer, 0, MAX_PATH*sizeof(CHAR));
-		_sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%u: %s", GetCurrentProcessId(), DebugBuffer);
+		memset(PipeBuffer, 0, sizeof(PipeBuffer));
+		_sntprintf_s(PipeBuffer, BUFFER_SIZE, _TRUNCATE, "DEBUG:%u: %s", GetCurrentProcessId(), DebugBuffer);
 		pipe(PipeBuffer, strlen(PipeBuffer));
 	}
 	return;
@@ -99,17 +93,17 @@ void ErrorOutput(_In_ LPCTSTR lpOutputString, ...)
 		0,
 		NULL);
 
-	memset(DebugBuffer, 0, MAX_PATH*sizeof(CHAR));
-	_vsntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, lpOutputString, args);
+	memset(DebugBuffer, 0, sizeof(DebugBuffer));
+	_vsntprintf_s(DebugBuffer, BUFFER_SIZE, _TRUNCATE, lpOutputString, args);
 
-	memset(ErrorBuffer, 0, MAX_PATH*sizeof(CHAR));
-	_sntprintf_s(ErrorBuffer, MAX_PATH, _TRUNCATE, "Error %u (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, (char*)lpMsgBuf);
+	memset(ErrorBuffer, 0, sizeof(ErrorBuffer));
+	_sntprintf_s(ErrorBuffer, BUFFER_SIZE, _TRUNCATE, "Error %u (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, (char*)lpMsgBuf);
 	if (g_config.standalone)
 		OutputDebugString(ErrorBuffer);
 	else
 	{
-		memset(PipeBuffer, 0, MAX_PATH*sizeof(CHAR));
-		_sntprintf_s(PipeBuffer, MAX_PATH, _TRUNCATE, "DEBUG:%s", ErrorBuffer);
+		memset(PipeBuffer, 0, sizeof(PipeBuffer));
+		_sntprintf_s(PipeBuffer, BUFFER_SIZE, _TRUNCATE, "DEBUG:%s", ErrorBuffer);
 		pipe(PipeBuffer, strlen(PipeBuffer));
 	}
 
@@ -122,8 +116,8 @@ void ErrorOutput(_In_ LPCTSTR lpOutputString, ...)
 void DoOutputFile(_In_ LPCTSTR lpOutputFile)
 //**************************************************************************************
 {
-	TCHAR OutputBuffer[MAX_PATH];
-	memset(OutputBuffer, 0, MAX_PATH*sizeof(TCHAR));
+	TCHAR OutputBuffer[BUFFER_SIZE];
+	memset(OutputBuffer, 0, sizeof(OutputBuffer));
 	_sntprintf_s(OutputBuffer, MAX_PATH, _TRUNCATE, "FILE_DUMP:%s", lpOutputFile);
 	pipe(OutputBuffer, strlen(OutputBuffer));
 	return;
@@ -160,14 +154,14 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 		// This metadata format is specific to process dumps
 		_snprintf_s(MetadataString, BufferSize, BufferSize, "%u;?%s;?%s;?", CapeMetaData->DumpType, CapeMetaData->ProcessPath, CapeMetaData->ModulePath);
 
-		memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+		memset(DebugBuffer, 0, sizeof(DebugBuffer));
 		_sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "Process dump output file: %s", lpOutputFile);
 		if (g_config.standalone)
 			OutputDebugString(DebugBuffer);
 		else
 		{
 			char OutputBuffer[BUFFER_SIZE];
-			memset(OutputBuffer, 0, BUFFER_SIZE*sizeof(char));
+			memset(OutputBuffer, 0, sizeof(OutputBuffer));
 			_snprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_DUMP:%s|%u|%u|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
 			pipe(OutputBuffer, strlen(OutputBuffer));
 		}
@@ -208,14 +202,14 @@ void CapeOutputFile(_In_ LPCTSTR lpOutputFile)
 
 		if (g_config.standalone)
 		{
-			memset(DebugBuffer, 0, MAX_PATH*sizeof(TCHAR));
+			memset(DebugBuffer, 0, sizeof(DebugBuffer));
 			_sntprintf_s(DebugBuffer, MAX_PATH, _TRUNCATE, "CAPE Output file: %s", lpOutputFile);
 			OutputDebugString(DebugBuffer);
 		}
 		else
 		{
 			char OutputBuffer[BUFFER_SIZE];
-			memset(OutputBuffer, 0, BUFFER_SIZE*sizeof(char));
+			memset(OutputBuffer, 0, sizeof(OutputBuffer));
 			_sntprintf_s(OutputBuffer, BUFFER_SIZE, _TRUNCATE, "FILE_CAPE:%s|%u|%u|%s", lpOutputFile, CapeMetaData->Pid, CapeMetaData->PPid, MetadataString);
 			pipe(OutputBuffer, strlen(OutputBuffer));
 		}
@@ -278,7 +272,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 		DebugOutput("DebuggerOutput: Debugger logfile %s.\n", FullPathName);
 
 		time(&Time);
-		memset(DebuggerLine, 0, MAX_PATH*sizeof(CHAR));
+		memset(DebuggerLine, 0, sizeof(DebuggerLine));
 		ctime_s(TimeBuffer, 64, (const time_t *)&Time);
 		_snprintf_s(DebuggerLine, MAX_PATH, _TRUNCATE, "CAPE Sandbox - Debugger log: %s" , TimeBuffer);
 		WriteFile(DebuggerLog, DebuggerLine, (DWORD)strlen(DebuggerLine), (LPDWORD)&LastWriteLength, NULL);
@@ -286,7 +280,7 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 			lpOutputString++;
 	}
 
-	memset(DebuggerLine, 0, MAX_PATH*sizeof(CHAR));
+	memset(DebuggerLine, 0, sizeof(DebuggerLine));
 	_vsnprintf_s(DebuggerLine, MAX_PATH, _TRUNCATE, lpOutputString, args);
 	Character = DebuggerLine;
 	while (*Character)
@@ -340,7 +334,7 @@ void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
 		DebugOutput("StringsOutput: Output file %s.\n", StringsFile);
 	}
 
-	memset(StringsLine, 0, MAX_PATH*sizeof(CHAR));
+	memset(StringsLine, 0, sizeof(StringsLine));
 	_vsnprintf_s(StringsLine, MAX_PATH, _TRUNCATE, lpOutputString, args);
 	Character = StringsLine;
 	while (*Character)

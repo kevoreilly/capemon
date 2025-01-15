@@ -59,7 +59,12 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
 {
 	int ret = 0;
 	while (*fmt != 0) {
-		if(*fmt != '%') {
+        if (*fmt == '%' && *(fmt + 1) == '%') {
+            ret += _pipe_utf8x(&out, '%');
+            fmt += 2;
+            continue;
+        }
+        else if (*fmt != '%') {
 			ret += _pipe_utf8x(&out, *fmt++);
 			continue;
 		}

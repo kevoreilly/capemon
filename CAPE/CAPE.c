@@ -255,6 +255,39 @@ PVOID GetHookCallerBase()
 }
 
 //**************************************************************************************
+void SanitiseString(char *Dst, const char *Src, size_t Size)
+//**************************************************************************************
+{
+    size_t Length = strlen(Src);
+    size_t NewLength = 0;
+
+    for (size_t i = 0; i < Length && NewLength < Size - 1; ++i)
+        if (Src[i] == '%')
+            NewLength += 2;
+        else
+            NewLength++;
+
+    if (NewLength >= Size)
+        NewLength = Size - 1;
+
+    Dst[NewLength] = '\0';
+
+    for (int i = (int)Length - 1, j = (int)NewLength - 1; i >= 0 && j >= 0; --i)
+        if (Src[i] == '%')
+        {
+            if (j >= 1)
+            {
+                Dst[j--] = '%';
+                Dst[j--] = '%';
+            }
+        }
+        else if ((unsigned char)Src[i] < 0x0a || (unsigned char)Src[i] > 0x7E)
+            Dst[j--] = '?';
+        else
+            Dst[j--] = Src[i];
+}
+
+//**************************************************************************************
 void PrintHexBytes(__in char* TextBuffer, __in BYTE* HexBuffer, __in unsigned int Count)
 //**************************************************************************************
 {
@@ -3524,28 +3557,22 @@ void CAPE_post_init()
 
 void CAPE_init()
 {
-	char *Character;
-
 	// Initialise CAPE global variables
 	//
 	//if (!g_config.standalone)
 	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA), sizeof(BYTE));
 	CapeMetaData->Pid = GetCurrentProcessId();
 	CapeMetaData->PPid = parent_process_id();
+
 	CapeMetaData->ProcessPath = (char*)calloc(MAX_PATH, sizeof(BYTE));
-	WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
-	Character = CapeMetaData->ProcessPath;
+	if (CapeMetaData->ProcessPath)
+	{
+		SanitiseString(CapeMetaData->ProcessPath, CapeMetaData->ProcessPath, MAX_PATH);
+		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)our_process_path_w, (int)wcslen(our_process_path_w)+1, CapeMetaData->ProcessPath, MAX_PATH, NULL, NULL);
+	}
+
 	if (g_config.typestring)
 		CapeMetaData->TypeString = g_config.typestring;
-
-	// It seems with CP_ACP or CP_UTF8 & WC_NO_BEST_FIT_CHARS, WideCharToMultiByte still
-	// leaves characters that encode("utf-8"... can't encode...
-	while (*Character)
-	{   // Restrict to ASCII range
-		if (*Character < 0x0a || *Character > 0x7E)
-			*Character = 0x3F;  // '?'
-		Character++;
-	}
 
 	ProcessDumped = FALSE;
 	DumpCount = 0;
@@ -3618,7 +3645,9 @@ Finish:
 	DebugOutput("Monitor initialised: 32-bit capemon loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
 #endif
 
-	DebugOutput("Commandline: %s\n", GetCommandLineA());
+	char CommandLine[MAX_UNICODE_PATH];
+	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
+	DebugOutput("Commandline: %s\n", CommandLine);
 
 	return;
 }

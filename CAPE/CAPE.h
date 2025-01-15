@@ -44,6 +44,7 @@ BOOL IsAddressExecutable(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
 SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
 double GetEntropy(PUCHAR Buffer);
+void SanitiseString(char *Dst, const char *Src, size_t Size);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 PWCHAR TranslatePathFromDeviceToLetterW(PWCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
