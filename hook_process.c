@@ -308,12 +308,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	if (ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
+
 	ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
 		ProcessDesiredAccess, ThreadDesiredAccess,
 		ProcessObjectAttributes, ThreadObjectAttributes,
 		ProcessFlags, ThreadFlags | 1, ProcessParameters,
 		CreateInfo, AttributeList);
+
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
+
 	LOQ_ntstatus("process", "PPhhOOool", "ProcessHandle", ProcessHandle,
 		"ThreadHandle", ThreadHandle,
 		"ProcessDesiredAccess", ProcessDesiredAccess,
@@ -323,6 +326,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 		"ImagePathName", &ProcessParameters->ImagePathName,
 		"CommandLine", &ProcessParameters->CommandLine,
 		"ProcessId", pid);
+
 	if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(*ThreadHandle);
 		if (!g_config.single_process) {
@@ -338,6 +342,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 			ResumeThread(*ThreadHandle);
 		disable_sleep_skip();
 	}
+
 	return ret;
 }
 
