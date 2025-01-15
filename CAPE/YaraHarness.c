@@ -319,8 +319,6 @@ PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName)
 		return NULL;
 
 	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
-	DebugOutput("GetAddressByYara: ModuleBase 0x%p FunctionName %s\n", ModuleBase, FunctionName);
-
 
 	SIZE_T Size = GetAccessibleSize(ModuleBase);
 
