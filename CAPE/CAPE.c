@@ -2113,10 +2113,20 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 		for (unsigned int i=0; i<pNtHeader->FileHeader.NumberOfSections; i++)
 		{
 			if ((NtSection->PointerToRawData > PE_MAX_SIZE) || (NtSection->SizeOfRawData) > PE_MAX_SIZE)
+			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("TestPERequirements: Section %d bad PointerToRawData 0x%x or SizeOfRawData 0x%x", i+1, NtSection->PointerToRawData, NtSection->SizeOfRawData);
+#endif
 				return FALSE;
+			}
 
 			if ((NtSection->VirtualAddress > PE_MAX_SIZE) || (NtSection->Misc.VirtualSize) > PE_MAX_SIZE)
+			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("TestPERequirements: Section %d bad VirtualAddress 0x%x or VirtualSize 0x%x", i+1, NtSection->VirtualAddress, NtSection->Misc.VirtualSize);
+#endif
 				return FALSE;
+			}
 
 			++NtSection;
 		}

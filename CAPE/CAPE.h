@@ -15,6 +15,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
@@ -183,3 +187,7 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 void TestProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 BOOL TrackExecution(PVOID CIP);
+
+#ifdef __cplusplus
+}
+#endif
