@@ -19,82 +19,48 @@ extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
 bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
 {
-	bool retValue = false;
-
 	std::map<DWORD_PTR, ImportModuleThunk> copyModule;
 	copyModule.insert(moduleList.begin(), moduleList.end());
 
-	if (isValidPeFile())
+	if (!isValidPeHeader())
 	{
-		if (filename && readPeSectionsFromFile())
-		{
-			setDefaultFileAlignment();
-
-			retValue = buildNewImportTable(copyModule);
-
-			if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
-
-			if (retValue)
-			{
-				alignAllSectionHeaders();
-				fixPeHeader();
-
-				if (newIatInSection)
-				{
-					DebugOutput("About to call patchFileForNewIatLocation..\n");
-					patchFileForNewIatLocation();
-				}
-
-				if (BuildDirectImportsJumpTable)
-				{
-					DebugOutput("About to call patchFileForDirectImportJumpTable..\n");
-					patchFileForDirectImportJumpTable();
-				}
-
-				DebugOutput("Successfully built new import table, saving fixed file to disk.\n");
-				retValue = savePeFileToDisk(newFilePath);
-			}
-		}
-		else if (moduleBaseAddress && readPeSectionsFromProcess())
-		{
-			setDefaultFileAlignment();
-
-			retValue = buildNewImportTable(copyModule);
-
-			if (!retValue) DebugOutput("buildNewImportTable() failed.\n");
-			
-			if (retValue)
-			{
-				alignAllSectionHeaders();
-				fixPeHeader();
-
-				if (newIatInSection)
-				{
-					patchFileForNewIatLocation();
-				}
-
-				if (BuildDirectImportsJumpTable)
-				{
-					patchFileForDirectImportJumpTable();
-				}
-
-				if (readPeSectionsFromProcess())
-				{
-					setDefaultFileAlignment();
-
-					getFileOverlay();
-
-					retValue = savePeFileToDisk(newFilePath);
-				}
-			   
-				if (!retValue) DebugOutput("dumpProcess() failed.\n");
-			}
-		}
-		else DebugOutput("readPeSectionsFromProcess() failed.\n");
+		DebugOutput("Invalid PE: import table rebuild failed.\n");
+		return false;
 	}
-	else DebugOutput("Invalid PE file: import table rebuild failed.\n");
-	
-	return retValue;
+
+	if (filename && !readPeSectionsFromFile())
+	{
+		DebugOutput("ImportRebuilder::rebuildImportTable: Unable to read sections from file %s\n", filename);
+		return false;
+	}
+	else if (moduleBaseAddress && !readPeSectionsFromProcess())
+	{
+		DebugOutput("ImportRebuilder::rebuildImportTable: Unable to read sections from base address 0x%p\n", moduleBaseAddress);
+		return false;
+	}
+
+	setDefaultFileAlignment();
+
+	if (!buildNewImportTable(copyModule))
+	{
+		DebugOutput("buildNewImportTable() failed.\n");
+		return false;
+	}
+
+	alignAllSectionHeaders();
+	fixPeHeader();
+
+	if (newIatInSection)
+		patchFileForNewIatLocation();
+
+	if (BuildDirectImportsJumpTable)
+		patchFileForDirectImportJumpTable();
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ImportRebuilder::rebuildImportTable: Successfully built new import table, saving fixed file to disk.\n");
+#endif
+
+	return (savePeFileToDisk(newFilePath));
 }
 
 bool ImportRebuilder::buildNewImportTable(std::map<DWORD_PTR, ImportModuleThunk> & moduleList)

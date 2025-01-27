@@ -30,7 +30,6 @@ void ApiReader::readApisFromModuleList()
 		readExportTableAlwaysFromDisk = false;
 	}
 
-	DebugOutput("ApiReader: module list size: %i", moduleList.size());
 	for (unsigned int i = 0; i < moduleList.size();i++)
 	{
 		setModulePriority(&moduleList[i]);
@@ -40,7 +39,9 @@ void ApiReader::readApisFromModuleList()
 			maxValidAddress = moduleList[i].modBaseAddr + moduleList[i].modBaseSize;
 		}
 
+#ifdef DEBUG_COMMENTS
 		DebugOutput("Module parsing: %s", moduleList[i].fullPath);
+#endif
 
 		if (!moduleList[i].isAlreadyParsed)
 		{

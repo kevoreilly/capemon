@@ -35,9 +35,6 @@ typedef unsigned __int64 QWORD;
 #define OFT_SUPPORT FALSE
 
 #define PE_HEADER_LIMIT 0x200
-#define CAPE_OUTPUT_FILE "CapeOutput.bin"
-
-extern char CapeOutputPath[MAX_PATH];
 
 //**************************************************************************************
 void ScyllaInit(HANDLE hProcess)
@@ -48,15 +45,9 @@ void ScyllaInit(HANDLE hProcess)
 	NativeWinApi::initialize();
 
 	if (hProcess)
-	{
 		ProcessAccessHelp::hProcess = hProcess;
-		ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
-	}
 	else
-	{
 		ProcessAccessHelp::setCurrentProcessAsTarget();
-		ProcessAccessHelp::getProcessModules(GetCurrentProcess(), ProcessAccessHelp::ownModuleList);
-	}
 }
 
 //**************************************************************************************
@@ -192,15 +183,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
 		}
 
-		if (FixImports)
-			if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
-				DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
-			else
-			{
-				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
-				goto fail;
-			}
-		else
+		if (!FixImports)
 			if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 				DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 			else
@@ -300,12 +283,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
 			}
 
-			if (FixImports)
-				if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
-					DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
-				else
-					DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
-			else
+			if (!FixImports)
 				if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 					DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 				else
@@ -322,12 +300,17 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 
 	if (FixImports)
 	{
-		//  We'll try the simple search first
-		IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, FALSE);
+		ProcessAccessHelp::targetImageBase = ModuleBase;
+		ProcessAccessHelp::getSizeOfImageCurrentProcess();
+		ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
 
-		//  Let's try the advanced search now
-		if (IAT_Found == FALSE)
-			IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, TRUE);
+		// Enumerate DLLs and imported functions
+		apiReader.readApisFromModuleList();
+		IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, FALSE);
+
+		// Try advanced search
+		if (!IAT_Found)
+			IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, TRUE);
 
 		if (addressIAT && sizeIAT)
 		{
@@ -349,9 +332,8 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				{
 					if (iatReferenceScan.numberOfDirectImportApisNotInIat() > 0)
 					{
-						DebugOutput("DumpProcess: Direct imports - Found %d additional api addresses", iatReferenceScan.numberOfDirectImportApisNotInIat());
 						DWORD sizeIatNew = iatReferenceScan.addAdditionalApisToList();
-						DebugOutput("DumpProcess: Direct imports - Old IAT size 0x%08x new IAT size 0x%08x.\n", sizeIAT, sizeIatNew);
+						DebugOutput("DumpProcess: Direct imports - Found %d additional api addresses, old IAT size 0x%08x new IAT size 0x%08x\n", iatReferenceScan.numberOfDirectImportApisNotInIat(), sizeIAT, sizeIatNew);
 						importsHandling.scanAndFixModuleList();
 					}
 
@@ -373,7 +355,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			if (isIATOutsidePeImage(addressIAT))
 				DebugOutput("DumpProcess: Warning - IAT is not inside the PE image, requires rebasing.\n");
 
-			ImportRebuilder importRebuild(CapeOutputPath);
+			ImportRebuilder importRebuild((DWORD_PTR)ModuleBase);
 
 			if (OFT_SUPPORT)
 			{
@@ -411,9 +393,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			}
 		}
 		else
-		{
-			DebugOutput("DumpProcess: Warning: Unable to find IAT in scan.\n");
-		}
+			DebugOutput("DumpProcess: Unable to find IAT in scan.\n");
 	}
 
 	delete peFile;

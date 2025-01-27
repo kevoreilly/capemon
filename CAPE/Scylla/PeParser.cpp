@@ -35,13 +35,8 @@ PeParser::PeParser(const CHAR * file, bool readSectionHeaders)
 	{
 		readPeHeaderFromFile(readSectionHeaders);
 
-		if (readSectionHeaders)
-		{
-			if (isValidPeFile())
-			{
-				getSectionHeaders();
-			}
-		}
+		if (readSectionHeaders && isValidPeFile())
+			getSectionHeaders();
 	}
 }
 

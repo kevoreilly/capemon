@@ -144,7 +144,9 @@ void ImportsHandling::scanAndFixModuleList()
 				
 				if (_stricmp(importThunk.moduleName, prevModuleName))
 				{
+#ifdef DEBUG_COMMENTS
 					DebugOutput("Adding module to module list: %s", importThunk.moduleName);
+#endif
 					addModuleToModuleList(importThunk.moduleName, importThunk.rva);
 				}
 				
