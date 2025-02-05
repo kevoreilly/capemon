@@ -123,6 +123,7 @@ extern DWORD parent_process_id();
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
 extern int loader_is_allowed(const char *loader_name);
+extern int path_is_system(const wchar_t *path_w);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern BOOL inside_hook(LPVOID Address);
 extern hook_info_t *hook_info();
@@ -712,7 +713,9 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 {
 	PIMAGE_DOS_HEADER DosHeader;
 	PIMAGE_NT_HEADERS NtHeader;
-	PIMAGE_EXPORT_DIRECTORY ImageExportDirectory;
+	PIMAGE_EXPORT_DIRECTORY ExportDirectory;
+	unsigned int ExportDirectorySize = 0;
+	DWORD ExportDirectoryRVA = 0;
 	PVOID FunctionAddress = NULL;
 
 	if (!ModuleBase || !FunctionName)
@@ -746,29 +749,42 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (!NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress)
 		return NULL;
 
-	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + (DWORD_PTR)NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	ExportDirectoryRVA = (DWORD_PTR)NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+	ExportDirectorySize = NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
+	ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + ExportDirectoryRVA);
 
-	if (!ImageExportDirectory->AddressOfNames)
+	if (!ExportDirectory->AddressOfNames)
 		return NULL;
 
-	if (ImageExportDirectory->AddressOfNames > NtHeader->OptionalHeader.SizeOfImage)
+	if (ExportDirectory->AddressOfNames > NtHeader->OptionalHeader.SizeOfImage)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("GetFunctionAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ImageExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
+		DebugOutput("GetFunctionAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
 #endif
 		return NULL;
 	}
 
-	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
+	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ExportDirectory->AddressOfNames);
 
 	__try
 	{
-		for (unsigned int i = 0; i < ImageExportDirectory->NumberOfNames; i++)
+		for (unsigned int i = 0; i < ExportDirectory->NumberOfNames; i++)
 		{
 			if (NameRVA[i])
 			{
 				if (!strcmp((PCHAR)((PBYTE)ModuleBase + NameRVA[i]), FunctionName))
-					FunctionAddress = (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+				{
+					DWORD RVA = ((DWORD*)((PBYTE)ModuleBase + ExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ExportDirectory->AddressOfNameOrdinals))[i]];
+					// Forwarded export RVAs point to export directory
+					if ((RVA >= ExportDirectoryRVA) && (RVA < ExportDirectoryRVA + ExportDirectorySize))
+					{
+#ifdef DEBUG_COMMENTS
+						DebugOutput("GetFunctionAddress: %s is forwarded!\n", FunctionName);
+#endif
+						return NULL;
+					}
+					FunctionAddress = (PVOID)((PBYTE)ModuleBase + RVA);
+				}
 			}
 		}
 	}
@@ -1280,13 +1296,22 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	wchar_t ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), Address, ModulePath, MAX_PATH);
 
-	if (MappedModule && is_in_dll_range((ULONG_PTR)Address) || VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
+	if (MappedModule)
 	{
-		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws, skipping", Address, ModulePath);
-		return;
+		if (is_in_dll_range((ULONG_PTR)Address))
+		{
+			DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws is in known range, skipping", Address, ModulePath);
+			return;
+		}
+		else if (VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
+		{
+			if (!path_is_system(ModulePath))
+				DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws appears unmodified, skipping", Address, ModulePath);
+			return;
+		}
+		else
+			DebugOutput("ProcessTrackedRegion: Interesting region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 	}
-	else if (MappedModule)
-		DebugOutput("ProcessTrackedRegion: Code modification detected in region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;

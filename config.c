@@ -42,8 +42,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern int path_is_program_files(const wchar_t *path_w);
 extern BOOL PatchByte(LPVOID Address, BYTE Byte);
 extern wchar_t *our_process_path_w;
 extern int EntryPointRegister;

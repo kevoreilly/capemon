@@ -2336,7 +2336,9 @@ BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
+#ifdef DEBUG_COMMENTS
 	DebugOutput("ClearSoftwareBreakpoint: Restored instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+#endif
 
 	lookup_del(BPs, (ULONG_PTR)Address);
 

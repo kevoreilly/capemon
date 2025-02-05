@@ -34,8 +34,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define STATUS_BAD_COMPRESSION_BUFFER ((NTSTATUS)0xC0000242L)
 
 extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern const char* GetLanguageName(LANGID langID);
 

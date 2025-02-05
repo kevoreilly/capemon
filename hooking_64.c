@@ -976,7 +976,8 @@ int hook_api(hook_t *h, int type)
 		}
 		else {
 			PVOID exportaddr = GetFunctionAddress(hmod, (PCHAR)h->funcname);
-			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+			if (exportaddr)
+				addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
 			if (exportaddr && addr && (PVOID)addr != exportaddr) {
 				unsigned int offset;
 				char *module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)addr, &offset);

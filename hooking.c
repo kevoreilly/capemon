@@ -184,10 +184,14 @@ int add_hook_exclusion(const char *apiname)
 	return 0;
 }
 
+extern void start_transparent_hooks();
+extern void end_transparent_hooks();
+
 int addr_in_our_dll_range(void *unused, ULONG_PTR addr)
 {
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
-		return 1;
+		if (addr < (ULONG_PTR)&start_transparent_hooks || addr >= (ULONG_PTR)&end_transparent_hooks)
+			return 1;
 	return 0;
 }
 

@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
 extern ULONG_PTR base_of_dll_of_interest;
+extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase), set_hooks_dll(const wchar_t *library);
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void set_hooks();
@@ -163,27 +164,36 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	return 0;
 }
 
+static int transparency_dummy;
+
+void start_transparent_hooks(){transparency_dummy++;}
+
 HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
 	__in PDLL_INIT_ROUTINE InitRoutine,
 	__in PVOID DllHandle,
 	__in ULONG Reason,
 	__in_opt PCONTEXT Context
 ) {
-	char OutputBuffer[MAX_PATH] = "";
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), DllHandle, OutputBuffer, MAX_PATH);
+	wchar_t ModulePath[MAX_PATH] = L"";
+	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), DllHandle, ModulePath, MAX_PATH);
 
 	if (Reason == 1 && g_config.yarascan && !is_in_dll_range((ULONG_PTR)DllHandle))
 		YaraScan(DllHandle, GetAccessibleSize(DllHandle));
 
+	if (Reason == 1 && MappedModule)
+		set_hooks_dll(get_dll_basename(ModulePath));
+
 	BOOL ret = Old_LdrpCallInitRoutine(InitRoutine, DllHandle, Reason, Context);
 
 	if (Reason == 1 && MappedModule)
-		LOQ_bool("system", "shhi", "MappedPath", OutputBuffer, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+		LOQ_bool("system", "uhhi", "MappedPath", ModulePath, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 	else if (Reason == 1)
 		LOQ_bool("system", "hhi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 
 	return ret;
 }
+
+void end_transparent_hooks(){transparency_dummy--;}
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 	__in_opt	LPVOID lpUnknown1,

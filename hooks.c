@@ -1477,6 +1477,8 @@ BOOL set_hooks_dll(const wchar_t *library)
 			ret = TRUE;
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				DebugOutput("set_hooks_dll: Unable to hook %s", (hooks+i)->funcname);
+			else if (g_config.hook_range)
+				DebugOutput("set_hooks_dll: Hooked %s", (hooks+i)->funcname);
 		}
 	}
 	return ret;

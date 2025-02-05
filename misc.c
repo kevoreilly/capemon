@@ -32,8 +32,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 
 extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _NtQueryInformationThread pNtQueryInformationThread;
@@ -99,6 +97,7 @@ BOOLEAN is_address_in_monitor(ULONG_PTR address)
 
 	return FALSE;
 }
+
 void raw_sleep(int msecs)
 {
 	LARGE_INTEGER interval;
@@ -609,6 +608,36 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 	return 0;
 }
 
+int path_is_system(const wchar_t *path_w)
+{
+	if (!path_w)
+		return 0;
+
+	if (!wcsnicmp(path_w, L"\\Device\\HarddiskVolume", 22))
+		path_w += 24;
+	else if (!wcsnicmp(path_w + 1, L":\\", 2))
+		path_w += 3;
+
+	if (((!wcsnicmp(path_w, L"windows\\system32\\", 17) ||
+		!wcsnicmp(path_w, L"windows\\syswow64\\", 17) ||
+		!wcsnicmp(path_w, L"windows\\sysnative\\", 18))))
+		return 1;
+
+	return 0;
+}
+
+int path_is_program_files(const wchar_t *path_w)
+{
+	if (!path_w)
+		return 0;
+
+	if (((!wcsnicmp(path_w + 1, L":\\program files\\", 16) ||
+		!wcsnicmp(path_w + 1, L":\\program files (x86)\\", 22))))
+		return 1;
+
+	return 0;
+}
+
 BOOLEAN parent_has_path(char* path)
 {
 	DWORD ppid = parent_process_id();
@@ -816,6 +845,21 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
+BOOL test_is_in_dll_range(ULONG_PTR addr)
+{
+	DWORD i;
+	DebugOutput("is_in_dll_range: addr 0x%p", addr);
+	for (i = 0; i < loaded_dlls; i++) {
+		DebugOutput("is_in_dll_range: module %d start 0x%p end 0x%p", i, dll_ranges[i].start, dll_ranges[i].end);
+		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end) {
+			DebugOutput("is_in_dll_range: found!");
+			return TRUE;
+		}
+	}
+	DebugOutput("is_in_dll_range: NOT found :-(");
+	return FALSE;
+}
+
 ULONG_PTR base_of_dll_of_interest;
 
 void set_dll_of_interest(ULONG_PTR BaseAddress)
@@ -849,6 +893,7 @@ void add_all_dlls_to_dll_ranges(void)
 		memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length * sizeof(WCHAR));
 		// skip dlls in same directory as exe
 		if (!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
+			DebugOutput("add_all_dlls_to_dll_ranges: skipping %ws", ModulePath.Buffer);
 			free(ModulePath.Buffer);
 			continue;
 		}

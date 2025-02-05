@@ -69,23 +69,6 @@ extern void set_hooks_by_export_directory(const wchar_t *exportdirectory, const 
 extern void revalidate_all_hooks(void);
 extern void set_hooks();
 
-int path_is_system(const wchar_t *path_w)
-{
-	if (((!wcsnicmp(path_w, L"c:\\windows\\system32\\", 20) ||
-		!wcsnicmp(path_w, L"c:\\windows\\syswow64\\", 20) ||
-		!wcsnicmp(path_w, L"c:\\windows\\sysnative\\", 21))))
-		return 1;
-	return 0;
-}
-
-int path_is_program_files(const wchar_t *path_w)
-{
-	if (((!wcsnicmp(path_w, L"c:\\program files\\", 17) ||
-		!wcsnicmp(path_w, L"c:\\program files (x86)\\", 23))))
-		return 1;
-	return 0;
-}
-
 int loader_is_allowed(const char *loader_name)
 {
 	if (!loader_name)
