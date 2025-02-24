@@ -231,6 +231,13 @@ void parse_config_line(char* line)
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Dropped file limit set to %d.\n", g_config.dropped_limit);
 		}
+		else if (!strcmp(key, "protected-pids")) {
+			g_config.protected_pids = atoi(value);
+			if (g_config.protected_pids)
+				DebugOutput("Config: Process protection enabled.");
+			else
+				DebugOutput("Config: Process protection disabled.");
+		}
 		else if (!strcmp(key, "ntdll-protect")) {
 			g_config.ntdll_protect = (unsigned int)strtoul(value, NULL, 10);
             if (g_config.ntdll_protect)
@@ -1332,6 +1339,7 @@ int read_config(void)
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
+	g_config.protected_pids = 1;
 	g_config.ntdll_protect = 1;
 	g_config.ntdll_remap = 1;
 	g_config.procdump = 1;

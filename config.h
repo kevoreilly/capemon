@@ -119,6 +119,9 @@ struct _g_config {
 	// Language override
 	int lang;
 
+	// protected processes
+	unsigned int protected_pids;
+
 	// ntdll write protection
 	unsigned int ntdll_protect;
 

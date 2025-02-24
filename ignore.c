@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include "ntapi.h"
+#include "config.h"
 #include "ignore.h"
 #include "misc.h"
 #include "pipe.h"
@@ -37,6 +38,9 @@ void add_protected_pid(DWORD pid)
 int is_protected_pid(DWORD pid)
 {
 	DWORD i;
+
+	if (!g_config.protected_pids)
+		return 0;
 
 	for (i = 0; i < g_pid_count; i++) {
 		if(pid == g_pids[i]) {
