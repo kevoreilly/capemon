@@ -72,6 +72,7 @@ public:
 	bool readPeSectionsFromProcess();
 	bool readPeSectionsFromFile();
 	bool savePeFileToDisk(const CHAR * newFile);
+	bool savePeFileToDisk(const CHAR *newFile, DWORD_PTR entryPoint);
 	bool savePeFileToHandle(HANDLE FileHandle);
 	bool saveCompletePeToDisk(const CHAR * newFile);
 	bool saveCompletePeToHandle(HANDLE FileHandle);

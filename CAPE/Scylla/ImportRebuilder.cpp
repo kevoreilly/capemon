@@ -17,7 +17,7 @@ New Scylla section contains:
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 
-bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
+bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList, DWORD_PTR entryPoint)
 {
 	std::map<DWORD_PTR, ImportModuleThunk> copyModule;
 	copyModule.insert(moduleList.begin(), moduleList.end());
@@ -60,7 +60,7 @@ bool ImportRebuilder::rebuildImportTable(const CHAR * newFilePath, std::map<DWOR
 	DebugOutput("ImportRebuilder::rebuildImportTable: Successfully built new import table, saving fixed file to disk.\n");
 #endif
 
-	return (savePeFileToDisk(newFilePath));
+	return (savePeFileToDisk(newFilePath,entryPoint));
 }
 
 bool ImportRebuilder::buildNewImportTable(std::map<DWORD_PTR, ImportModuleThunk> & moduleList)
