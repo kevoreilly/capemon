@@ -380,7 +380,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
 			}
 
-			if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
+			if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList, entrypoint))
 			{
 				DebugOutput("DumpProcess: Import table rebuild success.\n");
 				delete peFile;
