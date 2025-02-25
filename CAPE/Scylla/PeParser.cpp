@@ -934,6 +934,16 @@ DWORD PeParser::isMemoryNotNull( BYTE * data, int dataSize )
 	return 0;
 }
 
+bool PeParser::savePeFileToDisk(const CHAR *newFile, DWORD_PTR entryPoint)
+{
+	if (entryPoint)
+	{
+		DebugOutput("DumpProcess: Setting entrypoint to 0x%p.\n", entryPoint);
+		setEntryPointVa(entryPoint);
+	}
+	return savePeFileToDisk(newFile);
+}
+
 bool PeParser::savePeFileToDisk(const CHAR *newFile)
 {
 	bool retValue = true, SectionDataWritten = false;
