@@ -3638,4 +3638,14 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_In_	DWORD    dwFlags
 );
 
+HOOKDEF(UINT, WINAPI, MsiInstallProductA,
+	_In_	LPCSTR	szPackagePath,
+	_In_	LPCSTR	szCommandLine
+);
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductW,
+	_In_	LPCWSTR	szPackagePath,
+	_In_	LPCWSTR	szCommandLine
+);
+
 #include "hook_vbscript.h"
