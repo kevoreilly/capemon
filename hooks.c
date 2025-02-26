@@ -298,6 +298,8 @@ hook_t full_hooks[] = {
 	HOOK(user32, SetWindowLongPtrW),
 	HOOK(user32, EnumDisplayDevicesA),
 	HOOK(user32, EnumDisplayDevicesW),
+	HOOK(msi, MsiInstallProductA),
+	HOOK(msi, MsiInstallProductW),
 //	HOOK_NOTAIL(user32, CreateWindowExA, 12),	// maldoc detonation issues
 //	HOOK_NOTAIL(user32, CreateWindowExW, 12),	//
 //	HOOK(user32, EnumWindows),	// Disable for now, invokes a user-specified callback that can contain

@@ -1913,3 +1913,21 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	LOQ_bool("misc", "u", "DeviceString", lpDisplayDevice->DeviceString);
 	return ret;
 }
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductA,
+	_In_	LPCSTR	szPackagePath,
+	_In_	LPCSTR	szCommandLine
+) {
+	UINT ret = Old_MsiInstallProductA(szPackagePath, szCommandLine);
+	LOQ_zero("misc", "ss", "PackagePath", szPackagePath, "CommandLine", szCommandLine);
+	return ret;
+}
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductW,
+	_In_	LPCWSTR	szPackagePath,
+	_In_	LPCWSTR	szCommandLine
+) {
+	UINT ret = Old_MsiInstallProductW(szPackagePath, szCommandLine);
+	LOQ_zero("misc", "uu", "PackagePath", szPackagePath, "CommandLine", szCommandLine);
+	return ret;
+}
