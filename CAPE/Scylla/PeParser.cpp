@@ -17,6 +17,7 @@ extern "C" int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size);
 extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
 extern "C" BOOL IsAddressAccessible(PVOID Address);
 extern "C" SIZE_T GetAllocationSize(PVOID Buffer);
+extern "C" SYSTEM_INFO SystemInfo;
 
 char CapeOutputPath[MAX_PATH];
 
@@ -319,118 +320,106 @@ bool PeParser::readPeHeaderFromFile(bool readSectionHeaders)
 
 bool PeParser::readPeSectionsFromProcess()
 {
-	SIZE_T AllocationLimit;
-	DWORD_PTR ImageBase, readOffset = 0;
- 	DWORD fileAlignment = 0, sectionAlignment = 0;
+	DWORD_PTR readOffset = 0;
+	DWORD sectionAlignment = 0;
+
+	SIZE_T AllocationSize = GetAllocationSize((PVOID)moduleBaseAddress);
+	if (!AllocationSize)
+		return false;
+
 	unsigned int NumberOfSections = getNumberOfSections();
 	if (!NumberOfSections)
 		return false;
 
-	if (isPE32())
-	{
-		fileAlignment = pNTHeader32->OptionalHeader.FileAlignment;
-		sectionAlignment = pNTHeader32->OptionalHeader.SectionAlignment;
-	}
-	else
-	{
-		fileAlignment = pNTHeader64->OptionalHeader.FileAlignment;
-		sectionAlignment = pNTHeader64->OptionalHeader.SectionAlignment;
-	}
-
 	listPeSection.reserve(NumberOfSections);
 
-	ImageBase = getStandardImagebase();
-	AllocationLimit = ImageBase + GetAllocationSize((PVOID)moduleBaseAddress);
+	if (isPE32())
+		sectionAlignment = pNTHeader32->OptionalHeader.SectionAlignment;
+	else
+		sectionAlignment = pNTHeader64->OptionalHeader.SectionAlignment;
+
+	if ((sectionAlignment & 0xFFF) != 0)
+		sectionAlignment = SystemInfo.dwPageSize;
+
+	if (!sectionAlignment)
+		sectionAlignment = 0x1000;
 
 	for (WORD i = 0; i < NumberOfSections; i++)
 	{
-		DWORD EndOfSection, EndOfPreviousSection = 0;
+		DWORD EndOfSection = 0, EndOfPreviousSection = 0, VirtualSize = 0;
+		int VirtualDelta = 0;
+
+		EndOfPreviousSection = alignValue(listPeSection[i].sectionHeader.VirtualAddress, sectionAlignment);
+		VirtualSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);
 
 		if (i < NumberOfSections - 1)
 		{
-			if (listPeSection[i].sectionHeader.Misc.VirtualSize > (listPeSection[i+1].sectionHeader.VirtualAddress - listPeSection[i].sectionHeader.VirtualAddress))
-			{
-				listPeSection[i].normalSize = alignValue(listPeSection[i+1].sectionHeader.VirtualAddress - listPeSection[i].sectionHeader.VirtualAddress, sectionAlignment);
-#ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualSize for section %d from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, listPeSection[i].normalSize);
-#endif
-				listPeSection[i].sectionHeader.Misc.VirtualSize = listPeSection[i].normalSize;
-			}
-			else
-			{
-				listPeSection[i].normalSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);
-				listPeSection[i].sectionHeader.Misc.VirtualSize = listPeSection[i].normalSize;
-#ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: readPeSectionsFromProcess: VirtualSize for section %d ok: 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize);
-#endif
-			}
+			EndOfSection = alignValue(listPeSection[i+1].sectionHeader.VirtualAddress, sectionAlignment);
+			VirtualDelta = EndOfSection - EndOfPreviousSection;
 
-			if (i)
+			if ((VirtualSize && VirtualSize != VirtualDelta) || (!VirtualSize && VirtualDelta > 0))
 			{
-				EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
-
-				if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != EndOfPreviousSection))
-				{
 #ifdef DEBUG_COMMENTS
-					DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualAddress for section %d from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, EndOfPreviousSection);
+				DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualSize for section %d from 0x%x to 0x%x.\n", i+1, VirtualSize, VirtualDelta);
 #endif
-					listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
-				}
+				VirtualSize = (DWORD)VirtualDelta;
 			}
-			EndOfSection = EndOfPreviousSection + listPeSection[i].sectionHeader.Misc.VirtualSize;
+			else if (!VirtualSize)
+			{
+#ifdef DEBUG_COMMENTS
+				DebugOutput("PeParser: readPeSectionsFromProcess: Unable to get a valid virtual size for section %d!\n", i+1);
+#endif
+				continue;
+			}
 		}
 		else // last section
 		{
-			DWORD NewVirtualSize = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
+			VirtualDelta = alignValue(listPeSection[i].sectionHeader.SizeOfRawData, sectionAlignment);
+			if (!VirtualDelta && pNTHeader32->OptionalHeader.SizeOfImage)
+				VirtualDelta = pNTHeader32->OptionalHeader.SizeOfImage - EndOfPreviousSection;
 
-			if (NewVirtualSize && listPeSection[i].sectionHeader.Misc.VirtualSize > NewVirtualSize)
+			if (VirtualDelta && (int)VirtualSize > VirtualDelta)
 			{
-				listPeSection[i].normalSize = NewVirtualSize;
 #ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize, NewVirtualSize);
+				DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualSize for last section (%d) from 0x%x to 0x%x.\n", i+1, VirtualSize, VirtualDelta);
 #endif
-				listPeSection[i].sectionHeader.Misc.VirtualSize = NewVirtualSize;
+				VirtualSize = (DWORD)VirtualDelta;
 			}
-			else
+			else if (!VirtualSize && pNTHeader32->OptionalHeader.SizeOfImage && pNTHeader32->OptionalHeader.SizeOfImage > EndOfPreviousSection)
 			{
-				NewVirtualSize = alignValue(listPeSection[i].sectionHeader.Misc.VirtualSize, sectionAlignment);
-				if (NewVirtualSize && listPeSection[i].sectionHeader.Misc.VirtualSize > NewVirtualSize)
-				{
-					listPeSection[i].sectionHeader.Misc.VirtualSize = NewVirtualSize;
-					listPeSection[i].normalSize = NewVirtualSize;
-				}
-				else
-					listPeSection[i].normalSize = listPeSection[i].sectionHeader.Misc.VirtualSize;
 #ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: readPeSectionsFromProcess: VirtualSize for last section (%d) ok: 0x%x.\n", i+1, listPeSection[i].sectionHeader.Misc.VirtualSize);
+				DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualSize for section %d from 0x%x to 0x%x.\n", i+1, VirtualSize, listPeSection[i].normalSize);
 #endif
+				VirtualSize = alignValue(pNTHeader32->OptionalHeader.SizeOfImage - EndOfPreviousSection, sectionAlignment);
 			}
 
-			if (i)
+			if (!VirtualSize)
 			{
-				EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
-
-				if (listPeSection[i].sectionHeader.VirtualAddress && (listPeSection[i].sectionHeader.VirtualAddress != EndOfPreviousSection))
-				{
 #ifdef DEBUG_COMMENTS
-					DebugOutput("PeParser: readPeSectionsFromProcess: Correcting VirtualAddress for last section (%d) from: 0x%x to 0x%x.\n", i+1, listPeSection[i].sectionHeader.VirtualAddress, EndOfPreviousSection);
+				DebugOutput("PeParser: readPeSectionsFromProcess: Unable to get a valid virtual size for last section (%d)!\n", i+1);
 #endif
-					listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
-				}
+				continue;
 			}
-			EndOfSection = (DWORD)ImageBase + EndOfPreviousSection + listPeSection[i].sectionHeader.Misc.VirtualSize;
 		}
 
-		if (EndOfSection > AllocationLimit)
+		listPeSection[i].normalSize = VirtualSize;
+		listPeSection[i].sectionHeader.Misc.VirtualSize = VirtualSize;
+
+		if (i)
+			EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
+
+		EndOfSection = EndOfPreviousSection + VirtualSize;
+
+		if (EndOfSection > AllocationSize)
 		{
-			DebugOutput("PeParser: End of section %d RVA 0x%x is beyond allocated limit 0x%x\n", i+1, EndOfSection, AllocationLimit);
-			break;
+			DebugOutput("PeParser: End of section %d RVA 0x%x is beyond allocated size 0x%x\n", i+1, EndOfSection, AllocationSize);
+			continue;
 		}
 #ifdef DEBUG_COMMENTS
-		DebugOutput("PeParser: End of section %d RVA 0x%x within allocated limit 0x%x\n", i+1, EndOfSection, AllocationLimit);
+		DebugOutput("PeParser: End of section %d RVA 0x%x within allocated size 0x%x\n", i+1, EndOfSection, AllocationSize);
 #endif
 
-		readOffset = listPeSection[i].sectionHeader.VirtualAddress + moduleBaseAddress;
+		readOffset = EndOfPreviousSection + moduleBaseAddress;
 
 		if (!readSectionFromProcess(readOffset, listPeSection[i]))
 			DebugOutput("PeParser: readPeSectionsFromProcess: readSectionFromProcess failed address 0x%p, section %d\n", readOffset, i+1);
@@ -440,6 +429,7 @@ bool PeParser::readPeSectionsFromProcess()
 #endif
 	}
 
+	DWORD_PTR ImageBase = getStandardImagebase();
 	if (moduleBaseAddress && moduleBaseAddress != ImageBase)
 	{
 		if (reBasePEImage(moduleBaseAddress))
