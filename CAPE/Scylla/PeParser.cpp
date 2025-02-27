@@ -364,13 +364,6 @@ bool PeParser::readPeSectionsFromProcess()
 #endif
 				VirtualSize = (DWORD)VirtualDelta;
 			}
-			else if (!VirtualSize)
-			{
-#ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: readPeSectionsFromProcess: Unable to get a valid virtual size for section %d!\n", i+1);
-#endif
-				continue;
-			}
 		}
 		else // last section
 		{
@@ -392,21 +385,25 @@ bool PeParser::readPeSectionsFromProcess()
 #endif
 				VirtualSize = alignValue(pNTHeader32->OptionalHeader.SizeOfImage - EndOfPreviousSection, sectionAlignment);
 			}
+		}
 
-			if (!VirtualSize)
-			{
+		if (!VirtualSize)
+		{
 #ifdef DEBUG_COMMENTS
+			if (i < NumberOfSections - 1)
+				DebugOutput("PeParser: readPeSectionsFromProcess: Unable to get a valid virtual size for section %d!\n", i+1);
+			else
 				DebugOutput("PeParser: readPeSectionsFromProcess: Unable to get a valid virtual size for last section (%d)!\n", i+1);
 #endif
-				continue;
-			}
+			continue;
 		}
+
+		if (i)
+			EndOfPreviousSection = listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize;
 
 		listPeSection[i].normalSize = VirtualSize;
 		listPeSection[i].sectionHeader.Misc.VirtualSize = VirtualSize;
-
-		if (i)
-			EndOfPreviousSection = alignValue(listPeSection[i-1].sectionHeader.VirtualAddress + listPeSection[i-1].sectionHeader.Misc.VirtualSize, sectionAlignment);
+		listPeSection[i].sectionHeader.VirtualAddress = EndOfPreviousSection;
 
 		EndOfSection = EndOfPreviousSection + VirtualSize;
 
