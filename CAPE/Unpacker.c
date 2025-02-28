@@ -150,13 +150,14 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 	if (TrackedRegion->AllocationBase != BaseAddress)
 		TrackedRegion->Address = BaseAddress;
 
-	if (CurrentRegion && CurrentRegion != TrackedRegion && CurrentThread && CurrentThread == GetCurrentThreadId())
+	if (CurrentRegion && CurrentRegion != TrackedRegion && !TrackedRegion->SubAllocation && CurrentThread && CurrentThread == GetCurrentThreadId())
 	{
 		if (TraceRunning)
 			DebuggerOutput("AllocationHandler: Processing previous tracked region at: 0x%p.\n", CurrentRegion->AllocationBase);
 		else
 			DebugOutput("AllocationHandler: Processing previous tracked region at: 0x%p.\n", CurrentRegion->AllocationBase);
 		ProcessTrackedRegion(CurrentRegion);
+		TrackedRegion->SubAllocation = TRUE;
 	}
 
 	CurrentRegion = TrackedRegion;
