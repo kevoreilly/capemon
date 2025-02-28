@@ -985,7 +985,7 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 				else
 				{
 					countApiNotFound++;
-					addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
+					//addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
 #ifdef DEBUG_COMMENTS
 					DebugOutput("parseIAT: API not found %08X\n", pIATAddress[i]);
 #endif
@@ -997,7 +997,7 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 				DebugOutput("parseIAT: API not found %08X\n", pIATAddress[i]);
 #endif
 				countApiNotFound++;
-				addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
+				//addNotFoundApiToModuleList(addressIAT + (DWORD_PTR)&pIATAddress[i] - (DWORD_PTR)iatBuffer, pIATAddress[i]);
 			}
 		}
 
