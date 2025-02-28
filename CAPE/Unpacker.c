@@ -157,7 +157,6 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 		else
 			DebugOutput("AllocationHandler: Processing previous tracked region at: 0x%p.\n", CurrentRegion->AllocationBase);
 		ProcessTrackedRegion(CurrentRegion);
-		TrackedRegion->SubAllocation = TRUE;
 	}
 
 	CurrentRegion = TrackedRegion;
