@@ -1873,19 +1873,22 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			DebuggerOutput(" *** skip *** ");
 		}
 	}
-	else if (g_config.loopskip && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
+	else if (!strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
 	{
 		int JumpOffset = (int)*((PCHAR)CIP + 1);
 		PVOID JumpTarget = (PVOID)((PUCHAR)CIP + DecodedInstruction.size + JumpOffset);
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
-		for (unsigned int i = 0; i < 4; i++)
+		if (g_config.loopskip)
 		{
-			if (JumpOffset < 0 && PreviousJumps[i] == CIP)
+			for (unsigned int i = 0; i < 4; i++)
 			{
-				ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-				*ForceStepOver = TRUE;
-				DebuggerOutput(" *** skip *** ");
+				if (JumpOffset < 0 && PreviousJumps[i] == CIP)
+				{
+					ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+					*ForceStepOver = TRUE;
+					DebuggerOutput(" *** skip *** ");
+				}
 			}
 		}
 		PreviousJumps[JumpCount % 4] = CIP;
