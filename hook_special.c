@@ -180,15 +180,27 @@ HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
 	if (Reason == 1 && g_config.yarascan && !is_in_dll_range((ULONG_PTR)DllHandle))
 		YaraScan(DllHandle, GetAccessibleSize(DllHandle));
 
-	if (Reason == 1 && MappedModule)
-		set_hooks_dll(get_dll_basename(ModulePath));
+	if (Reason == 1 && MappedModule) {
+		PWCHAR dllname = get_dll_basename(ModulePath);
+		set_hooks_dll(dllname);
+		if (g_config.debugger) {
+			for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
+				if (!g_config.coverage_modules[i])
+					break;
+				if (!wcsicmp(dllname, g_config.coverage_modules[i])) {
+					SetInitialBreakpoints(DllHandle);
+					break;
+				}
+			}
+		}
+	}
 
 	BOOL ret = Old_LdrpCallInitRoutine(InitRoutine, DllHandle, Reason, Context);
 
 	if (Reason == 1 && MappedModule)
-		LOQ_bool("system", "uhhi", "MappedPath", ModulePath, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+		LOQ_bool("system", "uppi", "MappedPath", ModulePath, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 	else if (Reason == 1)
-		LOQ_bool("system", "hhi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+		LOQ_bool("system", "ppi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 
 	return ret;
 }
