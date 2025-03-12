@@ -10,6 +10,7 @@
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" SIZE_T GetAllocationSize(PVOID Address);
 
 stdext::hash_multimap<DWORD_PTR, ApiInfo *> ApiReader::apiList; //api look up table
 std::map<DWORD_PTR, ImportModuleThunk> *  ApiReader::moduleThunkList; //store found apis
@@ -938,6 +939,8 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 	int countApiFound = 0, countApiNotFound = 0;
 	DWORD_PTR * pIATAddress = (DWORD_PTR *)iatBuffer;
 	SIZE_T sizeIAT = size / sizeof(DWORD_PTR);
+	DWORD_PTR minExeAddress = (DWORD_PTR)GetModuleHandle(NULL);
+	DWORD_PTR maxExeAddress = minExeAddress + (DWORD_PTR)GetAllocationSize((PVOID)minExeAddress);
 
 	for (SIZE_T i = 0; i < sizeIAT; i++)
 	{
@@ -949,7 +952,11 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 #ifdef DEBUG_COMMENTS
 			DebugOutput("min %p max %p address %p", minApiAddress, maxApiAddress, pIATAddress[i]);
 #endif
-			if ( (pIATAddress[i] > minApiAddress) && (pIATAddress[i] < maxApiAddress) )
+			// CFG APIs (e.g. ___guard_check_icall_fptr) can appear in IAT and point into main exe
+			if (pIATAddress[i] > minExeAddress && pIATAddress[i] < maxExeAddress)
+				continue;
+
+			if (pIATAddress[i] > minApiAddress && pIATAddress[i] < maxApiAddress)
 			{
 				apiFound = getApiByVirtualAddress(pIATAddress[i], &isSuspect);
 #ifdef DEBUG_COMMENTS
