@@ -2408,8 +2408,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	if (pBreakpointInfo->Register == 2 && strlen(Action2))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
-	else if (pBreakpointInfo->Register == 2)
-		DebuggerOutput("Action2 empty! %s\n", Action2);
 
 	if (pBreakpointInfo->Register == 3 && strlen(Action3))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
