@@ -250,6 +250,8 @@ wchar_t* wcsistr(wchar_t* haystack, const wchar_t* needle);
 unsigned short our_htons(unsigned short num);
 unsigned int our_htonl(unsigned int num);
 void addr_to_string(const IN_ADDR addr, char *string);
+char *num_to_hex(char *buf, unsigned int width, ULONG_PTR num);
+void uuid_to_string(IID id, char* idbuf);
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle);
 BOOL loader_lock_held();
 void perform_create_time_fakery(FILETIME *createtime);

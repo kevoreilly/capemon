@@ -838,7 +838,6 @@ HOOKDEF(HMODULE, WINAPI, LoadLibraryExW,
 	return ret;
 }
 
-// it's not safe to call pipe() in this hook until we replace all uses of snprintf in pipe()
 HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 	__in	 HANDLE ProcessHandle,
 	__inout  PVOID *BaseAddress,
@@ -1198,7 +1197,6 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	return ret;
 }
 
-// it's not safe to call pipe() in this hook until we replace all uses of snprintf in pipe()
 HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
 	IN	  HANDLE ProcessHandle,
 	IN	  PVOID *BaseAddress,

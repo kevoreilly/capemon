@@ -361,13 +361,12 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-			memcpy(&id1, rclsid, sizeof(id1));
-		if (is_valid_address_range((ULONG_PTR)riid, 16))
-			memcpy(&id2, riid, sizeof(id2));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
-	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
-		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
+		memcpy(&id1, rclsid, sizeof(id1));
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id2, riid, sizeof(id2));
+
+	uuid_to_string(id1, idbuf1);
+	uuid_to_string(id2, idbuf2);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
@@ -419,8 +418,7 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 			memcpy(&id1, rclsid, sizeof(id1));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+	uuid_to_string(id1, idbuf1);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
@@ -473,13 +471,12 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-			memcpy(&id1, rclsid, sizeof(id1));
+		memcpy(&id1, rclsid, sizeof(id1));
 	if (is_valid_address_range((ULONG_PTR)riid, 16))
 		memcpy(&id2, riid, sizeof(id2));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
-	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
-		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
+
+	uuid_to_string(id1, idbuf1);
+	uuid_to_string(id2, idbuf2);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
@@ -523,8 +520,7 @@ HOOKDEF(HRESULT, WINAPI, CoGetObject,
 	if (is_valid_address_range((ULONG_PTR)riid, 16))
 		memcpy(&id, riid, sizeof(id));
 
-	sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id.Data1, id.Data2, id.Data3,
-		id.Data4[0], id.Data4[1], id.Data4[2], id.Data4[3], id.Data4[4], id.Data4[5], id.Data4[6], id.Data4[7]);
+	uuid_to_string(id, idbuf);
 
 	set_lasterrors(&lasterror);
 

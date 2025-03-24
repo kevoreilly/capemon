@@ -926,8 +926,7 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 
 	if (ClassGuid) {
 		memcpy(&id1, ClassGuid, sizeof(id1));
-		sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-			id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+		uuid_to_string(id1, idbuf);
 
 		if ((known = known_object(&id1)))
 			LOQ_handle("misc", "ss", "ClassGuid", idbuf, "Known", known);
@@ -955,8 +954,7 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 	HDEVINFO ret = Old_SetupDiGetClassDevsW(ClassGuid, Enumerator, hwndParent, Flags);
 	if (ClassGuid) {
 		memcpy(&id1, ClassGuid, sizeof(id1));
-		sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-			id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+		uuid_to_string(id1, idbuf);
 
 		if ((known = known_object(&id1)))
 			LOQ_handle("misc", "ss", "ClassGuid", idbuf, "Known", known);
