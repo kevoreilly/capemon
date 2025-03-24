@@ -1856,6 +1856,15 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	return ret;
 }
 
+HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
+	__in LPWSTR lpCmdLine,
+	__out int *pNumArgs
+) {
+	LPWSTR ret = Old_CommandLineToArgvW(lpCmdLine, pNumArgs);
+	LOQ_nonnull("misc", "ui", "CommandLine", lpCmdLine, "NumArgs", *pNumArgs);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	_In_	LPCSTR  lpDevice,
 	_In_	DWORD  iDevNum,

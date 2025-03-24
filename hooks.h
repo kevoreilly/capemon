@@ -3592,6 +3592,11 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 );
 
+HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
+	__in LPWSTR lpCmdLine,
+	__out int *pNumArgs
+);
+
 HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
 	__in HMODULE hLibModule
 );
