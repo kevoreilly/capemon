@@ -243,6 +243,9 @@ struct _g_config {
 	// Allow scans/dumps with loader lock held
 	int loaderlock_scans;
 
+	// Specify custom trace stepping behavior
+	int stepmode;
+
 	char *break_on_apiname;
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];

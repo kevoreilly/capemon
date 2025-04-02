@@ -1807,6 +1807,13 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			}
 		}
 
+		if (g_config.stepmode == 1 && *(PBYTE)CIP == 0xE8)
+		{
+			LONG offset = *(LONG*)((PBYTE)CIP + 1);
+			if (offset > -0x100 && offset < 0x100)
+				ReturnAddress = NULL;
+		}
+
 		if (ReturnAddress && (unsigned int)abs(TraceDepthCount) >= TraceDepthLimit)
 			*StepOver = TRUE;
 		else

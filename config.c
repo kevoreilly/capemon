@@ -948,6 +948,11 @@ void parse_config_line(char* line)
 				DebugOutput("Config: Step-out breakpoint set to 0x%x.\n", g_config.bp0);
 			}
 		}
+		else if (!stricmp(key, "stepmode")) {
+			g_config.stepmode = (unsigned int)strtoul(value, NULL, 10);
+			if (g_config.stepmode)
+				DebugOutput("Stepmode %d set.\n", g_config.stepmode);
+		}
 		else if (!stricmp(key, "dumpsize")) {
 			DumpSize = (SIZE_T)strtoul(value, NULL, 0);
 			if (DumpSize)
