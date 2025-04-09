@@ -2974,6 +2974,13 @@ HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_Inout_  DWORD *pdwDataLen
 );
 
+HOOKDEF(BOOL, WINAPI, CryptDuplicateKey,
+	_In_	HCRYPTKEY	hKey,
+	_In_	DWORD* pdwReserved,
+	_In_	DWORD		dwFlags,
+	_Out_	HCRYPTKEY* phKey
+);
+
 HOOKDEF(BOOL, WINAPI, CryptDestroyKey,
 	_In_   HCRYPTKEY hKey
 );
