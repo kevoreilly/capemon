@@ -1350,7 +1350,7 @@ BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
 
 	if (!ReadProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesRead))
 	{
-		ErrorOutput("Loader: ReadProcessMemory failed (ProcessParameters)");
+		ErrorOutput("Loader: ReadProcessMemory failed (NtGlobalFlag)");
 		return FALSE;
 	}
 
