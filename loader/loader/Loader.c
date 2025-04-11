@@ -255,7 +255,14 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 	return 1;
 }
 
-BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
+DWORD GetNtGlobalFlagsOffset()
+{
+	_RtlGetNtGlobalFlags pRtlGetNtGlobalFlags = (_RtlGetNtGlobalFlags)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlGetNtGlobalFlags");
+
+	return *(DWORD*)((PBYTE)pRtlGetNtGlobalFlags + 11);
+}
+
+PVOID GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
 {
 	_NtQueryInformationProcess pNtQueryInformationProcess;
 	PROCESS_BASIC_INFORMATION ProcessBasicInformation;
@@ -267,10 +274,10 @@ BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
 	memset(&ProcessBasicInformation, 0, sizeof(ProcessBasicInformation));
 
 	if (pNtQueryInformationProcess(ProcessHandle, 0, &ProcessBasicInformation, sizeof(ProcessBasicInformation), &ulSize) >= 0 && ulSize == sizeof(ProcessBasicInformation))
-		if (ReadProcessMemory(ProcessHandle, ProcessBasicInformation.PebBaseAddress, Peb, sizeof(PEB), &dwBytesRead))
-			return TRUE;
+		if (!Peb || (Peb && ReadProcessMemory(ProcessHandle, ProcessBasicInformation.PebBaseAddress, Peb, sizeof(PEB), &dwBytesRead)))
+			return ProcessBasicInformation.PebBaseAddress;
 
-	return FALSE;
+	return NULL;
 }
 
 DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
@@ -1334,6 +1341,32 @@ int CreateMonitorPipe(char* Name, char* Dll)
 
 }
 
+BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
+{
+	SIZE_T dwBytesRead, dwBytesWritten;
+	ULONG gflags = 0;
+
+	PVOID pNtGlobalFlag = (PVOID)((PBYTE)Peb + GetNtGlobalFlagsOffset());
+
+	if (!ReadProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesRead))
+	{
+		ErrorOutput("Loader: ReadProcessMemory failed (ProcessParameters)");
+		return FALSE;
+	}
+
+	gflags |= 0x2;
+
+	if (!WriteProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesWritten))
+	{
+		ErrorOutput("Loader: WriteProcessMemory failed (gflags)");
+		return FALSE;
+	}
+
+	DebugOutput("Loader: snaps enabled.\n");
+
+	return TRUE;
+}
+
 void HandleDebugOutputString(const DEBUG_EVENT dbgEvent, HANDLE hProcess)
 {
     char buffer[4096];
@@ -1539,6 +1572,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		else
 			DebugOutput("Loader: Loaded config for process %d.\n", pi.dwProcessId);
 #endif
+
+		if (!strcmp(__argv[1], "snaps"))
+		{
+			PPEB Peb = GetProcessPeb(pi.hProcess, NULL);
+			if (Peb)
+				EnableLoaderSnaps(pi.hProcess, Peb);
+		}
+
 		ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[2]);
 
 		if (ret)
