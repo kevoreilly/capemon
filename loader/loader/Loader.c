@@ -1322,7 +1322,7 @@ int CreateMonitorPipe(char* Name, char* Dll)
 				}
 				if (ProcessId && ThreadId && ProcessId != LastPid)
 				{
-					DebugOutput("About to call InjectDll on process %d, thread 5%d.\n", ProcessId, ThreadId);
+					DebugOutput("About to call InjectDll on process %d, thread %d.\n", ProcessId, ThreadId);
 					if (InjectDll(ProcessId, ThreadId, Dll))
 						LastPid = ProcessId;
 				}
@@ -1332,6 +1332,28 @@ int CreateMonitorPipe(char* Name, char* Dll)
 		}
 	}
 
+}
+
+void HandleDebugOutputString(const DEBUG_EVENT dbgEvent, HANDLE hProcess)
+{
+    char buffer[4096];
+    SIZE_T read, size = min(sizeof(buffer) - 2, (SIZE_T)dbgEvent.u.DebugString.nDebugStringLength);
+
+    ReadProcessMemory(hProcess, dbgEvent.u.DebugString.lpDebugStringData, buffer, size, &read);
+
+    size = (int)(min(read, size));
+    buffer[size] = 0;
+    buffer[size + 1] = 0;
+
+    if (dbgEvent.u.DebugString.fUnicode)
+		DebugOutput("%ws", buffer);
+    else
+    {
+        wchar_t wbuffer[4096];
+        int ret = MultiByteToWideChar(CP_ACP, 0, (char*)buffer, (int)size, wbuffer, ARRAYSIZE(wbuffer));
+        if (ret != 0)
+            DebugOutput("%ws", wbuffer);
+    }
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -1425,7 +1447,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		return ret;
 	}
-	else if (!strcmp(__argv[1], "load"))
+	else if (!strcmp(__argv[1], "load") || !strcmp(__argv[1], "snaps"))
 	{
 		// usage: loader.exe load <monitor dll> <binary> <commandline>
 		DWORD ExplorerPid = 0, ProcessId = 0;
@@ -1490,7 +1512,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		sie.lpAttributeList = pAttributeList;
 
-		if (!CreateProcess(__argv[3], szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, NULL, NULL, &sie.StartupInfo, &pi))
+		DWORD CreationFlags = CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT;
+
+		if (!strcmp(__argv[1], "snaps"))
+			CreationFlags = CreationFlags | DEBUG_ONLY_THIS_PROCESS;
+
+		if (!CreateProcess(__argv[3], szCommand, NULL, NULL, FALSE, CreationFlags, NULL, NULL, &sie.StartupInfo, &pi))
 		{
 			ErrorOutput("Loader: CreateProcess error");
 			return 0;
@@ -1525,6 +1552,49 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		{
 			ResumeThread(ThreadHandle);
 			CloseHandle(ThreadHandle);
+			if (!strcmp(__argv[1], "snaps"))
+			{
+				while (TRUE)
+				{
+					DEBUG_EVENT dbgEvent;
+					WaitForDebugEventEx(&dbgEvent, INFINITE);
+					switch (dbgEvent.dwDebugEventCode)
+					{
+					case EXCEPTION_DEBUG_EVENT:
+						DebugOutput("Exception event");
+						break;
+					case CREATE_THREAD_DEBUG_EVENT:
+						DebugOutput("Thread created");
+						break;
+					case CREATE_PROCESS_DEBUG_EVENT:
+						DebugOutput("Process created");
+						break;
+					case EXIT_THREAD_DEBUG_EVENT:
+						DebugOutput("Thread exited");
+						break;
+					case EXIT_PROCESS_DEBUG_EVENT:
+						DebugOutput("Process exited");
+						break;
+					case LOAD_DLL_DEBUG_EVENT:
+						DebugOutput("Dll loaded");
+						break;
+					case UNLOAD_DLL_DEBUG_EVENT:
+						DebugOutput("Dll unloaded");
+						break;
+					case OUTPUT_DEBUG_STRING_EVENT:
+						HandleDebugOutputString(dbgEvent, pi.hProcess);
+						break;
+					case RIP_EVENT:
+						DebugOutput("RIP event");
+						break;
+					}
+
+					if (dbgEvent.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT)
+						break;
+
+					ContinueDebugEvent(dbgEvent.dwProcessId, dbgEvent.dwThreadId, DBG_EXCEPTION_NOT_HANDLED);
+				}
+			}
 		}
 		else
 			DebugOutput("There was a problem resuming the new process %s.\n", __argv[3]);
