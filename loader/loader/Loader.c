@@ -259,7 +259,11 @@ DWORD GetNtGlobalFlagsOffset()
 {
 	_RtlGetNtGlobalFlags pRtlGetNtGlobalFlags = (_RtlGetNtGlobalFlags)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlGetNtGlobalFlags");
 
-	return *(DWORD*)((PBYTE)pRtlGetNtGlobalFlags + 11);
+#ifdef _WIN64
+	return (DWORD)*((PBYTE)pRtlGetNtGlobalFlags + 11);
+#else
+	return (DWORD)*((PBYTE)pRtlGetNtGlobalFlags + 8);
+#endif
 }
 
 PVOID GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
@@ -331,6 +335,32 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 		return ThreadId;
 
 	return 0;
+}
+
+static BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
+{
+	SIZE_T dwBytesRead, dwBytesWritten;
+	ULONG gflags = 0;
+
+	PVOID pNtGlobalFlag = (PVOID)((PBYTE)Peb + GetNtGlobalFlagsOffset());
+
+	if (!ReadProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesRead))
+	{
+		ErrorOutput("Loader: ReadProcessMemory failed (NtGlobalFlag)");
+		return FALSE;
+	}
+
+	gflags |= 0x2;
+
+	if (!WriteProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesWritten))
+	{
+		ErrorOutput("Loader: WriteProcessMemory failed (NtGlobalFlag)");
+		return FALSE;
+	}
+
+	DebugOutput("Loader: snaps enabled.\n");
+
+	return TRUE;
 }
 
 static int GrantDebugPrivileges(void)
@@ -1339,32 +1369,6 @@ int CreateMonitorPipe(char* Name, char* Dll)
 		}
 	}
 
-}
-
-BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
-{
-	SIZE_T dwBytesRead, dwBytesWritten;
-	ULONG gflags = 0;
-
-	PVOID pNtGlobalFlag = (PVOID)((PBYTE)Peb + GetNtGlobalFlagsOffset());
-
-	if (!ReadProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesRead))
-	{
-		ErrorOutput("Loader: ReadProcessMemory failed (NtGlobalFlag)");
-		return FALSE;
-	}
-
-	gflags |= 0x2;
-
-	if (!WriteProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesWritten))
-	{
-		ErrorOutput("Loader: WriteProcessMemory failed (gflags)");
-		return FALSE;
-	}
-
-	DebugOutput("Loader: snaps enabled.\n");
-
-	return TRUE;
 }
 
 void HandleDebugOutputString(const DEBUG_EVENT dbgEvent, HANDLE hProcess)
