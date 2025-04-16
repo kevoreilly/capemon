@@ -1281,8 +1281,6 @@ void parse_config_line(char* line)
 			g_config.amsidump = value[0] == '1';
 			if (g_config.amsidump)
 				DebugOutput("AMSI dumping enabled.\n");
-			else
-				DebugOutput("AMSI dumping disabled.\n");
 		}
 		else if (!stricmp(key, "minhook")) {
 			g_config.minhook = value[0] == '1';
