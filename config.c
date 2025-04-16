@@ -1275,6 +1275,11 @@ void parse_config_line(char* line)
 			if (g_config.zerohook)
 				DebugOutput("All* hooks disabled (*except essential)\n");
 		}
+		else if (!stricmp(key, "native")) {
+			g_config.native = value[0] == '1';
+			if (g_config.native)
+				DebugOutput("Native hooks only (ntdll)\n");
+		}
 		else if (!stricmp(key, "tlsdump")) {
 			g_config.tlsdump = value[0] == '1';
 			if (g_config.tlsdump) {

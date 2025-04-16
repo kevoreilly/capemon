@@ -222,6 +222,9 @@ struct _g_config {
 	// Zero hook set
 	int zerohook;
 
+	// Native hook set
+	int native;
+
 	// Microsoft Office hook set
 	int office;
 
