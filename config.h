@@ -104,6 +104,9 @@ struct _g_config {
 	// Default hook type (may be overridden for specific functions)
 	int hook_type;
 
+	// Hook trampoline allocated in low (<2GB) memory (64-bit)
+	int hook_low;
+
 	// Disable hook content
 	int disable_hook_content;
 

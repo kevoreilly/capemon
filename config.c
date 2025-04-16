@@ -132,16 +132,35 @@ void parse_config_line(char* line)
 			g_config.hook_range = atoi(value);
 			DebugOutput("Config: hook range limit set to %d", g_config.hook_range);
 		}
-		else if (!strcmp(key, "hook-type")) { //Valid for 32-bit analyses only. Specifies the hook type to use: direct, indirect, or safe. Safe attempts a Detours-style hook.
-#ifndef _WIN64
-			if (!strcmp(value, "direct"))
-				g_config.hook_type = HOOK_JMP_DIRECT;
-			else if (!strcmp(value, "indirect"))
+		else if (!strcmp(key, "hook-type")) {
+			if (!strcmp(value, "indirect")) {
 				g_config.hook_type = HOOK_JMP_INDIRECT;
-			else if (!strcmp(value, "safe"))
+				DebugOutput("Config: Indirect hooking selected.\n");
+			}
+			else if (!strcmp(value, "pushret")) {
+				g_config.hook_type = HOOK_PUSH_RETN;
+				DebugOutput("Config: Push-ret hooking selected.\n");
+			}
+#ifndef _WIN64
+			else if (!strcmp(value, "direct")) {
+				g_config.hook_type = HOOK_JMP_DIRECT;
+				DebugOutput("Config: Direct hooking selected.\n");
+			}
+			else if (!strcmp(value, "safe")) {
 				g_config.hook_type = HOOK_SAFEST;
+				DebugOutput("Config: Safest hooking selected.\n");
+			}
 #endif
 		}
+#ifdef _WIN64
+		else if (!stricmp(key, "hook-low")) {
+			g_config.hook_low = value[0];
+			if (g_config.hook_low) {
+				DebugOutput("Config: Hook 'low' enabled (trampoline address < 2GB)\n");
+				g_config.hook_type = HOOK_PUSH_RETN;
+			}
+		}
+#endif
 		else if (!strcmp(key, "disable_hook_content")) { //Set to 1 to remove functionality of all hooks except those critical for monitoring other processes. Set to 2 to apply to all hooks.
 			g_config.disable_hook_content = atoi(value);
 		}
@@ -1362,7 +1381,6 @@ int read_config(void)
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
-	g_config.amsidump = 1;
 	g_config.syscall = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
