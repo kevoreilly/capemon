@@ -976,7 +976,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 
 	pid = pid_from_process_handle(ProcessHandle);
 
-	if (pid != GetCurrentProcess()) {
+	if (pid != GetCurrentProcessId()) {
 		LOQ_ntstatus(
 			"process", "pipBhs",
 			"ProcessHandle", ProcessHandle,
@@ -1024,7 +1024,7 @@ HOOKDEF(BOOL, WINAPI, WriteProcessMemory,
 
 	pid = pid_from_process_handle(hProcess);
 
-	if (pid != GetCurrentProcess()) {
+	if (pid != GetCurrentProcessId()) {
 		LOQ_bool(
 			"process", "pipBhs",
 			"ProcessHandle", hProcess,
