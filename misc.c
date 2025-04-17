@@ -799,6 +799,47 @@ DWORD tid_from_thread_handle(HANDLE thread_handle)
 	return (DWORD)(ULONG_PTR)cid.UniqueThread;
 }
 
+VOID CALLBACK thread_callback(PVOID context_param, BOOLEAN timeout)
+{
+    THREAD_CONTEXT *context = (THREAD_CONTEXT*)context_param;
+
+    if (context->thread_id)
+        *context->thread_id = GetCurrentThreadId();
+
+    context->start_routine(context->parameter);
+
+    SetEvent(context->event);
+    CloseHandle(context->event);
+    free(context);
+}
+
+HANDLE our_createthread(PTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD *lpThreadId)
+{
+    HANDLE timer = NULL;
+
+    THREAD_CONTEXT *context = (THREAD_CONTEXT*)calloc(1, sizeof(THREAD_CONTEXT));
+    if (!context)
+        return NULL;
+
+    context->start_routine = lpStartAddress;
+    context->parameter = lpParameter;
+    context->thread_id = lpThreadId;
+
+    context->event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (!context->event) {
+        free(context);
+        return NULL;
+    }
+
+    if (!CreateTimerQueueTimer(&timer, NULL, thread_callback, context, 0, 0, WT_EXECUTEDEFAULT)) {
+        CloseHandle(context->event);
+        free(context);
+        return NULL;
+    }
+
+    return context->event;
+}
+
 DWORD our_getprocessid(HANDLE Process)
 {
 	DWORD ret;

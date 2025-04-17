@@ -126,6 +126,14 @@ typedef SIZE_T (WINAPI *_RtlCompareMemory)(
     _In_ SIZE_T Length
 );
 
+typedef struct _THREAD_CONTEXT
+{
+    PTHREAD_START_ROUTINE start_routine;
+    LPVOID parameter;
+    HANDLE event;
+    LPDWORD thread_id;
+} THREAD_CONTEXT;
+
 _NtSetInformationProcess pNtSetInformationProcess;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
@@ -195,6 +203,7 @@ struct dll_range {
 DWORD get_pid_by_tid(DWORD tid);
 
 DWORD our_getprocessid(HANDLE Process);
+HANDLE our_createthread(PTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD *lpThreadId);
 BOOL is_in_dll_range(ULONG_PTR addr);
 void add_all_dlls_to_dll_ranges(void);
 void add_dll_range(ULONG_PTR start, ULONG_PTR end);

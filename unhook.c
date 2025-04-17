@@ -254,15 +254,12 @@ DWORD g_unhook_watcher_thread_id;
 
 int unhook_init_detection()
 {
-	g_unhook_thread_handle =
-		CreateThread(NULL, 0, &_unhook_detect_thread, NULL, 0, &g_unhook_detect_thread_id);
+	g_unhook_thread_handle = our_createthread(&_unhook_detect_thread, NULL, &g_unhook_detect_thread_id);
 
-	g_watcher_thread_handle =
-		CreateThread(NULL, 0, &_unhook_watch_thread, NULL, 0, &g_unhook_watcher_thread_id);
+	g_watcher_thread_handle = our_createthread(&_unhook_watch_thread, NULL, &g_unhook_watcher_thread_id);
 
-	if(g_unhook_thread_handle != NULL && g_watcher_thread_handle != NULL) {
+	if (g_unhook_thread_handle != NULL && g_watcher_thread_handle != NULL)
 		return 0;
-	}
 
 	pipe("CRITICAL:Error initializing unhook detection threads!");
 	return -1;
@@ -338,8 +335,7 @@ int terminate_event_init()
 	sa.lpSecurityDescriptor = &sd;
 	g_terminate_event_handle = CreateEventA(&sa, FALSE, FALSE, g_config.terminate_event_name);
 
-	g_terminate_event_thread_handle =
-		CreateThread(NULL, 0, &_terminate_event_thread, NULL, 0, &g_terminate_event_thread_id);
+	g_terminate_event_thread_handle = our_createthread(&_terminate_event_thread, NULL, &g_terminate_event_thread_id);
 
 	if (g_terminate_event_handle != NULL && g_terminate_event_thread_handle != NULL)
 		return 0;
@@ -397,8 +393,7 @@ int procname_watch_init()
 	InitialProcessPath.Buffer = (PWSTR)calloc(mod->FullDllName.MaximumLength, 1);
 	memcpy(InitialProcessPath.Buffer, mod->FullDllName.Buffer, InitialProcessPath.Length);
 
-	g_procname_watch_thread_handle =
-		CreateThread(NULL, 0, &_procname_watch_thread, NULL, 0, &g_procname_watcher_thread_id);
+	g_procname_watch_thread_handle = our_createthread(&_procname_watch_thread, NULL, &g_procname_watcher_thread_id);
 
 	if (g_procname_watch_thread_handle != NULL)
 		return 0;
@@ -482,7 +477,7 @@ int init_watchdog()
 
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &mainthreadhandle, THREAD_ALL_ACCESS, FALSE, 0);
 
-	CreateThread(NULL, 0, &_watchdog_thread, mainthreadhandle, 0, &g_watchdog_thread_id);
+	our_createthread(&_watchdog_thread, mainthreadhandle, &g_watchdog_thread_id);
 
 	return 0;
 }
