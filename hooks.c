@@ -109,6 +109,7 @@ hook_t full_hooks[] = {
 	// all variants of ShellExecute end up in ShellExecuteExW
 	HOOK(shell32, ShellExecuteExW),
 	HOOK(msvcrt, system),
+	HOOK(ntdll, vDbgPrintExWithPrefixInternal),
 
 	// Thread Hooks
 	HOOK_SPECIAL(ntdll, NtCreateThread),

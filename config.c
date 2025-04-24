@@ -1345,6 +1345,11 @@ void parse_config_line(char* line)
 			if (g_config.interactive == 1)
 				DebugOutput("Interactive desktop enabled.\n");
 		}
+		else if (!stricmp(key, "snaps")) {
+			g_config.snaps = value[0] == '1';
+			if (g_config.snaps)
+				DebugOutput("Loader snaps enabled.\n");
+		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("Monitor config - unrecognised key %s.\n", key);
 

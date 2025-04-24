@@ -3660,4 +3660,13 @@ HOOKDEF(UINT, WINAPI, MsiInstallProductW,
 	_In_	LPCWSTR	szCommandLine
 );
 
+HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
+	__in  PCH Prefix,
+	__in  ULONG ComponentId,
+	__in  ULONG Level,
+	__in  PCHAR Format,
+	__in  va_list arglist,
+	__in  BOOLEAN HandleBreakpoint
+);
+
 #include "hook_vbscript.h"

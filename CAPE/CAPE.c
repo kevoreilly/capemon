@@ -698,6 +698,7 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 	const char *YaraFunctions[] =
 	{
 		"LdrpCallInitRoutine",
+		"vDbgPrintExWithPrefixInternal",
 	};
 
 	for (int i = 0; i < sizeof(YaraFunctions) / sizeof(YaraFunctions[0]); i++)
@@ -3565,6 +3566,32 @@ void RestoreHeaders()
 	DebugOutput("RestoreHeaders: Restored original import table.\n");
 }
 
+static void EnableLoaderSnaps()
+{
+#ifdef _WIN64
+	PBYTE _fltused = (PBYTE)GetProcAddress(GetModuleHandle("ntdll"), "_fltused");
+	if (_fltused == NULL)
+		return;
+	DWORD* LdrpDebugFlags = (DWORD*)(_fltused - 0x10);
+	if (!*LdrpDebugFlags)
+		*LdrpDebugFlags = 1;
+#else
+	PBYTE LdrGetDllHandleEx = (PBYTE)GetProcAddress(GetModuleHandle("ntdll"), "LdrGetDllHandleEx");
+	if (LdrGetDllHandleEx == NULL)
+		return;
+	DWORD* ShowSnaps = NULL;
+	for (PBYTE p = LdrGetDllHandleEx; p < LdrGetDllHandleEx + 50; p++)
+	{
+		if (p[0] == 0xf6 && p[1] == 0x05 && p[6] == 0x09)
+			ShowSnaps = *(DWORD**)(p+2);
+	}
+	if (!ShowSnaps)
+		return;
+	if (!*ShowSnaps)
+		*ShowSnaps = 1;
+#endif
+}
+
 void CAPE_post_init()
 {
 	if (g_config.syscall && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
@@ -3592,9 +3619,6 @@ void CAPE_post_init()
 
 void CAPE_init()
 {
-	// Initialise CAPE global variables
-	//
-	//if (!g_config.standalone)
 	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA), sizeof(BYTE));
 	CapeMetaData->Pid = GetCurrentProcessId();
 	CapeMetaData->PPid = parent_process_id();
@@ -3612,8 +3636,8 @@ void CAPE_init()
 	ProcessDumped = FALSE;
 	DumpCount = 0;
 
-	// Cuckoo debug output level for development (0=none, 2=max)
-	// g_config.debug = 2;
+	if (g_config.snaps)
+		EnableLoaderSnaps();
 
 	YaraInit();
 

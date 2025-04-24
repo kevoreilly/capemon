@@ -30,7 +30,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
-BOOL DisableIATPatching, FirstProcess;
+BOOL DisableIATPatching, FirstProcess, LoaderSnaps;
 
 void pipe(char* Buffer, SIZE_T Length);
 
@@ -236,7 +236,7 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 				DebugOutput("Loader: Successfully loaded pipe name %s.\n", LogPipe);
 #endif
 			}
-			if (!strcmp(key, "no-iat"))
+			else if (!strcmp(key, "no-iat"))
 			{
 				DisableIATPatching = Value[0] == '1';
 				if (DisableIATPatching)
@@ -244,6 +244,8 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 				else
 					DebugOutput("Loader: IAT patching enabled.\n");
 			}
+			else if (!strcmp(key, "snaps"))
+				LoaderSnaps = Value[0] == '1';
 			else if (!strcmp(key, "first-process"))
 				FirstProcess = Value[0] == '1';
 		}
@@ -339,8 +341,8 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 
 static BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
 {
-	SIZE_T dwBytesRead, dwBytesWritten;
 	ULONG gflags = 0;
+	SIZE_T dwBytesRead, dwBytesWritten;
 
 	PVOID pNtGlobalFlag = (PVOID)((PBYTE)Peb + GetNtGlobalFlagsOffset());
 
@@ -358,7 +360,7 @@ static BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
 		return FALSE;
 	}
 
-	DebugOutput("Loader: snaps enabled.\n");
+	DebugOutput("Loader: Snaps enabled.\n");
 
 	return TRUE;
 }
@@ -1229,8 +1231,12 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 		goto out;
 	}
 
-	if (!GetProcessPeb(ProcessHandle, &Peb))
+	PPEB pPeb = GetProcessPeb(ProcessHandle, &Peb);
+	if (!pPeb)
 		DebugOutput("InjectDll: GetProcessPeb failure.\n");
+
+	if (LoaderSnaps)
+		EnableLoaderSnaps(ProcessHandle, pPeb);
 
 	// If no thread id supplied, we fetch the initial thread id from the initial TEB
 	if (!ThreadId && Peb.ImageBaseAddress && !Peb.Ldr)

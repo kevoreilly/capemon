@@ -1938,3 +1938,26 @@ HOOKDEF(UINT, WINAPI, MsiInstallProductW,
 	LOQ_zero("misc", "uu", "PackagePath", szPackagePath, "CommandLine", szCommandLine);
 	return ret;
 }
+
+HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
+	__in  PCH Prefix,
+	__in  ULONG ComponentId,
+	__in  ULONG Level,
+	__in  PCHAR Format,
+	__in  va_list arglist,
+	__in  BOOLEAN HandleBreakpoint
+) {
+    UCHAR Buffer[512];
+    size_t cb = strlen(Prefix);
+    strcpy(Buffer, Prefix);
+    cb = _vsnprintf(Buffer + cb, sizeof(Buffer) - cb, Format, arglist) + cb;
+
+    if (cb == -1) {
+        cb = sizeof(Buffer);
+        Buffer[sizeof(Buffer) - 1] = '\n';
+    }
+
+	DebugOutput("%s", Buffer);
+
+    return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
+}

@@ -252,6 +252,9 @@ struct _g_config {
 	// Specify custom trace stepping behavior
 	int stepmode;
 
+	// Enable Windows Loader snaps output
+	int snaps;
+
 	char *break_on_apiname;
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];
