@@ -79,7 +79,7 @@ BOOL DumpRange(PVOID Address, SIZE_T Size);
 BOOL DumpStackRegion(void);
 
 BOOL ProcessDumped;
-unsigned int DumpCount;
+unsigned int DumpCount, DotNetCacheDumpCount;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;

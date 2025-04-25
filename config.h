@@ -219,6 +219,9 @@ struct _g_config {
 	// AMSI dumps (Win10+)
 	int amsidump;
 
+	// .NET JIT cache dumps
+	unsigned int jit_dumps;
+
 	// Minimal hook set
 	int minhook;
 

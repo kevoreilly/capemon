@@ -3281,8 +3281,6 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
-		DebugOutput("DumpInterestingRegions: Dumping .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
-
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
 #ifdef _WIN64
@@ -3292,7 +3290,15 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 #endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress));
+		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
+		{
+			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+			DotNetCacheDumpCount++;
+		}
+		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
+			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
+		else if (!g_config.jit_dumps)
+			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
 	}
 }
 

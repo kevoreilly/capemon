@@ -1282,6 +1282,11 @@ void parse_config_line(char* line)
 			if (g_config.amsidump)
 				DebugOutput("AMSI dumping enabled.\n");
 		}
+		else if (!stricmp(key, "jit-dumps")) {
+			g_config.jit_dumps = (unsigned int)strtoul(value, NULL, 10);
+			if (g_config.jit_dumps)
+				DebugOutput(".NET JIT cache dumps enabled, limit %d\n", g_config.jit_dumps);
+		}
 		else if (!stricmp(key, "minhook")) {
 			g_config.minhook = value[0] == '1';
 			if (g_config.minhook)
