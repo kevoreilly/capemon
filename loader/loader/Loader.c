@@ -1608,7 +1608,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				while (TRUE)
 				{
 					DEBUG_EVENT dbgEvent;
-					WaitForDebugEventEx(&dbgEvent, INFINITE);
+					WaitForDebugEvent(&dbgEvent, INFINITE);
 					switch (dbgEvent.dwDebugEventCode)
 					{
 					case EXCEPTION_DEBUG_EVENT:
@@ -1639,9 +1639,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 						DebugOutput("RIP event");
 						break;
 					}
-
-					if (dbgEvent.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT)
-						break;
 
 					ContinueDebugEvent(dbgEvent.dwProcessId, dbgEvent.dwThreadId, DBG_EXCEPTION_NOT_HANDLED);
 				}
