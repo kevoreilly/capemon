@@ -1768,57 +1768,6 @@ out:
 	return ret;
 }
 
-BOOLEAN is_suspended(DWORD pid, DWORD tid)
-{
-	ULONG length;
-	PSYSTEM_PROCESS_INFORMATION pspi = NULL, proc;
-	ULONG requestedlen = 16384;
-	lasterror_t lasterror;
-	BOOLEAN ret = FALSE;
-
-	get_lasterrors(&lasterror);
-
-	pspi = malloc(requestedlen);
-	if (pspi == NULL)
-		goto out;
-
-	while (pNtQuerySystemInformation(SystemProcessInformation, pspi, requestedlen, &length) == STATUS_INFO_LENGTH_MISMATCH) {
-		free(pspi);
-		requestedlen <<= 1;
-		pspi = malloc(requestedlen);
-		if (pspi == NULL)
-			goto out;
-	}
-	// now we have a valid list of process information
-	proc = pspi;
-	while (1) {
-		ULONG i;
-
-		if ((DWORD)(ULONG_PTR)proc->UniqueProcessId != pid)
-			goto next;
-		for (i = 0; i < proc->NumberOfThreads; i++) {
-			PSYSTEM_THREAD thread = &proc->Threads[i];
-			if (tid && (DWORD)(ULONG_PTR)thread->ClientId.UniqueThread != tid)
-				continue;
-			if (thread->WaitReason != Suspended)
-				goto out;
-		}
-		break;
-next:
-		if (!proc->NextEntryOffset)
-			break;
-		proc = (PSYSTEM_PROCESS_INFORMATION)((PCHAR)proc + proc->NextEntryOffset);
-	}
-	ret = TRUE;
-out:
-	if (pspi)
-		free(pspi);
-
-	set_lasterrors(&lasterror);
-
-	return ret;
-}
-
 static PUCHAR get_rel_target(PUCHAR buf)
 {
 	return buf + 5 + *(int *)&buf[1];

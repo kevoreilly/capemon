@@ -147,7 +147,6 @@ DWORD randint(DWORD min, DWORD max);
 BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj);
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj);
 void hide_module_from_peb(HMODULE module_handle);
-BOOLEAN is_suspended(DWORD pid, DWORD tid);
 int path_is_system(const wchar_t *path_w);
 int path_is_program_files(const wchar_t *path_w);
 BOOLEAN parent_has_path(char* path);
