@@ -212,27 +212,6 @@ static void retarget_relative_displacement(unsigned char **tramp, unsigned char 
 	*addr = newaddr;
 }
 
-static void retarget_rip_relative_displacement(unsigned char **tramp, unsigned char **addr, _DInst *insn)
-{
-	unsigned short length = insn->size;
-	unsigned char offset = (unsigned char)(length - insn->imm_encoded_size - sizeof(int));
-	unsigned char *newtramp = *tramp;
-	unsigned char *newaddr = *addr;
-	ULONG_PTR target;
-	int rel = *(int *)(newaddr + offset);
-	target = (ULONG_PTR)(newaddr + length + rel);
-	// copy the instruction directly to the trampoline
-	while (length-- != 0) {
-		*newtramp++ = *newaddr++;
-	}
-	// now replace the displacement
-	rel = (int)(target - (ULONG_PTR)newtramp);
-	*(int *)(newtramp - insn->imm_encoded_size - sizeof(int)) = rel;
-
-	*tramp = newtramp;
-	*addr = newaddr;
-}
-
 // create a trampoline at the given address, that is, we are going to replace
 // the original instructions at this particular address. So, in order to
 // call the original function from our hook, we have to execute the original
