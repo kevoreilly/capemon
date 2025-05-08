@@ -299,6 +299,6 @@ struct _g_config {
 
 extern struct _g_config g_config;
 
-int read_config(void);
+void read_config(void);
 
 #endif

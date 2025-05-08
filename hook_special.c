@@ -69,21 +69,19 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 		if (g_config.tlsdump) {
 			// lsass injected a second time - switch to 'normal' mode
 			g_config.tlsdump = 0;
-			if (read_config()) {
-				log_init(g_config.debug || g_config.standalone);
-				set_hooks();
-				notify_successful_load();
-			}
+			read_config();
+			log_init(g_config.debug || g_config.standalone);
+			set_hooks();
+			notify_successful_load();
 			ret = 0;
 		}
 		if (g_config.interactive) {
 			// explorer injected by malware - switch to 'normal' mode
 			g_config.interactive = 2;
 			g_config.minhook = 0;
-			if (read_config()) {
-				set_hooks();
-				notify_successful_load();
-			}
+			read_config();
+			set_hooks();
+			notify_successful_load();
 			ret = 0;
 		}
 	}

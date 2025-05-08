@@ -1363,7 +1363,7 @@ void parse_config_line(char* line)
 	}
 }
 
-int read_config(void)
+void read_config(void)
 {
 	char buf[32768], config_fname[MAX_PATH];
 	FILE *fp;
@@ -1416,17 +1416,14 @@ int read_config(void)
 		fp = fopen(config_fname, "r");
 	}
 
-	// for debugging purposes
 	if (fp == NULL) {
 		memset(config_fname, 0, sizeof(config_fname));
 		sprintf(config_fname, "%s\\config.ini", g_config.analyzer);
 		fp = fopen(config_fname, "r");
-		if (fp == NULL)
-			return 0;
 	}
 
-	memset(buf, 0, sizeof(buf));
 	if (fp) {
+		memset(buf, 0, sizeof(buf));
 		while (fgets(buf, sizeof(buf), fp) != NULL) {
 			// cut off the newline
 			char *p = strchr(buf, '\r');
@@ -1490,7 +1487,7 @@ int read_config(void)
 		ImageBaseRemapped = TRUE;
 
 	if (!our_process_name)
-		return 1;
+		return;
 
 	if (!_stricmp(our_process_name, "explorer.exe") && g_config.interactive == 1)
 	{
@@ -1656,5 +1653,5 @@ int read_config(void)
 		}
 	}
 
-	return 1;
+	return;
 }
