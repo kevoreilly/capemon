@@ -207,7 +207,7 @@ SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
 
 void StringCheck(PVOID PossibleString)
 {
-	PCHAR ExportName = ScyllaGetExportNameByAddress(PossibleString, NULL);
+	PCHAR ExportName = GetExportNameByAddress(PossibleString);
 	if (ExportName)
 	{
 		DebuggerOutput(" %s ", ExportName);
@@ -1773,7 +1773,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		}
 		else if (CallTarget && !ExportName)
 		{
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			ExportName = GetExportNameByAddress(CallTarget);
 
 			if (!ExportName && (!FilterTrace || g_config.trace_all))
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
@@ -1837,7 +1837,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		}
 		else
 		{
-			ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+			ExportName = GetExportNameByAddress(JumpTarget);
 
 			if (ExportName)
 			{
@@ -2104,7 +2104,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	PCHAR FunctionName = NULL;
 	__try
 	{
-		FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+		FunctionName = GetExportNameByAddress(CIP);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -2338,7 +2338,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 			__try
 			{
-				FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+				FunctionName = GetExportNameByAddress(CIP);
 			}
 			__except(EXCEPTION_EXECUTE_HANDLER)
 			{
@@ -2596,7 +2596,7 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 		PCHAR FunctionName;
 		__try
 		{
-			FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+			FunctionName = GetExportNameByAddress(CIP);
 		}
 		__except(EXCEPTION_EXECUTE_HANDLER)
 		{
