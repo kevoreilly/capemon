@@ -2049,41 +2049,62 @@ PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax)
 	__try
 	{
 		PVOID Base = GetAllocationBase(Address);
-		if (!Base)
+		if (!Base || !IsAddressAccessible(Base))
 			return NULL;
 
-		PIMAGE_NT_HEADERS pNtHeader = pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)Base + (ULONG)((PIMAGE_DOS_HEADER)Base)->e_lfanew);
-		if (!pNtHeader)
+		PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER)Base;
+		if (DosHeader->e_magic != IMAGE_DOS_SIGNATURE)
 			return NULL;
 
-		PIMAGE_EXPORT_DIRECTORY ExportDirectory = ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)Base + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
-		if (!ExportDirectory)
+		PIMAGE_NT_HEADERS NtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)Base + DosHeader->e_lfanew);
+		if (NtHeader->Signature != IMAGE_NT_SIGNATURE)
 			return NULL;
 
-		PDWORD AddressOfNames = (PDWORD)((PUCHAR)Base + ExportDirectory->AddressOfNames);
-		if (!AddressOfNames)
+		IMAGE_DATA_DIRECTORY ExportDirEntry = NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+		if (ExportDirEntry.VirtualAddress == 0 || ExportDirEntry.Size == 0)
 			return NULL;
 
-		PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)Base + ExportDirectory->AddressOfFunctions);
-		if (!AddressOfFunctions)
+		PIMAGE_EXPORT_DIRECTORY ExportDir = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)Base + ExportDirEntry.VirtualAddress);
+		if (!IsAddressAccessible(ExportDir))
 			return NULL;
 
-		PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)Base + ExportDirectory->AddressOfNameOrdinals);
-		if (!AddressOfNameOrdinals)
+		if (ExportDir->NumberOfFunctions > 0x100000)
 			return NULL;
 
-		for (unsigned int j = 0; j < ExportDirectory->NumberOfFunctions; j++)
+		PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)Base + ExportDir->AddressOfFunctions);
+		if (!IsAddressAccessible(AddressOfFunctions))
+			return NULL;
+
+		PDWORD AddressOfNames = (PDWORD)((PUCHAR)Base + ExportDir->AddressOfNames);
+		PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)Base + ExportDir->AddressOfNameOrdinals);
+
+		for (DWORD i = 0; i < ExportDir->NumberOfNames; i++)
 		{
-			if ((PUCHAR)Address - (PUCHAR)Base > (int)AddressOfFunctions[AddressOfNameOrdinals[j]]
-			&& (PUCHAR)Address - (PUCHAR)Base - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
-				return (PCHAR)Base + AddressOfNames[j];
+			if (!IsAddressAccessible(&AddressOfNameOrdinals[i]) || !IsAddressAccessible(&AddressOfNames[i]))
+				continue;
+
+			WORD Ordinal = AddressOfNameOrdinals[i];
+			if (Ordinal >= ExportDir->NumberOfFunctions)
+				continue;
+
+			DWORD FunctionRva = AddressOfFunctions[Ordinal];
+			if (FunctionRva == 0)
+				continue;
+
+			if ((ULONG_PTR)Address - (ULONG_PTR)Base >= FunctionRva && (ULONG_PTR)Address - (ULONG_PTR)Base - FunctionRva <= ScanMax)
+			{
+				PCHAR Name = (PCHAR)((PUCHAR)Base + AddressOfNames[i]);
+				if (IsAddressAccessible(Name))
+					return Name;
+			}
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		return NULL;
 	}
-    return NULL;
+
+	return NULL;
 }
 
 //**************************************************************************************
