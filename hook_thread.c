@@ -72,7 +72,7 @@ void add_ignored_thread(DWORD tid)
 	lasterror_t lasterror;
 
 	get_lasterrors(&lasterror);
-	pipe("INFO:Adding ignored thread %d", tid);
+	DebugOutput("Adding ignored thread %d", tid);
 	lookup_add(&g_ignored_threads, tid, 0);
 	set_lasterrors(&lasterror);
 }
