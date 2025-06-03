@@ -172,23 +172,23 @@ static int addr_is_in_range(ULONG_PTR addr, const unsigned char *buf, DWORD size
 
 static void retarget_relative_displacement(unsigned char **tramp, unsigned char **addr, _DInst *insn)
 {
-    unsigned short length = insn->size;
-    unsigned char *newtramp = *tramp;
-    unsigned char *newaddr = *addr;
+	unsigned short length = insn->size;
+	unsigned char *newtramp = *tramp;
+	unsigned char *newaddr = *addr;
 
-    unsigned char offset = (unsigned char)(length - insn->imm_encoded_size - sizeof(int));
-    ULONG_PTR target = (ULONG_PTR)(newaddr + length + *(int *)(newaddr + offset));
-    int64_t rel = (int64_t)(target - (ULONG_PTR)(newtramp + length));
+	unsigned char offset = (unsigned char)(length - insn->imm_encoded_size - sizeof(int));
+	ULONG_PTR target = (ULONG_PTR)(newaddr + length + *(int *)(newaddr + offset));
+	int64_t rel = (int64_t)(target - (ULONG_PTR)newtramp);
 
-    if (rel >= INT_MIN && rel <= INT_MAX) {
-        while (length-- != 0)
-            *newtramp++ = *newaddr++;
-        *(int64_t *)(newtramp - insn->imm_encoded_size - sizeof(int)) = rel;
-    }
+	if (rel >= INT_MIN && rel <= INT_MAX) {
+		while (length-- != 0)
+		*newtramp++ = *newaddr++;
+		*(int64_t *)(newtramp - insn->imm_encoded_size - sizeof(int)) = rel;
+	}
 	else {
 		// mov r11, far target
-        *((WORD*)newtramp)++ = 0xBB49;
-        *((ULONG_PTR *)newtramp)++ = (ULONG_PTR)target;
+		*((WORD*)newtramp)++ = 0xBB49;
+		*((ULONG_PTR *)newtramp)++ = (ULONG_PTR)target;
 		if (*newaddr == 0xE8) {
 			// replace call near target with call far r11
 			*((WORD*)newtramp)++ = 0xFF41;
