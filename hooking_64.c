@@ -178,12 +178,12 @@ static void retarget_relative_displacement(unsigned char **tramp, unsigned char 
 
 	unsigned char offset = (unsigned char)(length - insn->imm_encoded_size - sizeof(int));
 	ULONG_PTR target = (ULONG_PTR)(newaddr + length + *(int *)(newaddr + offset));
-	int64_t rel = (int64_t)(target - (ULONG_PTR)newtramp);
+	int64_t rel = (int64_t)(target - (ULONG_PTR)(newtramp + length));
 
 	if (rel >= INT_MIN && rel <= INT_MAX) {
 		while (length-- != 0)
 		*newtramp++ = *newaddr++;
-		*(int64_t *)(newtramp - insn->imm_encoded_size - sizeof(int)) = rel;
+		*(int *)(newtramp - insn->imm_encoded_size - sizeof(int)) = (int)rel;
 	}
 	else {
 		// mov r11, far target
