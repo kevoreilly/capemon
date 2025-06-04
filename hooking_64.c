@@ -182,7 +182,7 @@ static void retarget_relative_displacement(unsigned char **tramp, unsigned char 
 
 	if (rel >= INT_MIN && rel <= INT_MAX) {
 		while (length-- != 0)
-		*newtramp++ = *newaddr++;
+			*newtramp++ = *newaddr++;
 		*(int *)(newtramp - insn->imm_encoded_size - sizeof(int)) = (int)rel;
 	}
 	else {
@@ -200,9 +200,12 @@ static void retarget_relative_displacement(unsigned char **tramp, unsigned char 
 			*newtramp++ = 0xE3;
 		}
 		else if (insn->flags & FLAG_RIP_RELATIVE) {
+			// rewrite instruction to use rll
 			if ((*newaddr & 0xF0) == 0x40)
+				// modify REX prefix to use r11
 				*newtramp++ = *newaddr++ | 0x41;
 			*newtramp++ = *newaddr++;
+			// modify ModR/M byte to use R11
 			*newtramp++ = (*newaddr++ & 0xF8) | 3;
 		}
 		newaddr += 4;
@@ -260,7 +263,6 @@ static int hook_create_trampoline(unsigned char *addr, int len,
 			if (addr[0] == 0xe9 && len > 0)
 				goto error;
 		}
-
 		else if (addr[0] == 0xeb) {
 			target = get_short_rel_target(addr);
 			if (addr_is_in_range(target, origaddr, stoleninstrlen))
@@ -279,9 +281,8 @@ static int hook_create_trampoline(unsigned char *addr, int len,
 		}
 		// return instruction, indicates end of basic block as well, so we
 		// have to check if we already have enough space for our hook..
-		else if ((addr[0] == 0xc3 || addr[0] == 0xc2) && len > 0) {
+		else if ((addr[0] == 0xc3 || addr[0] == 0xc2) && len > 0)
 			goto error;
-		}
 		else {
 			// copy the instruction directly to the trampoline
 			while (length-- != 0) {
