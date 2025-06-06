@@ -266,6 +266,7 @@
     <ClCompile Include="hook_tls.c" />
     <ClCompile Include="hook_vbscript.c" />
     <ClCompile Include="hook_window.c" />
+    <ClCompile Include="hook_wmi.c" />
     <ClCompile Include="ignore.c" />
     <ClCompile Include="log.c" />
     <ClCompile Include="lookup.c" />

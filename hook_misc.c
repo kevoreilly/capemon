@@ -763,8 +763,8 @@ HOOKDEF(void, WINAPI, GetSystemInfo,
 
 	Old_GetSystemInfo(lpSystemInfo);
 
-	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < 4)
-		lpSystemInfo->dwNumberOfProcessors = 4;
+	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < SPOOFED_CPU_CORE_NUM)
+		lpSystemInfo->dwNumberOfProcessors = SPOOFED_CPU_CORE_NUM;
 
 	LOQ_void("misc", "");
 
@@ -817,7 +817,7 @@ normal_call:
 
 		if (!g_config.no_stealth && SystemInformationClass == SystemBasicInformation && SystemInformationLength >= sizeof(SYSTEM_BASIC_INFORMATION) && NT_SUCCESS(ret)) {
 			PSYSTEM_BASIC_INFORMATION p = (PSYSTEM_BASIC_INFORMATION)SystemInformation;
-			p->NumberOfProcessors = 4;
+			p->NumberOfProcessors = SPOOFED_CPU_CORE_NUM;
 		}
 
 		/* This is nearly arbitrary and simply designed to test whether the Upatre author(s) or others

@@ -1261,6 +1261,74 @@ HOOKDEF(HRESULT, WINAPI, CoGetObject,
 	_Out_		LPVOID *ppv
 );
 
+// WMI Hooks
+HOOKDEF(HRESULT, WINAPI, WMI_Get,
+	PVOID		_this,
+	LPCWSTR		wszName,
+	LONG		lFlags,
+	VARIANT*	pVal,
+	LONG*		pType,
+	LONG*		plFlavor
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecQuery,
+	PVOID		_this,
+	const BSTR	strQueryLanguage,
+	const BSTR	strQuery,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID*		ppEnum
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecQueryAsync,
+	PVOID		_this,
+	const BSTR	strQueryLanguage,
+	const BSTR	strQuery,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID		pResponseHandler
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethod,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	const BSTR	strMethodName,
+	long		lFlags,
+	PVOID		pCtx,
+	PVOID		pInParams,
+	PVOID*		ppOutParams,
+	PVOID*		ppCallResult
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethodAsync,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	const BSTR	strMethodName,
+	long		lFlags,
+	PVOID		pCtx,
+	PVOID		pInParams,
+	PVOID		pResponseHandler
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_GetObject,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID*		ppObject,
+	PVOID*		ppCallResult
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_GetObjectAsync,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID		pResultHandler
+);
+
+// End of WMI Hooks
+
 HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in	 HANDLE SectionHandle,
 	__in	 HANDLE ProcessHandle,

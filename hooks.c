@@ -38,6 +38,9 @@ void disable_tail_call_optimization(void)
 #define HOOK(library, funcname) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
 
+#define HOOK_WITHNAME(library, funcname, mangled) {L###library, mangled, NULL, NULL, \
+    &New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
+
 #define HOOK_SPECIAL(library, funcname) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, TRUE, FALSE, 0, FALSE}
 
@@ -155,6 +158,19 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoGetObject),
+
+	// WMI Hooks
+#ifdef _WIN64
+	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UEAAJPEBGJPEAUtagVARIANT@@PEAJ2@Z"),
+#else
+	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z"),
+#endif
+	HOOK_NOTAIL(fastprox, WMI_ExecQuery, 6),
+	HOOK_NOTAIL(fastprox, WMI_ExecMethod, 8),
+	HOOK_NOTAIL(fastprox, WMI_ExecQueryAsync, 6),
+	HOOK_NOTAIL(fastprox, WMI_ExecMethodAsync, 7),
+	HOOK_NOTAIL(fastprox, WMI_GetObject, 6),
+	HOOK_NOTAIL(fastprox, WMI_GetObjectAsync, 5),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),

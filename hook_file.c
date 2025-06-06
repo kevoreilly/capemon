@@ -1351,10 +1351,8 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExA(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "s", "DirectoryName", lpDirectoryName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
-		lpTotalNumberOfBytes->QuadPart = 256060514304L;
+		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
 	return ret;
@@ -1368,10 +1366,8 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExW(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "u", "DirectoryName", lpDirectoryName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
-		lpTotalNumberOfBytes->QuadPart = 256060514304L;
+		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
 	return ret;
@@ -1386,12 +1382,10 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceA(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "s", "RootPathName", lpRootPathName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
-				*lpTotalNumberOfClusters = (DWORD)(256060514304L / (*lpSectorsPerCluster * *lpBytesPerSector));
+				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1411,12 +1405,10 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceW(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "u", "RootPathName", lpRootPathName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
-				*lpTotalNumberOfClusters = (DWORD)(256060514304L / (*lpSectorsPerCluster * *lpBytesPerSector));
+				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
