@@ -823,43 +823,64 @@ void parse_config_line(char* line)
 			}
 		}
 		else if (!stricmp(key, "br1")) {
-			int delta=0;
-			p = strchr(value, '+');
-			if (p) {
-				delta = strtoul(p+1, NULL, 0);
-				DebugOutput("Config: Delta 0x%x.\n", delta);
+			p = strchr(value, ':');
+			if (p && *(p+1) == ':') {
+				g_config.br1 = 0;
 				*p = '\0';
+				*(p+1) = '\0';
+				HANDLE Module = NULL;
+				if (!stricmp(value, "capemon"))
+					Module = (HANDLE)g_our_dll_base;
+				else
+					Module = GetModuleHandle(value);
+				g_config.break_on_apiname = strdup(p+2);
+				g_config.break_on_modname = strdup(value);
+				if (Module)
+					g_config.br1 = GetProcAddress(Module, p+2);
+				else
+					DebugOutput("Config: Failed to get base for module (%s).\n", g_config.break_on_modname);
+				if (g_config.br1) {
+					g_config.debugger = 1;
+					g_config.bpva1 = 1;
+					DebugOutput("Config: br1 set to 0x%p (%s::%s).\n", g_config.br1, g_config.break_on_modname, g_config.break_on_apiname);
+				}
+				else if (Module) {
+					unsigned int delta = strtoul(p+2, NULL, 0);
+					if (delta) {
+						g_config.br1 = (PBYTE)Module + delta;
+						g_config.debugger = 1;
+						g_config.bpva1 = 1;
+						DebugOutput("Config: br1 set to 0x%p (%s::%s).\n", g_config.br1, g_config.break_on_modname, g_config.break_on_apiname);
+					}
+					else
+						DebugOutput("Config: Failed to get address for function %s::%s\n", g_config.break_on_modname, p+2);
+				}
 			}
 			else {
-				p = strchr(value, '-');
+				int delta=0;
+				p = strchr(value, '+');
 				if (p) {
-					delta = - (int)strtoul(p+1, NULL, 0);
+					delta = strtoul(p+1, NULL, 0);
 					DebugOutput("Config: Delta 0x%x.\n", delta);
 					*p = '\0';
 				}
-			}
-			g_config.br1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-			if (g_config.br1) {
-				g_config.debugger = 1;
-				if (delta) {
-					DebugOutput("Config: br1 was 0x%x (delta 0x%x).\n", g_config.br1, delta);
-					g_config.br1 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.br1 + delta);
+				else {
+					p = strchr(value, '-');
+					if (p) {
+						delta = - (int)strtoul(p+1, NULL, 0);
+						DebugOutput("Config: Delta 0x%x.\n", delta);
+						*p = '\0';
+					}
 				}
-				DebugOutput("Config: br1 set to 0x%x (break-on-return)\n", g_config.br1);
-			}
-		}
-		else if (!stricmp(key, "br2")) {
-			g_config.br2 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-			if (g_config.br2) {
-				g_config.debugger = 1;
-				DebugOutput("Config: br2 set to 0x%x (break-on-return)\n", g_config.br2);
-			}
-		}
-		else if (!stricmp(key, "br3")) {
-			g_config.br3 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
-			if (g_config.br3) {
-				g_config.debugger = 1;
-				DebugOutput("Config: br3 set to 0x%x (break-on-return)\n", g_config.br3);
+				g_config.br1 = (PVOID)(DWORD_PTR)strtoul(value, NULL, 0);
+				if (g_config.br1) {
+					g_config.debugger = 1;
+					if (delta) {
+						DebugOutput("Config: br1 was 0x%x (delta 0x%x).\n", g_config.br1, delta);
+						g_config.br1 = (PVOID)(DWORD_PTR)((PUCHAR)g_config.br1 + delta);
+					}
+					DebugOutput("Config: br1 set to 0x%x (break-on-return)\n", g_config.br1);
+				}
 			}
 		}
 		else if (!stricmp(key, "sysbp")) {

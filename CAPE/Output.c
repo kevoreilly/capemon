@@ -344,7 +344,7 @@ void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
 		Character++;
 	}
 
-	DebuggerOutput(StringsLine);
+	DebuggerOutput("%.64s", StringsLine);
 
 	if (strlen(StringsLine) + 1 < MAX_PATH)
 		*Character = 0x0a;

@@ -45,7 +45,6 @@ extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset);
 extern DWORD_PTR GetEntryPointVA(DWORD_PTR ModuleBase);
-extern PCHAR ScyllaGetExportNameByAddress(PVOID Address, PCHAR* ModuleName);
 extern ULONG_PTR g_our_dll_base;
 extern BOOL inside_hook(LPVOID Address);
 extern void loq(int index, const char *category, const char *name,
@@ -2101,18 +2100,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		DebuggerOutput("\n");
 	}
 
-	PCHAR FunctionName = NULL;
-	__try
-	{
-		FunctionName = GetExportNameByAddress(CIP);
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		DebugOutput("Trace: Error dereferencing instruction pointer 0x%p.\n", CIP);
-		FunctionName = NULL;
-	}
 	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
-
 	if (ModuleName)
 	{
 		if (CIP == (PVOID)((PCHAR)_KiUserExceptionDispatcher+1))
@@ -2126,6 +2114,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
 			if (FilterTrace)
 				DebuggerOutput("\n");
+			PCHAR FunctionName = GetExportNameByAddress(CIP);
 			if (FunctionName)
 			{
 				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
@@ -2333,19 +2322,10 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	{
 		if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 		{
-			PCHAR FunctionName;
-			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-
-			__try
-			{
-				FunctionName = GetExportNameByAddress(CIP);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				DebugOutput("BreakpointCallback: Error dereferencing instruction pointer 0x%p.\n", CIP);
-			}
 			if (FilterTrace)
 				DebuggerOutput("\n");
+			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
+			PCHAR FunctionName = GetExportNameByAddress(CIP);
 			if (FunctionName)
 			{
 				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
@@ -2577,6 +2557,7 @@ BOOL SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
 BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
+	int Register;
 	unsigned int DllRVA;
 
 	BreakpointsHit = TRUE;
@@ -2593,22 +2574,14 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 
 	if (ModuleName)
 	{
-		PCHAR FunctionName;
-		__try
-		{
-			FunctionName = GetExportNameByAddress(CIP);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER)
-		{
-			DebugOutput("BreakOnReturnCallback: Error dereferencing instruction pointer 0x%p.\n", CIP);
-		}
+		PCHAR FunctionName = GetExportNameByAddress(CIP);
 		if (FunctionName)
 			DebuggerOutput("\nBreak at 0x%p in %s::%s (RVA 0x%x, thread %d), releasing until return address 0x%p\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), ReturnAddress);
 		else
 			DebuggerOutput("\nBreak at 0x%p in %s (RVA 0x%x, thread %d), releasing until return address 0x%p\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), ReturnAddress);
 	}
 
-	if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
+	if (!ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &Register, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		DebugOutput("BreakOnReturnCallback: Failed to set breakpoint on return address at 0x%p.\n", ReturnAddress);
 
 	ReturnAddress = NULL;
