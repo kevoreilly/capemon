@@ -129,6 +129,41 @@ void num_to_string(char *buf, unsigned int buflen, unsigned int num)
 	buf[i] = '\0';
 }
 
+static const char hexchars[] = "0123456789ABCDEF";
+
+char *num_to_hex(char *buf, unsigned int width, ULONG_PTR num)
+{
+    buf[width] = '\0';
+    unsigned int count = width;
+
+	while (count--) {
+        buf[count] = hexchars[num & 0xF];
+        num >>= 4;
+    }
+
+    return buf + width;
+}
+
+void uuid_to_string(IID id, char *idbuf)
+{
+    idbuf = num_to_hex(idbuf, 8, id.Data1);
+    *idbuf++ = '-';
+
+    idbuf = num_to_hex(idbuf, 4, id.Data2);
+    *idbuf++ = '-';
+
+    idbuf = num_to_hex(idbuf, 4, id.Data3);
+    *idbuf++ = '-';
+
+    for (int i = 0; i < 2; i++)
+        idbuf = num_to_hex(idbuf, 2, id.Data4[i]);
+
+    *idbuf++ = '-';
+
+    for (int i = 2; i < 8; i++)
+        idbuf = num_to_hex(idbuf, 2, id.Data4[i]);
+}
+
 unsigned short our_htons(unsigned short num)
 {
 	return (num >> 8) | ((num & 0xFF) << 8);
@@ -1729,57 +1764,6 @@ out:
 		CloseHandle(th);
 
 	set_lasterrors(&lasterrors);
-
-	return ret;
-}
-
-BOOLEAN is_suspended(DWORD pid, DWORD tid)
-{
-	ULONG length;
-	PSYSTEM_PROCESS_INFORMATION pspi = NULL, proc;
-	ULONG requestedlen = 16384;
-	lasterror_t lasterror;
-	BOOLEAN ret = FALSE;
-
-	get_lasterrors(&lasterror);
-
-	pspi = malloc(requestedlen);
-	if (pspi == NULL)
-		goto out;
-
-	while (pNtQuerySystemInformation(SystemProcessInformation, pspi, requestedlen, &length) == STATUS_INFO_LENGTH_MISMATCH) {
-		free(pspi);
-		requestedlen <<= 1;
-		pspi = malloc(requestedlen);
-		if (pspi == NULL)
-			goto out;
-	}
-	// now we have a valid list of process information
-	proc = pspi;
-	while (1) {
-		ULONG i;
-
-		if ((DWORD)(ULONG_PTR)proc->UniqueProcessId != pid)
-			goto next;
-		for (i = 0; i < proc->NumberOfThreads; i++) {
-			PSYSTEM_THREAD thread = &proc->Threads[i];
-			if (tid && (DWORD)(ULONG_PTR)thread->ClientId.UniqueThread != tid)
-				continue;
-			if (thread->WaitReason != Suspended)
-				goto out;
-		}
-		break;
-next:
-		if (!proc->NextEntryOffset)
-			break;
-		proc = (PSYSTEM_PROCESS_INFORMATION)((PCHAR)proc + proc->NextEntryOffset);
-	}
-	ret = TRUE;
-out:
-	if (pspi)
-		free(pspi);
-
-	set_lasterrors(&lasterror);
 
 	return ret;
 }

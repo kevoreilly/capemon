@@ -618,26 +618,18 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		get_our_commandline();
 
-		if (g_config.standalone) {
-			// initialise CAPE
-			CAPE_init();
-			DebugOutput("Standalone mode initialised.\n");
-			return TRUE;
-		}
-
 		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
 
 		// read the config settings
-		if (!read_config())
-#if CUCKOODBG
-			;
-		else
-			DebugOutput("Config loaded.\n");
-#else
-			// if we're not debugging, then failure to read the capemon config should be a critical error
-			goto abort;
-#endif
+		read_config();
+
+		if (g_config.standalone) {
+			CAPE_init();
+			DebugOutput("Standalone mode initialised.\n");
+			return TRUE;
+
+		}
 
 		// don't inject into our own binaries run out of the analyzer directory unless they're the first process (intended)
 		if (wcslen(g_config.w_analyzer) && !wcsnicmp(our_process_path_w, g_config.w_analyzer, wcslen(g_config.w_analyzer)) && !g_config.first_process)

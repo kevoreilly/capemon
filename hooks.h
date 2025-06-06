@@ -3042,6 +3042,13 @@ HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_Inout_  DWORD *pdwDataLen
 );
 
+HOOKDEF(BOOL, WINAPI, CryptDuplicateKey,
+	_In_	HCRYPTKEY	hKey,
+	_In_	DWORD* pdwReserved,
+	_In_	DWORD		dwFlags,
+	_Out_	HCRYPTKEY* phKey
+);
+
 HOOKDEF(BOOL, WINAPI, CryptDestroyKey,
 	_In_   HCRYPTKEY hKey
 );
@@ -3660,6 +3667,11 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 );
 
+HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
+	__in LPWSTR lpCmdLine,
+	__out int *pNumArgs
+);
+
 HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
 	__in HMODULE hLibModule
 );
@@ -3704,6 +3716,25 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_In_	DWORD    iDevNum,
 	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
 	_In_	DWORD    dwFlags
+);
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductA,
+	_In_	LPCSTR	szPackagePath,
+	_In_	LPCSTR	szCommandLine
+);
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductW,
+	_In_	LPCWSTR	szPackagePath,
+	_In_	LPCWSTR	szCommandLine
+);
+
+HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
+	__in  PCH Prefix,
+	__in  ULONG ComponentId,
+	__in  ULONG Level,
+	__in  PCHAR Format,
+	__in  va_list arglist,
+	__in  BOOLEAN HandleBreakpoint
 );
 
 #include "hook_vbscript.h"

@@ -207,7 +207,7 @@ SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
 
 void StringCheck(PVOID PossibleString)
 {
-	PCHAR ExportName = ScyllaGetExportNameByAddress(PossibleString, NULL);
+	PCHAR ExportName = GetExportNameByAddress(PossibleString);
 	if (ExportName)
 	{
 		DebuggerOutput(" %s ", ExportName);
@@ -1773,7 +1773,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		}
 		else if (CallTarget && !ExportName)
 		{
-			ExportName = ScyllaGetExportNameByAddress(CallTarget, NULL);
+			ExportName = GetExportNameByAddress(CallTarget);
 
 			if (!ExportName && (!FilterTrace || g_config.trace_all))
 				TraceOutputFuncAddress(CIP, DecodedInstruction, CallTarget);
@@ -1807,6 +1807,13 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			}
 		}
 
+		if (g_config.stepmode == 1 && *(PBYTE)CIP == 0xE8)
+		{
+			LONG offset = *(LONG*)((PBYTE)CIP + 1);
+			if (offset > -0x100 && offset < 0x100)
+				ReturnAddress = NULL;
+		}
+
 		if (ReturnAddress && (unsigned int)abs(TraceDepthCount) >= TraceDepthLimit)
 			*StepOver = TRUE;
 		else
@@ -1830,7 +1837,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		}
 		else
 		{
-			ExportName = ScyllaGetExportNameByAddress(JumpTarget, NULL);
+			ExportName = GetExportNameByAddress(JumpTarget);
 
 			if (ExportName)
 			{
@@ -1873,19 +1880,22 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			DebuggerOutput(" *** skip *** ");
 		}
 	}
-	else if (g_config.loopskip && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
+	else if (!strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
 	{
 		int JumpOffset = (int)*((PCHAR)CIP + 1);
 		PVOID JumpTarget = (PVOID)((PUCHAR)CIP + DecodedInstruction.size + JumpOffset);
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
-		for (unsigned int i = 0; i < 4; i++)
+		if (g_config.loopskip)
 		{
-			if (JumpOffset < 0 && PreviousJumps[i] == CIP)
+			for (unsigned int i = 0; i < 4; i++)
 			{
-				ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
-				*ForceStepOver = TRUE;
-				DebuggerOutput(" *** skip *** ");
+				if (JumpOffset < 0 && PreviousJumps[i] == CIP)
+				{
+					ReturnAddress = (PVOID)((PUCHAR)CIP + DecodedInstruction.size);
+					*ForceStepOver = TRUE;
+					DebuggerOutput(" *** skip *** ");
+				}
 			}
 		}
 		PreviousJumps[JumpCount % 4] = CIP;
@@ -2094,7 +2104,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	PCHAR FunctionName = NULL;
 	__try
 	{
-		FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+		FunctionName = GetExportNameByAddress(CIP);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -2328,7 +2338,7 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 			__try
 			{
-				FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+				FunctionName = GetExportNameByAddress(CIP);
 			}
 			__except(EXCEPTION_EXECUTE_HANDLER)
 			{
@@ -2405,8 +2415,6 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 
 	if (pBreakpointInfo->Register == 2 && strlen(Action2))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action2);
-	else if (pBreakpointInfo->Register == 2)
-		DebuggerOutput("Action2 empty! %s\n", Action2);
 
 	if (pBreakpointInfo->Register == 3 && strlen(Action3))
 		ActionDispatcher(ExceptionInfo, DecodedInstruction, Action3);
@@ -2588,7 +2596,7 @@ BOOL BreakOnReturnCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_PO
 		PCHAR FunctionName;
 		__try
 		{
-			FunctionName = ScyllaGetExportNameByAddress(CIP, NULL);
+			FunctionName = GetExportNameByAddress(CIP);
 		}
 		__except(EXCEPTION_EXECUTE_HANDLER)
 		{

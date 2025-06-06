@@ -146,13 +146,18 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
 			ret += _pipe_ascii(&out, s, (int)strlen(s));
 		}
 		else if(*fmt == 'x') {
-			char s[16];
-			sprintf(s, "%x", va_arg(args, int));
+			char s[9];
+			num_to_hex(s, 8, va_arg(args, int));
 			ret += _pipe_ascii(&out, s, (int)strlen(s));
 		}
 		else if (*fmt == 'p') {
-			char s[18];
-			sprintf(s, "%p", va_arg(args, void *));
+#ifdef _WIN64
+			char s[17];
+			num_to_hex(s, 16, va_arg(args, ULONG_PTR));
+#else
+			char s[9];
+			num_to_hex(s, 8, va_arg(args, ULONG_PTR));
+#endif
 			ret += _pipe_ascii(&out, s, (int)strlen(s));
 		}
 		else {

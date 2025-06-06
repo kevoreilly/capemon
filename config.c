@@ -132,16 +132,35 @@ void parse_config_line(char* line)
 			g_config.hook_range = atoi(value);
 			DebugOutput("Config: hook range limit set to %d", g_config.hook_range);
 		}
-		else if (!strcmp(key, "hook-type")) { //Valid for 32-bit analyses only. Specifies the hook type to use: direct, indirect, or safe. Safe attempts a Detours-style hook.
-#ifndef _WIN64
-			if (!strcmp(value, "direct"))
-				g_config.hook_type = HOOK_JMP_DIRECT;
-			else if (!strcmp(value, "indirect"))
+		else if (!strcmp(key, "hook-type")) {
+			if (!strcmp(value, "indirect")) {
 				g_config.hook_type = HOOK_JMP_INDIRECT;
-			else if (!strcmp(value, "safe"))
+				DebugOutput("Config: Indirect hooking selected.\n");
+			}
+			else if (!strcmp(value, "pushret")) {
+				g_config.hook_type = HOOK_PUSH_RETN;
+				DebugOutput("Config: Push-ret hooking selected.\n");
+			}
+#ifndef _WIN64
+			else if (!strcmp(value, "direct")) {
+				g_config.hook_type = HOOK_JMP_DIRECT;
+				DebugOutput("Config: Direct hooking selected.\n");
+			}
+			else if (!strcmp(value, "safe")) {
 				g_config.hook_type = HOOK_SAFEST;
+				DebugOutput("Config: Safest hooking selected.\n");
+			}
 #endif
 		}
+#ifdef _WIN64
+		else if (!stricmp(key, "hook-low")) {
+			g_config.hook_low = value[0];
+			if (g_config.hook_low) {
+				DebugOutput("Config: Hook 'low' enabled (trampoline address < 2GB)\n");
+				g_config.hook_type = HOOK_PUSH_RETN;
+			}
+		}
+#endif
 		else if (!strcmp(key, "disable_hook_content")) { //Set to 1 to remove functionality of all hooks except those critical for monitoring other processes. Set to 2 to apply to all hooks.
 			g_config.disable_hook_content = atoi(value);
 		}
@@ -230,6 +249,13 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "dropped-limit")) { //Override the default dropped file limit of 100 files
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Dropped file limit set to %d.\n", g_config.dropped_limit);
+		}
+		else if (!strcmp(key, "protected-pids")) {
+			g_config.protected_pids = atoi(value);
+			if (g_config.protected_pids)
+				DebugOutput("Config: Process protection enabled.");
+			else
+				DebugOutput("Config: Process protection disabled.");
 		}
 		else if (!strcmp(key, "ntdll-protect")) {
 			g_config.ntdll_protect = (unsigned int)strtoul(value, NULL, 10);
@@ -941,6 +967,11 @@ void parse_config_line(char* line)
 				DebugOutput("Config: Step-out breakpoint set to 0x%x.\n", g_config.bp0);
 			}
 		}
+		else if (!stricmp(key, "stepmode")) {
+			g_config.stepmode = (unsigned int)strtoul(value, NULL, 10);
+			if (g_config.stepmode)
+				DebugOutput("Stepmode %d set.\n", g_config.stepmode);
+		}
 		else if (!stricmp(key, "dumpsize")) {
 			DumpSize = (SIZE_T)strtoul(value, NULL, 0);
 			if (DumpSize)
@@ -1250,8 +1281,11 @@ void parse_config_line(char* line)
 			g_config.amsidump = value[0] == '1';
 			if (g_config.amsidump)
 				DebugOutput("AMSI dumping enabled.\n");
-			else
-				DebugOutput("AMSI dumping disabled.\n");
+		}
+		else if (!stricmp(key, "jit-dumps")) {
+			g_config.jit_dumps = (unsigned int)strtoul(value, NULL, 10);
+			if (g_config.jit_dumps)
+				DebugOutput(".NET JIT cache dumps enabled, limit %d\n", g_config.jit_dumps);
 		}
 		else if (!stricmp(key, "minhook")) {
 			g_config.minhook = value[0] == '1';
@@ -1262,6 +1296,11 @@ void parse_config_line(char* line)
 			g_config.zerohook = value[0] == '1';
 			if (g_config.zerohook)
 				DebugOutput("All* hooks disabled (*except essential)\n");
+		}
+		else if (!stricmp(key, "native")) {
+			g_config.native = value[0] == '1';
+			if (g_config.native)
+				DebugOutput("Native hooks only (ntdll)\n");
 		}
 		else if (!stricmp(key, "tlsdump")) {
 			g_config.tlsdump = value[0] == '1';
@@ -1311,6 +1350,11 @@ void parse_config_line(char* line)
 			if (g_config.interactive == 1)
 				DebugOutput("Interactive desktop enabled.\n");
 		}
+		else if (!stricmp(key, "snaps")) {
+			g_config.snaps = value[0] == '1';
+			if (g_config.snaps)
+				DebugOutput("Loader snaps enabled.\n");
+		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("Monitor config - unrecognised key %s.\n", key);
 
@@ -1319,7 +1363,7 @@ void parse_config_line(char* line)
 	}
 }
 
-int read_config(void)
+void read_config(void)
 {
 	char buf[32768], config_fname[MAX_PATH];
 	FILE *fp;
@@ -1332,6 +1376,7 @@ int read_config(void)
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
+	g_config.protected_pids = 1;
 	g_config.ntdll_protect = 1;
 	g_config.ntdll_remap = 1;
 	g_config.procdump = 1;
@@ -1344,7 +1389,6 @@ int read_config(void)
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
 	g_config.loaderlock_scans = 1;
-	g_config.amsidump = 1;
 	g_config.syscall = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
@@ -1372,17 +1416,14 @@ int read_config(void)
 		fp = fopen(config_fname, "r");
 	}
 
-	// for debugging purposes
 	if (fp == NULL) {
 		memset(config_fname, 0, sizeof(config_fname));
 		sprintf(config_fname, "%s\\config.ini", g_config.analyzer);
 		fp = fopen(config_fname, "r");
-		if (fp == NULL)
-			return 0;
 	}
 
-	memset(buf, 0, sizeof(buf));
 	if (fp) {
+		memset(buf, 0, sizeof(buf));
 		while (fgets(buf, sizeof(buf), fp) != NULL) {
 			// cut off the newline
 			char *p = strchr(buf, '\r');
@@ -1446,7 +1487,7 @@ int read_config(void)
 		ImageBaseRemapped = TRUE;
 
 	if (!our_process_name)
-		return 1;
+		return;
 
 	if (!_stricmp(our_process_name, "explorer.exe") && g_config.interactive == 1)
 	{
@@ -1612,5 +1653,5 @@ int read_config(void)
 		}
 	}
 
-	return 1;
+	return;
 }
