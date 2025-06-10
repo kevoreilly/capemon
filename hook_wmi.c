@@ -11,8 +11,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 ) {
 	HRESULT ret;
 	ret = Old_WMI_Get(_this, wszName, lFlags, pVal, pType, plFlavor);
-	LOQ_hresult("system", "u", "Name", wszName);
-	//LOQ_hresult("system", "un", "Name", wszName, "Value", pVal);
+	LOQ_hresult("system", "un", "Name", wszName, "Value", pVal);
 	return ret;
 }
 

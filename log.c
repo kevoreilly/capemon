@@ -294,6 +294,9 @@ static void log_variant(VARIANT* var) {
 	char log_msg[32];
 	__try {
 		switch (var->vt) {
+			case VT_NULL:
+				log_string("NULL", -1);
+				break;
 			case 74:
 				// Undocumented, likely internal Variant Type in vbscript engine
 				// Observed with:
@@ -404,7 +407,7 @@ static void log_variant(VARIANT* var) {
 				break;
 			default:
 				snprintf(log_msg, 32, "Unhandled VARIANT Type: %hu", var->vt);
-				log_string((const char*)var->vt, -1);
+				//log_string((const char*)var->vt, -1);
 				break;
 		}
 	}
