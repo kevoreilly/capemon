@@ -102,6 +102,11 @@ HOOKDEF_NOTAIL(WINAPI, WMI_ExecQuery,
 	PVOID*		ppEnum
 ) {
 	HRESULT ret = 0;
+
+	// Reset these on new query
+	g_last_seen_disk_query = 0;
+	g_last_seen_physicalmemory = 0;
+
 	if (!ret && !g_config.no_stealth && strQuery) {
 		if (!_wcsnicmp(strQuery, L"SELECT ", 7)) {
 			if (wcsistr(strQuery, L" FROM Win32_LogicalDisk")) {
