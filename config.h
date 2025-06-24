@@ -27,6 +27,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define SPOOFED_DISK_SIZE	0x10000000000ull // 1TB
 #define RECOVERY_PARTITION_SIZE	0x1f2af000  // Taken from random Win10 install
 
+#define SPOOFED_GPU_RAM_WMI 0xfff00000L // 4293918720; WMI uses lVal (long) so we have an "overflowed" value, 
 #define SPOOFED_GPU_RAM 0x100000000l  // 4GB
 #define SPOOFED_GPU_NAME L"NVIDIA GTX 1650"
 
@@ -39,6 +40,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define WIDE_SPOOFED_RAM L"4294967296"
 #define WIDE_SPOOFED_RAM_IN_KB L"4194304"
 #define WIDE_DISK_LOGICAL_SIZE L"1098988720128" // SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE
+
+#define SPOOFED_REFRESH_RATE 60
 
 
 struct _g_config {
