@@ -585,6 +585,36 @@ PVOID GetTarget(PCONTEXT Context, _DecodedInst DecodedInstruction)
 	return Target;
 }
 
+void OutputFlagChanges(DWORD OldFlags, DWORD NewFlags)
+{
+	if (OldFlags == NewFlags) return;
+
+	char FlagChanges[32] = {0};
+	int pos = 0;
+
+	#define CHECK_FLAG(flag, ch) \
+		if ((OldFlags & flag) != (NewFlags & flag)) \
+			FlagChanges[pos++] = (NewFlags & flag) ? toupper(ch) : tolower(ch)
+
+	CHECK_FLAG(FL_CF, 'c');  // Carry: C/c
+	CHECK_FLAG(FL_PF, 'p');  // Parity: P/p
+	CHECK_FLAG(FL_AF, 'a');  // Aux: A/a
+	CHECK_FLAG(FL_ZF, 'z');  // Zero: Z/z
+	CHECK_FLAG(FL_SF, 's');  // Sign: S/s
+	CHECK_FLAG(FL_TF, 't');  // Trap: T/t
+	CHECK_FLAG(FL_IF, 'i');  // Interrupt: I/i
+	CHECK_FLAG(FL_DF, 'd');  // Direction: D/d
+	CHECK_FLAG(FL_OF, 'o');  // Overflow: O/o
+
+	#undef CHECK_FLAG
+
+	if (pos > 0)
+	{
+		FlagChanges[pos] = '\0';
+		DebuggerOutput(" %s", FlagChanges);
+	}
+}
+
 OutputRegisterChanges(PCONTEXT Context)
 {
 #ifdef _WIN64
@@ -768,6 +798,9 @@ OutputRegisterChanges(PCONTEXT Context)
 		}
 	}
 #endif
+
+	OutputFlagChanges(LastContext.EFlags, Context->EFlags);
+
 	if (g_config.trace_times)
 	{
 		FILETIME CurrentTime;
