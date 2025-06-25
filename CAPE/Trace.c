@@ -272,8 +272,6 @@ void DoOutputString(PVOID PossibleString)
 			StringsOutput("%.256ws...", (PWCHAR)OutputBufferW);
 		else if (Size > 1)
 			StringsOutput("%.256ws", (PWCHAR)OutputBufferW);
-		else
-			StringsOutput("");
 	}
 }
 
