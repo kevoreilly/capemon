@@ -520,7 +520,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 
 	if (NT_SUCCESS(ret) && g_config.injection)
-		ProcessName = OpenProcessHandler(*ProcessHandle, pid);
+		ProcessName = OpenProcessHandler(*ProcessHandle, pid, DesiredAccess);
 
 	if (ProcessName)
 		LOQ_ntstatus("process", "Phis", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid, "ProcessName", ProcessName);

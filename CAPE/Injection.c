@@ -677,7 +677,7 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 		DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
 }
 
-PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
+PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid, ACCESS_MASK DesiredAccess)
 {
 	struct InjectionInfo *CurrentInjectionInfo;
 	char DevicePath[MAX_PATH];
@@ -694,6 +694,7 @@ PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
 		if (CurrentInjectionInfo)
 		{
 			CurrentInjectionInfo->ProcessHandle = ProcessHandle;
+			CurrentInjectionInfo->DesiredAccess = DesiredAccess;
 			CurrentInjectionInfo->EntryPoint = (DWORD_PTR)NULL;
 			CurrentInjectionInfo->ImageDumped = FALSE;
 
@@ -1133,6 +1134,45 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 		return;
 	}
 
+	// Add injection filtering logic here to prevent false positives
+	if (g_config.filter_system_injection) {
+		ACCESS_MASK DesiredAccess = 0;
+		
+		// Get the access flags used to open this process (reuse existing CurrentInjectionInfo)
+		if (CurrentInjectionInfo && CurrentInjectionInfo->DesiredAccess) {
+			DesiredAccess = CurrentInjectionInfo->DesiredAccess;
+		}
+		
+		// Define malicious injection access patterns
+		ACCESS_MASK MALICIOUS_FLAGS = PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION;
+		ACCESS_MASK LEGITIMATE_FLAGS = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | 
+									   SYNCHRONIZE | PROCESS_DUP_HANDLE | PROCESS_VM_READ;
+		
+		// If process was opened with only legitimate flags, don't inject
+		if (DesiredAccess && !(DesiredAccess & MALICIOUS_FLAGS)) {
+			if (DesiredAccess & LEGITIMATE_FLAGS) {
+				DebugOutput("ProcessMessage: INJECTION BLOCKED - Legitimate access pattern 0x%x for PID %d", DesiredAccess, ProcessId);
+				return;
+			}
+		}
+		
+		// Log the access pattern for analysis
+		if (DesiredAccess) {
+			BOOL bHighRisk = (DesiredAccess & MALICIOUS_FLAGS) != 0;
+			BOOL bAllAccess = (DesiredAccess == PROCESS_ALL_ACCESS);
+			
+			if (bHighRisk || bAllAccess) {
+				DebugOutput("ProcessMessage: INJECTION ALLOWED - Malicious access pattern 0x%x for PID %d (%s)", 
+					DesiredAccess, ProcessId, bAllAccess ? "ALL_ACCESS" : "INJECTION_FLAGS");
+			} else {
+				DebugOutput("ProcessMessage: INJECTION ALLOWED - Unknown access pattern 0x%x for PID %d", DesiredAccess, ProcessId);
+			}
+		} else {
+			// No access info available (process created, not opened)
+			DebugOutput("ProcessMessage: INJECTION ALLOWED - Process created (not opened) PID %d", ProcessId);
+		}
+	}
+
 	if (g_config.standalone)
 	{
 		BOOL Wow64Process;
@@ -1194,7 +1234,7 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 				swprintf_s(CommandLine, MAX_PATH, L"%s inject %u %u %s", Loader, ProcessId, ThreadId, our_dll_path_w);
 			}
 #endif
-	}
+		}
 		hook_disable();
 		if (CreateProcessW(NULL, CommandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &StartupInfoEx.StartupInfo, &ProcInfo))
 		{
