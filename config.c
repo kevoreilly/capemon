@@ -1254,10 +1254,10 @@ void parse_config_line(char* line)
 			if (g_config.injection)
 				DebugOutput("Capture of injected payloads enabled.\n");
 		}
-		else if (!stricmp(key, "filter-system-injection")) { //When set to 1 this will enable filtering of system injection based on process access rights to reduce false positives
+		else if (!stricmp(key, "filter-system-injection")) { //When set to 1 this will enable filtering of system injection based on process names and access patterns
 			g_config.filter_system_injection = value[0] == '1';
 			if (g_config.filter_system_injection)
-				DebugOutput("System injection filtering enabled - will filter based on process access rights.\n");
+				DebugOutput("System injection filtering enabled.\n");
 		}
 		else if (!stricmp(key, "dump-config-region")) {
 			g_config.dump_config_region = value[0] == '1';
@@ -1410,7 +1410,7 @@ void read_config(void)
 	g_config.dump_limit = DUMP_LIMIT;
 	g_config.dropped_limit = 0;
 	g_config.injection = 1;
-	g_config.filter_system_injection = 1;  // Enable by default to prevent false positives
+	g_config.filter_system_injection = 1;
 	g_config.unpacker = 1;
 	g_config.api_cap = 5000;
 	g_config.api_rate_cap = 1;
