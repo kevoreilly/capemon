@@ -167,6 +167,8 @@ struct _g_config {
 	// behavioural payload extraction options
 	int unpacker;
 	int injection;
+
+	// filter system injection based on process access rights
 	int filter_system_injection;
 
 	// should we dump each process on exit/analysis timeout?
