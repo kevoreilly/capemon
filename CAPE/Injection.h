@@ -45,7 +45,6 @@ typedef struct InjectionInfo
 {
 	DWORD			ProcessId;
 	HANDLE			ProcessHandle;
-	ACCESS_MASK		DesiredAccess;
 	DWORD			InitialThreadId;
 	DWORD_PTR		ImageBase;
 	DWORD_PTR		EntryPoint;
@@ -55,6 +54,7 @@ typedef struct InjectionInfo
 	unsigned int	BufferSizeOfImage;
 	HANDLE			SectionHandle;
 	BOOL			DontMonitor;
+	ACCESS_MASK		DesiredAccess;
 //	struct InjectionSectionView *SectionViewList;
 	struct InjectionInfo *NextInjectionInfo;
 } INJECTIONINFO, *PINJECTIONINFO;

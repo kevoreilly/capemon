@@ -53,6 +53,7 @@ PINJECTIONINFO GetInjectionInfo(DWORD ProcessId)
 	DWORD CurrentProcessId;
 
 	PINJECTIONINFO CurrentInjectionInfo = InjectionInfoList;
+
 	while (CurrentInjectionInfo)
 	{
 		CurrentProcessId = CurrentInjectionInfo->ProcessId;
@@ -1128,49 +1129,84 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 		return;
 	}
 
+	// Injection filtering logic based on process name and desired access
+	if (g_config.filter_system_injection) {
+		// Get process name for filtering
+		char processName[MAX_PATH] = {0};
+		HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ProcessId);
+		if (hProcess) {
+			char processPath[MAX_PATH];
+			if (GetProcessImageFileName(hProcess, processPath, MAX_PATH)) {
+				char *fileName = strrchr(processPath, '\\');
+				if (fileName) {
+					strncpy(processName, fileName + 1, MAX_PATH - 1);
+				}
+			}
+			CloseHandle(hProcess);
+		}
+		
+		// Process name filtering - exclude system processes
+		const char *systemProcesses[] = {
+			"services.exe", "svchost.exe", "WmiPrvSE.exe", "wininit.exe", 
+			"winlogon.exe", "lsass.exe", "csrss.exe", "smss.exe",
+			"explorer.exe", "dwm.exe", "conhost.exe", "audiodg.exe"
+		};
+		
+		for (int i = 0; i < sizeof(systemProcesses) / sizeof(systemProcesses[0]); i++) {
+			if (!_stricmp(processName, systemProcesses[i])) {
+				DebugOutput("ProcessMessage: INJECTION BLOCKED - System process: %s (PID %d)", processName, ProcessId);
+				if (CurrentInjectionInfo) 
+					DebugOutput("ProcessMessage: processhandle: 0x%x", CurrentInjectionInfo->ProcessHandle);
+				else
+					DebugOutput("ProcessMessage: processhandle: not set for process %s (PID %d)", processName, ProcessId);
+
+				// if (CurrentInjectionInfo->DesiredAccess)
+				// 	DebugOutput("ProcessMessage: DesiredAccess: 0x%x", CurrentInjectionInfo->DesiredAccess);
+				// else
+				// 	DebugOutput("ProcessMessage: DesiredAccess: not set for process %s (PID %d)", processName, ProcessId);
+				// return;
+			}
+		}
+		
+		// // Desired access filtering
+		// if (CurrentInjectionInfo && CurrentInjectionInfo->DesiredAccess) {
+		// 	ACCESS_MASK DesiredAccess = CurrentInjectionInfo->DesiredAccess;
+			
+		// 	// Define malicious injection access patterns
+		// 	ACCESS_MASK MALICIOUS_FLAGS = PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION;
+		// 	ACCESS_MASK LEGITIMATE_FLAGS = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | 
+		// 								   SYNCHRONIZE | PROCESS_DUP_HANDLE | PROCESS_VM_READ;
+			
+		// 	// If process was opened with only legitimate flags, don't inject
+		// 	if (!(DesiredAccess & MALICIOUS_FLAGS)) {
+		// 		if (DesiredAccess & LEGITIMATE_FLAGS) {
+		// 			DebugOutput("ProcessMessage: INJECTION BLOCKED - Legitimate access pattern 0x%x for %s (PID %d)", 
+		// 				DesiredAccess, processName, ProcessId);
+		// 			return;
+		// 		}
+		// 	}
+			
+		// 	// Log the access pattern for analysis
+		// 	BOOL bHighRisk = (DesiredAccess & MALICIOUS_FLAGS) != 0;
+		// 	BOOL bAllAccess = (DesiredAccess == PROCESS_ALL_ACCESS);
+			
+		// 	if (bHighRisk || bAllAccess) {
+		// 		DebugOutput("ProcessMessage: INJECTION ALLOWED - Malicious access pattern 0x%x for %s (PID %d) (%s)", 
+		// 			DesiredAccess, processName, ProcessId, bAllAccess ? "ALL_ACCESS" : "INJECTION_FLAGS");
+		// 	} else {
+		// 		DebugOutput("ProcessMessage: INJECTION ALLOWED - Unknown access pattern 0x%x for %s (PID %d)", 
+		// 			DesiredAccess, processName, ProcessId);
+		// 	}
+		// } else {
+		// 	// No access info available (process created, not opened)
+		// 	DebugOutput("ProcessMessage: INJECTION ALLOWED - Process created (not opened) %s (PID %d)", processName, ProcessId);
+		// }
+	}
+
 	if (g_config.single_process)
 	{
 		DebugOutput("ProcessMessage: Skipping monitoring process %d as single-process mode set.", ProcessId);
 		return;
-	}
-
-	// Add injection filtering logic here to prevent false positives
-	if (g_config.filter_system_injection) {
-		ACCESS_MASK DesiredAccess = 0;
-		
-		// Get the access flags used to open this process (reuse existing CurrentInjectionInfo)
-		if (CurrentInjectionInfo && CurrentInjectionInfo->DesiredAccess) {
-			DesiredAccess = CurrentInjectionInfo->DesiredAccess;
-		}
-		
-		// Define malicious injection access patterns
-		ACCESS_MASK MALICIOUS_FLAGS = PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION;
-		ACCESS_MASK LEGITIMATE_FLAGS = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | 
-									   SYNCHRONIZE | PROCESS_DUP_HANDLE | PROCESS_VM_READ;
-		
-		// If process was opened with only legitimate flags, don't inject
-		if (DesiredAccess && !(DesiredAccess & MALICIOUS_FLAGS)) {
-			if (DesiredAccess & LEGITIMATE_FLAGS) {
-				DebugOutput("ProcessMessage: INJECTION BLOCKED - Legitimate access pattern 0x%x for PID %d", DesiredAccess, ProcessId);
-				return;
-			}
-		}
-		
-		// Log the access pattern for analysis
-		if (DesiredAccess) {
-			BOOL bHighRisk = (DesiredAccess & MALICIOUS_FLAGS) != 0;
-			BOOL bAllAccess = (DesiredAccess == PROCESS_ALL_ACCESS);
-			
-			if (bHighRisk || bAllAccess) {
-				DebugOutput("ProcessMessage: INJECTION ALLOWED - Malicious access pattern 0x%x for PID %d (%s)", 
-					DesiredAccess, ProcessId, bAllAccess ? "ALL_ACCESS" : "INJECTION_FLAGS");
-			} else {
-				DebugOutput("ProcessMessage: INJECTION ALLOWED - Unknown access pattern 0x%x for PID %d", DesiredAccess, ProcessId);
-			}
-		} else {
-			// No access info available (process created, not opened)
-			DebugOutput("ProcessMessage: INJECTION ALLOWED - Process created (not opened) PID %d", ProcessId);
-		}
 	}
 
 	if (g_config.standalone)
