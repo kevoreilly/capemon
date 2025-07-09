@@ -23,10 +23,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "log.h"
 
+
 #define StringAtomSize 0x100
 
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void DumpSectionViewsForPid(DWORD Pid);
+extern BOOL is_system_process(DWORD ProcessId);
 
 typedef DWORD (WINAPI * __GetWindowThreadProcessId)(
 	__in HWND hWnd,
@@ -189,6 +192,7 @@ HOOKDEF(BOOL, WINAPI, PostMessageW,
 	return ret;
 }
 
+
 HOOKDEF(BOOL, WINAPI, PostThreadMessageA,
 	_In_  DWORD idThread,
 	_In_  UINT Msg,
@@ -198,16 +202,21 @@ HOOKDEF(BOOL, WINAPI, PostThreadMessageA,
 	BOOL ret = Old_PostThreadMessageA(idThread, Msg, wParam, lParam);
 
 	DWORD pid = GetThreadProcessId(idThread);
+	
+	LOQ_bool("windows", "iii", "ProcessId", pid, "ThreadId", idThread, "Message", Msg);
 
 	if (pid && pid != GetCurrentProcessId()) {
 		DumpSectionViewsForPid(pid);
-		ProcessMessage(pid, 0);
+		// ProcessMessage(pid, 0);
 	}
-
-	LOQ_bool("windows", "iii", "ProcessId", pid, "ThreadId", idThread, "Message", Msg);
+	if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+		return FALSE;
+	}
+	ProcessMessage(pid, 0);
 
 	return ret;
 }
+
 
 HOOKDEF(BOOL, WINAPI, PostThreadMessageW,
 	_In_  DWORD idThread,
@@ -218,13 +227,17 @@ HOOKDEF(BOOL, WINAPI, PostThreadMessageW,
 	BOOL ret = Old_PostThreadMessageW(idThread, Msg, wParam, lParam);
 
 	DWORD pid = GetThreadProcessId(idThread);
+	LOQ_bool("windows", "iii", "ProcessId", pid, "ThreadId", idThread, "Message", Msg);
+
 
 	if (pid && pid != GetCurrentProcessId()) {
 		DumpSectionViewsForPid(pid);
-		ProcessMessage(pid, 0);
+		// ProcessMessage(pid, 0);
 	}
-
-	LOQ_bool("windows", "iii", "ProcessId", pid, "ThreadId", idThread, "Message", Msg);
+	if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+		return FALSE;
+	}
+	ProcessMessage(pid, 0);
 
 	return ret;
 }
@@ -274,8 +287,12 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
 			DumpSectionViewsForPid(pid);
-			ProcessMessage(pid, 0);
+			//ProcessMessage(pid, 0);
 		}
+		if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+			return FALSE;
+		}
+		ProcessMessage(pid, 0);
 	}
 	set_lasterrors(&lasterror);
 
@@ -301,8 +318,12 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 		our_GetWindowThreadProcessId(hWnd, &pid);
 		if (pid != GetCurrentProcessId()) {
 			DumpSectionViewsForPid(pid);
-			ProcessMessage(pid, 0);
+			// ProcessMessage(pid, 0);
 		}
+		if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+			return FALSE;
+		}
+		ProcessMessage(pid, 0);
 	}
 	set_lasterrors(&lasterror);
 

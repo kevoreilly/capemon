@@ -519,13 +519,19 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 
 	ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 
+	if (is_system_process(pid)) 
+		g_config.filter_system_safe_process_pid = pid;
+
+
 	if (NT_SUCCESS(ret) && g_config.injection)
 		ProcessName = OpenProcessHandler(*ProcessHandle, pid, DesiredAccess);
 
 	if (ProcessName)
 		LOQ_ntstatus("process", "Phis", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid, "ProcessName", ProcessName);
+	
 	else
 		LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid);
+	
 
 	return ret;
 }

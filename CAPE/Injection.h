@@ -45,7 +45,6 @@ typedef struct InjectionInfo
 {
 	DWORD			ProcessId;
 	HANDLE			ProcessHandle;
-	ACCESS_MASK		DesiredAccess;
 	DWORD			InitialThreadId;
 	DWORD_PTR		ImageBase;
 	DWORD_PTR		EntryPoint;
@@ -73,3 +72,4 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 void UnmapSectionViewHandler(PVOID BaseAddress);
 void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
 void TerminateHandler();
+BOOL is_system_process(DWORD ProcessId);

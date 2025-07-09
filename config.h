@@ -168,9 +168,9 @@ struct _g_config {
 	int unpacker;
 	int injection;
 
-	// filter system injection based on process access rights
 	int filter_system_injection;
-
+	int filter_system_safe_process_pid;
+	
 	// should we dump each process on exit/analysis timeout?
 	int procdump;
 	int procmemdump;
