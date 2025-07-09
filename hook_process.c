@@ -518,9 +518,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 	}
 
 	ret = Old_NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+	
+	
+	if (g_config.filter_system_injection) {
+		ACCESS_MASK legitimate_flags = PROCESS_QUERY_INFORMATION | 
+		PROCESS_QUERY_LIMITED_INFORMATION |
+		PROCESS_VM_READ | PROCESS_DUP_HANDLE |
+		SYNCHRONIZE;
 
-	if (is_system_process(pid)) 
-		g_config.filter_system_safe_process_pid = pid;
+		if ((DesiredAccess & ~legitimate_flags) == 0 && is_system_process(pid)) {
+			g_config.filter_system_safe_process_pid = pid;
+		}
+	}
 
 
 	if (NT_SUCCESS(ret) && g_config.injection)
