@@ -29,7 +29,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void DumpSectionViewsForPid(DWORD Pid);
-extern BOOL is_system_process(DWORD ProcessId);
 
 typedef DWORD (WINAPI * __GetWindowThreadProcessId)(
 	__in HWND hWnd,
@@ -209,7 +208,7 @@ HOOKDEF(BOOL, WINAPI, PostThreadMessageA,
 		DumpSectionViewsForPid(pid);
 		// ProcessMessage(pid, 0);
 	}
-	if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+	if (g_config.filter_system_injection && pid == g_config.filter_system_safe_process_pid) {
 		return FALSE;
 	}
 	ProcessMessage(pid, 0);
@@ -234,7 +233,7 @@ HOOKDEF(BOOL, WINAPI, PostThreadMessageW,
 		DumpSectionViewsForPid(pid);
 		// ProcessMessage(pid, 0);
 	}
-	if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+	if (g_config.filter_system_injection && pid == g_config.filter_system_safe_process_pid) {
 		return FALSE;
 	}
 	ProcessMessage(pid, 0);
@@ -289,7 +288,7 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageA,
 			DumpSectionViewsForPid(pid);
 			//ProcessMessage(pid, 0);
 		}
-		if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+		if (g_config.filter_system_injection && pid == g_config.filter_system_safe_process_pid) {
 			return FALSE;
 		}
 		ProcessMessage(pid, 0);
@@ -320,7 +319,7 @@ HOOKDEF(BOOL, WINAPI, SendNotifyMessageW,
 			DumpSectionViewsForPid(pid);
 			// ProcessMessage(pid, 0);
 		}
-		if (g_config.filter_system_injection && is_system_process(pid) && pid == g_config.filter_system_safe_process_pid) {
+		if (g_config.filter_system_injection && pid == g_config.filter_system_safe_process_pid) {
 			return FALSE;
 		}
 		ProcessMessage(pid, 0);
