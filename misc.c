@@ -51,6 +51,7 @@ _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
 _RtlNtStatusToDosError pRtlNtStatusToDosError;
 _RtlCompareMemory pRtlCompareMemory;
+_NtQueryEvent pNtQueryEvent;
 
 void resolve_runtime_apis(void)
 {
@@ -2357,4 +2358,107 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 	}
 
 	free(absolutepath);
+}
+
+static size_t append_octet(char** p, size_t* remaining, unsigned char octet) {
+	char* start = *p;
+	size_t written_chars = 0;
+
+	// A temporary buffer to hold the characters of the octet (max 3 chars for 0-255)
+	char temp_buffer[3];
+	int i = 0;
+
+	// Handle 0
+	if (octet == 0) {
+		temp_buffer[i++] = '0';
+	}
+	else {
+		// Extract digits in reverse order
+		unsigned char val = octet;
+		while (val > 0) {
+			temp_buffer[i++] = (val % 10) + '0';
+			val /= 10;
+		}
+	}
+
+	// Write the digits to the destination buffer in the correct order
+	written_chars = i;
+	if (*remaining <= written_chars) { // Check if there's enough space (including null terminator)
+		return 0;
+	}
+
+	while (i > 0) {
+		*(*p)++ = temp_buffer[--i];
+	}
+
+	*remaining -= written_chars;
+	return written_chars;
+}
+
+const char* our_inet_ntop(int af, const void* src, char* dst, size_t size) {
+	if (src == NULL || dst == NULL) {
+		return NULL;
+	}
+
+	if (af != AF_INET) {
+		return NULL;
+	}
+
+	if (size < OUR_INET_ADDRSTRLEN) {
+		return NULL;
+	}
+
+	// Cast the source to a pointer to raw bytes (unsigned char).
+	const unsigned char* p_addr = (const unsigned char*)src;
+	char* p = dst;
+	size_t remaining = size;
+
+	for (int i = 0; i < 4; ++i) {
+		// Read the i-th byte directly from memory. This avoids all endianness problems.
+		unsigned char octet = p_addr[i];
+		if (append_octet(&p, &remaining, octet) == 0) {
+			return NULL;
+		}
+
+		if (i < 3) {
+			if (remaining <= 1) {
+				return NULL;
+			}
+			*p++ = '.';
+			remaining--;
+		}
+	}
+
+	*p = '\0';
+	return dst;
+}
+
+unsigned short our_ntohs(unsigned short netshort) {
+	return (netshort >> 8) | (netshort << 8);
+}
+
+DWORD wait_for_event_to_be_signaled(HANDLE hEvent, DWORD dwTimeout) {
+	ULONGLONG startTime = raw_gettickcount();
+	ULONGLONG currentTime;
+	NTSTATUS status;
+	EVENT_BASIC_INFORMATION eventInfo;
+	ULONG returnLength;
+
+	while (TRUE) {
+		status = pNtQueryEvent(hEvent, EventBasicInformation, &eventInfo, sizeof(eventInfo), &returnLength);
+		if (status == STATUS_SUCCESS) {
+			// Check the state. 1 means signaled.
+			if (eventInfo.EventState == 1) {
+				return WAIT_OBJECT_0;
+			}
+		}
+
+		// Check for timeout.
+		currentTime = raw_gettickcount();
+		if ((currentTime - startTime) > dwTimeout) {
+			return WAIT_TIMEOUT;
+		}
+
+		raw_sleep(250);
+	}
 }

@@ -21,3 +21,9 @@ void file_init();
 void file_close(HANDLE file_handle);
 void handle_duplicate(HANDLE old_handle, HANDLE new_handle);
 void remove_file_from_log_tracking(HANDLE fhandle);
+
+#define IOCTL_AFD_BIND	0x00012003
+#define IOCTL_AFD_CONNECT	0x00012007
+#define IOCTL_AFD_SEND	0x0001201f
+#define IOCTL_AFD_RECV	0x00012017
+#define IOCTL_WMIQUERYALLDATA	0x00224000
