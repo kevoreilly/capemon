@@ -611,13 +611,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 	ULONG_PTR length;
 	ULONG origbufferloglen = min((ULONG)buffer_log_max, InputBufferLength);
 	PCHAR origbuffer = malloc(origbufferloglen);
-	BOOLEAN hasorigbuffer = TRUE;
+	BOOLEAN hasorigbuffer = FALSE;
 	NTSTATUS ret;
 
 	// Save off a copy of the buffer before calling the hook, as it may not be the same after the call
 	if (origbuffer) {
 		__try {
 			memcpy(origbuffer, InputBuffer, origbufferloglen);
+			hasorigbuffer = TRUE;
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
 			hasorigbuffer = FALSE;
@@ -684,7 +685,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 
 	wchar_t* fname = NULL;
 	fname = calloc(32768, sizeof(wchar_t));
-	path_from_handle(FileHandle, fname, 32768);
+	if (fname) {
+		path_from_handle(FileHandle, fname, 32768);
+	}
 
 	switch (IoControlCode) {
 	case IOCTL_AFD_BIND:
@@ -871,7 +874,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 		else {
 			LOQ_ntstatus(
 				"device", "phbb",
-				"HandleName", fname,
+				"FileHandle", FileHandle,
 				"IoControlCode", IoControlCode,
 				"InputBuffer", InputBufferLength, InputBuffer,
 				"OutputBuffer", length, OutputBuffer

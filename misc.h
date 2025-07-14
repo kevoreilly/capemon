@@ -333,7 +333,6 @@ typedef struct _AFD_SEND_INFO {
 	ULONG       TdiFlags;
 } AFD_SEND_INFO, * PAFD_SEND_INFO;
 
-static size_t append_octet(char** p, size_t* remaining, unsigned char octet);
 const char* our_inet_ntop(int af, const void* src, char* dst, size_t size);
 unsigned short our_ntohs(unsigned short netshort);
 DWORD wait_for_event_to_be_signaled(HANDLE hEvent, DWORD dwTimeout);
