@@ -224,17 +224,23 @@ int pipe2(void *out, int *outlen, const char *fmt, ...)
 	va_list args;
 	int len;
 	int ret = -1;
-	va_start(args, fmt);
-	len = _pipe_sprintf(NULL, fmt, args);
-	if(len > 0) {
-		char *buf = calloc(1, len + 1);
-		_pipe_sprintf(buf, fmt, args);
-		va_end(args);
 
-		if(CallNamedPipeW(g_config.pipe_name, buf, len, out, *outlen,
-				(DWORD *) outlen, NMPWAIT_WAIT_FOREVER) != 0)
-			ret = 0;
-		free(buf);
+	if (g_config.standalone) {
+		*outlen = 0;
+	}
+	else {
+		va_start(args, fmt);
+		len = _pipe_sprintf(NULL, fmt, args);
+		if(len > 0) {
+			char *buf = calloc(1, len + 1);
+			_pipe_sprintf(buf, fmt, args);
+			va_end(args);
+
+			if(CallNamedPipeW(g_config.pipe_name, buf, len, out, *outlen,
+					(DWORD *) outlen, NMPWAIT_WAIT_FOREVER) != 0)
+				ret = 0;
+			free(buf);
+		}
 	}
 	return ret;
 }

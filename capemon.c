@@ -625,10 +625,16 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		read_config();
 
 		if (g_config.standalone) {
-			CAPE_init();
-			DebugOutput("Standalone mode initialised.\n");
-			return TRUE;
-
+			// initialize these because some hooks behave badly when they are empty
+			if (!g_config.w_analyzer[0]) {
+				for (i = 0; i < ARRAYSIZE(g_config.analyzer); i++)
+					g_config.w_analyzer[i] = (wchar_t)(unsigned short)g_config.analyzer[i];
+			}
+			if (!g_config.w_results[0]) {
+				for (i = 0; i < ARRAYSIZE(g_config.results); i++)
+					g_config.w_results[i] = (wchar_t)(unsigned short)g_config.results[i];
+			}
+			DebugOutput("Running in standalone mode.\n");
 		}
 
 		// don't inject into our own binaries run out of the analyzer directory unless they're the first process (intended)

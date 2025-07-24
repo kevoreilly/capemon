@@ -1414,8 +1414,6 @@ void read_config(void)
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
-	strcpy(g_config.results, g_config.analyzer);
-
 	memset(g_config.str, 0, MAX_PATH);
 	memset(g_config.pythonpath, 0, MAX_PATH);
 	memset(g_config.w_results, 0, sizeof(WCHAR)*MAX_PATH);
@@ -1427,6 +1425,8 @@ void read_config(void)
 	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
 	PathRemoveFileSpec(g_config.analyzer); // remove filename
 	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
+
+	strcpy(g_config.results, g_config.analyzer);
 
 	fp = fopen(config_fname, "r");
 
