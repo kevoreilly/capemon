@@ -542,7 +542,7 @@ __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT
 	}
 }
 
-void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *Context)
+__declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *Context)
 {
 	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
 		return;
