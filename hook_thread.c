@@ -296,26 +296,26 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenThread,
 	return ret;
 }
 
+// This hook needs to be strictly matched to the NtSetContextThread hook in terms of stack frame size
 HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	__in	 HANDLE ThreadHandle,
 	__inout  LPCONTEXT Context
 ) {
-	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 
 	NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
 
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "pppi", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Rcx, "CurrentInstructionPointer", Context->Rip, "ProcessId", pid);
+		LOQ_ntstatus("threading", "ppppi", "ThreadHandle", ThreadHandle, "RCX", Context->Rcx, "RIP", Context->Rip, "Flags", Context->ContextFlags, "ProcessId", pid);
 #else
-		LOQ_ntstatus("threading", "pppi", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Eax, "CurrentInstructionPointer", Context->Eip, "ProcessId", pid);
+		LOQ_ntstatus("threading", "ppppi", "ThreadHandle", ThreadHandle, "EAX", Context->Eax, "EIP", Context->Eip, "Flags", Context->ContextFlags, "ProcessId", pid);
 #endif
 	else
 		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
 
-	if (tid)
-		GetThreadContextHandler(ThreadHandle, Context);
+	// This needs to be __declspec(noinline) to prevent inlining
+	GetThreadContextHandler(ThreadHandle, Context);
 
 	return ret;
 }
@@ -324,7 +324,6 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 	__in	 HANDLE ThreadHandle,
 	__inout  PWOW64_CONTEXT Context
 ) {
-	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 
 	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
@@ -339,7 +338,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	__in  CONTEXT *Context
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
-	DWORD tid = tid_from_thread_handle(NULL);
 
 	SetThreadContextHandler(ThreadHandle, Context);
 
@@ -347,15 +345,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 #ifdef _WIN64
-		LOQ_ntstatus("threading", "ppppi", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Rcx, "CurrentInstructionPointer", Context->Rip, "Flags", Context->ContextFlags, "ProcessId", pid);
+		LOQ_ntstatus("threading", "ppppi", "ThreadHandle", ThreadHandle, "RCX", Context->Rcx, "RIP", Context->Rip, "Flags", Context->ContextFlags, "ProcessId", pid);
 #else
-		LOQ_ntstatus("threading", "ppppi", "ThreadHandle", ThreadHandle, "HollowedInstructionPointer", Context->Eax, "CurrentInstructionPointer", Context->Eip, "Flags", Context->ContextFlags, "ProcessId", pid);
+		LOQ_ntstatus("threading", "ppppi", "ThreadHandle", ThreadHandle, "EAX", Context->Eax, "EIP", Context->Eip, "Flags", Context->ContextFlags, "ProcessId", pid);
 #endif
 	else
 		LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
-
-	if (tid)
-		GetThreadContextHandler(ThreadHandle, Context);
 
 	return ret;
 }

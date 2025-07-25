@@ -514,7 +514,7 @@ void DumpSectionViewsForHandle(HANDLE SectionHandle)
 	return;
 }
 
-void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context)
+__declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context)
 {
 	DebugOutput("GetThreadContextHandler");
 	DWORD Pid = pid_from_thread_handle(ThreadHandle);
