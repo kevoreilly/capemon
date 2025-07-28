@@ -123,6 +123,7 @@ extern DWORD parent_process_id();
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern unsigned int address_is_in_stack(PVOID Address);
 extern int loader_is_allowed(const char *loader_name);
+extern int path_is_system(const wchar_t *path_w);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern BOOL inside_hook(LPVOID Address);
 extern hook_info_t *hook_info();
@@ -697,6 +698,13 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 	const char *YaraFunctions[] =
 	{
 		"LdrpCallInitRoutine",
+		"WMI_ExecQuery",
+		"WMI_ExecMethod",
+		"WMI_ExecQueryAsync",
+		"WMI_ExecMethodAsync",
+		"WMI_GetObject",
+		"WMI_GetObjectAsync",
+		"vDbgPrintExWithPrefixInternal",
 	};
 
 	for (int i = 0; i < sizeof(YaraFunctions) / sizeof(YaraFunctions[0]); i++)
@@ -712,7 +720,9 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 {
 	PIMAGE_DOS_HEADER DosHeader;
 	PIMAGE_NT_HEADERS NtHeader;
-	PIMAGE_EXPORT_DIRECTORY ImageExportDirectory;
+	PIMAGE_EXPORT_DIRECTORY ExportDirectory;
+	unsigned int ExportDirectorySize = 0;
+	DWORD ExportDirectoryRVA = 0;
 	PVOID FunctionAddress = NULL;
 
 	if (!ModuleBase || !FunctionName)
@@ -746,29 +756,42 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	if (!NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress)
 		return NULL;
 
-	ImageExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + (DWORD_PTR)NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+	ExportDirectoryRVA = (DWORD_PTR)NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+	ExportDirectorySize = NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
+	ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PBYTE)ModuleBase + ExportDirectoryRVA);
 
-	if (!ImageExportDirectory->AddressOfNames)
+	if (!ExportDirectory->AddressOfNames)
 		return NULL;
 
-	if (ImageExportDirectory->AddressOfNames > NtHeader->OptionalHeader.SizeOfImage)
+	if (ExportDirectory->AddressOfNames > NtHeader->OptionalHeader.SizeOfImage)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("GetFunctionAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ImageExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
+		DebugOutput("GetFunctionAddress: AddressOfNames 0x%x SizeOfImage 0x%x", ExportDirectory->AddressOfNames, NtHeader->OptionalHeader.SizeOfImage);
 #endif
 		return NULL;
 	}
 
-	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNames);
+	unsigned int *NameRVA = (unsigned int*)((PBYTE)ModuleBase + ExportDirectory->AddressOfNames);
 
 	__try
 	{
-		for (unsigned int i = 0; i < ImageExportDirectory->NumberOfNames; i++)
+		for (unsigned int i = 0; i < ExportDirectory->NumberOfNames; i++)
 		{
 			if (NameRVA[i])
 			{
 				if (!strcmp((PCHAR)((PBYTE)ModuleBase + NameRVA[i]), FunctionName))
-					FunctionAddress = (PVOID)((PBYTE)ModuleBase + ((DWORD*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ImageExportDirectory->AddressOfNameOrdinals))[i]]);
+				{
+					DWORD RVA = ((DWORD*)((PBYTE)ModuleBase + ExportDirectory->AddressOfFunctions))[((unsigned short*)((PBYTE)ModuleBase + ExportDirectory->AddressOfNameOrdinals))[i]];
+					// Forwarded export RVAs point to export directory
+					if ((RVA >= ExportDirectoryRVA) && (RVA < ExportDirectoryRVA + ExportDirectorySize))
+					{
+#ifdef DEBUG_COMMENTS
+						DebugOutput("GetFunctionAddress: %s is forwarded!\n", FunctionName);
+#endif
+						return NULL;
+					}
+					FunctionAddress = (PVOID)((PBYTE)ModuleBase + RVA);
+				}
 			}
 		}
 	}
@@ -1280,13 +1303,22 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	wchar_t ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), Address, ModulePath, MAX_PATH);
 
-	if (MappedModule && is_in_dll_range((ULONG_PTR)Address) || VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
+	if (MappedModule)
 	{
-		DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws, skipping", Address, ModulePath);
-		return;
+		if (is_in_dll_range((ULONG_PTR)Address))
+		{
+			DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws is in known range, skipping", Address, ModulePath);
+			return;
+		}
+		else if (VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
+		{
+			if (!path_is_system(ModulePath))
+				DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws appears unmodified, skipping", Address, ModulePath);
+			return;
+		}
+		else
+			DebugOutput("ProcessTrackedRegion: Interesting region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 	}
-	else if (MappedModule)
-		DebugOutput("ProcessTrackedRegion: Code modification detected in region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
@@ -2023,41 +2055,62 @@ PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax)
 	__try
 	{
 		PVOID Base = GetAllocationBase(Address);
-		if (!Base)
+		if (!Base || !IsAddressAccessible(Base))
 			return NULL;
 
-		PIMAGE_NT_HEADERS pNtHeader = pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)Base + (ULONG)((PIMAGE_DOS_HEADER)Base)->e_lfanew);
-		if (!pNtHeader)
+		PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER)Base;
+		if (DosHeader->e_magic != IMAGE_DOS_SIGNATURE)
 			return NULL;
 
-		PIMAGE_EXPORT_DIRECTORY ExportDirectory = ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)Base + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
-		if (!ExportDirectory)
+		PIMAGE_NT_HEADERS NtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)Base + DosHeader->e_lfanew);
+		if (NtHeader->Signature != IMAGE_NT_SIGNATURE)
 			return NULL;
 
-		PDWORD AddressOfNames = (PDWORD)((PUCHAR)Base + ExportDirectory->AddressOfNames);
-		if (!AddressOfNames)
+		IMAGE_DATA_DIRECTORY ExportDirEntry = NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+		if (ExportDirEntry.VirtualAddress == 0 || ExportDirEntry.Size == 0)
 			return NULL;
 
-		PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)Base + ExportDirectory->AddressOfFunctions);
-		if (!AddressOfFunctions)
+		PIMAGE_EXPORT_DIRECTORY ExportDir = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)Base + ExportDirEntry.VirtualAddress);
+		if (!IsAddressAccessible(ExportDir))
 			return NULL;
 
-		PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)Base + ExportDirectory->AddressOfNameOrdinals);
-		if (!AddressOfNameOrdinals)
+		if (ExportDir->NumberOfFunctions > 0x100000)
 			return NULL;
 
-		for (unsigned int j = 0; j < ExportDirectory->NumberOfFunctions; j++)
+		PDWORD AddressOfFunctions = (PDWORD)((PUCHAR)Base + ExportDir->AddressOfFunctions);
+		if (!IsAddressAccessible(AddressOfFunctions))
+			return NULL;
+
+		PDWORD AddressOfNames = (PDWORD)((PUCHAR)Base + ExportDir->AddressOfNames);
+		PWORD AddressOfNameOrdinals = (PWORD)((PUCHAR)Base + ExportDir->AddressOfNameOrdinals);
+
+		for (DWORD i = 0; i < ExportDir->NumberOfNames; i++)
 		{
-			if ((PUCHAR)Address - (PUCHAR)Base > (int)AddressOfFunctions[AddressOfNameOrdinals[j]]
-			&& (PUCHAR)Address - (PUCHAR)Base - AddressOfFunctions[AddressOfNameOrdinals[j]] <= (int)ScanMax)
-				return (PCHAR)Base + AddressOfNames[j];
+			if (!IsAddressAccessible(&AddressOfNameOrdinals[i]) || !IsAddressAccessible(&AddressOfNames[i]))
+				continue;
+
+			WORD Ordinal = AddressOfNameOrdinals[i];
+			if (Ordinal >= ExportDir->NumberOfFunctions)
+				continue;
+
+			DWORD FunctionRva = AddressOfFunctions[Ordinal];
+			if (FunctionRva == 0)
+				continue;
+
+			if ((ULONG_PTR)Address - (ULONG_PTR)Base >= FunctionRva && (ULONG_PTR)Address - (ULONG_PTR)Base - FunctionRva <= ScanMax)
+			{
+				PCHAR Name = (PCHAR)((PUCHAR)Base + AddressOfNames[i]);
+				if (IsAddressAccessible(Name))
+					return Name;
+			}
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		return NULL;
 	}
-    return NULL;
+
+	return NULL;
 }
 
 //**************************************************************************************
@@ -3255,8 +3308,6 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
-		DebugOutput("DumpInterestingRegions: Dumping .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
-
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
 #ifdef _WIN64
@@ -3266,7 +3317,15 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 #endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress));
+		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
+		{
+			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+			DotNetCacheDumpCount++;
+		}
+		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
+			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
+		else if (!g_config.jit_dumps)
+			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
 	}
 }
 
@@ -3540,6 +3599,32 @@ void RestoreHeaders()
 	DebugOutput("RestoreHeaders: Restored original import table.\n");
 }
 
+static void EnableLoaderSnaps()
+{
+#ifdef _WIN64
+	PBYTE _fltused = (PBYTE)GetProcAddress(GetModuleHandle("ntdll"), "_fltused");
+	if (_fltused == NULL)
+		return;
+	DWORD* LdrpDebugFlags = (DWORD*)(_fltused - 0x10);
+	if (!*LdrpDebugFlags)
+		*LdrpDebugFlags = 1;
+#else
+	PBYTE LdrGetDllHandleEx = (PBYTE)GetProcAddress(GetModuleHandle("ntdll"), "LdrGetDllHandleEx");
+	if (LdrGetDllHandleEx == NULL)
+		return;
+	DWORD* ShowSnaps = NULL;
+	for (PBYTE p = LdrGetDllHandleEx; p < LdrGetDllHandleEx + 50; p++)
+	{
+		if (p[0] == 0xf6 && p[1] == 0x05 && p[6] == 0x09)
+			ShowSnaps = *(DWORD**)(p+2);
+	}
+	if (!ShowSnaps)
+		return;
+	if (!*ShowSnaps)
+		*ShowSnaps = 1;
+#endif
+}
+
 void CAPE_post_init()
 {
 	if (g_config.syscall && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
@@ -3567,9 +3652,6 @@ void CAPE_post_init()
 
 void CAPE_init()
 {
-	// Initialise CAPE global variables
-	//
-	//if (!g_config.standalone)
 	CapeMetaData = (PCAPEMETADATA)calloc(sizeof(CAPEMETADATA), sizeof(BYTE));
 	CapeMetaData->Pid = GetCurrentProcessId();
 	CapeMetaData->PPid = parent_process_id();
@@ -3587,8 +3669,8 @@ void CAPE_init()
 	ProcessDumped = FALSE;
 	DumpCount = 0;
 
-	// Cuckoo debug output level for development (0=none, 2=max)
-	// g_config.debug = 2;
+	if (g_config.snaps)
+		EnableLoaderSnaps();
 
 	YaraInit();
 

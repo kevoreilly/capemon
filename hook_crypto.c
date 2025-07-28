@@ -278,16 +278,29 @@ HOOKDEF(BOOL, WINAPI, CryptDeriveKey,
 }
 
 HOOKDEF(BOOL, WINAPI, CryptExportKey,
-	_In_	 HCRYPTKEY hKey,
-	_In_	 HCRYPTKEY hExpKey,
-	_In_	 DWORD dwBlobType,
-	_In_	 DWORD dwFlags,
+	_In_	HCRYPTKEY hKey,
+	_In_	HCRYPTKEY hExpKey,
+	_In_	DWORD dwBlobType,
+	_In_	DWORD dwFlags,
 	_Out_	BYTE *pbData,
-	_Inout_  DWORD *pdwDataLen
+	_Inout_	DWORD *pdwDataLen
 ) {
 	BOOL ret = Old_CryptExportKey(hKey, hExpKey, dwBlobType, dwFlags, pbData, pdwDataLen);
 	if (pbData && pdwDataLen)
 		LOQ_bool("crypto", "pbihi", "CryptKey", hKey, "Buffer", *pdwDataLen, pbData, "BlobType", dwBlobType, "Flags", dwFlags, "Length", *pdwDataLen);
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, CryptDuplicateKey,
+	_In_	HCRYPTKEY	hKey,
+	_In_	DWORD* pdwReserved,
+	_In_	DWORD		dwFlags,
+	_Out_	HCRYPTKEY* phKey
+) {
+	BOOL ret = Old_CryptDuplicateKey(hKey, pdwReserved, dwFlags, phKey);
+	if (ret) {
+		LOQ_bool("crypto", "pph", "OldCryptKey", hKey, "NewCryptKey", *phKey, "Flags", dwFlags);
+	}
 	return ret;
 }
 

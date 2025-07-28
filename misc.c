@@ -32,8 +32,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 
 extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _NtQueryInformationThread pNtQueryInformationThread;
@@ -99,6 +97,7 @@ BOOLEAN is_address_in_monitor(ULONG_PTR address)
 
 	return FALSE;
 }
+
 void raw_sleep(int msecs)
 {
 	LARGE_INTEGER interval;
@@ -128,6 +127,41 @@ void num_to_string(char *buf, unsigned int buflen, unsigned int num)
 		dec /= 10;
 	}
 	buf[i] = '\0';
+}
+
+static const char hexchars[] = "0123456789ABCDEF";
+
+char *num_to_hex(char *buf, unsigned int width, ULONG_PTR num)
+{
+    buf[width] = '\0';
+    unsigned int count = width;
+
+	while (count--) {
+        buf[count] = hexchars[num & 0xF];
+        num >>= 4;
+    }
+
+    return buf + width;
+}
+
+void uuid_to_string(IID id, char *idbuf)
+{
+    idbuf = num_to_hex(idbuf, 8, id.Data1);
+    *idbuf++ = '-';
+
+    idbuf = num_to_hex(idbuf, 4, id.Data2);
+    *idbuf++ = '-';
+
+    idbuf = num_to_hex(idbuf, 4, id.Data3);
+    *idbuf++ = '-';
+
+    for (int i = 0; i < 2; i++)
+        idbuf = num_to_hex(idbuf, 2, id.Data4[i]);
+
+    *idbuf++ = '-';
+
+    for (int i = 2; i < 8; i++)
+        idbuf = num_to_hex(idbuf, 2, id.Data4[i]);
 }
 
 unsigned short our_htons(unsigned short num)
@@ -609,6 +643,36 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 	return 0;
 }
 
+int path_is_system(const wchar_t *path_w)
+{
+	if (!path_w)
+		return 0;
+
+	if (!wcsnicmp(path_w, L"\\Device\\HarddiskVolume", 22))
+		path_w += 24;
+	else if (!wcsnicmp(path_w + 1, L":\\", 2))
+		path_w += 3;
+
+	if (((!wcsnicmp(path_w, L"windows\\system32\\", 17) ||
+		!wcsnicmp(path_w, L"windows\\syswow64\\", 17) ||
+		!wcsnicmp(path_w, L"windows\\sysnative\\", 18))))
+		return 1;
+
+	return 0;
+}
+
+int path_is_program_files(const wchar_t *path_w)
+{
+	if (!path_w)
+		return 0;
+
+	if (((!wcsnicmp(path_w + 1, L":\\program files\\", 16) ||
+		!wcsnicmp(path_w + 1, L":\\program files (x86)\\", 22))))
+		return 1;
+
+	return 0;
+}
+
 BOOLEAN parent_has_path(char* path)
 {
 	DWORD ppid = parent_process_id();
@@ -816,6 +880,21 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
+BOOL test_is_in_dll_range(ULONG_PTR addr)
+{
+	DWORD i;
+	DebugOutput("is_in_dll_range: addr 0x%p", addr);
+	for (i = 0; i < loaded_dlls; i++) {
+		DebugOutput("is_in_dll_range: module %d start 0x%p end 0x%p", i, dll_ranges[i].start, dll_ranges[i].end);
+		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end) {
+			DebugOutput("is_in_dll_range: found!");
+			return TRUE;
+		}
+	}
+	DebugOutput("is_in_dll_range: NOT found :-(");
+	return FALSE;
+}
+
 ULONG_PTR base_of_dll_of_interest;
 
 void set_dll_of_interest(ULONG_PTR BaseAddress)
@@ -849,6 +928,7 @@ void add_all_dlls_to_dll_ranges(void)
 		memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length * sizeof(WCHAR));
 		// skip dlls in same directory as exe
 		if (!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
+			DebugOutput("add_all_dlls_to_dll_ranges: skipping %ws", ModulePath.Buffer);
 			free(ModulePath.Buffer);
 			continue;
 		}
@@ -1684,57 +1764,6 @@ out:
 		CloseHandle(th);
 
 	set_lasterrors(&lasterrors);
-
-	return ret;
-}
-
-BOOLEAN is_suspended(DWORD pid, DWORD tid)
-{
-	ULONG length;
-	PSYSTEM_PROCESS_INFORMATION pspi = NULL, proc;
-	ULONG requestedlen = 16384;
-	lasterror_t lasterror;
-	BOOLEAN ret = FALSE;
-
-	get_lasterrors(&lasterror);
-
-	pspi = malloc(requestedlen);
-	if (pspi == NULL)
-		goto out;
-
-	while (pNtQuerySystemInformation(SystemProcessInformation, pspi, requestedlen, &length) == STATUS_INFO_LENGTH_MISMATCH) {
-		free(pspi);
-		requestedlen <<= 1;
-		pspi = malloc(requestedlen);
-		if (pspi == NULL)
-			goto out;
-	}
-	// now we have a valid list of process information
-	proc = pspi;
-	while (1) {
-		ULONG i;
-
-		if ((DWORD)(ULONG_PTR)proc->UniqueProcessId != pid)
-			goto next;
-		for (i = 0; i < proc->NumberOfThreads; i++) {
-			PSYSTEM_THREAD thread = &proc->Threads[i];
-			if (tid && (DWORD)(ULONG_PTR)thread->ClientId.UniqueThread != tid)
-				continue;
-			if (thread->WaitReason != Suspended)
-				goto out;
-		}
-		break;
-next:
-		if (!proc->NextEntryOffset)
-			break;
-		proc = (PSYSTEM_PROCESS_INFORMATION)((PCHAR)proc + proc->NextEntryOffset);
-	}
-	ret = TRUE;
-out:
-	if (pspi)
-		free(pspi);
-
-	set_lasterrors(&lasterror);
 
 	return ret;
 }

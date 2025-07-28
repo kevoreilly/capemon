@@ -146,13 +146,18 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
 			ret += _pipe_ascii(&out, s, (int)strlen(s));
 		}
 		else if(*fmt == 'x') {
-			char s[16];
-			sprintf(s, "%x", va_arg(args, int));
+			char s[9];
+			num_to_hex(s, 8, va_arg(args, int));
 			ret += _pipe_ascii(&out, s, (int)strlen(s));
 		}
 		else if (*fmt == 'p') {
-			char s[18];
-			sprintf(s, "%p", va_arg(args, void *));
+#ifdef _WIN64
+			char s[17];
+			num_to_hex(s, 16, va_arg(args, ULONG_PTR));
+#else
+			char s[9];
+			num_to_hex(s, 8, va_arg(args, ULONG_PTR));
+#endif
 			ret += _pipe_ascii(&out, s, (int)strlen(s));
 		}
 		else {
@@ -219,17 +224,23 @@ int pipe2(void *out, int *outlen, const char *fmt, ...)
 	va_list args;
 	int len;
 	int ret = -1;
-	va_start(args, fmt);
-	len = _pipe_sprintf(NULL, fmt, args);
-	if(len > 0) {
-		char *buf = calloc(1, len + 1);
-		_pipe_sprintf(buf, fmt, args);
-		va_end(args);
 
-		if(CallNamedPipeW(g_config.pipe_name, buf, len, out, *outlen,
-				(DWORD *) outlen, NMPWAIT_WAIT_FOREVER) != 0)
-			ret = 0;
-		free(buf);
+	if (g_config.standalone) {
+		*outlen = 0;
+	}
+	else {
+		va_start(args, fmt);
+		len = _pipe_sprintf(NULL, fmt, args);
+		if(len > 0) {
+			char *buf = calloc(1, len + 1);
+			_pipe_sprintf(buf, fmt, args);
+			va_end(args);
+
+			if(CallNamedPipeW(g_config.pipe_name, buf, len, out, *outlen,
+					(DWORD *) outlen, NMPWAIT_WAIT_FOREVER) != 0)
+				ret = 0;
+			free(buf);
+		}
 	}
 	return ret;
 }

@@ -1261,6 +1261,74 @@ HOOKDEF(HRESULT, WINAPI, CoGetObject,
 	_Out_		LPVOID *ppv
 );
 
+// WMI Hooks
+HOOKDEF(HRESULT, WINAPI, WMI_Get,
+	PVOID		_this,
+	LPCWSTR		wszName,
+	LONG		lFlags,
+	VARIANT*	pVal,
+	LONG*		pType,
+	LONG*		plFlavor
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecQuery,
+	PVOID		_this,
+	const BSTR	strQueryLanguage,
+	const BSTR	strQuery,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID*		ppEnum
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecQueryAsync,
+	PVOID		_this,
+	const BSTR	strQueryLanguage,
+	const BSTR	strQuery,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID		pResponseHandler
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethod,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	const BSTR	strMethodName,
+	long		lFlags,
+	PVOID		pCtx,
+	PVOID		pInParams,
+	PVOID*		ppOutParams,
+	PVOID*		ppCallResult
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethodAsync,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	const BSTR	strMethodName,
+	long		lFlags,
+	PVOID		pCtx,
+	PVOID		pInParams,
+	PVOID		pResponseHandler
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_GetObject,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID*		ppObject,
+	PVOID*		ppCallResult
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_GetObjectAsync,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID		pResultHandler
+);
+
+// End of WMI Hooks
+
 HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in	 HANDLE SectionHandle,
 	__in	 HANDLE ProcessHandle,
@@ -2974,6 +3042,13 @@ HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_Inout_  DWORD *pdwDataLen
 );
 
+HOOKDEF(BOOL, WINAPI, CryptDuplicateKey,
+	_In_	HCRYPTKEY	hKey,
+	_In_	DWORD* pdwReserved,
+	_In_	DWORD		dwFlags,
+	_Out_	HCRYPTKEY* phKey
+);
+
 HOOKDEF(BOOL, WINAPI, CryptDestroyKey,
 	_In_   HCRYPTKEY hKey
 );
@@ -3755,6 +3830,11 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 );
 
+HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
+	__in LPWSTR lpCmdLine,
+	__out int *pNumArgs
+);
+
 HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
 	__in HMODULE hLibModule
 );
@@ -3799,6 +3879,25 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_In_	DWORD    iDevNum,
 	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
 	_In_	DWORD    dwFlags
+);
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductA,
+	_In_	LPCSTR	szPackagePath,
+	_In_	LPCSTR	szCommandLine
+);
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductW,
+	_In_	LPCWSTR	szPackagePath,
+	_In_	LPCWSTR	szCommandLine
+);
+
+HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
+	__in  PCH Prefix,
+	__in  ULONG ComponentId,
+	__in  ULONG Level,
+	__in  PCHAR Format,
+	__in  va_list arglist,
+	__in  BOOLEAN HandleBreakpoint
 );
 
 #include "hook_vbscript.h"

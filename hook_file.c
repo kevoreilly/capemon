@@ -1351,10 +1351,8 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExA(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "s", "DirectoryName", lpDirectoryName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
-		lpTotalNumberOfBytes->QuadPart = 256060514304L;
+		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
 	return ret;
@@ -1368,10 +1366,8 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExW(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "u", "DirectoryName", lpDirectoryName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
-		lpTotalNumberOfBytes->QuadPart = 256060514304L;
+		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
 	return ret;
@@ -1386,12 +1382,10 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceA(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "s", "RootPathName", lpRootPathName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
-				*lpTotalNumberOfClusters = (DWORD)(256060514304L / (*lpSectorsPerCluster * *lpBytesPerSector));
+				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1411,12 +1405,10 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceW(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "u", "RootPathName", lpRootPathName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
-				*lpTotalNumberOfClusters = (DWORD)(256060514304L / (*lpSectorsPerCluster * *lpBytesPerSector));
+				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1549,8 +1541,7 @@ HOOKDEF(HRESULT, WINAPI, SHGetKnownFolderPath,
 
 	get_lasterrors(&lasterrors);
 	memcpy(&id1, rfid, sizeof(id1));
-	sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+	uuid_to_string(id1, idbuf);
 	LOQ_hresult("filesystem", "shu", "FolderID", idbuf, "Flags", dwFlags, "Path", ppszPath ? *ppszPath : NULL);
 	set_lasterrors(&lasterrors);
 	return ret;

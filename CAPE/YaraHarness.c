@@ -51,6 +51,30 @@ char InternalYara[] =
 	"rule LdrpCallInitRoutine"
 	"{strings:$function = {55 8B EC 56 57 53 8B F4 [0-2] FF 75 14 FF 75 10 FF 75 0C FF 55 08 8B E6 5B 5F 5E 5D C2 10 00}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecQuery"
+	"{strings:$function = {4C 8B DC 56 57 41 54 41 56 41 57 48 83 EC 60 49 C7 43 B8 FE FF FF FF 49 89 5B 10 49 89 6B 18 45 8B E1 4D 8B F0 4C 8B F9 48 8B 41 08 48 83 78 20 00 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecMethod"
+	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 70 48 C7 40 B8 FE FF FF FF 48 89 58 10 48 89 68 18 45 8B E1 4D 8B F0 48 8B EA 4C 8B F9 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecQueryAsync"
+	"{strings:$function = {4C 8B DC 56 57 41 54 41 56 41 57 48 83 EC 60 49 C7 43 B8 FE FF FF FF 49 89 5B 10 49 89 6B 18 45 8B E1 4D 8B F0 48 8B E9 48 8B 41 08 48 83 78 20 00 0F 84 [4] 49 83 63 08 00 4D 8D 43 08 E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecMethodAsync"
+	"{strings:$function = {48 8B C4 57 41 54 41 55 41 56 41 57 48 83 EC 60 48 C7 40 B8 FE FF FF FF 48 89 58 10 48 89 68 18 48 89 70 20 45 8B E9 4D 8B F8 4C 8B F2 48 8B E9 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_GetObject"
+	"{strings:$function = {4C 8B DC 56 57 41 54 41 56 41 57 48 83 EC 50 49 C7 43 ?? FE FF FF FF 49 89 5B 10 49 89 6B 18 4D 8B F9 45 8B E0 48 8B EA 4C 8B F1 48 8B 41 08 48 83 78 20 00 0F 84 12 AB 02 00 49 83 63 08 00 4D 8D 43 08 E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_GetObjectAsync"
+	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"rule vDbgPrintExWithPrefixInternal"
+#ifdef _WIN64
+	"{strings:$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
+#else
+	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
+#endif
+	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule capemon"
 	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
 	"condition:all of them}";
@@ -361,7 +385,7 @@ PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName)
 		return NULL;
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("GetAddressByYara: %s found at 0x%x", FunctionName, (ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
+	DebugOutput("GetAddressByYara: %s found at 0x%p", FunctionName, (ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
 #endif
 
 	return (PVOID)((ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);

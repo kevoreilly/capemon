@@ -298,12 +298,9 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 		DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
 	if (CurrentRegion) {
-		DebugOutput("Terminate Event: Current region 0x%p\n", CurrentRegion);
 		ProcessTrackedRegion(CurrentRegion);
 		CurrentRegion = NULL;
 	}
-	else
-		DebugOutput("Terminate Event: Current region empty\n");
 
 	file_handle_terminate();
 

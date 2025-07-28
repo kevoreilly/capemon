@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
 extern ULONG_PTR base_of_dll_of_interest;
+extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase), set_hooks_dll(const wchar_t *library);
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void set_hooks();
@@ -68,21 +69,19 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 		if (g_config.tlsdump) {
 			// lsass injected a second time - switch to 'normal' mode
 			g_config.tlsdump = 0;
-			if (read_config()) {
-				log_init(g_config.debug || g_config.standalone);
-				set_hooks();
-				notify_successful_load();
-			}
+			read_config();
+			log_init(g_config.debug || g_config.standalone);
+			set_hooks();
+			notify_successful_load();
 			ret = 0;
 		}
 		if (g_config.interactive) {
 			// explorer injected by malware - switch to 'normal' mode
 			g_config.interactive = 2;
 			g_config.minhook = 0;
-			if (read_config()) {
-				set_hooks();
-				notify_successful_load();
-			}
+			read_config();
+			set_hooks();
+			notify_successful_load();
 			ret = 0;
 		}
 	}
@@ -163,27 +162,48 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	return 0;
 }
 
+static int transparency_dummy;
+
+void start_transparent_hooks(){transparency_dummy++;}
+
 HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
 	__in PDLL_INIT_ROUTINE InitRoutine,
 	__in PVOID DllHandle,
 	__in ULONG Reason,
 	__in_opt PCONTEXT Context
 ) {
-	char OutputBuffer[MAX_PATH] = "";
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), DllHandle, OutputBuffer, MAX_PATH);
+	wchar_t ModulePath[MAX_PATH] = L"";
+	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), DllHandle, ModulePath, MAX_PATH);
 
 	if (Reason == 1 && g_config.yarascan && !is_in_dll_range((ULONG_PTR)DllHandle))
 		YaraScan(DllHandle, GetAccessibleSize(DllHandle));
 
+	if (Reason == 1 && MappedModule) {
+		PWCHAR dllname = get_dll_basename(ModulePath);
+		set_hooks_dll(dllname);
+		if (g_config.debugger) {
+			for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
+				if (!g_config.coverage_modules[i])
+					break;
+				if (!wcsicmp(dllname, g_config.coverage_modules[i])) {
+					SetInitialBreakpoints(DllHandle);
+					break;
+				}
+			}
+		}
+	}
+
 	BOOL ret = Old_LdrpCallInitRoutine(InitRoutine, DllHandle, Reason, Context);
 
 	if (Reason == 1 && MappedModule)
-		LOQ_bool("system", "shhi", "MappedPath", OutputBuffer, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+		LOQ_bool("system", "uppi", "MappedPath", ModulePath, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 	else if (Reason == 1)
-		LOQ_bool("system", "hhi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+		LOQ_bool("system", "ppi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 
 	return ret;
 }
+
+void end_transparent_hooks(){transparency_dummy--;}
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 	__in_opt	LPVOID lpUnknown1,
@@ -339,13 +359,12 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-			memcpy(&id1, rclsid, sizeof(id1));
-		if (is_valid_address_range((ULONG_PTR)riid, 16))
-			memcpy(&id2, riid, sizeof(id2));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
-	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
-		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
+		memcpy(&id1, rclsid, sizeof(id1));
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id2, riid, sizeof(id2));
+
+	uuid_to_string(id1, idbuf1);
+	uuid_to_string(id2, idbuf2);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
@@ -397,8 +416,7 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 			memcpy(&id1, rclsid, sizeof(id1));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+	uuid_to_string(id1, idbuf1);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
@@ -451,13 +469,12 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-			memcpy(&id1, rclsid, sizeof(id1));
+		memcpy(&id1, rclsid, sizeof(id1));
 	if (is_valid_address_range((ULONG_PTR)riid, 16))
 		memcpy(&id2, riid, sizeof(id2));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
-	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
-		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
+
+	uuid_to_string(id1, idbuf1);
+	uuid_to_string(id2, idbuf2);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
@@ -501,8 +518,7 @@ HOOKDEF(HRESULT, WINAPI, CoGetObject,
 	if (is_valid_address_range((ULONG_PTR)riid, 16))
 		memcpy(&id, riid, sizeof(id));
 
-	sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id.Data1, id.Data2, id.Data3,
-		id.Data4[0], id.Data4[1], id.Data4[2], id.Data4[3], id.Data4[4], id.Data4[5], id.Data4[6], id.Data4[7]);
+	uuid_to_string(id, idbuf);
 
 	set_lasterrors(&lasterror);
 
