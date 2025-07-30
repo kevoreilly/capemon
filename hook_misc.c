@@ -435,7 +435,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 	ULONG Size2 = 0;
 	NTSTATUS Status = pNtQueryObject(Handle, 0, &Size, sizeof(Size), &Size);
 	void* Buff = (void*)calloc(1, Size);
-	if (!g_config.no_stealth && NT_SUCCESS(pNtQueryObject(Handle, 0, Buff, Size, &Size2)))
+	BOOLEAN valid_handle;
+	if (!Buff) 
+		valid_handle = NT_SUCCESS(pNtQueryObject(Handle, 0, Buff, Size, &Size2));
+	else
+		valid_handle = FALSE;
+	if (!g_config.no_stealth && valid_handle)
 	{
 		__try
 		{
@@ -823,21 +828,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 	//https://anti-debug.checkpoint.com/techniques/debug-flags.html#using-win32-api-checkremotedebuggerpresent
 	if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugPort)
 	{
-		HANDLE value =0;
-		void* voidPtr = &value;
-		ProcessInformation = (HANDLE*)voidPtr;
+		if (ProcessInformationLength >= sizeof(HANDLE))
+   			*(HANDLE*)ProcessInformation = 0;
 	}
 	else if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugFlags)
 	{
-		ULONG value = 1;
-		void* voidPtr = &value;
-		ProcessInformation = (ULONG*)voidPtr;
+		if (ProcessInformationLength >= sizeof(ULONG))
+   			*(ULONG*)ProcessInformation = 1;
 	}
 	else if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugObjectHandle)
 	{
-		HANDLE value = 0;
-		void* voidPtr = &value;
-		ProcessInformation = (HANDLE*)voidPtr;
+		if (ProcessInformationLength >= sizeof(HANDLE))
+   			*(HANDLE*)ProcessInformation = 0;
 	}
 	return ret;
 }
@@ -2072,8 +2074,8 @@ HOOKDEF(BOOL, WINAPI, BlockInput,
 			}
 		}
 		if (!found) {
-			BlockInputInstances[length].BlockInputThreadID = ThreadId; 
-			index = length;
+			BlockInputInstances[length-1].BlockInputThreadID = ThreadId; 
+			index = length-1;
 		}
 		if (!CurrentState && fBlockIt)
 		{
