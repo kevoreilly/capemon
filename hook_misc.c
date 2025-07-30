@@ -36,6 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern char *our_process_name;
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern const char* GetLanguageName(LANGID langID);
+extern NTSTATUS pNtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass, PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength);
 
 extern BOOL TraceRunning;
 
@@ -44,6 +45,11 @@ extern BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 BOOL PlugXConfigDumped, CompressedPE;
 DWORD ExportAddress;
+struct BlockInputThreadInstance {
+	BOOL CurrentlyBlockedInput;
+	DWORD BlockInputThreadID;
+};
+static struct BlockInputThreadInstance BlockInputInstances[256]; //Should be enough for most situations
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	__in  int idHook,
@@ -426,20 +432,23 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 	}
 	//https://anti-debug.checkpoint.com/techniques/object-handles.html
 	ULONG Size = 0;
+	ULONG Size2 = 0;
 	NTSTATUS Status = pNtQueryObject(Handle, 0, &Size, sizeof(Size), &Size);
 	void* Buff = (void*)calloc(1, Size);
-	if (!g_config.no_stealth && NTSUCCESS(pNtQueryObject(Handle, 0, Buff, Size)))
-		__try 
+	if (!g_config.no_stealth && NT_SUCCESS(pNtQueryObject(Handle, 0, Buff, Size, &Size2)))
+	{
+		__try
 		{
-			Old_NtClose(Handle);	
+			Old_NtClose(Handle);
 			ret = STATUS_SUCCESS;
 		}
-		__except
+		__except(EXCEPTION_EXECUTE_HANDLER)
 		{
 			ret = STATUS_SUCCESS;
 		}
+	}
 	else
-	ret = Old_NtClose(Handle);
+	    ret = Old_NtClose(Handle);
 	LOQ_ntstatus("system", "p", "Handle", Handle);
 	if(NT_SUCCESS(ret)) {
 		remove_file_from_log_tracking(Handle);
@@ -812,12 +821,24 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
 	LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
 	//https://anti-debug.checkpoint.com/techniques/debug-flags.html#using-win32-api-checkremotedebuggerpresent
-	if (!g_config.no_stealth && ProcessInformationClass == PROCESSINFOCLASS.ProcessDebugPort)
-		*ProcessInformation = 0;
-	else if (!g_config.no_stealth && ProcessInformationClass == PROCESSINFOCLASS.ProcessDebugFlags)
-		*ProcessInformation = 1;
-	else if (!g_config.no_stealth && ProcessInformationClass == PROCESSINFOCLASS.ProcessDebugObjectHandle)
-		*ProcessInformation = 0;
+	if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugPort)
+	{
+		HANDLE value =0;
+		void* voidPtr = &value;
+		ProcessInformation = (HANDLE*)voidPtr;
+	}
+	else if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugFlags)
+	{
+		ULONG value = 1;
+		void* voidPtr = &value;
+		ProcessInformation = (ULONG*)voidPtr;
+	}
+	else if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugObjectHandle)
+	{
+		HANDLE value = 0;
+		void* voidPtr = &value;
+		ProcessInformation = (HANDLE*)voidPtr;
+	}
 	return ret;
 }
 
@@ -855,9 +876,11 @@ normal_call:
 			perf_info->HighPart |= 2;
 		}
 		//https://anti-debug.checkpoint.com/techniques/debug-flags.html#using-win32-api-checkremotedebuggerpresent
-		if (!g_config.no_stealth && SystemInformationClass == SYSTEM_INFORMATION_CLASS.SystemKernelDebuggerInformation)
-			SYSTEM_KERNEL_DEBUGGER_INFORMATION perf_info = (SYSTEM_KERNEL_DEBUGGER_INFORMATION)SystemInformation;
-			perf_info->DebuggerNotPresent = 1; 
+		if (!g_config.no_stealth && SystemInformationClass == SystemKernelDebuggerInformation)
+		{
+			PSYSTEM_KERNEL_DEBUGGER_INFORMATION perf_info = (PSYSTEM_KERNEL_DEBUGGER_INFORMATION)SystemInformation;
+			perf_info->DebuggerNotPresent = 1;
+		}
 		return ret;
 	}
 
@@ -2019,15 +2042,14 @@ HOOKDEF(NTSTATUS, WINAPI, GenerateConsoleCtrlEvent,
 ){
 	//https://anti-debug.checkpoint.com/techniques/interactive.html
 	//Assuming the ProcessGroupID is the pid in this case make sense because it would be a case where it's targeted specifically ?
+	NTSTATUS ret = Old_GenerateConsoleCtrlEvent(dwCtrlEvent,dwProcessGroupId);
+	LOQ_ntstatus("misc", "ll", "CtrlEvent", dwCtrlEvent, "ProcessGroupID", dwProcessGroupId);
 	if (!g_config.no_stealth && g_config.debugger && is_protected_pid(dwProcessGroupId)) {
 		ret = TRUE;
 	}
-	NTSTATUS ret = Old_GenerateConsoleCtrlEvent(dwCtrlEvent,dwProcessGroupId);
-	LOQ_ntstatus("misc", "ll", "CtrlEvent", dwCtrlEvent, "ProcessGroupID", dwProcessGroupId);
 	return ret;
 }
 
-//Does this solve more problems than it create ?
 //https://anti-debug.checkpoint.com/techniques/interactive.html
 HOOKDEF(BOOL, WINAPI, BlockInput,
 	_In_ BOOL fBlockIt
@@ -2054,11 +2076,14 @@ HOOKDEF(BOOL, WINAPI, BlockInput,
 			index = length;
 		}
 		if (!CurrentState && fBlockIt)
+		{
 			BlockInputInstances[index].CurrentlyBlockedInput = TRUE;
 			ret = TRUE;
+		}
 		else if (CurrentState && fBlockIt)
 			ret = FALSE;
-		else if(CurrentState && !fBlockIt){
+		else if(CurrentState && !fBlockIt)
+		{
 			BlockInputInstances[index].CurrentlyBlockedInput = FALSE;
 			ret = TRUE;
 		}

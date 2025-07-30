@@ -401,7 +401,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 		Context->Dr0 = 0;
 		Context->Dr1 = 0;
 		Context->Dr2 = 0;
-		Context->Dr3 = 0
+		Context->Dr3 = 0;
 	}
 	LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
 
@@ -842,7 +842,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
 	LOQ_void("threading", "");
 	ret = Old_NtYieldExecution();
 	//https://anti-debug.checkpoint.com/techniques/misc.html
-	if (!g_config.no_stealth && rand() % 2 == 1):
+	if (!g_config.no_stealth && rand() % 2 == 1)
 		ret =  -1;
 	return ret;
 }

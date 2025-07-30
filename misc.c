@@ -37,7 +37,7 @@ static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _NtQueryInformationThread pNtQueryInformationThread;
 static _RtlGenRandom pRtlGenRandom;
 static _NtQueryAttributesFile pNtQueryAttributesFile;
-static _NtQueryObject pNtQueryObject;
+_NtQueryObject pNtQueryObject;
 static _NtQueryKey pNtQueryKey;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
