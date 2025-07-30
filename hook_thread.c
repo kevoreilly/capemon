@@ -396,7 +396,13 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 
 	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
-
+	//https://anti-debug.checkpoint.com/techniques/process-memory.html
+	if (!g_config.no_stealth && g_config.debugger) {
+		Context->Dr0 = 0;
+		Context->Dr1 = 0;
+		Context->Dr2 = 0;
+		Context->Dr3 = 0
+	}
 	LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
 
 	return ret;
@@ -835,6 +841,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
 	NTSTATUS ret = 0;
 	LOQ_void("threading", "");
 	ret = Old_NtYieldExecution();
+	//https://anti-debug.checkpoint.com/techniques/misc.html
+	if (!g_config.no_stealth && rand() % 2 == 1):
+		ret =  -1;
 	return ret;
 }
 

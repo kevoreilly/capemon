@@ -453,6 +453,11 @@ HOOKDEF(BOOL, WINAPI, EnumWindows,
 ) {
 
 	BOOL ret = Old_EnumWindows(lpEnumFunc, lParam);
+	if (sizeof(*lpEnumFunc)>5*sizeof(void *))
+	{
+		LOQ_bool("windows","p", "lpEnumFunc", lpEnumFunc);
+	}
+	else
 	LOQ_bool("windows", "");
 	return ret;
 }
