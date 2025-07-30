@@ -460,6 +460,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 		DumpSectionViewsForHandle(Handle);
 		file_close(Handle);
 	}
+	free Buff;
 	return ret;
 }
 
