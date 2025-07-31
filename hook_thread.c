@@ -397,11 +397,9 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 
 	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
 	//https://anti-debug.checkpoint.com/techniques/process-memory.html
-	if (!g_config.no_stealth && g_config.debugger) {
-		Context->Dr0 = 0;
-		Context->Dr1 = 0;
-		Context->Dr2 = 0;
-		Context->Dr3 = 0;
+	if (!g_config.no_stealth) {
+		// This needs to be __declspec(noinline) to prevent inlining
+		GetThreadContextHandler(ThreadHandle, Context);
 	}
 	LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
 
