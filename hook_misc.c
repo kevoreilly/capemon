@@ -36,7 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern char *our_process_name;
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern const char* GetLanguageName(LANGID langID);
-extern NTSTATUS pNtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass, PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength);
+//extern NTSTATUS pNtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass, PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength);
 
 extern BOOL TraceRunning;
 
@@ -45,11 +45,6 @@ extern BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 BOOL PlugXConfigDumped, CompressedPE;
 DWORD ExportAddress;
-struct BlockInputThreadInstance {
-	BOOL CurrentlyBlockedInput;
-	DWORD BlockInputThreadID;
-};
-static struct BlockInputThreadInstance BlockInputInstances[256]; //Should be enough for most situations
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	__in  int idHook,
@@ -431,36 +426,36 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 		return ret;
 	}
 	//https://anti-debug.checkpoint.com/techniques/object-handles.html
-	ULONG Size = 0;
-	ULONG Size2 = 0;
-	NTSTATUS Status = pNtQueryObject(Handle, 0, &Size, sizeof(Size), &Size);
-	void* Buff = (void*)calloc(1, Size);
-	BOOLEAN valid_handle;
-	if (!Buff) 
-		valid_handle = NT_SUCCESS(pNtQueryObject(Handle, 0, Buff, Size, &Size2));
-	else
-		valid_handle = FALSE;
-	if (!g_config.no_stealth && valid_handle)
-	{
-		__try
-		{
-			Old_NtClose(Handle);
-			ret = STATUS_SUCCESS;
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER)
-		{
-			ret = STATUS_SUCCESS;
-		}
-	}
-	else
-	    ret = Old_NtClose(Handle);
+	//ULONG Size = 0;
+	//ULONG Size2 = 0;
+	//NTSTATUS Status = pNtQueryObject(Handle, 0, &Size, sizeof(Size), &Size);
+	//void* Buff = (void*)calloc(1, Size);
+	//BOOLEAN valid_handle;
+	//if (!Buff) 
+	//	valid_handle = NT_SUCCESS(pNtQueryObject(Handle, 0, Buff, Size, &Size2));
+	//else
+	//	valid_handle = FALSE;
+	//if (!g_config.no_stealth && valid_handle)
+	//{
+	//	__try
+	//	{
+	//		Old_NtClose(Handle);
+	//		ret = STATUS_SUCCESS;
+	//	}
+	//	__except(EXCEPTION_EXECUTE_HANDLER)
+	//	{
+	//		ret = STATUS_SUCCESS;
+	//	}
+	//}
+	//else
+	ret = Old_NtClose(Handle);
 	LOQ_ntstatus("system", "p", "Handle", Handle);
 	if(NT_SUCCESS(ret)) {
 		remove_file_from_log_tracking(Handle);
 		DumpSectionViewsForHandle(Handle);
 		file_close(Handle);
 	}
-	free(Buff);
+	//free(Buff);
 	return ret;
 }
 
@@ -826,22 +821,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 ) {
 	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
 	LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
-	//https://anti-debug.checkpoint.com/techniques/debug-flags.html#using-win32-api-checkremotedebuggerpresent
-	if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugPort)
-	{
-		if (ProcessInformationLength >= sizeof(HANDLE))
-   			*(HANDLE*)ProcessInformation = 0;
-	}
-	else if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugFlags)
-	{
-		if (ProcessInformationLength >= sizeof(ULONG))
-   			*(ULONG*)ProcessInformation = 1;
-	}
-	else if (!g_config.no_stealth && ProcessInformationClass == ProcessDebugObjectHandle)
-	{
-		if (ProcessInformationLength >= sizeof(HANDLE))
-   			*(HANDLE*)ProcessInformation = 0;
-	}
 	return ret;
 }
 
@@ -877,12 +856,6 @@ normal_call:
 			NT_SUCCESS(ret) && SystemInformationLength >= sizeof(LARGE_INTEGER)) {
 			PLARGE_INTEGER perf_info = (PLARGE_INTEGER)SystemInformation;
 			perf_info->HighPart |= 2;
-		}
-		//https://anti-debug.checkpoint.com/techniques/debug-flags.html#using-win32-api-checkremotedebuggerpresent
-		if (!g_config.no_stealth && SystemInformationClass == SystemKernelDebuggerInformation)
-		{
-			PSYSTEM_KERNEL_DEBUGGER_INFORMATION perf_info = (PSYSTEM_KERNEL_DEBUGGER_INFORMATION)SystemInformation;
-			perf_info->DebuggerNotPresent = 1;
 		}
 		return ret;
 	}
@@ -2013,88 +1986,3 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
     return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
 }
 
-HOOKDEF(BOOL, WINAPI, NtDebugActiveProcess,
-	_In_ HANDLE ProcessHandle,
-	_In_ HANDLE DebugObjectHandle
-){
-	DWORD pid = pid_from_process_handle(ProcessHandle);
-	DWORD debug_pid = pid_from_process_handle(DebugObjectHandle);
-	BOOL ret = Old_NtDebugActiveProcess(ProcessHandle, DebugObjectHandle);
-	LOQ_bool("misc", "ll", "ProcessID", pid, "DebugObject", debug_pid);
-	//https://anti-debug.checkpoint.com/techniques/interactive.html
-	if (!g_config.no_stealth && is_protected_pid(pid) && g_config.debugger)
-		ret = TRUE;
-	return ret;
-}
-
-HOOKDEF(NTSTATUS, WINAPI, DbgUiDebugActiveProcess,
-	_In_ HANDLE ProcessHandle
-){
-	DWORD pid = pid_from_process_handle(ProcessHandle);
-	NTSTATUS ret = Old_DbgUiDebugActiveProcess(ProcessHandle);
-	LOQ_ntstatus("misc", "l", "ProcessID", pid);
-	//https://anti-debug.checkpoint.com/techniques/interactive.html
-	if (!g_config.no_stealth && is_protected_pid(pid) && g_config.debugger)
-		return TRUE;
-	return ret;
-}
-
-HOOKDEF(NTSTATUS, WINAPI, GenerateConsoleCtrlEvent,
-	_In_ DWORD dwCtrlEvent,
-	_In_ DWORD dwProcessGroupId
-){
-	//https://anti-debug.checkpoint.com/techniques/interactive.html
-	//Assuming the ProcessGroupID is the pid in this case make sense because it would be a case where it's targeted specifically ?
-	NTSTATUS ret = Old_GenerateConsoleCtrlEvent(dwCtrlEvent,dwProcessGroupId);
-	LOQ_ntstatus("misc", "ll", "CtrlEvent", dwCtrlEvent, "ProcessGroupID", dwProcessGroupId);
-	if (!g_config.no_stealth && g_config.debugger && is_protected_pid(dwProcessGroupId)) {
-		ret = TRUE;
-	}
-	return ret;
-}
-
-//https://anti-debug.checkpoint.com/techniques/interactive.html
-HOOKDEF(BOOL, WINAPI, BlockInput,
-	_In_ BOOL fBlockIt
-){
-	BOOL ret;
-	if(!g_config.no_stealth)
-	{
-		
-		int length = sizeof(BlockInputInstances) / sizeof(struct BlockInputThreadInstance);
-		DWORD ThreadId = GetCurrentThreadId();
-		BOOL found = FALSE;
-		int index = 0;
-		BOOL CurrentState = FALSE;
-		//Don't run the real deal since it's an effective way to block a debugger and a way to detect hooking.
-		for(int i=0;i<length;i++){
-			if (BlockInputInstances[i].BlockInputThreadID == ThreadId){
-				index = i;
-				CurrentState = BlockInputInstances[i].CurrentlyBlockedInput;
-				found = TRUE;
-			}
-		}
-		if (!found) {
-			BlockInputInstances[length-1].BlockInputThreadID = ThreadId; 
-			index = length-1;
-		}
-		if (!CurrentState && fBlockIt)
-		{
-			BlockInputInstances[index].CurrentlyBlockedInput = TRUE;
-			ret = TRUE;
-		}
-		else if (CurrentState && fBlockIt)
-			ret = FALSE;
-		else if(CurrentState && !fBlockIt)
-		{
-			BlockInputInstances[index].CurrentlyBlockedInput = FALSE;
-			ret = TRUE;
-		}
-		else
-			ret = TRUE;
-	}
-	else
-		ret = Old_BlockInput(fBlockIt);
-	LOQ_bool("misc", "i", "fBlockIt", fBlockIt); 
-	return ret;
-}

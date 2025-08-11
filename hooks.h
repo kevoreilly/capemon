@@ -3737,22 +3737,4 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  BOOLEAN HandleBreakpoint
 );
 
-HOOKDEF(BOOL, WINAPI, NtDebugActiveProcess,
-	_In_ HANDLE ProcessHandle,
-	_In_ HANDLE DebugObjectHandle
-);
-
-HOOKDEF(NTSTATUS, WINAPI, DbgUiDebugActiveProcess,
-	_In_ HANDLE ProcessHandle	
-);
-
-HOOKDEF(NTSTATUS, WINAPI, GenerateConsoleCtrlEvent,
-	_In_ DWORD dwCtrlEvent,
-	_In_ DWORD dwProcessGroupId
-);
-
-HOOKDEF(BOOL, WINAPI, BlockInput,
-	_In_ BOOL fBlockIt
-);
-
 #include "hook_vbscript.h"

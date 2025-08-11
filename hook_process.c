@@ -526,10 +526,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenProcess,
 		LOQ_ntstatus("process", "Phis", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid, "ProcessName", ProcessName);
 	else
 		LOQ_ntstatus("process", "Phi", "ProcessHandle", ProcessHandle, "DesiredAccess", DesiredAccess, "ProcessIdentifier", pid);
-	//https://anti-debug.checkpoint.com/techniques/object-handles.html
-	if(!ProcessName)
-		if (!g_config.no_stealth && strcmp(ProcessName, "csrss.exe") == 0)
-			return NULL;
 
 	return ret;
 }

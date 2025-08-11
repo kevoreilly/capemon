@@ -271,11 +271,6 @@ typedef struct _SYSTEM_PROCESS_INFORMATION {
     SYSTEM_THREAD           Threads[0];
 } SYSTEM_PROCESS_INFORMATION, *PSYSTEM_PROCESS_INFORMATION;
 
-typedef struct _SYSTEM_KERNEL_DEBUGGER_INFORMATION {
-	BOOLEAN DebuggerEnabled;
-	BOOLEAN DebuggerNotPresent;
-} SYSTEM_KERNEL_DEBUGGER_INFORMATION, *PSYSTEM_KERNEL_DEBUGGER_INFORMATION;
-
 typedef struct _SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION {
 	LARGE_INTEGER IdleTime;
 	LARGE_INTEGER KernelTime;
@@ -317,8 +312,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS {
 	SystemVdmBopInformation,
 	SystemFileCacheInformation,
 	SystemInterruptInformation = 23,
-	SystemExceptionInformation = 33,
-	SystemKernelDebuggerInformation = 35
+	SystemExceptionInformation = 33
 } SYSTEM_INFORMATION_CLASS, *PSYSTEM_INFORMATION_CLASS;
 
 typedef struct _SYSTEM_BASIC_INFORMATION {

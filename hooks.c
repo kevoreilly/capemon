@@ -417,10 +417,6 @@ hook_t full_hooks[] = {
 	HOOK(oleaut32, VarBstrCat),
 	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
 	HOOK_NOTAIL(inseng,DownloadFile,3),
-	HOOK(ntdll, DbgUiDebugActiveProcess),
-	HOOK(ntdll, NtDebugActiveProcess),
-	HOOK(Kernel32, GenerateConsoleCtrlEvent),
-	HOOK(User32, BlockInput),
 #ifndef _WIN64
 	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
 	HOOK(ntdll, NtQueryLicenseValue),
@@ -1337,10 +1333,6 @@ hook_t office_hooks[] = {
 	HOOK(oleaut32, VarBstrCat),
 	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
 	HOOK_NOTAIL(inseng,DownloadFile,3),
-	HOOK(ntdll, DbgUiDebugActiveProcess),
-	HOOK(ntdll, NtDebugActiveProcess),
-	HOOK(Kernel32, GenerateConsoleCtrlEvent),
-	HOOK(User32, BlockInput),
 #ifndef _WIN64
 	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
 	HOOK(ntdll, NtQueryLicenseValue),
