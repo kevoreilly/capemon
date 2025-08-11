@@ -107,36 +107,28 @@ HANDLE GetThreadHandle(DWORD ThreadId)
 BOOL PatchByte(LPVOID Address, BYTE Byte)
 //**************************************************************************************
 {
-	if (!Address || !HexBytes || !IsAddressAccessible(Address))
+	DWORD OldProtect;
+
+	if (!Address || !IsAddressAccessible(Address))
+		return FALSE;
+
+	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
-        DebugOutput("PatchBytes: Invalid address or hex string");
-        return FALSE;
+        	DebugOutput("PatchByte: Unable to change memory protection at 0x%p", Address);
+        	return FALSE;
     }
 
-	SIZE_T HexLen = strlen(HexBytes);
-    if (HexLen == 0 || HexLen % 2 != 0)
-	{
-        DebugOutput("PatchBytes: Invalid hex string length %d", HexLen);
-        return FALSE;
-    }
+#ifdef DEBUG_COMMENTS
+	DebugOutput("PatchByte: Changed memory protection at 0x%p", Address);
+#endif
 
-	SIZE_T ByteCount = HexLen / 2;
-    DWORD OldProtect;
-    if (!VirtualProtect(Address, ByteCount, PAGE_EXECUTE_READWRITE, &OldProtect))
-		DebugOutput("PatchBytes: Failed to change memory protection at 0x%p", Address);
-        return FALSE;
-    }
+	*(PBYTE)Address = Byte;
 
-	PBYTE Dest = (PBYTE)Address;
-    for (SIZE_T i = 0; i < HexLen; i += 2)
-	{
-        char HexByte[3] = { HexBytes[i], HexBytes[i + 1], '\0' };
-        BYTE Byte = (BYTE)strtoul(HexByte, NULL, 16);
-        *Dest++ = Byte;
-    }
+#ifdef DEBUG_COMMENTS
+	DebugOutput("PatchByte: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+#endif
+	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
-	VirtualProtect(Address, ByteCount, OldProtect, &OldProtect);
-	DebugOutput("PatchBytes: Patched %zu bytes at 0x%p: %s", ByteCount, Address, HexBytes);
 	return TRUE;
 }
 

@@ -387,7 +387,7 @@ void parse_config_line(char* line)
 				char *p2 = p+1;
 				unsigned int byte = strtoul(value, NULL, 0);
 				int delta=0;
-				p = strchr(value, '+');
+				p = strchr(p2, '+');
 				if (p) {
 					delta = strtoul(p+1, NULL, 0);
 					DebugOutput("Config: Delta 0x%x.\n", delta);

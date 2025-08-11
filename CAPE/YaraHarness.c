@@ -176,7 +176,6 @@ BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 		c = *p;
 		*p = 0;
 	}
-
 	memset(NewLine, 0, sizeof(NewLine));
 	sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
 	if (r)
@@ -237,6 +236,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 								}
 								else if (!strchr(OptionLine, '$') && _strnicmp(OptionLine, "bp", 2) || strncmp(OptionLine, "br", 2))
 									SetBreakpoints = TRUE;
+									
 							}
 						}
 

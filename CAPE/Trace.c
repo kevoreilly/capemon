@@ -2021,7 +2021,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 #endif
 		SkipInstruction(ExceptionInfo->ContextRecord);
 		if (lookup_get(&SoftBPs, (ULONG_PTR)CIP, 0))
-			PatchByte(CIP, "0xCC");
+			PatchByte(CIP, 0xCC);
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
 	{
