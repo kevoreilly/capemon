@@ -114,8 +114,8 @@ BOOL PatchByte(LPVOID Address, BYTE Byte)
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
-        	DebugOutput("PatchByte: Unable to change memory protection at 0x%p", Address);
-        	return FALSE;
+        DebugOutput("PatchByte: Unable to change memory protection at 0x%p", Address);
+        return FALSE;
     }
 
 #ifdef DEBUG_COMMENTS
