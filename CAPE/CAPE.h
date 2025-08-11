@@ -77,7 +77,6 @@ int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
 BOOL DumpRange(PVOID Address, SIZE_T Size);
 BOOL DumpStackRegion(void);
-void DumpStrings(void);
 
 BOOL ProcessDumped;
 unsigned int DumpCount, DotNetCacheDumpCount;
