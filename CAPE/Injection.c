@@ -46,6 +46,8 @@ extern char *our_process_name;
 extern void hook_disable();
 extern void hook_enable();
 
+void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+
 //**************************************************************************************
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId)
 //**************************************************************************************
@@ -516,7 +518,6 @@ void DumpSectionViewsForHandle(HANDLE SectionHandle)
 
 __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context)
 {
-	DebugOutput("GetThreadContextHandler");
 	DWORD Pid = pid_from_thread_handle(ThreadHandle);
 
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
@@ -550,7 +551,8 @@ __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *
 	DWORD Pid = pid_from_thread_handle(ThreadHandle);
 	DWORD Tid = tid_from_thread_handle(ThreadHandle);
 
-	DebugOutput("SetThreadContextHandler: Pid %d", GetCurrentProcessId());
+	if (Pid != GetCurrentProcessId())
+		ProcessMessage(Pid, 0);
 
 	if (g_config.debugger && Pid == GetCurrentProcessId())
 	{

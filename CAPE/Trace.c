@@ -1631,6 +1631,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		DumpAddress = 0;
 		DumpSize = 0;
 	}
+	else if (!stricmp(Action, "DumpStrings"))
+	{
+		DumpStrings();
+	}
 	else if (!stricmp(Action, "Step2OEP"))
 	{
 		SetSingleStepMode(ExceptionInfo->ContextRecord, ProcessOEP);
@@ -2021,7 +2025,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 #endif
 		SkipInstruction(ExceptionInfo->ContextRecord);
 		if (lookup_get(&SoftBPs, (ULONG_PTR)CIP, 0))
-			PatchByte(CIP, 0xCC);
+			PatchBytes(CIP, "CC");
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
 	{

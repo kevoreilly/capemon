@@ -114,21 +114,25 @@ void ScannerError(int Error)
 	}
 }
 
-BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
+void ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match, void* user_data)
 {
 	char *Value, *Key, *p, *q, *r, c = 0;
-	unsigned int ValueLength;
-	int delta=0;
+	ULONG_PTR delta=0;
+	SIZE_T ValueLength = 0;
+
 	if (!Line || !Identifier)
-		return FALSE;
+		return;
+
 	p = strchr(Line, '$');
 	if (!p)
-		return FALSE;
+		return;
+
 	p = strchr(Line, '=');
 	if (!p)
-		return FALSE;
+		return;
+
 	r = strchr(p, ':');
-	if (r)
+	if (r && *(r + 1) == '$')
 		Value = r + 1;
 	else
 		Value = p + 1;
@@ -151,12 +155,12 @@ BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 	}
 	if (q)
 	{
-		ValueLength = (unsigned int)(DWORD_PTR)(q-(DWORD_PTR)Value);
+		ValueLength = (SIZE_T)(DWORD_PTR)(q-(DWORD_PTR)Value);
 		if (*(q-1) == '*')
 			ValueLength--;
 	}
 	else
-		ValueLength = (unsigned int)strlen(Value);
+		ValueLength = (SIZE_T)strlen(Value);
 
 	if (*(Value+ValueLength-1) == '*')
 	{
@@ -164,28 +168,44 @@ BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 		delta += Match->match_length - 1;
 	}
 
-	if (strncmp(Value, Identifier, ValueLength))
-		return FALSE;
+	SIZE_T IdentifierLength = strlen(Identifier);
+	if (strncmp(Value, Identifier, IdentifierLength < ValueLength ? IdentifierLength : ValueLength))
+		return;
 
 	Key = Line;
-	if (r) {
+	if (r && *(r + 1) == '$')
+	{
 		c = *r;
 		*r = 0;
 	}
-	else {
+	else
+	{
 		c = *p;
 		*p = 0;
 	}
+
+	if (_strnicmp(Line, "bp", 2) && strncmp(Line, "br", 2))
+		delta += (ULONG_PTR)user_data;
+
 	memset(NewLine, 0, sizeof(NewLine));
-	sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
 	if (r)
+		sprintf(NewLine, "%s%c0x%p%s\0", Key, c, (PUCHAR)Match->offset+delta, r);
+	else
+		sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
+
+	if (r && *(r + 1) == '$')
 		*r = c;
 	else
 		*p = c;
-	p = strchr(NewLine, '$');
-	if (p)
-		return FALSE;
-	return TRUE;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ParseOptionLine: %s", NewLine);
+#endif
+
+	if (!strchr(NewLine, '$'))
+		parse_config_line(NewLine);
+
+	return;
 }
 
 int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
@@ -219,26 +239,23 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						char *p = strchr(OptionLine, ',');
 						if (p)
 							*p = 0;
-						yr_rule_strings_foreach(Rule, String)
+						if (!strchr(OptionLine, '$'))
+							parse_config_line(OptionLine);
+						else
 						{
-							yr_string_matches_foreach(context, String, Match)
+							yr_rule_strings_foreach(Rule, String)
 							{
-#ifdef DEBUG_COMMENTS
-								DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
-#endif
-								if (ParseOptionLine(OptionLine, (char*)String->identifier, Match))
+								yr_string_matches_foreach(context, String, Match)
 								{
 #ifdef DEBUG_COMMENTS
-									DebugOutput("YaraScan: NewLine %s", NewLine);
+									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
 #endif
-									parse_config_line(NewLine);
-									SetBreakpoints = TRUE;
+									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
 								}
-								else if (!strchr(OptionLine, '$') && _strnicmp(OptionLine, "bp", 2) || strncmp(OptionLine, "br", 2))
-									SetBreakpoints = TRUE;		
 							}
 						}
-
+						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2))
+							SetBreakpoints = TRUE;
 						if (!_stricmp("dump", OptionLine))
 							DoDumpRegion = TRUE;
 						if (!_stricmp("clear", OptionLine))
@@ -257,8 +274,6 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							memset(Action2, 0, MAX_PATH);
 							memset(Action3, 0, MAX_PATH);
 						}
-						if (!strchr(OptionLine, '$'))
-							parse_config_line(OptionLine);
 						if (p)
 						{
 							*p = ',';
