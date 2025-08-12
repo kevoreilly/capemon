@@ -472,6 +472,7 @@
     <ClInclude Include="misc.h" />
     <ClInclude Include="ntapi.h" />
     <ClInclude Include="pipe.h" />
+    <ClInclude Include="undoc_defs.h" />
     <ClInclude Include="unhook.h" />
     <ClInclude Include="utf8.h" />
   </ItemGroup>
