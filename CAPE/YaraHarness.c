@@ -68,6 +68,7 @@ char InternalYara[] =
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule WMI_GetObjectAsync"
 	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule vDbgPrintExWithPrefixInternal"
 #ifdef _WIN64
 	"{strings:$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
