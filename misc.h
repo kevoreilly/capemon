@@ -126,6 +126,20 @@ typedef SIZE_T (WINAPI *_RtlCompareMemory)(
     _In_ SIZE_T Length
 );
 
+typedef enum {
+	MemoryBasicInformation = 0,
+	MemorySectionName = 2,
+} MEMORY_INFORMATION_CLASS;
+
+typedef NTSTATUS(WINAPI* _NtQueryVirtualMemory)(
+	_In_		HANDLE						ProcessHandle,
+	_In_		PVOID						BaseAddress,
+	_In_		MEMORY_INFORMATION_CLASS	MemoryInformationClass,
+	_Out_		PVOID						Buffer,
+	_In_		SIZE_T						Length,
+	_Out_opt_	PSIZE_T						ResultLength
+);
+
 _NtSetInformationProcess pNtSetInformationProcess;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
@@ -269,3 +283,4 @@ struct envstruct {
 };
 
 const char* GetLanguageName(LANGID langID);
+BOOLEAN our_isbadreadptr(const void* addr, ULONG len);

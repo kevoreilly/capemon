@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\YaraHarness.h"
 #include <psapi.h>
+#include "undoc_defs.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
@@ -201,6 +202,16 @@ HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
 		LOQ_bool("system", "ppi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
 
 	return ret;
+}
+
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct	cmdnode	*cmdnode
+) {
+	int ret = 0;
+	if (!our_isbadreadptr(cmdnode, sizeof(cmdnode)) && cmdnode->cmdline != NULL) {
+		LOQ_zero("system", "uui", "Command", cmdnode->cmdline, "Arguments", cmdnode->argptr, "ArgType", cmdnode->type);
+	}
+	return Old_FindFixAndRun(cmdnode);
 }
 
 void end_transparent_hooks(){transparency_dummy--;}

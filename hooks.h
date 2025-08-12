@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include <tlhelp32.h>
 #include <ncrypt.h>
+#include "undoc_defs.h"
 
 //
 // File Hooks
@@ -3735,6 +3736,10 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  PCHAR Format,
 	__in  va_list arglist,
 	__in  BOOLEAN HandleBreakpoint
+);
+
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct	cmdnode	*cmdnode
 );
 
 #include "hook_vbscript.h"

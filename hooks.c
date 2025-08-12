@@ -56,6 +56,9 @@ void disable_tail_call_optimization(void)
 #define HOOK_FUNCRVA(library, funcname, timestamp, rva) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
+#define HOOK_EXERVA(funcname, addr) {NULL, NULL, (void *) addr, NULL, \
+    &New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
+
 hook_t full_hooks[] = {
 
 	// Process Hooks
@@ -1620,6 +1623,26 @@ hook_t test_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtContinue),
 };
 
+// .exe RVA hooks
+#ifdef _WIN64
+// cmd.exe (Win10x64: LTSC, 21H2)
+static hook_t g_exe_cmd_win10_x64_hooks[] = {
+	HOOK_EXERVA(FindFixAndRun, 0xc620),
+};
+#define TARGET_EXE_PATH_CMD_WIN10_x64 L"C:\\Windows\\System32\\cmd.exe"
+#define TARGET_EXE_PATH_CMD_WIN10_x64_ALT L"C:\\Windows\\Systemnative\\cmd.exe"
+#define TARGET_EXE_CODE_CMD_WIN10_x64 "\x48\x89\x5C\x24\x10\x48\x89\x74\x24\x18"
+
+#else
+// cmd.exe (Win10x64: LTSC, 21H2)
+static hook_t g_exe_cmd_win10_x86_hooks[] = {
+	HOOK_EXERVA(FindFixAndRun, 0xad60),
+};
+#define TARGET_EXE_PATH_CMD_WIN10_x86  L"C:\\Windows\\SysWOW64\\cmd.exe"
+#define TARGET_EXE_CODE_CMD_WIN10_x86  "\x8B\xFF\x55\x8B\xEC\x6A\xFE\x68\xF0\xC9"
+#endif
+
+
 BOOL inside_hook(LPVOID Address)
 {
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
@@ -1684,6 +1707,71 @@ void revalidate_all_hooks(void)
 			invalidate_regions_for_hook(hooks+i);
 		}
 	}
+}
+
+BOOLEAN try_to_set_exe_hooks(
+	unsigned long long	ullExeBase,
+	UNICODE_STRING* pusFullPath,
+	const char* szExeName,
+	const wchar_t* wszExeTargetPath,
+	const wchar_t* wszAltExeTargetPath,
+	const unsigned char* pExeTargetCode,
+	hook_t* exe_hooks,
+	unsigned int		num_hooks,
+	unsigned			hook_type
+) {
+	BOOLEAN found_exe = FALSE;
+	if (!wcsicmp(wszExeTargetPath, pusFullPath->Buffer) || (wszAltExeTargetPath && !wcsicmp(wszAltExeTargetPath, pusFullPath->Buffer))) {
+		unsigned char* pTestCode = ((unsigned char*)exe_hooks[0].addr) + ullExeBase;
+		if (!our_isbadreadptr(pTestCode, 0xa)) {
+			if (!memcmp(pTestCode, pExeTargetCode, 0xa)) {
+				DebugOutput("Target module path and code matches type: [%z]; shall set hooks", szExeName);
+				found_exe = TRUE;
+				DWORD old_protect;
+				VirtualProtect(exe_hooks, num_hooks * sizeof(exe_hooks[0]), PAGE_EXECUTE_READWRITE, &old_protect);
+				for (unsigned int i = 0; i < num_hooks; i++) {
+					hook_t* hook = &exe_hooks[i];
+					// Hook addr is relative, so adjust it for wherever we got loaded
+					hook->addr = (void*)((unsigned char*)(hook->addr) + ullExeBase);
+					int ret2 = hook_api(hook, hook_type);
+					if (ret2 == -1)
+						DebugOutput("Warning: Unable to hook 0x%x", hook->addr);
+				}
+			}
+		}
+	}
+	return found_exe;
+}
+
+#ifdef _WIN64
+BOOLEAN set_unexported_cmd_win10_x64_hooks(unsigned long long ullExeBase, UNICODE_STRING* pusFullPath)
+{
+	return try_to_set_exe_hooks(ullExeBase, pusFullPath, "cmd", TARGET_EXE_PATH_CMD_WIN10_x64, NULL, TARGET_EXE_CODE_CMD_WIN10_x64, g_exe_cmd_win10_x64_hooks, ARRAYSIZE(g_exe_cmd_win10_x64_hooks), g_config.hook_type);
+}
+#else
+BOOLEAN set_unexported_cmd_win10_x86_hooks(unsigned long long ullExeBase, UNICODE_STRING* pusFullPath)
+{
+	return try_to_set_exe_hooks(ullExeBase, pusFullPath, "cmd", TARGET_EXE_PATH_CMD_WIN10_x86, NULL, TARGET_EXE_CODE_CMD_WIN10_x86, g_exe_cmd_win10_x86_hooks, ARRAYSIZE(g_exe_cmd_win10_x86_hooks), g_config.hook_type);
+}
+#endif
+
+void set_exe_hooks(void)
+{
+	BOOLEAN found_exe = FALSE;
+	LDR_MODULE* mod; PEB* peb = (PEB*)get_peb();
+	mod = (LDR_MODULE*)peb->LoaderData->InLoadOrderModuleList.Flink;
+	unsigned long long ullExeBase = (unsigned long long)(mod->BaseAddress);
+	UNICODE_STRING usFullPath = mod->FullDllName;
+
+#ifdef _WIN64
+	if (!found_exe) {
+		found_exe = set_unexported_cmd_win10_x64_hooks(ullExeBase, &usFullPath);
+	}
+#else
+	if (!found_exe) {
+		found_exe = set_unexported_cmd_win10_x86_hooks(ullExeBase, &usFullPath);
+	}
+#endif // _WIN64
 }
 
 PVOID g_dll_notify_cookie;
@@ -1803,6 +1891,8 @@ void set_hooks()
 		else
 			Hooked++;
 	}
+
+	set_exe_hooks();
 
 	for (unsigned int i = 0; i < num_suspended_threads; i++) {
 		ResumeThread(suspended_threads[i]);
