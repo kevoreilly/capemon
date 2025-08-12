@@ -1725,7 +1725,7 @@ BOOLEAN try_to_set_exe_hooks(
 		unsigned char* pTestCode = ((unsigned char*)exe_hooks[0].addr) + ullExeBase;
 		if (!our_isbadreadptr(pTestCode, 0xa)) {
 			if (!memcmp(pTestCode, pExeTargetCode, 0xa)) {
-				DebugOutput("Target module path and code matches type: [%z]; shall set hooks", szExeName);
+				DebugOutput("Target module path and code matches type: '%s'; shall set hooks", szExeName);
 				found_exe = TRUE;
 				DWORD old_protect;
 				VirtualProtect(exe_hooks, num_hooks * sizeof(exe_hooks[0]), PAGE_EXECUTE_READWRITE, &old_protect);
@@ -1746,7 +1746,7 @@ BOOLEAN try_to_set_exe_hooks(
 #ifdef _WIN64
 BOOLEAN set_unexported_cmd_win10_x64_hooks(unsigned long long ullExeBase, UNICODE_STRING* pusFullPath)
 {
-	return try_to_set_exe_hooks(ullExeBase, pusFullPath, "cmd", TARGET_EXE_PATH_CMD_WIN10_x64, NULL, TARGET_EXE_CODE_CMD_WIN10_x64, g_exe_cmd_win10_x64_hooks, ARRAYSIZE(g_exe_cmd_win10_x64_hooks), g_config.hook_type);
+	return try_to_set_exe_hooks(ullExeBase, pusFullPath, "cmd", TARGET_EXE_PATH_CMD_WIN10_x64, TARGET_EXE_PATH_CMD_WIN10_x64_ALT, TARGET_EXE_CODE_CMD_WIN10_x64, g_exe_cmd_win10_x64_hooks, ARRAYSIZE(g_exe_cmd_win10_x64_hooks), g_config.hook_type);
 }
 #else
 BOOLEAN set_unexported_cmd_win10_x86_hooks(unsigned long long ullExeBase, UNICODE_STRING* pusFullPath)

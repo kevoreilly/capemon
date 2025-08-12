@@ -207,8 +207,9 @@ HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
 HOOKDEF(int, __fastcall, FindFixAndRun,
 	struct	cmdnode	*cmdnode
 ) {
+	// ret is unused in the hook, but set it to 0 for LOQ to have "success" as the return status
 	int ret = 0;
-	if (!our_isbadreadptr(cmdnode, sizeof(cmdnode)) && cmdnode->cmdline != NULL) {
+	if (cmdnode && !our_isbadreadptr(cmdnode, sizeof(struct cmdnode)) && cmdnode->cmdline != NULL) {
 		LOQ_zero("system", "uui", "Command", cmdnode->cmdline, "Arguments", cmdnode->argptr, "ArgType", cmdnode->type);
 	}
 	return Old_FindFixAndRun(cmdnode);

@@ -80,6 +80,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
 	*(FARPROC *)&pRtlCompareMemory = GetProcAddress(ntdllbase, "RtlCompareMemory");
+	*(FARPROC*)&pNtQueryVirtualMemory = GetProcAddress(ntdllbase, "NtQueryVirtualMemory");
 }
 
 ULONG_PTR g_our_dll_base;
