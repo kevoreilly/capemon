@@ -255,7 +255,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 								}
 							}
 						}
-						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2))
+						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
 							SetBreakpoints = TRUE;
 						if (!_stricmp("dump", OptionLine))
 							DoDumpRegion = TRUE;
