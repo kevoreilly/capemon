@@ -42,6 +42,7 @@ PVOID GetAllocationBase(PVOID Address);
 SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
 SIZE_T GetAccessibleSize(PVOID Address);
+PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName);
 PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
 BOOL IsAddressExecutable(PVOID Address);

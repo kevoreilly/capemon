@@ -1050,13 +1050,16 @@ int hook_api(hook_t *h, int type)
 					DebugOutput("hook_api: %s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
 			}
 		}
-
-		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
-			DWORD timestamp = GetTimeStamp(hmod);
-			if (timestamp == h->timestamp)
-				addr = (unsigned char *)hmod + h->rva;
-		}
 	}
+
+	if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
+		if (!hmod)
+			hmod = GetModuleHandleW(h->library);
+		DWORD timestamp = GetTimeStamp(hmod);
+		if (timestamp == h->timestamp)
+			addr = (unsigned char *)hmod + h->rva;
+	}
+
 	if (addr == NULL) {
 		// function doesn't exist in this DLL, not a critical error
 		return 0;

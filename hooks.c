@@ -19,8 +19,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "hooking.h"
 #include "hooks.h"
+#include "CAPE\CAPE.h"
 
+typedef struct
+{
+	PCHAR FunctionName;
+	PVOID Address;
+} NameByAddress;
+
+extern NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZE_T FunctionCount, SIZE_T* OutFoundCount);
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
+extern PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
@@ -56,8 +65,11 @@ void disable_tail_call_optimization(void)
 #define HOOK_FUNCRVA(library, funcname, timestamp, rva) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
-#define HOOK_EXERVA(funcname, addr) {NULL, NULL, (void *) addr, NULL, \
-    &New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
+#define HOOK_EXE(funcname) {NULL, #funcname, NULL, NULL, \
+	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
+
+#define HOOK_EXERVA(funcname, timestamp, rva) {NULL, #funcname, NULL, NULL, \
+	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
 hook_t full_hooks[] = {
 
@@ -229,7 +241,7 @@ hook_t full_hooks[] = {
 	HOOK(rstrtmgr, RmStartSession),
 
 	// Registry Hooks
-	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as 
+	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as
 	// the 'W' versions. So we have to hook all the ascii *and* unicode APIs of those functions.
 	HOOK(advapi32, RegOpenKeyExA),
 	HOOK(advapi32, RegOpenKeyExW),
@@ -428,6 +440,7 @@ hook_t full_hooks[] = {
 	HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
+	HOOK(cmd, FindFixAndRun),
 
 	// Language related hooks
 	HOOK(ntdll, NtQueryDefaultUILanguage),
@@ -1623,25 +1636,9 @@ hook_t test_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtContinue),
 };
 
-// .exe RVA hooks
-#ifdef _WIN64
-// cmd.exe (Win10x64: LTSC, 21H2)
-static hook_t g_exe_cmd_win10_x64_hooks[] = {
-	HOOK_EXERVA(FindFixAndRun, 0xc620),
+hook_t exe_hooks[] = {
+	HOOK_EXE(FindFixAndRun),
 };
-#define TARGET_EXE_PATH_CMD_WIN10_x64 L"C:\\Windows\\System32\\cmd.exe"
-#define TARGET_EXE_PATH_CMD_WIN10_x64_ALT L"C:\\Windows\\Systemnative\\cmd.exe"
-#define TARGET_EXE_CODE_CMD_WIN10_x64 "\x48\x89\x5C\x24\x10\x48\x89\x74\x24\x18"
-
-#else
-// cmd.exe (Win10x64: LTSC, 21H2)
-static hook_t g_exe_cmd_win10_x86_hooks[] = {
-	HOOK_EXERVA(FindFixAndRun, 0xad60),
-};
-#define TARGET_EXE_PATH_CMD_WIN10_x86  L"C:\\Windows\\SysWOW64\\cmd.exe"
-#define TARGET_EXE_CODE_CMD_WIN10_x86  "\x8B\xFF\x55\x8B\xEC\x6A\xFE\x68\xF0\xC9"
-#endif
-
 
 BOOL inside_hook(LPVOID Address)
 {
@@ -1666,6 +1663,52 @@ BOOL set_hooks_dll(const wchar_t *library)
 		}
 	}
 	return ret;
+}
+
+void set_hooks_exe(void)
+{
+    LDR_MODULE* mod;
+    PEB* peb = (PEB*)get_peb();
+    mod = (LDR_MODULE*)peb->LoaderData->InLoadOrderModuleList.Flink;
+    HMODULE ullExeBase = (HMODULE)(mod->BaseAddress);
+
+    int hook_count = sizeof(exe_hooks) / sizeof(exe_hooks[0]);
+    char* func_names[sizeof(exe_hooks) / sizeof(exe_hooks[0])];
+
+    for (int i = 0; i < hook_count; i++)
+        func_names[i] = (char*)exe_hooks[i].funcname;
+
+    SIZE_T found_count = 0;
+    NameByAddress* results = GetAddressesByYara(ullExeBase, func_names, hook_count, &found_count);
+
+    if (!results || found_count == 0) {
+        if (results) free(results);
+        return;
+    }
+
+    for (int i = 0; i < hook_count; i++) {
+		if (exe_hooks[i].timestamp && exe_hooks[i].rva) {
+			hook_t* hook = &exe_hooks[i];
+			if (hook_api(hook, g_config.hook_type) < 0)
+				DebugOutput("set_hooks_exe: Failed to hook %s at RVA 0x%x", hook->funcname, hook->rva);
+			else
+				DebugOutput("set_hooks_exe: Hooked %s at RVA 0x%x", hook->funcname, hook->rva);
+		}
+        else for (SIZE_T j = 0; j < found_count; j++) {
+            if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, exe_hooks[i].funcname)) {
+                hook_t* hook = &exe_hooks[i];
+                hook->addr = results[j].Address;
+
+                if (hook_api(hook, g_config.hook_type) < 0)
+                    DebugOutput("set_hooks_exe: Failed to hook %s at 0x%p", hook->funcname, hook->addr);
+                else
+                    DebugOutput("set_hooks_exe: Hooked %s at 0x%p", hook->funcname, hook->addr);
+            }
+        }
+    }
+
+    free(results);
+
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
@@ -1707,71 +1750,6 @@ void revalidate_all_hooks(void)
 			invalidate_regions_for_hook(hooks+i);
 		}
 	}
-}
-
-BOOLEAN try_to_set_exe_hooks(
-	unsigned long long	ullExeBase,
-	UNICODE_STRING* pusFullPath,
-	const char* szExeName,
-	const wchar_t* wszExeTargetPath,
-	const wchar_t* wszAltExeTargetPath,
-	const unsigned char* pExeTargetCode,
-	hook_t* exe_hooks,
-	unsigned int		num_hooks,
-	unsigned			hook_type
-) {
-	BOOLEAN found_exe = FALSE;
-	if (!wcsicmp(wszExeTargetPath, pusFullPath->Buffer) || (wszAltExeTargetPath && !wcsicmp(wszAltExeTargetPath, pusFullPath->Buffer))) {
-		unsigned char* pTestCode = ((unsigned char*)exe_hooks[0].addr) + ullExeBase;
-		if (!our_isbadreadptr(pTestCode, 0xa)) {
-			if (!memcmp(pTestCode, pExeTargetCode, 0xa)) {
-				DebugOutput("Target module path and code matches type: '%s'; shall set hooks", szExeName);
-				found_exe = TRUE;
-				DWORD old_protect;
-				VirtualProtect(exe_hooks, num_hooks * sizeof(exe_hooks[0]), PAGE_EXECUTE_READWRITE, &old_protect);
-				for (unsigned int i = 0; i < num_hooks; i++) {
-					hook_t* hook = &exe_hooks[i];
-					// Hook addr is relative, so adjust it for wherever we got loaded
-					hook->addr = (void*)((unsigned char*)(hook->addr) + ullExeBase);
-					int ret2 = hook_api(hook, hook_type);
-					if (ret2 == -1)
-						DebugOutput("Warning: Unable to hook 0x%x", hook->addr);
-				}
-			}
-		}
-	}
-	return found_exe;
-}
-
-#ifdef _WIN64
-BOOLEAN set_unexported_cmd_win10_x64_hooks(unsigned long long ullExeBase, UNICODE_STRING* pusFullPath)
-{
-	return try_to_set_exe_hooks(ullExeBase, pusFullPath, "cmd", TARGET_EXE_PATH_CMD_WIN10_x64, TARGET_EXE_PATH_CMD_WIN10_x64_ALT, TARGET_EXE_CODE_CMD_WIN10_x64, g_exe_cmd_win10_x64_hooks, ARRAYSIZE(g_exe_cmd_win10_x64_hooks), g_config.hook_type);
-}
-#else
-BOOLEAN set_unexported_cmd_win10_x86_hooks(unsigned long long ullExeBase, UNICODE_STRING* pusFullPath)
-{
-	return try_to_set_exe_hooks(ullExeBase, pusFullPath, "cmd", TARGET_EXE_PATH_CMD_WIN10_x86, NULL, TARGET_EXE_CODE_CMD_WIN10_x86, g_exe_cmd_win10_x86_hooks, ARRAYSIZE(g_exe_cmd_win10_x86_hooks), g_config.hook_type);
-}
-#endif
-
-void set_exe_hooks(void)
-{
-	BOOLEAN found_exe = FALSE;
-	LDR_MODULE* mod; PEB* peb = (PEB*)get_peb();
-	mod = (LDR_MODULE*)peb->LoaderData->InLoadOrderModuleList.Flink;
-	unsigned long long ullExeBase = (unsigned long long)(mod->BaseAddress);
-	UNICODE_STRING usFullPath = mod->FullDllName;
-
-#ifdef _WIN64
-	if (!found_exe) {
-		found_exe = set_unexported_cmd_win10_x64_hooks(ullExeBase, &usFullPath);
-	}
-#else
-	if (!found_exe) {
-		found_exe = set_unexported_cmd_win10_x86_hooks(ullExeBase, &usFullPath);
-	}
-#endif // _WIN64
 }
 
 PVOID g_dll_notify_cookie;
@@ -1892,8 +1870,6 @@ void set_hooks()
 			Hooked++;
 	}
 
-	set_exe_hooks();
-
 	for (unsigned int i = 0; i < num_suspended_threads; i++) {
 		ResumeThread(suspended_threads[i]);
 		CloseHandle(suspended_threads[i]);
@@ -1907,6 +1883,8 @@ void set_hooks()
 		register_dll_notification_manually(&New_DllLoadNotification);
 
 	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
+
+	set_hooks_exe();
 
 	hook_enable();
 }

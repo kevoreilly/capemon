@@ -23,6 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Debugger.h"
 #include "YaraHarness.h"
 #include "..\config.h"
+#include "..\alloc.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -68,13 +69,22 @@ char InternalYara[] =
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule WMI_GetObjectAsync"
 	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
-	"rule vDbgPrintExWithPrefixInternal"
-#ifdef _WIN64
-	"{strings:$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
-#else
-	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
-#endif
 	"condition:uint16(0) == 0x5a4d and any of them}"
+#ifdef _WIN64
+	"rule vDbgPrintExWithPrefixInternal"
+	"{strings:$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule FindFixAndRun"
+	"{strings:$function = {48 89 5C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC [2] 00 00 48 8B 05 [4] 48 33 C4 48 89 84 [5] 4C 8B F1 BF 04 01 00 00 8B D7}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#else
+	"rule vDbgPrintExWithPrefixInternal"
+	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule FindFixAndRun"
+	"{strings:$function = {8B FF 55 8B EC 6A FE 68 [4] 68 [4] 64 A1 00 00 00 00 50 81 EC [17] 53 56 57 50 8D 45 ?? 64 A3 00 00 00 00 8B F9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#endif
 	"rule capemon"
 	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
 	"condition:all of them}";
@@ -300,109 +310,133 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 	return CALLBACK_ERROR;
 }
 
-typedef struct
+int GetAddressesByYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
 {
-	PCHAR FunctionName;
-	PVOID Address;
-} NameByAddress;
+    switch(message)
+    {
+        case CALLBACK_MSG_RULE_NOT_MATCHING:
+#ifdef DEBUG_COMMENTS
+            DebugOutput("YaraScan rule did not match.");
+#endif
+        case CALLBACK_MSG_IMPORT_MODULE:
+            return CALLBACK_CONTINUE;
 
-int GetAddressByYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
+        case CALLBACK_MSG_RULE_MATCHING:
+            YR_MATCH* Match;
+            YR_STRING* String;
+            YR_RULE* Rule = (YR_RULE*)message_data;
+            NameByAddress* AddressInfos = (NameByAddress*)user_data;
+
+#ifdef DEBUG_COMMENTS
+            DebugOutput("GetAddressesByYaraCallback hit: %s\n", Rule->identifier);
+#endif
+
+            yr_rule_strings_foreach(Rule, String)
+            {
+                yr_string_matches_foreach(context, String, Match)
+                {
+                    for (SIZE_T i = 0; AddressInfos[i].FunctionName != NULL; i++)
+                    {
+                        if (!strcmp(Rule->identifier, AddressInfos[i].FunctionName))
+                        {
+#ifdef DEBUG_COMMENTS
+                            DebugOutput("GetAddressesByYaraCallback: Found %s at RVA 0x%x", AddressInfos[i].FunctionName, Match->offset);
+#endif
+							AddressInfos[i].Address = (PVOID)Match->offset;
+                            break;
+                        }
+                    }
+                }
+            }
+            return CALLBACK_CONTINUE;
+    }
+
+    return CALLBACK_ERROR;
+}
+
+NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZE_T FunctionCount, SIZE_T* OutFoundCount)
 {
-	switch(message)
-	{
-		case CALLBACK_MSG_RULE_NOT_MATCHING:
-#ifdef DEBUG_COMMENTS
-			DebugOutput("YaraScan rule did not match.");
-#endif
-		case CALLBACK_MSG_IMPORT_MODULE:
-			return CALLBACK_CONTINUE;
-		case CALLBACK_MSG_RULE_MATCHING:
-			YR_MATCH* Match;
-			YR_STRING* String;
-			YR_RULE* Rule = (YR_RULE*)message_data;
+    if (!YaraActivated || !FunctionNames || FunctionCount == 0)
+        return NULL;
 
-#ifdef DEBUG_COMMENTS
-			DebugOutput("GetAddressByYaraCallback hit: %s\n", Rule->identifier);
-#endif
+    SIZE_T Size = GetAccessibleSize(ModuleBase);
+    if (!Size)
+        return NULL;
 
-			yr_rule_strings_foreach(Rule, String)
-			{
-				yr_string_matches_foreach(context, String, Match)
-				{
-					NameByAddress *AddressInfo = user_data;
+    Size = (SIZE_T)ReverseScanForNonZero(ModuleBase, Size);
+    if (!Size)
+    {
+        if (YaraLogging)
+            DebugOutput("GetAddressesByYara: Nothing to scan at 0x%p!\n", ModuleBase);
+        return NULL;
+    }
 
-					if (!strcmp(Rule->identifier, AddressInfo->FunctionName))
-					{
-#ifdef DEBUG_COMMENTS
-						DebugOutput("GetAddressByYaraCallback: Function %s found at RVA 0x%x", AddressInfo->FunctionName, Match->offset);
-#endif
-						AddressInfo->Address = (PVOID)Match->offset;
-						break;
-					}
-#ifdef DEBUG_COMMENTS
-					else
-						DebugOutput("GetAddressByYaraCallback: Function %s not found", AddressInfo->FunctionName);
-#endif
-				}
-			}
-			return CALLBACK_CONTINUE;
-	}
+    NameByAddress* AddressInfos = (NameByAddress*)calloc(FunctionCount + 1, sizeof(NameByAddress));
+    if (!AddressInfos)
+        return NULL;
 
-	return CALLBACK_ERROR;
+    for (SIZE_T i = 0; i < FunctionCount; i++)
+    {
+        AddressInfos[i].FunctionName = FunctionNames[i];
+        AddressInfos[i].Address = NULL;
+    }
+
+    int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+    __try
+    {
+        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, Timeout);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        if (YaraLogging)
+            DebugOutput("GetAddressesByYara: Unable to scan 0x%p\n", ModuleBase);
+        free(AddressInfos);
+        return NULL;
+    }
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (YaraLogging)
+            ScannerError(Result);
+        free(AddressInfos);
+        return NULL;
+    }
+
+    SIZE_T FoundCount = 0;
+    for (SIZE_T i = 0; i < FunctionCount; i++)
+    {
+        if (AddressInfos[i].Address)
+        {
+            AddressInfos[i].Address = (PVOID)((ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfos[i].Address);
+            FoundCount++;
+        }
+    }
+
+    if (OutFoundCount)
+        *OutFoundCount = FoundCount;
+
+    return AddressInfos;
 }
 
 PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName)
 {
-	if (!YaraActivated)
-		return NULL;
+    if (!YaraActivated)
+        return NULL;
 
-	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+    PCHAR FunctionNames[] = {FunctionName, NULL};
+    SIZE_T FunctionCount = 1;
+    SIZE_T FoundCount = 0;
 
-	SIZE_T Size = GetAccessibleSize(ModuleBase);
+    NameByAddress* Results = GetAddressesByYara(ModuleBase, FunctionNames, FunctionCount, &FoundCount);
 
-	if (!Size)
-		return NULL;
+    PVOID FoundAddress = NULL;
+    if (Results && FoundCount > 0)
+    {
+        FoundAddress = Results[0].Address;
+        free(Results);
+    }
 
-	Size = (SIZE_T)ReverseScanForNonZero(ModuleBase, Size);
-
-	if (!Size)
-	{
-		if (YaraLogging)
-			DebugOutput("GetAddressByYara: Nothing to scan at 0x%p!\n", ModuleBase);
-		return NULL;
-	}
-
-	NameByAddress AddressInfo;
-	AddressInfo.FunctionName = FunctionName;
-	AddressInfo.Address = NULL;
-
-	__try
-	{
-		Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressByYaraCallback, &AddressInfo, Timeout);
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		if (YaraLogging)
-			DebugOutput("GetAddressByYara: Unable to scan 0x%p\n", ModuleBase);
-		return NULL;
-	}
-
-	if (Result != ERROR_SUCCESS)
-		if (YaraLogging)
-			ScannerError(Result);
-#ifdef DEBUG_COMMENTS
-	else
-		DebugOutput("GetAddressByYara: successfully scanned 0x%p\n", ModuleBase);
-#endif
-
-	if (!AddressInfo.Address)
-		return NULL;
-
-#ifdef DEBUG_COMMENTS
-	DebugOutput("GetAddressByYara: %s found at 0x%p", FunctionName, (ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
-#endif
-
-	return (PVOID)((ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
+    return FoundAddress;
 }
 
 void YaraShutdown()

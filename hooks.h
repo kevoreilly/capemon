@@ -22,7 +22,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include <tlhelp32.h>
 #include <ncrypt.h>
-#include "undoc_defs.h"
 
 //
 // File Hooks

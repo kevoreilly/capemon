@@ -452,9 +452,6 @@
     <ClInclude Include="CAPE\YaraHarness.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
-    <ClInclude Include="undoc_defs.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="CAPE\InstrHook32.asm">
