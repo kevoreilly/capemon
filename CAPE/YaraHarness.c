@@ -194,7 +194,7 @@ void ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match, void* user_d
 		*p = 0;
 	}
 
-	if (_strnicmp(Line, "bp", 2) && strncmp(Line, "br", 2))
+	if (_strnicmp(Line, "bp", 2) && strncmp(Line, "br", 2) && strncmp(Line, "sysbp", 5))
 		delta += (ULONG_PTR)user_data;
 
 	memset(NewLine, 0, sizeof(NewLine));
@@ -264,7 +264,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 								}
 							}
 						}
-						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2))
+						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
 							SetBreakpoints = TRUE;
 						if (!_stricmp("dump", OptionLine))
 							DoDumpRegion = TRUE;
