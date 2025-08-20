@@ -1961,3 +1961,21 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 
     return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
 }
+
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  PCSTR  Filename,
+	_Out_ PDWORD HeaderSum,
+	_Out_ PDWORD CheckSum
+) {
+	
+	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
+	*CheckSum = *HeaderSum;
+
+	LOQ_zero("imagehlp", "fLL",
+		"path", Filename,
+		"header_sum", (long*)HeaderSum,
+		"checksum", (long*)CheckSum
+	);
+
+	return ret;
+}
