@@ -648,6 +648,8 @@ hook_t full_hooks[] = {
 	HOOK(cryptsp, CryptGenRandom),
 	HOOK(cryptsp, CryptImportKey),
 
+	HOOK(powrprof, GetPwrCapabilities),
+
 	// VBScript hooks
 	HOOK_SPECIAL(vbscript, VbsCCur),
 	HOOK_SPECIAL(vbscript, VbsCInt),

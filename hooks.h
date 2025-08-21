@@ -3735,6 +3735,10 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  PCHAR Format,
 	__in  va_list arglist,
 	__in  BOOLEAN HandleBreakpoint
+); 
+
+HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
+	_Out_	PSYSTEM_POWER_CAPABILITIES lpspc
 );
 
 #include "hook_vbscript.h"
