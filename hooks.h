@@ -2047,7 +2047,6 @@ HOOKDEF(HRESULT, WINAPI, PStoreCreateInstance,
 	_In_  DWORD dwFlags
 );
 
-
 //
 // Network Hooks
 //
