@@ -425,6 +425,7 @@ hook_t full_hooks[] = {
 	HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
+	HOOK(powrprof, GetPwrCapabilities),
 
 	// Language related hooks
 	HOOK(ntdll, NtQueryDefaultUILanguage),
@@ -647,8 +648,6 @@ hook_t full_hooks[] = {
 	HOOK(cryptsp, CryptHashSessionKey),
 	HOOK(cryptsp, CryptGenRandom),
 	HOOK(cryptsp, CryptImportKey),
-
-	HOOK(powrprof, GetPwrCapabilities),
 
 	// VBScript hooks
 	HOOK_SPECIAL(vbscript, VbsCCur),
