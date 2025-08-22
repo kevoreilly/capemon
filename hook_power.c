@@ -12,7 +12,7 @@ HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
 	if (ret) { 
 		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
 		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
-		(*lpspc).SystemAoAc = 1;
+		(*lpspc).AoAc = 1;
 		(*lpspc).SystemS4 = 1;
 		(*lpspc).SystemS5 = 1;
 	}
