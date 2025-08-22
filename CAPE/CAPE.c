@@ -2195,13 +2195,23 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 }
 
 //**************************************************************************************
-SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader)
+SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader)
 //**************************************************************************************
 {
-	SIZE_T MinSize;
+	SIZE_T MinSize = 0;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 	__try
 	{
+		if (!IsAddressAccessible(pDosHeader))
+			return 0;
+
+		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+
+		if (!pNtHeader || !TestPERequirements(pNtHeader))
+			return 0;
+
 		PIMAGE_SECTION_HEADER NtSection;
 
 		if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))

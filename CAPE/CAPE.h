@@ -46,7 +46,7 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
 BOOL IsAddressExecutable(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
-SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
+SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader);
 double GetEntropy(PUCHAR Buffer);
 void SanitiseString(char *Dst, const char *Src, size_t Size);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
