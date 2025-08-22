@@ -2047,14 +2047,11 @@ HOOKDEF(HRESULT, WINAPI, PStoreCreateInstance,
 	_In_  DWORD dwFlags
 );
 
-HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
-	_Out_	PSYSTEM_POWER_CAPABILITIES lpspc
-);
-
 
 //
 // Network Hooks
 //
+
 HOOKDEF(DWORD, WINAPI, InternetConfirmZoneCrossingA,
 	_In_ HWND hWnd,
 	_In_ LPTSTR szUrlPrev,
@@ -3741,5 +3738,9 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  va_list arglist,
 	__in  BOOLEAN HandleBreakpoint
 ); 
+
+HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
+	_Out_	PSYSTEM_POWER_CAPABILITIES lpspc
+);
 
 #include "hook_vbscript.h"
