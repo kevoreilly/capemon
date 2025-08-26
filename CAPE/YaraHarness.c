@@ -75,14 +75,14 @@ char InternalYara[] =
 	"{strings:$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule FindFixAndRun"
-	"{strings:$function = {48 89 5C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC [2] 00 00 48 8B 05 [4] 48 33 C4 48 89 84 [5] 4C 8B F1 BF 04 01 00 00 8B D7}"
+	"{strings:$function = {48 89 5C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC [80-110] 85 C0 0F 88 [2] 00 00 49 8B 4? 70 66 83 (78|79) 02 3A 0F 84 [2] 00 00 48 8D 54 24 20 49 8B CE E8}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 #else
 	"rule vDbgPrintExWithPrefixInternal"
 	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule FindFixAndRun"
-	"{strings:$function = {8B FF 55 8B EC 6A FE 68 [4] 68 [4] 64 A1 00 00 00 00 50 81 EC [17] 53 56 57 50 8D 45 ?? 64 A3 00 00 00 00 8B F9}"
+	"{strings:$function = {8B FF 55 8B EC 6A FE 68 [4] 68 [4] 64 A1 00 00 00 00 50 81 EC [90-96] 00 0F 84 [4] B8 E7 7F 00 00 50 8D 8D [4] E8 [4] 85 C0 0F 88 [4] 8B 4? 38 66 83 7? 02 3A 0F 84}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 #endif
 	"rule capemon"
