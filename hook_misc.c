@@ -1975,7 +1975,7 @@ HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
 		lpspc->SystemS5 = 1;
 		lpspc->ThermalControl = 1;
 	}
-	LOQ_bool("device", "");
+	LOQ_bool("device", "b", "lpspc", sizeof(SYSTEM_POWER_CAPABILITIES), lpspc);
 	return ret;
 }
 
@@ -1995,11 +1995,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 		ptr->SystemS4 = 1;
 		ptr->SystemS5 = 1;
 		ptr->ThermalControl = 1;
-		LOQ_ntstatus("device", "ibb",
-			"InformationLevel", InformationLevel,
-			"InputBuffer", InputBufferLength, InputBuffer,
-			"OutputBuffer", OutputBufferLength, OutputBuffer);
 	}
-	
+	LOQ_ntstatus("device", "ibb",
+		"InformationLevel", InformationLevel,
+		"InputBuffer", InputBufferLength, InputBuffer,
+		"OutputBuffer", OutputBufferLength, OutputBuffer);
 	return ret;
 }
