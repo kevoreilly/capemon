@@ -3742,4 +3742,12 @@ HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
 	_Out_	PSYSTEM_POWER_CAPABILITIES lpspc
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
+	__in		POWER_INFORMATION_LEVEL InformationLevel,
+	__in_opt	PVOID                   InputBuffer,
+	__in		ULONG                   InputBufferLength,
+	__out_opt	PVOID                   OutputBuffer,
+	__in		ULONG                   OutputBufferLength
+);
+
 #include "hook_vbscript.h"

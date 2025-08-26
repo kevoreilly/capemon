@@ -1970,11 +1970,36 @@ HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
 	if (ret && lpspc) {
 		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
 		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
-		(*lpspc).AoAc = 1;
-		(*lpspc).SystemS4 = 1;
-		(*lpspc).SystemS5 = 1;
-		(*lpspc).ThermalControl = 1;
+		lpspc->AoAc = 1;
+		lpspc->SystemS4 = 1;
+		lpspc->SystemS5 = 1;
+		lpspc->ThermalControl = 1;
 	}
 	LOQ_bool("device", "");
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
+	__in		POWER_INFORMATION_LEVEL InformationLevel,
+	__in_opt	PVOID                   InputBuffer,
+	__in		ULONG                   InputBufferLength,
+	__out_opt	PVOID                   OutputBuffer,
+	__in		ULONG                   OutputBufferLength
+) {
+	NTSTATUS ret = Old_NtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+	if (ret == 0 && OutputBuffer) {
+		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
+		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
+		SYSTEM_POWER_CAPABILITIES* ptr = (SYSTEM_POWER_CAPABILITIES *)OutputBuffer;
+		ptr->AoAc = 1;
+		ptr->SystemS4 = 1;
+		ptr->SystemS5 = 1;
+		ptr->ThermalControl = 1;
+		LOQ_ntstatus("device", "ibb",
+			"InformationLevel", InformationLevel,
+			"InputBuffer", InputBufferLength, InputBuffer,
+			"OutputBuffer", OutputBufferLength, OutputBuffer);
+	}
+	
 	return ret;
 }
