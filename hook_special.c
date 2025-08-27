@@ -203,6 +203,16 @@ HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
 	return ret;
 }
 
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct cmdnode* cmdnode
+) {
+	int ret = 0;
+	if (cmdnode && !our_isbadreadptr(cmdnode, sizeof(struct cmdnode)) && cmdnode->cmdline != NULL && cmdnode->type == 0) {
+		LOQ_zero("system", "uu", "Command", cmdnode->cmdline, "Arguments", cmdnode->argptr);
+	}
+	return Old_FindFixAndRun(cmdnode);
+}
+
 void end_transparent_hooks(){transparency_dummy--;}
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,

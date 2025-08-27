@@ -3737,4 +3737,8 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  BOOLEAN HandleBreakpoint
 );
 
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct	cmdnode	*cmdnode
+);
+
 #include "hook_vbscript.h"
