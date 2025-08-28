@@ -1072,10 +1072,6 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	if (TrackedRegion->EntryPoint)
 	{
 		TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
-		if (TrackedRegion->MinPESize)
-			DebugOutput("AddTrackedRegion: Min PE size 0x%x", TrackedRegion->MinPESize);
-		//else
-		//	DebugOutput("AddTrackedRegion: GetMinPESize failed");
 #ifdef DEBUG_COMMENTS
 		if (!PageAlreadyTracked)
 			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions: EntryPoint 0x%x, Entropy %e\n", TrackedRegion->AllocationBase, TrackedRegion->EntryPoint, TrackedRegion->Entropy);
