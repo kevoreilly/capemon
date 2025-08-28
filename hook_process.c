@@ -989,7 +989,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 	}
 	else {
 		LOQ_ntstatus(
-			"process", "pipBhs",
+			"process", "ppBhs",
 			"ProcessHandle", ProcessHandle,
 			"BaseAddress", BaseAddress,
 			"Buffer", NumberOfBytesWritten, Buffer,
