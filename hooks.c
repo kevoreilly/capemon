@@ -441,7 +441,7 @@ hook_t full_hooks[] = {
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
   
-  HOOK(powrprof, GetPwrCapabilities),
+    HOOK(powrprof, GetPwrCapabilities),
 	HOOK(ntdll, NtPowerInformation),
 
 	HOOK(cmd, FindFixAndRun),
