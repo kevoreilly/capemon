@@ -912,7 +912,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadVirtualMemory,
 	}
 	else {
 		LOQ_ntstatus(
-			"process", "piphB",
+			"process", "pphB",
 			"ProcessHandle", ProcessHandle,
 			"BaseAddress", BaseAddress,
 			"Size", NumberOfBytesToRead,
