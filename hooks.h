@@ -3738,10 +3738,6 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  BOOLEAN HandleBreakpoint
 ); 
 
-HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
-	_Out_	PSYSTEM_POWER_CAPABILITIES lpspc
-);
-
 HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		POWER_INFORMATION_LEVEL InformationLevel,
 	__in_opt	PVOID                   InputBuffer,
