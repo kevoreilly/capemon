@@ -19,8 +19,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "hooking.h"
 #include "hooks.h"
+#include "CAPE\CAPE.h"
 
+typedef struct
+{
+	PCHAR FunctionName;
+	PVOID Address;
+} NameByAddress;
+
+extern NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZE_T FunctionCount, SIZE_T* OutFoundCount);
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
+extern PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
@@ -54,6 +63,12 @@ void disable_tail_call_optimization(void)
 	&New_##funcname, NULL, NULL, TRUE, FALSE, numargs, TRUE}
 
 #define HOOK_FUNCRVA(library, funcname, timestamp, rva) {L###library, #funcname, NULL, NULL, \
+	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
+
+#define HOOK_EXE(funcname) {NULL, #funcname, NULL, NULL, \
+	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
+
+#define HOOK_EXERVA(funcname, timestamp, rva) {NULL, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
 hook_t full_hooks[] = {
@@ -226,7 +241,7 @@ hook_t full_hooks[] = {
 	HOOK(rstrtmgr, RmStartSession),
 
 	// Registry Hooks
-	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as 
+	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as
 	// the 'W' versions. So we have to hook all the ascii *and* unicode APIs of those functions.
 	HOOK(advapi32, RegOpenKeyExA),
 	HOOK(advapi32, RegOpenKeyExW),
@@ -425,8 +440,12 @@ hook_t full_hooks[] = {
 	HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
-	HOOK(powrprof, GetPwrCapabilities),
+  
+  HOOK(powrprof, GetPwrCapabilities),
 	HOOK(ntdll, NtPowerInformation),
+
+	HOOK(cmd, FindFixAndRun),
+
 	// Language related hooks
 	HOOK(ntdll, NtQueryDefaultUILanguage),
 	HOOK(ntdll, NtQueryInstallUILanguage),
@@ -1621,6 +1640,10 @@ hook_t test_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtContinue),
 };
 
+hook_t exe_hooks[] = {
+	HOOK_EXE(FindFixAndRun),
+};
+
 BOOL inside_hook(LPVOID Address)
 {
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
@@ -1644,6 +1667,52 @@ BOOL set_hooks_dll(const wchar_t *library)
 		}
 	}
 	return ret;
+}
+
+void set_hooks_exe(void)
+{
+    LDR_MODULE* mod;
+    PEB* peb = (PEB*)get_peb();
+    mod = (LDR_MODULE*)peb->LoaderData->InLoadOrderModuleList.Flink;
+    HMODULE ullExeBase = (HMODULE)(mod->BaseAddress);
+
+    int hook_count = sizeof(exe_hooks) / sizeof(exe_hooks[0]);
+    char* func_names[sizeof(exe_hooks) / sizeof(exe_hooks[0])];
+
+    for (int i = 0; i < hook_count; i++)
+        func_names[i] = (char*)exe_hooks[i].funcname;
+
+    SIZE_T found_count = 0;
+    NameByAddress* results = GetAddressesByYara(ullExeBase, func_names, hook_count, &found_count);
+
+    if (!results || found_count == 0) {
+        if (results) free(results);
+        return;
+    }
+
+    for (int i = 0; i < hook_count; i++) {
+		if (exe_hooks[i].timestamp && exe_hooks[i].rva) {
+			hook_t* hook = &exe_hooks[i];
+			if (hook_api(hook, g_config.hook_type) < 0)
+				DebugOutput("set_hooks_exe: Failed to hook %s at RVA 0x%x", hook->funcname, hook->rva);
+			else
+				DebugOutput("set_hooks_exe: Hooked %s at RVA 0x%x", hook->funcname, hook->rva);
+		}
+        else for (SIZE_T j = 0; j < found_count; j++) {
+            if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, exe_hooks[i].funcname)) {
+                hook_t* hook = &exe_hooks[i];
+                hook->addr = results[j].Address;
+
+                if (hook_api(hook, g_config.hook_type) < 0)
+                    DebugOutput("set_hooks_exe: Failed to hook %s at 0x%p", hook->funcname, hook->addr);
+                else
+                    DebugOutput("set_hooks_exe: Hooked %s at 0x%p", hook->funcname, hook->addr);
+            }
+        }
+    }
+
+    free(results);
+
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
@@ -1818,6 +1887,8 @@ void set_hooks()
 		register_dll_notification_manually(&New_DllLoadNotification);
 
 	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
+
+	set_hooks_exe();
 
 	hook_enable();
 }

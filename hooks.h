@@ -3750,4 +3750,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		ULONG                   OutputBufferLength
 );
 
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct	cmdnode	*cmdnode
+);
+
 #include "hook_vbscript.h"
