@@ -1963,22 +1963,6 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
     return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
 }
 
-HOOKDEF(BOOL, WINAPI, GetPwrCapabilities,
-	_Out_	PSYSTEM_POWER_CAPABILITIES lpspc
-) {
-	BOOL ret = Old_GetPwrCapabilities(lpspc);
-	if (ret && lpspc) {
-		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
-		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
-		lpspc->AoAc = 1;
-		lpspc->SystemS4 = 1;
-		lpspc->SystemS5 = 1;
-		lpspc->ThermalControl = 1;
-	}
-	LOQ_bool("device", "b", "lpspc", sizeof(SYSTEM_POWER_CAPABILITIES), lpspc);
-	return ret;
-}
-
 HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		POWER_INFORMATION_LEVEL InformationLevel,
 	__in_opt	PVOID                   InputBuffer,
@@ -1987,7 +1971,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		ULONG                   OutputBufferLength
 ) {
 	NTSTATUS ret = Old_NtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-	if (ret == 0 && OutputBuffer) {
+	if (ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
 		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
 		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
 		SYSTEM_POWER_CAPABILITIES* ptr = (SYSTEM_POWER_CAPABILITIES *)OutputBuffer;
