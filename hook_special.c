@@ -380,8 +380,6 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 		inspect_clsid(&id1);
 	}
 
-	disable_sleep_skip();
-
 	set_lasterrors(&lasterror);
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
@@ -431,8 +429,6 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
 	}
-
-	disable_sleep_skip();
 
 	set_lasterrors(&lasterror);
 
