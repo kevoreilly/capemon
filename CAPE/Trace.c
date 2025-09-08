@@ -1631,6 +1631,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		DumpAddress = 0;
 		DumpSize = 0;
 	}
+	else if (!stricmp(Action, "DumpStrings"))
+	{
+		DumpStrings();
+	}
 	else if (!stricmp(Action, "Step2OEP"))
 	{
 		SetSingleStepMode(ExceptionInfo->ContextRecord, ProcessOEP);
@@ -1757,6 +1761,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	{
 		DebuggerOutput("ActionDispatcher: Terminating process.\n");
 		New_NtTerminateProcess(NULL, 1);
+	}
+	else if (!stricmp(Action, "hook-watch"))
+	{
+		g_config.hook_watch = 1;
+		DebuggerOutput("ActionDispatcher: Hook watch enabled.\n");
 	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
@@ -2021,7 +2030,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 #endif
 		SkipInstruction(ExceptionInfo->ContextRecord);
 		if (lookup_get(&SoftBPs, (ULONG_PTR)CIP, 0))
-			PatchByte(CIP, 0xCC);
+			PatchBytes(CIP, "CC");
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
 	{

@@ -554,11 +554,6 @@ void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 			//DebugOutput("PeParser: getDosAndNtHeader: dosStubSize size 0x%x.\n", dosStubSize);
 #endif
 		}
-		else if (pDosHeader->e_lfanew < sizeof(IMAGE_DOS_HEADER))
-		{
-			//Overlapped Headers, e.g. Spack (by Bagie)
-			pDosHeader->e_lfanew = sizeof(IMAGE_DOS_HEADER);
-		}
 	}
 
 	if (!pDosHeader->e_lfanew)
