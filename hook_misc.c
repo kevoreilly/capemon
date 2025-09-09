@@ -1967,15 +1967,11 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD HeaderSum,
 	_Out_ PDWORD CheckSum
 ) {
-	
 	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
-	*CheckSum = *HeaderSum;
+	if (HeaderSum && CheckSum)
+		*CheckSum = *HeaderSum;
 
-	LOQ_zero("imagehlp", "fLL",
-		"path", Filename,
-		"header_sum", (long*)HeaderSum,
-		"checksum", (long*)CheckSum
-	);
+	LOQ_zero("misc", "fhh", "Filename", Filename, "HeaderSum", *HeaderSum, "CheckSum", *CheckSum);
 
 	return ret;
 }
