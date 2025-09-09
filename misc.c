@@ -51,6 +51,7 @@ _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
 _RtlNtStatusToDosError pRtlNtStatusToDosError;
 _RtlCompareMemory pRtlCompareMemory;
+_NtQueryVirtualMemory pNtQueryVirtualMemory;
 
 void resolve_runtime_apis(void)
 {
@@ -79,6 +80,7 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
 	*(FARPROC *)&pRtlCompareMemory = GetProcAddress(ntdllbase, "RtlCompareMemory");
+	*(FARPROC*)&pNtQueryVirtualMemory = GetProcAddress(ntdllbase, "NtQueryVirtualMemory");
 }
 
 ULONG_PTR g_our_dll_base;
@@ -630,6 +632,41 @@ BOOLEAN is_valid_address_range(ULONG_PTR start, DWORD len)
 		return FALSE;
 
 	return TRUE;
+}
+
+BOOLEAN our_isbadreadptr(const void* addr, ULONG len)
+{
+	SIZE_T reslen;
+	PUCHAR startaddr = (PUCHAR)addr;
+	PUCHAR endaddr = startaddr + len;
+	PUCHAR p;
+	MEMORY_BASIC_INFORMATION meminfo;
+	lasterror_t lasterror;
+	BOOLEAN ret = FALSE;
+
+	/* check for overflow */
+	if ((ULONG_PTR)endaddr < (ULONG_PTR)startaddr)
+		return TRUE;
+
+	get_lasterrors(&lasterror);
+	for (p = startaddr; p < endaddr; p = (PUCHAR)meminfo.BaseAddress + meminfo.RegionSize) {
+		memset(&meminfo, 0, sizeof(meminfo));
+		if (pNtQueryVirtualMemory(NtCurrentProcess(), p, MemoryBasicInformation, &meminfo, sizeof(meminfo), &reslen)) {
+			ret = TRUE;
+			break;
+		}
+		if (!(meminfo.State & MEM_COMMIT) || !(meminfo.Type & (MEM_IMAGE | MEM_MAPPED | MEM_PRIVATE))) {
+			ret = TRUE;
+			break;
+		}
+		if ((meminfo.Protect & (PAGE_GUARD | PAGE_NOACCESS)) && (meminfo.Type != MEM_IMAGE || meminfo.Protect != PAGE_NOACCESS)) {
+			ret = TRUE;
+			break;
+		}
+	}
+
+	set_lasterrors(&lasterror);
+	return ret;
 }
 
 DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)

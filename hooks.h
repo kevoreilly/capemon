@@ -3737,6 +3737,10 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  BOOLEAN HandleBreakpoint
 );
 
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct	cmdnode	*cmdnode
+);
+
 HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_In_  PCSTR Filename,
 	_Out_ PDWORD HeaderSum,

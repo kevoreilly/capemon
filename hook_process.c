@@ -912,7 +912,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadVirtualMemory,
 	}
 	else {
 		LOQ_ntstatus(
-			"process", "piphB",
+			"process", "pphB",
 			"ProcessHandle", ProcessHandle,
 			"BaseAddress", BaseAddress,
 			"Size", NumberOfBytesToRead,
@@ -989,7 +989,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteVirtualMemory,
 	}
 	else {
 		LOQ_ntstatus(
-			"process", "pipBhs",
+			"process", "ppBhs",
 			"ProcessHandle", ProcessHandle,
 			"BaseAddress", BaseAddress,
 			"Buffer", NumberOfBytesWritten, Buffer,

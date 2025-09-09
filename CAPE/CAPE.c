@@ -695,7 +695,7 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 				return GetNonExportedFunctionAddress(ModuleBase, RuntimeTable[i].ExportName, RuntimeTable[i].Offset);
 	}
 #endif
-	const char *YaraFunctions[] =
+	char *YaraFunctions[] =
 	{
 		"LdrpCallInitRoutine",
 		"WMI_ExecQuery",
@@ -707,9 +707,20 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		"vDbgPrintExWithPrefixInternal",
 	};
 
-	for (int i = 0; i < sizeof(YaraFunctions) / sizeof(YaraFunctions[0]); i++)
-		if (strcmp(YaraFunctions[i], FunctionName) == 0)
-			return GetAddressByYara(ModuleBase, FunctionName);
+    SIZE_T FoundCount = 0, FuncCount = sizeof(YaraFunctions) / sizeof(YaraFunctions[0]);
+    NameByAddress* results = GetAddressesByYara(ModuleBase, YaraFunctions, FuncCount, &FoundCount);
+
+    if (!results || FoundCount == 0)
+    {
+		if (results)
+			free(results);
+        return NULL;
+    }
+
+    for (SIZE_T i = 0; i < FuncCount; i++)
+        for (SIZE_T j = 0; j < FoundCount; j++)
+			if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, YaraFunctions[i]))
+				return results[j].Address;
 
 	return NULL;
 }
@@ -1061,10 +1072,6 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	if (TrackedRegion->EntryPoint)
 	{
 		TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
-		if (TrackedRegion->MinPESize)
-			DebugOutput("AddTrackedRegion: Min PE size 0x%x", TrackedRegion->MinPESize);
-		//else
-		//	DebugOutput("AddTrackedRegion: GetMinPESize failed");
 #ifdef DEBUG_COMMENTS
 		if (!PageAlreadyTracked)
 			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions: EntryPoint 0x%x, Entropy %e\n", TrackedRegion->AllocationBase, TrackedRegion->EntryPoint, TrackedRegion->Entropy);
@@ -2195,13 +2202,23 @@ BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader)
 }
 
 //**************************************************************************************
-SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader)
+SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader)
 //**************************************************************************************
 {
-	SIZE_T MinSize;
+	SIZE_T MinSize = 0;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 	__try
 	{
+		if (!IsAddressAccessible(pDosHeader))
+			return 0;
+
+		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+
+		if (!pNtHeader || !TestPERequirements(pNtHeader))
+			return 0;
+
 		PIMAGE_SECTION_HEADER NtSection;
 
 		if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) && (pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC))

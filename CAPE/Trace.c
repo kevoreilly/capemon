@@ -1762,6 +1762,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		DebuggerOutput("ActionDispatcher: Terminating process.\n");
 		New_NtTerminateProcess(NULL, 1);
 	}
+	else if (!stricmp(Action, "hook-watch"))
+	{
+		g_config.hook_watch = 1;
+		DebuggerOutput("ActionDispatcher: Hook watch enabled.\n");
+	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
 

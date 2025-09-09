@@ -1050,13 +1050,16 @@ int hook_api(hook_t *h, int type)
 					DebugOutput("hook_api: %s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
 			}
 		}
-
-		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
-			DWORD timestamp = GetTimeStamp(hmod);
-			if (timestamp == h->timestamp)
-				addr = (unsigned char *)hmod + h->rva;
-		}
 	}
+
+	if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
+		if (!hmod)
+			hmod = GetModuleHandleW(h->library);
+		DWORD timestamp = GetTimeStamp(hmod);
+		if (timestamp == h->timestamp)
+			addr = (unsigned char *)hmod + h->rva;
+	}
+
 	if (addr == NULL) {
 		// function doesn't exist in this DLL, not a critical error
 		return 0;
@@ -1100,7 +1103,7 @@ int hook_api(hook_t *h, int type)
 
 	addr = handle_stub(h, addr);
 
-	if (!wcscmp(h->library, L"ntdll") && !memcmp(addr, "\x4c\x8b\xd1\xb8", 4) && memcmp(addr+8, "\x0f\x05", 2)) {
+	if (h->library && !wcscmp(h->library, L"ntdll") && !memcmp(addr, "\x4c\x8b\xd1\xb8", 4) && memcmp(addr+8, "\x0f\x05", 2)) {
 		// hooking a native API, leave in the mov eax, <syscall nr> instruction
 		// as some malware depends on this for direct syscalls
 		// missing a few syscalls is better than crashing and getting no information
