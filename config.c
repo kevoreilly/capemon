@@ -1375,6 +1375,11 @@ void parse_config_line(char* line)
 			if (g_config.snaps)
 				DebugOutput("Loader snaps enabled.\n");
 		}
+		else if (!stricmp(key, "hook-watch")) {
+			g_config.hook_watch = value[0] == '1';
+			if (g_config.hook_watch)
+				DebugOutput("Config: Hook watch enabled.\n");
+		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("Monitor config - unrecognised key %s.\n", key);
 

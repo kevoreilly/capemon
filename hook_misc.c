@@ -1963,6 +1963,24 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
     return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
 }
 
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  PCSTR  Filename,
+	_Out_ PDWORD HeaderSum,
+	_Out_ PDWORD CheckSum
+) {
+	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
+
+	if (HeaderSum && CheckSum)
+		*CheckSum = *HeaderSum;
+
+	if (HeaderSum && CheckSum)
+		LOQ_zero("misc", "fhh", "Filename", Filename, "HeaderSum", *HeaderSum, "CheckSum", *CheckSum);
+	else
+		LOQ_zero("misc", "f", "Filename", Filename);
+
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		POWER_INFORMATION_LEVEL InformationLevel,
 	__in_opt	PVOID                   InputBuffer,
