@@ -2050,6 +2050,7 @@ HOOKDEF(HRESULT, WINAPI, PStoreCreateInstance,
 //
 // Network Hooks
 //
+
 HOOKDEF(DWORD, WINAPI, InternetConfirmZoneCrossingA,
 	_In_ HWND hWnd,
 	_In_ LPTSTR szUrlPrev,
@@ -3735,6 +3736,14 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  PCHAR Format,
 	__in  va_list arglist,
 	__in  BOOLEAN HandleBreakpoint
+); 
+
+HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
+	__in		POWER_INFORMATION_LEVEL InformationLevel,
+	__in_opt	PVOID                   InputBuffer,
+	__in		ULONG                   InputBufferLength,
+	__out_opt	PVOID                   OutputBuffer,
+	__in		ULONG                   OutputBufferLength
 );
 
 HOOKDEF(int, __fastcall, FindFixAndRun,
