@@ -3741,4 +3741,10 @@ HOOKDEF(int, __fastcall, FindFixAndRun,
 	struct	cmdnode	*cmdnode
 );
 
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  PCSTR Filename,
+	_Out_ PDWORD HeaderSum,
+	_Out_ PDWORD CheckSum
+);
+
 #include "hook_vbscript.h"
