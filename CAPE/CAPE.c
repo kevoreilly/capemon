@@ -109,9 +109,9 @@ typedef struct _hook_info_t {
 } hook_info_t;
 
 typedef SIZE_T (WINAPI *_RtlCompareMemory)(
-    _In_ const VOID* Source1,
-    _In_ const VOID* Source2,
-    _In_ SIZE_T Length
+	_In_ const VOID* Source1,
+	_In_ const VOID* Source2,
+	_In_ SIZE_T Length
 );
 
 extern _RtlCompareMemory pRtlCompareMemory;
@@ -259,33 +259,33 @@ PVOID GetHookCallerBase()
 void SanitiseString(char *Dst, const char *Src, size_t Size)
 //**************************************************************************************
 {
-    size_t Length = strlen(Src);
-    size_t NewLength = 0;
+	size_t Length = strlen(Src);
+	size_t NewLength = 0;
 
-    for (size_t i = 0; i < Length && NewLength < Size - 1; ++i)
-        if (Src[i] == '%')
-            NewLength += 2;
-        else
-            NewLength++;
+	for (size_t i = 0; i < Length && NewLength < Size - 1; ++i)
+		if (Src[i] == '%')
+			NewLength += 2;
+		else
+			NewLength++;
 
-    if (NewLength >= Size)
-        NewLength = Size - 1;
+	if (NewLength >= Size)
+		NewLength = Size - 1;
 
-    Dst[NewLength] = '\0';
+	Dst[NewLength] = '\0';
 
-    for (int i = (int)Length - 1, j = (int)NewLength - 1; i >= 0 && j >= 0; --i)
-        if (Src[i] == '%')
-        {
-            if (j >= 1)
-            {
-                Dst[j--] = '%';
-                Dst[j--] = '%';
-            }
-        }
-        else if ((unsigned char)Src[i] < 0x0a || (unsigned char)Src[i] > 0x7E)
-            Dst[j--] = '?';
-        else
-            Dst[j--] = Src[i];
+	for (int i = (int)Length - 1, j = (int)NewLength - 1; i >= 0 && j >= 0; --i)
+		if (Src[i] == '%')
+		{
+			if (j >= 1)
+			{
+				Dst[j--] = '%';
+				Dst[j--] = '%';
+			}
+		}
+		else if ((unsigned char)Src[i] < 0x0a || (unsigned char)Src[i] > 0x7E)
+			Dst[j--] = '?';
+		else
+			Dst[j--] = Src[i];
 }
 
 //**************************************************************************************
@@ -655,18 +655,18 @@ PVOID GetNonExportedFunctionAddress(HMODULE ModuleBase, PCHAR ExportName, int Of
 	if (!ModuleBase || !ExportName)
 		return NULL;
 
-    DWORD ExportRVA = (DWORD)((ULONG_PTR)GetProcAddress(ModuleBase, ExportName) - (ULONG_PTR)ModuleBase);
-    if (!ExportRVA)
-        return NULL;
+	DWORD ExportRVA = (DWORD)((ULONG_PTR)GetProcAddress(ModuleBase, ExportName) - (ULONG_PTR)ModuleBase);
+	if (!ExportRVA)
+		return NULL;
 
 	PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)ModuleBase + (ULONG)((PIMAGE_DOS_HEADER)ModuleBase)->e_lfanew);
-    PIMAGE_RUNTIME_FUNCTION_ENTRY Table = (PIMAGE_RUNTIME_FUNCTION_ENTRY)((PUCHAR)ModuleBase + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress);
+	PIMAGE_RUNTIME_FUNCTION_ENTRY Table = (PIMAGE_RUNTIME_FUNCTION_ENTRY)((PUCHAR)ModuleBase + pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress);
 
 	for (unsigned int i = 0; Table[i].BeginAddress; i++)
 		if (Table[i].BeginAddress == ExportRVA)
 			return (PVOID)((PBYTE)ModuleBase + Table[Offset + i].BeginAddress);
 
-    return NULL;
+	return NULL;
 }
 #endif
 
@@ -707,18 +707,18 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		"vDbgPrintExWithPrefixInternal",
 	};
 
-    SIZE_T FoundCount = 0, FuncCount = sizeof(YaraFunctions) / sizeof(YaraFunctions[0]);
-    NameByAddress* results = GetAddressesByYara(ModuleBase, YaraFunctions, FuncCount, &FoundCount);
+	SIZE_T FoundCount = 0, FuncCount = sizeof(YaraFunctions) / sizeof(YaraFunctions[0]);
+	NameByAddress* results = GetAddressesByYara(ModuleBase, YaraFunctions, FuncCount, &FoundCount);
 
-    if (!results || FoundCount == 0)
-    {
+	if (!results || FoundCount == 0)
+	{
 		if (results)
 			free(results);
-        return NULL;
-    }
+		return NULL;
+	}
 
-    for (SIZE_T i = 0; i < FuncCount; i++)
-        for (SIZE_T j = 0; j < FoundCount; j++)
+	for (SIZE_T i = 0; i < FuncCount; i++)
+		for (SIZE_T j = 0; j < FoundCount; j++)
 			if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, YaraFunctions[i]))
 				return results[j].Address;
 
@@ -2466,12 +2466,12 @@ DWORD GetTimeStamp(PVOID Address)
 int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 //**************************************************************************************
 {
-    IMAGE_DOS_HEADER DosHeader;
-    IMAGE_NT_HEADERS NtHeaders;
+	IMAGE_DOS_HEADER DosHeader;
+	IMAGE_NT_HEADERS NtHeaders;
 	PIMAGE_DOS_HEADER pDosHeader = NULL;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 	PIMAGE_SECTION_HEADER SectionHeaders = NULL;
-    DWORD bytesRead;
+	DWORD bytesRead;
 
 	int RetVal = -1;
 
@@ -2513,17 +2513,17 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	DWORD SizeOfHeaders = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNtHeader->FileHeader.SizeOfOptionalHeader;
 	PIMAGE_SECTION_HEADER pSectionHeaders = (PIMAGE_SECTION_HEADER)((PBYTE)ImageBase + SizeOfHeaders);
 
-    HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    if (hFile == INVALID_HANDLE_VALUE)
+	if (hFile == INVALID_HANDLE_VALUE)
 	{
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("VerifyHeaders: Error opening file %ws", Path);
 #endif
 		return RetVal;
-    }
+	}
 
-    if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
+	if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("VerifyHeaders: Error reading file %ws", Path);
@@ -2531,7 +2531,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+	if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyHeaders: IMAGE_DOS_SIGNATURE");
@@ -2541,7 +2541,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 
 	SetFilePointer(hFile, DosHeader.e_lfanew, 0, FILE_BEGIN);
 
-    if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
+	if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyHeaders: Error reading header of %ws", Path);
@@ -2549,13 +2549,13 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    if (NtHeaders.FileHeader.NumberOfSections != pNtHeader->FileHeader.NumberOfSections)
+	if (NtHeaders.FileHeader.NumberOfSections != pNtHeader->FileHeader.NumberOfSections)
 	{
 		DebugOutput("VerifyHeaders: Number of sections mismatch: %d vs %d", NtHeaders.FileHeader.NumberOfSections, pNtHeader->FileHeader.NumberOfSections);
 		goto end;
 	}
 
-    if (!NtHeaders.FileHeader.NumberOfSections)
+	if (!NtHeaders.FileHeader.NumberOfSections)
 	{
 		DebugOutput("VerifyHeaders: Number of sections zero");
 		goto end;
@@ -2563,16 +2563,16 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 
 	SetFilePointer(hFile, SizeOfHeaders, 0, FILE_BEGIN);
 
-    SectionHeaders = calloc(NtHeaders.FileHeader.NumberOfSections, sizeof(IMAGE_SECTION_HEADER));
-    if (SectionHeaders == NULL)
+	SectionHeaders = calloc(NtHeaders.FileHeader.NumberOfSections, sizeof(IMAGE_SECTION_HEADER));
+	if (SectionHeaders == NULL)
 	{
 		DebugOutput("VerifyHeaders: Error allocating memory for %d section headers", NtHeaders.FileHeader.NumberOfSections);
 		return RetVal;
-    }
+	}
 
 	SIZE_T SizeOfSectionHeaders = sizeof(IMAGE_SECTION_HEADER) * NtHeaders.FileHeader.NumberOfSections;
 
-    if (!ReadFile(hFile, SectionHeaders, (DWORD)SizeOfSectionHeaders, &bytesRead, NULL))
+	if (!ReadFile(hFile, SectionHeaders, (DWORD)SizeOfSectionHeaders, &bytesRead, NULL))
 	{
 		DebugOutput("VerifyHeaders: Error reading section headers of %ws", Path);
 		goto end;
@@ -2580,25 +2580,25 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 
 	SIZE_T Matching = pRtlCompareMemory((PVOID)SectionHeaders, pSectionHeaders, SizeOfSectionHeaders);
 
-    if (Matching == SizeOfSectionHeaders)
+	if (Matching == SizeOfSectionHeaders)
 	{
 #ifdef DEBUG_COMMENTS
-        DebugOutput("VerifyHeaders: PE header matches.\n");
+		DebugOutput("VerifyHeaders: PE header matches.\n");
 #endif
 		RetVal = 1;
-    }
+	}
 	else
 	{
-        DebugOutput("VerifyHeaders: PE header does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSectionHeaders);
+		DebugOutput("VerifyHeaders: PE header does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSectionHeaders);
 		RetVal = 0;
-    }
+	}
 
 end:
 	if (SectionHeaders)
 		free(SectionHeaders);
-    CloseHandle(hFile);
+	CloseHandle(hFile);
 
-    return RetVal;
+	return RetVal;
 }
 
 //**************************************************************************************
@@ -2655,17 +2655,17 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 	DWORD SizeOfHeaders = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNtHeader->FileHeader.SizeOfOptionalHeader;
 	PIMAGE_SECTION_HEADER pFirstSectionHeader = (PIMAGE_SECTION_HEADER)((PBYTE)ImageBase + SizeOfHeaders);
 
-    HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    if (hFile == INVALID_HANDLE_VALUE)
+	if (hFile == INVALID_HANDLE_VALUE)
 	{
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("VerifyCodeSection: Error opening file %ws", Path);
 #endif
 		return RetVal;
-    }
+	}
 
-    if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
+	if (!ReadFile(hFile, &DosHeader, sizeof(IMAGE_DOS_HEADER), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("VerifyCodeSection: Error reading file %ws", Path);
@@ -2673,7 +2673,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+	if (DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyCodeSection: IMAGE_DOS_SIGNATURE");
@@ -2683,7 +2683,7 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 
 	SetFilePointer(hFile, DosHeader.e_lfanew, 0, FILE_BEGIN);
 
-    if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
+	if (!ReadFile(hFile, &NtHeaders, sizeof(IMAGE_NT_HEADERS), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyCodeSection: Error reading header of %ws", Path);
@@ -2693,8 +2693,8 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 
 	SetFilePointer(hFile, SizeOfHeaders, 0, FILE_BEGIN);
 
-    IMAGE_SECTION_HEADER FirstSectionHeader;
-    if (!ReadFile(hFile, &FirstSectionHeader, sizeof(IMAGE_SECTION_HEADER), &bytesRead, NULL))
+	IMAGE_SECTION_HEADER FirstSectionHeader;
+	if (!ReadFile(hFile, &FirstSectionHeader, sizeof(IMAGE_SECTION_HEADER), &bytesRead, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyCodeSection: Error reading first section of %ws", Path);
@@ -2702,31 +2702,31 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 		goto end;
 	}
 
-    if (!FirstSectionHeader.SizeOfRawData)
+	if (!FirstSectionHeader.SizeOfRawData)
 	{
 		DebugOutput("VerifyCodeSection: SizeOfRawData zero.\n");
 		goto end;
 	}
 
-    CodeSectionBuffer = (PBYTE)calloc(FirstSectionHeader.SizeOfRawData, sizeof(BYTE));
-    if (CodeSectionBuffer == NULL)
+	CodeSectionBuffer = (PBYTE)calloc(FirstSectionHeader.SizeOfRawData, sizeof(BYTE));
+	if (CodeSectionBuffer == NULL)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("VerifyCodeSection: Error allocating memory");
 #endif
 		return RetVal;
-    }
+	}
 
 	SetFilePointer(hFile, FirstSectionHeader.PointerToRawData, 0, FILE_BEGIN);
 
-    DWORD BytesReadInSection;
-    if (!ReadFile(hFile, CodeSectionBuffer, FirstSectionHeader.SizeOfRawData, &BytesReadInSection, NULL))
+	DWORD BytesReadInSection;
+	if (!ReadFile(hFile, CodeSectionBuffer, FirstSectionHeader.SizeOfRawData, &BytesReadInSection, NULL))
 	{
 #ifdef DEBUG_COMMENTS
 		ErrorOutput("VerifyCodeSection: Error reading code section of %ws", Path);
 #endif
 		return RetVal;
-    }
+	}
 
 	Relocations = (PIMAGE_BASE_RELOCATION)((PBYTE)ImageBase + NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
 	RelocationSize = NtHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
@@ -2810,25 +2810,25 @@ int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path)
 
 	SIZE_T Matching = pRtlCompareMemory((PVOID)CodeSectionBuffer, pFirstSection, SizeOfSection);
 
-    if (Matching == SizeOfSection)
+	if (Matching == SizeOfSection)
 	{
 #ifdef DEBUG_COMMENTS
-        DebugOutput("VerifyCodeSection: Executable code matches.\n");
+		DebugOutput("VerifyCodeSection: Executable code matches.\n");
 #endif
 		RetVal = 1;
-    }
+	}
 	else
 	{
-        DebugOutput("VerifyCodeSection: Executable code does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSection);
+		DebugOutput("VerifyCodeSection: Executable code does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSection);
 		RetVal = 0;
-    }
+	}
 
 end:
 	if (CodeSectionBuffer)
 		free(CodeSectionBuffer);
-    CloseHandle(hFile);
+	CloseHandle(hFile);
 
-    return RetVal;
+	return RetVal;
 }
 
 //**************************************************************************************
@@ -3182,57 +3182,57 @@ int DumpImageInCurrentProcess(PVOID Address)
 		return 0;
 	}
 
-    if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
-    {
-        // We want to fix the PE header in the dump (for e.g. disassembly etc)
+	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
+	{
+		// We want to fix the PE header in the dump (for e.g. disassembly etc)
 		SIZE_T RegionSize = GetAccessibleSize(Address);
 
-        RegionCopy = calloc(RegionSize, sizeof(BYTE));
+		RegionCopy = calloc(RegionSize, sizeof(BYTE));
 
-        if (!RegionCopy)
-        {
-            ErrorOutput("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
-            return 0;
-        }
+		if (!RegionCopy)
+		{
+			ErrorOutput("DumpImageInCurrentProcess: Failed to allocate memory page for PE header.\n");
+			return 0;
+		}
 
-        __try
-        {
-            memcpy(RegionCopy, Address, RegionSize);
-        }
-        __except(EXCEPTION_EXECUTE_HANDLER)
-        {
-            DebugOutput("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", Address);
-            free(RegionCopy);
-            return 0;
-        }
+		__try
+		{
+			memcpy(RegionCopy, Address, RegionSize);
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			DebugOutput("DumpImageInCurrentProcess: Exception occured copying PE header at 0x%p\n", Address);
+			free(RegionCopy);
+			return 0;
+		}
 
-        pDosHeader = (PIMAGE_DOS_HEADER)RegionCopy;
+		pDosHeader = (PIMAGE_DOS_HEADER)RegionCopy;
 
-        DebugOutput("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", Address);
+		DebugOutput("DumpImageInCurrentProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p\n", Address);
 
-        if (!pDosHeader->e_lfanew)
-        {
-            // In case the header until and including 'PE' has been zeroed
-            WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-            while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-            {
-                if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-                {
-                    if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
-                        pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-                }
-                MachineProbe += sizeof(WORD);
-            }
+		if (!pDosHeader->e_lfanew)
+		{
+			// In case the header until and including 'PE' has been zeroed
+			WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+			{
+				if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+				{
+					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
+						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+				}
+				MachineProbe += sizeof(WORD);
+			}
 
-            if (pNtHeader)
-                pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-        }
+			if (pNtHeader)
+				pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+		}
 
-        if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_MAX_SIZE)
-        {
-            DebugOutput("DumpImageInCurrentProcess: Bad e_lfanew 0x%x\n", pDosHeader->e_lfanew);
-            goto end;
-        }
+		if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_MAX_SIZE)
+		{
+			DebugOutput("DumpImageInCurrentProcess: Bad e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+			goto end;
+		}
 
 		*(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
 		*(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
