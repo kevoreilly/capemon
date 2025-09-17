@@ -72,14 +72,15 @@ void disable_tail_call_optimization(void)
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
 hook_t full_hooks[] = {
-
 	// Process Hooks
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+
 	HOOK(ntdll, LdrpCallInitRoutine),
 	HOOK(ntdll, NtAllocateVirtualMemory),
 	HOOK(ntdll, NtAllocateVirtualMemoryEx),
@@ -925,23 +926,13 @@ hook_t native_hooks[] = {
 // to follow the execution chain with base functionality
 
 hook_t min_hooks[] = {
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
-
-	HOOK_SPECIAL(clrjit, compileMethod),
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ole32, CoGetObject),
-	HOOK_SPECIAL(combase, CoCreateInstance),
-	HOOK_SPECIAL(combase, CoCreateInstanceEx),
-	HOOK_SPECIAL(combase, CoGetClassObject),
-	HOOK_SPECIAL(combase, CoGetObject),
-
-	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
-	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
 	HOOK(ntdll, NtCreateProcess),
 	HOOK(ntdll, NtCreateProcessEx),
@@ -969,13 +960,23 @@ hook_t min_hooks[] = {
 	HOOK(ntdll, RtlCreateUserThread),
 	HOOK(kernel32, CreateRemoteThread),
 	HOOK(kernel32, CreateRemoteThreadEx),
+
+	HOOK_SPECIAL(clrjit, compileMethod),
+	HOOK_SPECIAL(ole32, CoCreateInstance),
+	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
+	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(ole32, CoGetObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoGetObject),
+
 	HOOK(user32, SendNotifyMessageA),
 	HOOK(user32, SendNotifyMessageW),
 	HOOK(user32, SetWindowLongA),
 	HOOK(user32, SetWindowLongW),
 	HOOK(user32, SetWindowLongPtrA),
 	HOOK(user32, SetWindowLongPtrW),
-
 	HOOK(user32, SetWindowsHookExA),
 	HOOK(user32, SetWindowsHookExW),
 
