@@ -170,8 +170,9 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 					if (!TrackedRegion)
 						DebugOutput("InstrumentationCallback: Failed to add region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
 					else {
-						DebugOutput("InstrumentationCallback: Added region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
-						TrackedRegion->Address = (PVOID)CIP;
+						DebugOutput("InstrumentationCallback: Added region at 0x%p (base 0x%p) to tracked regions list (thread %d).\n", CIP, AllocationBase, GetCurrentThreadId());
+						TrackedRegion->Caller = (PVOID)CIP;
+						TrackedRegion->Address = AllocationBase;
 					}
 				}
 				if (TrackedRegion)
