@@ -892,18 +892,18 @@ void parse_config_line(char* line)
 					*p2 = '\0';
 				}
 				int delta=0;
-				p2 = strchr(value, '+');
-				if (p2) {
-					delta = strtoul(p2+1, NULL, 0);
+				char *p3 = strchr(value, '+');
+				if (p3) {
+					delta = strtoul(p3+1, NULL, 0);
 					DebugOutput("Config: Delta 0x%x.\n", delta);
-					*p2 = '\0';
+					*p3 = '\0';
 				}
 				else {
-					p2 = strchr(value, '-');
-					if (p2) {
-						delta = - (int)strtoul(p2+1, NULL, 0);
+					p3 = strchr(value, '-');
+					if (p3) {
+						delta = - (int)strtoul(p3+1, NULL, 0);
 						DebugOutput("Config: Delta 0x%x.\n", delta);
-						*p2 = '\0';
+						*p3 = '\0';
 					}
 				}
 				for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++) {
