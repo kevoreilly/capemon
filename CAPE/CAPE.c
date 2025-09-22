@@ -2471,6 +2471,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	PIMAGE_DOS_HEADER pDosHeader = NULL;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 	PIMAGE_SECTION_HEADER SectionHeaders = NULL;
+	PBYTE EntryPointBytes = NULL;
 	DWORD bytesRead;
 
 	int RetVal = -1;
@@ -2512,6 +2513,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 
 	DWORD SizeOfHeaders = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNtHeader->FileHeader.SizeOfOptionalHeader;
 	PIMAGE_SECTION_HEADER pSectionHeaders = (PIMAGE_SECTION_HEADER)((PBYTE)ImageBase + SizeOfHeaders);
+	PBYTE pEntryPointBytes = (PBYTE)ImageBase + pNtHeader->OptionalHeader.AddressOfEntryPoint;
 
 	HANDLE hFile = CreateFileW(Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -2593,9 +2595,42 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 		RetVal = 0;
 	}
 
+	SetFilePointer(hFile, NtHeaders.OptionalHeader.AddressOfEntryPoint, 0, FILE_BEGIN);
+
+	unsigned int ChunkSize = 0x10;
+	EntryPointBytes = calloc(ChunkSize, sizeof(BYTE));
+	if (EntryPointBytes == NULL)
+	{
+		DebugOutput("VerifyHeaders: Error allocating memory for entry point check");
+		return RetVal;
+	}
+
+	if (!ReadFile(hFile, EntryPointBytes, (DWORD)ChunkSize, &bytesRead, NULL))
+	{
+		DebugOutput("VerifyHeaders: Error reading section headers of %ws", Path);
+		goto end;
+	}
+
+	Matching = pRtlCompareMemory((PVOID)EntryPointBytes, pEntryPointBytes, ChunkSize);
+
+	if (Matching == ChunkSize)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("VerifyHeaders: Entry point matches.\n");
+#endif
+		RetVal = 1;
+	}
+	else
+	{
+		DebugOutput("VerifyHeaders: Entry point does not match, 0x%x of 0x%x matching\n", Matching, ChunkSize);
+		RetVal = 0;
+	}
+
 end:
 	if (SectionHeaders)
 		free(SectionHeaders);
+	if (EntryPointBytes)
+		free(EntryPointBytes);
 	CloseHandle(hFile);
 
 	return RetVal;
