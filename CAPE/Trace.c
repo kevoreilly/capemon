@@ -1829,7 +1829,9 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			if (!FilterTrace || g_config.trace_all)
 				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 
-			*StepOver = TRUE;
+			if (is_in_dll_range((ULONG_PTR)CallTarget) && !g_config.trace_all)
+				*StepOver = TRUE;
+
 			*ForceStepOver = DoStepOver(ExportName);
 
 			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
@@ -2897,7 +2899,10 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
 			if (SetSoftwareBreakpoint(&SoftBPs, BreakpointVA))
+			{
 				DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
+				BreakpointsSet = TRUE;
+			}
 			g_config.bp[i] = 0;
 		}
 	}
