@@ -135,8 +135,8 @@ void invalidate_regions_for_hook(const hook_t *hook)
 void remove_hook(const char *funcname)
 {
 	for (uint32_t idx = 0; idx < g_index; idx++) {
-		DWORD old_protect;
 		if (g_addr[idx] && !stricmp(g_unhook_hooks[idx]->funcname, funcname)) {
+			DWORD old_protect;
 			if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
 				return;
 			memcpy(g_addr[idx], g_orig[idx], g_length[idx]);
@@ -157,10 +157,40 @@ void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
 
 	__try {
 		for (idx = 0; idx < g_index; idx++) {
+			DWORD old_protect;
 			if ((ULONG_PTR)g_addr[idx] < start || ((ULONG_PTR)g_addr[idx] + g_length[idx]) > end)
 				continue;
 			if (!memcmp(g_orig[idx], g_addr[idx], g_length[idx])) {
+				if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+					return;
 				memcpy(g_addr[idx], g_our[idx], g_length[idx]);
+				VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
+				log_hook_restoration(g_unhook_hooks[idx]);
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		;
+	}
+
+	set_lasterrors(&lasterror);
+}
+
+
+void restore_hook(uint32_t idx)
+{
+	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+
+	__try {
+		for (uint32_t i = 0; i < g_index; i++) {
+			if (i == idx) {
+				DWORD old_protect;
+				if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+					return;
+				memcpy(g_addr[idx], g_our[idx], g_length[idx]);
+				VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
 				log_hook_restoration(g_unhook_hooks[idx]);
 			}
 		}
@@ -195,15 +225,18 @@ static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 		for (idx = 0; idx < g_index; idx++) {
 			if (g_unhook_hooks[idx]->is_hooked && g_hook_reported[idx] == 0) {
 				char *tmpbuf = NULL;
-				if (!is_valid_address_range((ULONG_PTR)g_addr[idx], g_length[idx])) {
+				if (!is_valid_address_range((ULONG_PTR)g_addr[idx], g_length[idx]))
 					continue;
-				}
 				__try {
 					int is_modification = 1;
 					// Check whether this memory region still equals what we made it.
-					if (!memcmp(g_addr[idx], g_our[idx], g_length[idx])) {
+					if (!memcmp(g_addr[idx], g_our[idx], g_length[idx]))
 						continue;
-					}
+
+					// Attempt restoration
+					restore_hook(idx);
+					if (!memcmp(g_addr[idx], g_our[idx], g_length[idx]))
+						continue;
 
 					// If the memory region matches the original contents, then it
 					// has been restored to its original state.
