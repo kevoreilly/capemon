@@ -317,7 +317,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	DWORD pid = pid_from_process_handle(*ProcessHandle);
 
-	LOQ_ntstatus("process", "PPhhOOool", "ProcessHandle", ProcessHandle,
+	LOQ_ntstatus("process", "PPhhOOoool", "ProcessHandle", ProcessHandle,
 		"ThreadHandle", ThreadHandle,
 		"ProcessDesiredAccess", ProcessDesiredAccess,
 		"ThreadDesiredAccess", ThreadDesiredAccess,
@@ -325,6 +325,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 		"ThreadName", ThreadObjectAttributes,
 		"ImagePathName", &ProcessParameters->ImagePathName,
 		"CommandLine", &ProcessParameters->CommandLine,
+		"DllPath", &ProcessParameters->DllPath,
 		"ProcessId", pid);
 
 	if (NT_SUCCESS(ret)) {
@@ -362,9 +363,17 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
 		ProcessParameters, ProcessSecurityDescriptor,
 		ThreadSecurityDescriptor, ParentProcess, InheritHandles, DebugPort,
 		ExceptionPort, ProcessInformation);
+
 	DWORD pid = pid_from_process_handle(ProcessInformation->ProcessHandle);
-	LOQ_ntstatus("process", "ohpl", "ImagePath", ImagePath, "ObjectAttributes", ObjectAttributes,
-		"ParentHandle", ParentProcess, "ProcessId", pid);
+
+	LOQ_ntstatus("process", "ohpoool", "ImagePath", ImagePath,
+		"ObjectAttributes", ObjectAttributes,
+		"ParentHandle", ParentProcess,
+		"ImagePathName", &ProcessParameters->ImagePathName,
+		"CommandLine", &ProcessParameters->CommandLine,
+		"DllPath", &ProcessParameters->DllPath,
+		"ProcessId", pid);
+
 	if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(ProcessInformation->ThreadHandle);
 		if (!g_config.single_process) {
