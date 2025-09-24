@@ -1631,6 +1631,10 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		DumpAddress = 0;
 		DumpSize = 0;
 	}
+	else if (!stricmp(Action, "DumpStrings"))
+	{
+		DumpStrings();
+	}
 	else if (!stricmp(Action, "Step2OEP"))
 	{
 		SetSingleStepMode(ExceptionInfo->ContextRecord, ProcessOEP);
@@ -1758,6 +1762,11 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		DebuggerOutput("ActionDispatcher: Terminating process.\n");
 		New_NtTerminateProcess(NULL, 1);
 	}
+	else if (!stricmp(Action, "hook-watch"))
+	{
+		g_config.hook_watch = 1;
+		DebuggerOutput("ActionDispatcher: Hook watch enabled.\n");
+	}
 	else if (stricmp(Action, "custom"))
 		DebuggerOutput("ActionDispatcher: Unrecognised action: (%s)\n", Action);
 
@@ -1820,7 +1829,9 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 			if (!FilterTrace || g_config.trace_all)
 				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
 
-			*StepOver = TRUE;
+			if (is_in_dll_range((ULONG_PTR)CallTarget) && !g_config.trace_all)
+				*StepOver = TRUE;
+
 			*ForceStepOver = DoStepOver(ExportName);
 
 			for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
@@ -2021,7 +2032,7 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 #endif
 		SkipInstruction(ExceptionInfo->ContextRecord);
 		if (lookup_get(&SoftBPs, (ULONG_PTR)CIP, 0))
-			PatchByte(CIP, 0xCC);
+			PatchBytes(CIP, "CC");
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "RET"))
 	{
@@ -2888,7 +2899,10 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
 			if (SetSoftwareBreakpoint(&SoftBPs, BreakpointVA))
+			{
 				DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
+				BreakpointsSet = TRUE;
+			}
 			g_config.bp[i] = 0;
 		}
 	}

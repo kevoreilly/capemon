@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "ignore.h"
 #include "lookup.h"
+#include "hook_file.h"
 #include "config.h"
 
 #define DUMP_FILE_MASK ((GENERIC_ALL | GENERIC_WRITE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_APPEND_DATA | MAXIMUM_ALLOWED) & ~SYNCHRONIZE)
@@ -605,24 +606,292 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 	__out  PVOID OutputBuffer,
 	__in   ULONG OutputBufferLength
 ) {
+	lasterror_t lasterrors;
+	get_lasterrors(&lasterrors);
 	ULONG_PTR length;
-	NTSTATUS ret = Old_NtDeviceIoControlFile(FileHandle, Event,
-		ApcRoutine, ApcContext, IoStatusBlock, IoControlCode,
-		InputBuffer, InputBufferLength, OutputBuffer,
-		OutputBufferLength);
+	ULONG origbufferloglen = min((ULONG)buffer_log_max, InputBufferLength);
+	PCHAR origbuffer = malloc(origbufferloglen);
+	BOOLEAN hasorigbuffer = FALSE;
+	NTSTATUS ret;
+
+	// Save off a copy of the buffer before calling the hook, as it may not be the same after the call
+	if (origbuffer) {
+		__try {
+			memcpy(origbuffer, InputBuffer, origbufferloglen);
+			hasorigbuffer = TRUE;
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			hasorigbuffer = FALSE;
+		}
+	}
+		
+
+	/*
+	* Check for AFD_SEND, we need to aggregate the buffer before calling the hook as calling the hook will clobber InputBuffer
+	* Simply do the logic to generate the buffer we want to log here, we'll log it later with other IOCTL logging.
+	*/
+	PCHAR aggregated_send_payload = NULL;
+	ULONG send_payload_size_to_log = 0;
+	if (IoControlCode == IOCTL_AFD_SEND) {
+		__try {
+			if (InputBuffer && InputBufferLength >= sizeof(AFD_SEND_INFO)) {
+				PAFD_SEND_INFO sendInfo = (PAFD_SEND_INFO)InputBuffer;
+				if (sendInfo->AfdBufferArray && sendInfo->AfdBufferCount > 0) {
+					ULONG total_send_size = 0;
+					for (ULONG i = 0; i < sendInfo->AfdBufferCount; i++) {
+						total_send_size += sendInfo->AfdBufferArray[i].len;
+					}
+
+					if (total_send_size > 0) {
+						send_payload_size_to_log = min((ULONG)buffer_log_max, total_send_size);
+						aggregated_send_payload = (PCHAR)malloc(send_payload_size_to_log);
+						if (aggregated_send_payload) {
+							PCHAR current_pos = aggregated_send_payload;
+							ULONG bytes_copied = 0;
+							for (ULONG i = 0; i < sendInfo->AfdBufferCount && bytes_copied < send_payload_size_to_log; i++) {
+								PAFD_WSABUF current_source_buf = &sendInfo->AfdBufferArray[i];
+								ULONG bytes_to_copy = min(current_source_buf->len, send_payload_size_to_log - bytes_copied);
+								if (bytes_to_copy > 0) {
+									memcpy(current_pos, current_source_buf->buf, bytes_to_copy);
+									current_pos += bytes_to_copy;
+									bytes_copied += bytes_to_copy;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			// On exception, null out the buffer (if needed) so we can log generically later
+			if (aggregated_send_payload) {
+				free(aggregated_send_payload);
+				aggregated_send_payload = NULL;
+			}
+		}
+	}
+	set_lasterrors(&lasterrors);
+
+	ret = Old_NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength,
+		OutputBuffer, OutputBufferLength);
 
 	if (NT_SUCCESS(ret))
 		length = IoStatusBlock->Information;
 	else
 		length = 0;
 
-	LOQ_ntstatus("device", "phbb", "FileHandle", FileHandle,
-		"IoControlCode", IoControlCode,
-		"InputBuffer", InputBufferLength, InputBuffer,
-		"OutputBuffer", length, OutputBuffer);
+
+	get_lasterrors(&lasterrors);
+
+	wchar_t* fname = NULL;
+	fname = calloc(32768, sizeof(wchar_t));
+	if (fname) {
+		path_from_handle(FileHandle, fname, 32768);
+	}
+
+	switch (IoControlCode) {
+	case IOCTL_AFD_BIND:
+		if (InputBufferLength >= sizeof(AFD_BindDataStruct) && hasorigbuffer) {
+			PAFD_BindDataStruct buf = (PAFD_BindDataStruct)origbuffer;
+			__try {
+				in_sockaddr* sockAddr = &buf->SockAddr;
+				char ipString[16];
+				our_inet_ntop(AF_INET, &sockAddr->sin_addr, ipString, sizeof(ipString));
+				unsigned short port = our_ntohs(sockAddr->sin_port);
+				LOQ_ntstatus(
+					"network", "pFhsi",
+					"FileHandle", FileHandle,
+					"HandleName", fname,
+					"IoControlCode", IoControlCode,
+					"ip", ipString,
+					"port", port
+				);
+				break;
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				// If we're here, just use generic logging for NtDeviceIoControlFile
+				goto generic_log;
+			}
+		}
+		else {
+			goto generic_log;
+		}
+
+	case IOCTL_AFD_CONNECT:
+		if (InputBufferLength >= sizeof(AFD_ConnectDataStruct) && hasorigbuffer) {
+			AFD_ConnectDataStruct* buf = (AFD_ConnectDataStruct*)origbuffer;
+			__try {
+				in_sockaddr* sockAddr = &buf->SockAddr;
+				char ipString[16];
+				our_inet_ntop(AF_INET, &sockAddr->sin_addr, ipString, sizeof(ipString));
+				unsigned short port = our_ntohs(sockAddr->sin_port);
+				LOQ_ntstatus(
+					"network", "pFhsi",
+					"FileHandle", FileHandle,
+					"HandleName", fname,
+					"IoControlCode", IoControlCode,
+					"ip", ipString,
+					"port", port
+				);
+				break;
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				// If we're here, just use generic logging for NtDeviceIoControlFile
+				goto generic_log;
+			}
+		}
+		else {
+			// Unexpected InputBufferLength for this IOCTL, goto generic log
+			goto generic_log;
+		}
+
+	case IOCTL_AFD_RECV:
+		__try {
+			DWORD wait_status = -1;  // Init to -1 as WAIT_OBJECT_0 is 0
+			if (InputBuffer && InputBufferLength >= sizeof(AFD_RECV_INFO)) {
+				if (ret == STATUS_PENDING && Event) {
+					/*
+					 * We make some assumptions here; If we have an event it is an async call so we also assume:
+					 *  1) The callee reset the event prior to calling this NtDeviceIoControlFile API
+					 *  2) The callee will use NtWaitForSingleObject or similar, after calling NtDeviceIoControlFile
+					 *
+					 * NtWaitForSingleObject will wait on a handle, and if the callee is expecting to use NtWaitForSingleObject
+					 * (as done in NTSockets) we'll end up deadlocking unless we also use SetEvent. This is why we use our own
+					 * function to check for the event being signaled as it we do not call any APIs which interfere with the
+					 * status of the event itself, so it is safe for the above assumptions as well as cases where the assumption
+					 * may be wrong.
+					*/
+					wait_status = wait_for_event_to_be_signaled(Event, 5000);  // Allow 5 seconds of time for the event to trigger
+					if (wait_status == WAIT_OBJECT_0) {
+						ret = IoStatusBlock->Status;
+						if (NT_SUCCESS(ret))
+							length = IoStatusBlock->Information;
+						else
+							length = 0;
+					}
+				}
+				if (length == 0) {
+					/*
+					* This can happen if we have a NTSTATUS of 0x00000103 (STATUS_PENDING)
+					* Unideal, likely in the background kernel has provided the recv buffer to the API
+					*/
+					if (wait_status == WAIT_TIMEOUT) {
+						LOQ_ntstatus(
+							"network", "pFhs",
+							"FileHandle", FileHandle,
+							"HandleName", fname,
+							"IoControlCode", IoControlCode,
+							"Event", "Timeout waiting for recv, buffer will likely missing from API logs"
+						);
+					}
+					else {
+						LOQ_ntstatus(
+							"network", "pFhs",
+							"FileHandle", FileHandle,
+							"HandleName", fname,
+							"IoControlCode", IoControlCode,
+							"Event", "Zero-byte receive"
+						);
+					}
+					break;
+				}
+
+				PAFD_RECV_INFO recvInfo = (PAFD_RECV_INFO)InputBuffer;
+				if (recvInfo->AfdBufferArray && recvInfo->AfdBufferCount > 0) {
+					ULONG total_payload_to_log = min((ULONG)buffer_log_max, (ULONG)length);
+					PCHAR aggregated_payload = (PCHAR)malloc(total_payload_to_log);
+					if (!aggregated_payload) {
+						// Sanity check
+						goto generic_log;
+					}
+
+					PCHAR current_pos = aggregated_payload;
+					ULONG bytes_copied = 0;
+					ULONG bytes_remaining_from_total = (ULONG)length;
+					for (ULONG i = 0; i < recvInfo->AfdBufferCount && bytes_copied < total_payload_to_log; i++) {
+						PAFD_WSABUF current_source_buf = &recvInfo->AfdBufferArray[i];
+						ULONG bytes_in_source = min(bytes_remaining_from_total, current_source_buf->len);
+						ULONG bytes_to_copy = min(bytes_in_source, total_payload_to_log - bytes_copied);
+						if (bytes_to_copy > 0) {
+							memcpy(current_pos, current_source_buf->buf, bytes_to_copy);
+							current_pos += bytes_to_copy;
+							bytes_copied += bytes_to_copy;
+						}
+						bytes_remaining_from_total -= bytes_in_source;
+					}
+
+					LOQ_ntstatus(
+						"network", "pFhbi",
+						"FileHandle", FileHandle,
+						"HandleName", fname,
+						"IoControlCode", IoControlCode,
+						"buffer", (size_t)bytes_copied, aggregated_payload,
+						"length", length
+					);
+					free(aggregated_payload);
+					break;
+				}
+			}
+			else {
+				// If the initial InputBuffer validation fails, go to the generic logger.
+				goto generic_log;
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			// On exception, log generically
+			goto generic_log;
+		}
+
+	case IOCTL_AFD_SEND:
+		// We parsed the send buffer prior to calling the hook, if the buffer is non-null, log it, otherwise log generically
+		if (aggregated_send_payload) {
+			LOQ_ntstatus(
+				"network", "pFhbi",
+				"FileHandle", FileHandle,
+				"HandleName", fname,
+				"IoControlCode", IoControlCode,
+				"buffer", (size_t)send_payload_size_to_log, aggregated_send_payload,
+				"length", (ULONG)length // Log the actual bytes sent from the result
+			);
+			free(aggregated_send_payload);
+			break;
+		}
+		else {
+			goto generic_log;
+		}
+	default:
+	generic_log:
+		if (fname) {
+			LOQ_ntstatus(
+				"device", "pFhbb",
+				"FileHandle", FileHandle,
+				"HandleName", fname,
+				"IoControlCode", IoControlCode,
+				"InputBuffer", InputBufferLength, InputBuffer,
+				"OutputBuffer", length, OutputBuffer
+			);
+		}
+		else {
+			LOQ_ntstatus(
+				"device", "phbb",
+				"FileHandle", FileHandle,
+				"IoControlCode", IoControlCode,
+				"InputBuffer", InputBufferLength, InputBuffer,
+				"OutputBuffer", length, OutputBuffer
+			);
+		}
+	}
 
 	if (!g_config.no_stealth && NT_SUCCESS(ret) && OutputBuffer)
 		perform_device_fakery(OutputBuffer, (ULONG)length, IoControlCode);
+
+	if (origbuffer)
+		free(origbuffer);
+
+	if (fname)
+		free(fname);
+
+	set_lasterrors(&lasterrors);
 
 	return ret;
 }

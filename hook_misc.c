@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "config.h"
 #include "ignore.h"
+#include "powerbase.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Injection.h"
 #include "CAPE\Debugger.h"
@@ -1960,4 +1961,46 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	DebugOutput("%s", Buffer);
 
     return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
+}
+
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  PCSTR  Filename,
+	_Out_ PDWORD HeaderSum,
+	_Out_ PDWORD CheckSum
+) {
+	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
+
+	if (HeaderSum && CheckSum)
+		*CheckSum = *HeaderSum;
+
+	if (HeaderSum && CheckSum)
+		LOQ_zero("misc", "fhh", "Filename", Filename, "HeaderSum", *HeaderSum, "CheckSum", *CheckSum);
+	else
+		LOQ_zero("misc", "f", "Filename", Filename);
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
+	__in		POWER_INFORMATION_LEVEL InformationLevel,
+	__in_opt	PVOID                   InputBuffer,
+	__in		ULONG                   InputBufferLength,
+	__out_opt	PVOID                   OutputBuffer,
+	__in		ULONG                   OutputBufferLength
+) {
+	NTSTATUS ret = Old_NtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+	if (ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
+		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
+		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
+		SYSTEM_POWER_CAPABILITIES* ptr = (SYSTEM_POWER_CAPABILITIES *)OutputBuffer;
+		ptr->AoAc = 1;
+		ptr->SystemS4 = 1;
+		ptr->SystemS5 = 1;
+		ptr->ThermalControl = 1;
+	}
+	LOQ_ntstatus("device", "ibb",
+		"InformationLevel", InformationLevel,
+		"InputBuffer", InputBufferLength, InputBuffer,
+		"OutputBuffer", OutputBufferLength, OutputBuffer);
+	return ret;
 }

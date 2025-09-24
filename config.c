@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "unhook.h"
 #include "Shlwapi.h"
 #include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 
 #define SINGLE_STEP_LIMIT 0x4000  // default unless specified in web ui
 #define DROPPED_LIMIT 100
@@ -42,7 +43,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern char *our_dll_path;
 extern char *our_process_name;
-extern BOOL PatchByte(LPVOID Address, BYTE Byte);
 extern wchar_t *our_process_path_w;
 extern int EntryPointRegister;
 extern unsigned int TraceDepthLimit, StepLimit, Type0, Type1, Type2;
@@ -385,32 +385,31 @@ void parse_config_line(char* line)
 			if (p) {
 				*p = '\0';
 				char *p2 = p+1;
-				unsigned int byte = strtoul(value, NULL, 0);
 				int delta=0;
-				p = strchr(p2, '+');
+				p = strchr(value, '+');
 				if (p) {
 					delta = strtoul(p+1, NULL, 0);
 					DebugOutput("Config: Delta 0x%x.\n", delta);
 					*p = '\0';
 				}
 				else {
-					p = strchr(p2, '-');
+					p = strchr(value, '-');
 					if (p) {
 						delta = - (int)strtoul(p+1, NULL, 0);
 						DebugOutput("Config: Delta 0x%x.\n", delta);
 						*p = '\0';
 					}
 				}
-				PVOID address = (PVOID)(DWORD_PTR)strtoul(p2, NULL, 0);
+				PVOID address = (PVOID)(DWORD_PTR)strtoull(value, NULL, 0);
 				if (address) {
-					DebugOutput("Config: patching address 0x%p with byte 0x%x", address, byte);
-					PatchByte(address, (BYTE)byte);
+					DebugOutput("Config: patching address 0x%p with bytes %s", address, p2);
+					PatchBytes(address, p2);
 				}
 				else
-					DebugOutput("Config: patch address missing invalid: %s", value);
+					DebugOutput("Config: patch address missing or invalid: %s", value);
 			}
 			else
-				DebugOutput("Config: patch byte missing");
+				DebugOutput("Config: patch bytes missing");
 		}
 		else if (!stricmp(key, "bp")) {
 			unsigned int x = 0;
@@ -893,18 +892,18 @@ void parse_config_line(char* line)
 					*p2 = '\0';
 				}
 				int delta=0;
-				p2 = strchr(value, '+');
-				if (p2) {
-					delta = strtoul(p2+1, NULL, 0);
+				char *p3 = strchr(value, '+');
+				if (p3) {
+					delta = strtoul(p3+1, NULL, 0);
 					DebugOutput("Config: Delta 0x%x.\n", delta);
-					*p2 = '\0';
+					*p3 = '\0';
 				}
 				else {
-					p2 = strchr(value, '-');
-					if (p2) {
-						delta = - (int)strtoul(p2+1, NULL, 0);
+					p3 = strchr(value, '-');
+					if (p3) {
+						delta = - (int)strtoul(p3+1, NULL, 0);
 						DebugOutput("Config: Delta 0x%x.\n", delta);
-						*p2 = '\0';
+						*p3 = '\0';
 					}
 				}
 				for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++) {
@@ -1375,6 +1374,11 @@ void parse_config_line(char* line)
 			g_config.snaps = value[0] == '1';
 			if (g_config.snaps)
 				DebugOutput("Loader snaps enabled.\n");
+		}
+		else if (!stricmp(key, "hook-watch")) {
+			g_config.hook_watch = value[0] == '1';
+			if (g_config.hook_watch)
+				DebugOutput("Config: Hook watch enabled.\n");
 		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("Monitor config - unrecognised key %s.\n", key);
