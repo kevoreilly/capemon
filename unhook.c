@@ -235,7 +235,7 @@ static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 
 					// Attempt restoration
 					restore_hook(idx);
-					if (!memcmp(g_addr[idx], g_our[idx], g_length[idx]))
+					if (g_config.hook_restore && !memcmp(g_addr[idx], g_our[idx], g_length[idx]))
 						continue;
 
 					// If the memory region matches the original contents, then it

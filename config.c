@@ -161,6 +161,11 @@ void parse_config_line(char* line)
 			}
 		}
 #endif
+		else if (!stricmp(key, "hook-restore")) {
+			g_config.hook_restore = value[0] == '1';
+			if (g_config.hook_restore)
+				DebugOutput("Config: Attempt hook restoration of modifications detected by unhook thread\n");
+		}
 		else if (!strcmp(key, "disable_hook_content")) { //Set to 1 to remove functionality of all hooks except those critical for monitoring other processes. Set to 2 to apply to all hooks.
 			g_config.disable_hook_content = atoi(value);
 		}
@@ -1401,6 +1406,7 @@ void read_config(void)
 #else
 	g_config.hook_type = HOOK_HOTPATCH_JMP_INDIRECT;
 #endif
+	g_config.hook_restore = 1;
 	g_config.protected_pids = 1;
 	g_config.ntdll_protect = 1;
 	g_config.ntdll_remap = 1;
@@ -1533,6 +1539,7 @@ void read_config(void)
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.ntdll_protect = 0;
+			g_config.hook_restore = 0;
 			DebugOutput("Firefox-specific hook-set enabled.\n");
         }
 		if (!_stricmp(our_process_name, "iexplore.exe"))
@@ -1543,6 +1550,7 @@ void read_config(void)
 			g_config.ntdll_protect = 0;
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
+			g_config.hook_restore = 0;
 			DebugOutput("Internet Explorer-specific hook-set enabled.\n");
         }
 
@@ -1554,6 +1562,7 @@ void read_config(void)
 			g_config.ntdll_protect = 0;
 			g_config.yarascan = 0;
 			g_config.procmemdump = 0;
+			g_config.hook_restore = 0;
 			DebugOutput("Edge-specific hook-set enabled.\n");
 		}
 
@@ -1565,6 +1574,7 @@ void read_config(void)
 			g_config.ntdll_protect = 0;
 			g_config.yarascan = 0;
 			g_config.procmemdump = 0;
+			g_config.hook_restore = 0;
 			DebugOutput("Chrome-specific hook-set enabled.\n");
 		}
 
@@ -1576,6 +1586,7 @@ void read_config(void)
 			g_config.procmemdump = 0;
 			g_config.yarascan = 0;
 			g_config.ntdll_protect = 0;
+			g_config.hook_restore = 0;
 			DebugOutput("Microsoft Office settings enabled.\n");
         }
 	}

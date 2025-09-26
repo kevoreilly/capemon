@@ -120,6 +120,9 @@ struct _g_config {
 	// Hook trampoline allocated in low (<2GB) memory (64-bit)
 	int hook_low;
 
+	// Attempt to restore modified hooks detected by unhook thread
+	int hook_restore;
+
 	// Disable hook content
 	int disable_hook_content;
 
