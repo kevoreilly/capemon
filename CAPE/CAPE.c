@@ -688,7 +688,7 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		{"LdrpCallInitRoutine", "RtlActivateActivationContextUnsafeFast", 1},
 	};
 
-	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
+	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || (OSVersion.dwMajorVersion > 6 && OSVersion.dwBuildNumber < 26000))
 	{
 		for (int i = 0; i < sizeof(RuntimeTable) / sizeof(RuntimeTableMapping); i++)
 			if (strcmp(RuntimeTable[i].FunctionName, FunctionName) == 0)
