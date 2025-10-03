@@ -1139,7 +1139,7 @@ rebase:
 	}
 
 	// Now set the import table directory entry to point to the new table
-	NtHeader.IMPORT_DIRECTORY.Size = NewSizeOfImportDescriptors;
+	NtHeader.IMPORT_DIRECTORY.Size = NewImportDirectorySize;
 	NtHeader.IMPORT_DIRECTORY.VirtualAddress = NewImportsRVA;
 
 	// Set bound imports values to zero to prevent them overriding our new import table

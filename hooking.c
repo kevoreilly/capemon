@@ -278,6 +278,9 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 		else
 			BreakpointOnReturn((PVOID)hookinfo->return_address);
 	}
+
+	if (g_config.hook_watch)
+		DebugOutput("api_dispatch: %s\n", h->funcname);
 }
 
 void add_force_hook_thread_func(const char* function)

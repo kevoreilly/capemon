@@ -126,6 +126,41 @@ typedef SIZE_T (WINAPI *_RtlCompareMemory)(
     _In_ SIZE_T Length
 );
 
+typedef enum _EVENT_INFORMATION_CLASS {
+	EventBasicInformation
+} EVENT_INFORMATION_CLASS;
+
+typedef enum _EVENT_TYPE {
+	NotificationEvent,      // manual-reset event
+	SynchronizationEvent    // auto-reset event
+} EVENT_TYPE;
+
+typedef struct _EVENT_BASIC_INFORMATION {
+	EVENT_TYPE EventType;
+	LONG EventState;
+} EVENT_BASIC_INFORMATION, * PEVENT_BASIC_INFORMATION;
+
+typedef NTSTATUS(NTAPI* _NtQueryEvent)(
+	_In_										HANDLE					EventHandle,
+	_In_										EVENT_INFORMATION_CLASS	EventInformationClass,
+	_Out_writes_bytes_(EventInformationLength)	PVOID					EventInformation,
+	_In_										ULONG					EventInformationLength,
+	_Out_opt_									PULONG					ReturnLength
+	);
+typedef enum {
+	MemoryBasicInformation = 0,
+	MemorySectionName = 2,
+} MEMORY_INFORMATION_CLASS;
+
+typedef NTSTATUS(WINAPI* _NtQueryVirtualMemory)(
+	_In_		HANDLE						ProcessHandle,
+	_In_		PVOID						BaseAddress,
+	_In_		MEMORY_INFORMATION_CLASS	MemoryInformationClass,
+	_Out_		PVOID						Buffer,
+	_In_		SIZE_T						Length,
+	_Out_opt_	PSIZE_T						ResultLength
+);
+
 _NtSetInformationProcess pNtSetInformationProcess;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
@@ -269,3 +304,87 @@ struct envstruct {
 };
 
 const char* GetLanguageName(LANGID langID);
+
+#define OUR_INET_ADDRSTRLEN 16
+
+typedef struct _in_sockaddr {
+	short			sin_family;		// e.g. AF_INET
+	unsigned short	sin_port;		// e.g. htons(3490)
+	unsigned long	sin_addr;		// see struct in_addr, below
+	char			sin_zero[8];	// zero this if you want to
+} in_sockaddr;
+
+typedef struct _AFD_ConnectDataStruct
+{
+	DWORD		dwUnknown1;
+	DWORD		dwUnknown2;
+	DWORD		dwUnknown3;
+	in_sockaddr	SockAddr;
+} AFD_ConnectDataStruct;
+
+typedef struct _AFD_BindDataStruct
+{
+	DWORD		dwUnknown1;
+	in_sockaddr	SockAddr;
+} AFD_BindDataStruct, * PAFD_BindDataStruct;
+
+typedef struct _AFD_WSABUF {
+	ULONG	len;
+	PCHAR	buf;
+} AFD_WSABUF, * PAFD_WSABUF;
+
+typedef struct _AFD_RECV_INFO {
+	PAFD_WSABUF	AfdBufferArray;
+	ULONG		AfdBufferCount;
+	ULONG		AfdFlags;
+	ULONG		TdiFlags;
+} AFD_RECV_INFO, * PAFD_RECV_INFO;
+
+typedef struct _AFD_SEND_INFO {
+	PAFD_WSABUF AfdBufferArray;
+	ULONG       AfdBufferCount;
+	ULONG       TdiFlags;
+} AFD_SEND_INFO, * PAFD_SEND_INFO;
+
+const char* our_inet_ntop(int af, const void* src, char* dst, size_t size);
+unsigned short our_ntohs(unsigned short netshort);
+DWORD wait_for_event_to_be_signaled(HANDLE hEvent, DWORD dwTimeout);
+BOOLEAN our_isbadreadptr(const void* addr, ULONG len);
+
+typedef HANDLE CRTHANDLE;
+
+/*
+* Structure defs for FindFixAndSave hook in cmd.exe
+* From https://github.com/KingKDot/Exorcism/blob/54a44302469160aa7b93f4b72e93206d06a786ac/cmdtest/cmdtest/dllmain.cpp#L70
+*/
+struct savtype {
+	TCHAR* saveptrs[12];
+};
+
+struct relem {
+	CRTHANDLE rdhndl;       // handle to be redirected
+	TCHAR* fname;           // filename (or &n)
+	CRTHANDLE svhndl;       // where orig handle is saved
+	int flag;               // Append flag
+	TCHAR rdop;             // Type ('>' | '<')
+	struct relem* nxt;      // Next structure
+};
+
+struct node {               // Used for operators
+	int type;               // Type of operator
+	struct savtype save;    // FOR processor saves orig strings here
+	struct relem* rio;      // M022 - Linked redirection list
+	struct node* lhs;       // Ptr to left hand side of the operator
+	struct node* rhs;       // Ptr to right hand side of the operator
+	INT_PTR extra[4];       // M022 - Padding now needed
+};
+
+struct cmdnode {
+	int type;               // Type of command
+	struct savtype save;    // FOR processor saves orig strings here
+	struct relem* rio;      // M022 - Linked redirection list
+	PTCHAR cmdline;         // Ptr to command line
+	PTCHAR argptr;          // Ptr to type of command
+	int flag;               // M022 - Valid for cond and goto types
+	int cmdarg;             // M022 - Argument to STRTYP routine
+};
