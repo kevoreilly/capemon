@@ -33,6 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // i  -> (int) -> integer
 // l  -> (long) -> long integer
 // L  -> (long *) -> pointer to a long integer
+// n  -> (VARIANT *) -> logs the value appropiately based on the variant type
 // p  -> (void *) -> pointer (alias for l)
 // P  -> (void **) -> pointer to a handle (alias for L)
 // o  -> (UNICODE_STRING *) -> unicode string

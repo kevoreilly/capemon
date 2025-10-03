@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "config.h"
 #include "ignore.h"
+#include "powerbase.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Injection.h"
 #include "CAPE\Debugger.h"
@@ -34,8 +35,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define STATUS_BAD_COMPRESSION_BUFFER ((NTSTATUS)0xC0000242L)
 
 extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern const char* GetLanguageName(LANGID langID);
 
@@ -765,8 +764,8 @@ HOOKDEF(void, WINAPI, GetSystemInfo,
 
 	Old_GetSystemInfo(lpSystemInfo);
 
-	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < 4)
-		lpSystemInfo->dwNumberOfProcessors = 4;
+	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < SPOOFED_CPU_CORE_NUM)
+		lpSystemInfo->dwNumberOfProcessors = SPOOFED_CPU_CORE_NUM;
 
 	LOQ_void("misc", "");
 
@@ -819,7 +818,7 @@ normal_call:
 
 		if (!g_config.no_stealth && SystemInformationClass == SystemBasicInformation && SystemInformationLength >= sizeof(SYSTEM_BASIC_INFORMATION) && NT_SUCCESS(ret)) {
 			PSYSTEM_BASIC_INFORMATION p = (PSYSTEM_BASIC_INFORMATION)SystemInformation;
-			p->NumberOfProcessors = 4;
+			p->NumberOfProcessors = SPOOFED_CPU_CORE_NUM;
 		}
 
 		/* This is nearly arbitrary and simply designed to test whether the Upatre author(s) or others
@@ -928,8 +927,7 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 
 	if (ClassGuid) {
 		memcpy(&id1, ClassGuid, sizeof(id1));
-		sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-			id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+		uuid_to_string(id1, idbuf);
 
 		if ((known = known_object(&id1)))
 			LOQ_handle("misc", "ss", "ClassGuid", idbuf, "Known", known);
@@ -957,8 +955,7 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 	HDEVINFO ret = Old_SetupDiGetClassDevsW(ClassGuid, Enumerator, hwndParent, Flags);
 	if (ClassGuid) {
 		memcpy(&id1, ClassGuid, sizeof(id1));
-		sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-			id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+		uuid_to_string(id1, idbuf);
 
 		if ((known = known_object(&id1)))
 			LOQ_handle("misc", "ss", "ClassGuid", idbuf, "Known", known);
@@ -1860,6 +1857,15 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	return ret;
 }
 
+HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
+	__in LPWSTR lpCmdLine,
+	__out int *pNumArgs
+) {
+	LPWSTR ret = Old_CommandLineToArgvW(lpCmdLine, pNumArgs);
+	LOQ_nonnull("misc", "ui", "CommandLine", lpCmdLine, "NumArgs", *pNumArgs);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	_In_	LPCSTR  lpDevice,
 	_In_	DWORD  iDevNum,
@@ -1913,5 +1919,88 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 		}
 	}
 	LOQ_bool("misc", "u", "DeviceString", lpDisplayDevice->DeviceString);
+	return ret;
+}
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductA,
+	_In_	LPCSTR	szPackagePath,
+	_In_	LPCSTR	szCommandLine
+) {
+	UINT ret = Old_MsiInstallProductA(szPackagePath, szCommandLine);
+	LOQ_zero("misc", "ss", "PackagePath", szPackagePath, "CommandLine", szCommandLine);
+	return ret;
+}
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductW,
+	_In_	LPCWSTR	szPackagePath,
+	_In_	LPCWSTR	szCommandLine
+) {
+	UINT ret = Old_MsiInstallProductW(szPackagePath, szCommandLine);
+	LOQ_zero("misc", "uu", "PackagePath", szPackagePath, "CommandLine", szCommandLine);
+	return ret;
+}
+
+HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
+	__in  PCH Prefix,
+	__in  ULONG ComponentId,
+	__in  ULONG Level,
+	__in  PCHAR Format,
+	__in  va_list arglist,
+	__in  BOOLEAN HandleBreakpoint
+) {
+    UCHAR Buffer[512];
+    size_t cb = strlen(Prefix);
+    strcpy(Buffer, Prefix);
+    cb = _vsnprintf(Buffer + cb, sizeof(Buffer) - cb, Format, arglist) + cb;
+
+    if (cb == -1) {
+        cb = sizeof(Buffer);
+        Buffer[sizeof(Buffer) - 1] = '\n';
+    }
+
+	DebugOutput("%s", Buffer);
+
+    return Old_vDbgPrintExWithPrefixInternal(Prefix, ComponentId, Level, Format, arglist, HandleBreakpoint);
+}
+
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  PCSTR  Filename,
+	_Out_ PDWORD HeaderSum,
+	_Out_ PDWORD CheckSum
+) {
+	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
+
+	if (HeaderSum && CheckSum)
+		*CheckSum = *HeaderSum;
+
+	if (HeaderSum && CheckSum)
+		LOQ_zero("misc", "fhh", "Filename", Filename, "HeaderSum", *HeaderSum, "CheckSum", *CheckSum);
+	else
+		LOQ_zero("misc", "f", "Filename", Filename);
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
+	__in		POWER_INFORMATION_LEVEL InformationLevel,
+	__in_opt	PVOID                   InputBuffer,
+	__in		ULONG                   InputBufferLength,
+	__out_opt	PVOID                   OutputBuffer,
+	__in		ULONG                   OutputBufferLength
+) {
+	NTSTATUS ret = Old_NtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+	if (ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
+		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
+		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
+		SYSTEM_POWER_CAPABILITIES* ptr = (SYSTEM_POWER_CAPABILITIES *)OutputBuffer;
+		ptr->AoAc = 1;
+		ptr->SystemS4 = 1;
+		ptr->SystemS5 = 1;
+		ptr->ThermalControl = 1;
+	}
+	LOQ_ntstatus("device", "ibb",
+		"InformationLevel", InformationLevel,
+		"InputBuffer", InputBufferLength, InputBuffer,
+		"OutputBuffer", OutputBufferLength, OutputBuffer);
 	return ret;
 }

@@ -23,6 +23,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define BREAKPOINT_MAX	0x100
 #define SYSBP_MAX		0x400
 
+// Anti-analysis related items so we can be consistent across various APIs
+#define SPOOFED_DISK_SIZE	0x10000000000ull // 1TB
+#define RECOVERY_PARTITION_SIZE	0x1f2af000  // Taken from random Win10 install
+
+#define SPOOFED_GPU_RAM 0x100000000l  // 4GB
+#define SPOOFED_GPU_NAME L"NVIDIA GTX 1650"
+
+#define SPOOFED_RAM 0x100000000l  // 4GB
+#define SPOOFED_RAM_RESERVED 0x410000
+
+#define SPOOFED_CPU_CORE_NUM 4
+
+
 struct _g_config {
 	// name of the pipe to communicate with cuckoo
 	wchar_t pipe_name[MAX_PATH];
@@ -104,6 +117,12 @@ struct _g_config {
 	// Default hook type (may be overridden for specific functions)
 	int hook_type;
 
+	// Hook trampoline allocated in low (<2GB) memory (64-bit)
+	int hook_low;
+
+	// Attempt to restore modified hooks detected by unhook thread
+	int hook_restore;
+
 	// Disable hook content
 	int disable_hook_content;
 
@@ -119,11 +138,17 @@ struct _g_config {
 	// Language override
 	int lang;
 
+	// protected processes
+	unsigned int protected_pids;
+
 	// ntdll write protection
 	unsigned int ntdll_protect;
 
 	// ntdll remap protection
 	unsigned int ntdll_remap;
+
+	// Dumped payloads limit
+	unsigned int dump_limit;
 
 	// Dropped files limit
 	unsigned int dropped_limit;
@@ -210,11 +235,17 @@ struct _g_config {
 	// AMSI dumps (Win10+)
 	int amsidump;
 
+	// .NET JIT cache dumps
+	unsigned int jit_dumps;
+
 	// Minimal hook set
 	int minhook;
 
 	// Zero hook set
 	int zerohook;
+
+	// Native hook set
+	int native;
 
 	// Microsoft Office hook set
 	int office;
@@ -236,6 +267,12 @@ struct _g_config {
 
 	// Allow scans/dumps with loader lock held
 	int loaderlock_scans;
+
+	// Specify custom trace stepping behavior
+	int stepmode;
+
+	// Enable Windows Loader snaps output
+	int snaps;
 
 	char *break_on_apiname;
 	char *break_on_modname;
@@ -274,10 +311,11 @@ struct _g_config {
 	int base_on_caller;
 	int trace_times;
 	char *trace_into_api[EXCLUSION_MAX];
+	int hook_watch;
 };
 
 extern struct _g_config g_config;
 
-int read_config(void);
+void read_config(void);
 
 #endif

@@ -704,7 +704,8 @@ int hook_api(hook_t *h, int type)
 		}
 		else {
 			PVOID exportaddr = GetFunctionAddress(hmod, (PCHAR)h->funcname);
-			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+			if (exportaddr)
+				addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
 			if (exportaddr && addr && (PVOID)addr != exportaddr) {
 				unsigned int offset;
 				char *module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)addr, &offset);
@@ -718,12 +719,14 @@ int hook_api(hook_t *h, int type)
 					DebugOutput("hook_api: %s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
 			}
 		}
+	}
 
-		if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
-			DWORD timestamp = GetTimeStamp(hmod);
-			if (timestamp == h->timestamp)
-				addr = (unsigned char *)hmod + h->rva;
-		}
+	if (addr == NULL && h->timestamp != 0 && h->rva != 0) {
+		if (!hmod)
+			hmod = GetModuleHandleW(h->library);
+		DWORD timestamp = GetTimeStamp(hmod);
+		if (timestamp == h->timestamp)
+			addr = (unsigned char *)hmod + h->rva;
 	}
 
 	if (addr == NULL || addr == (unsigned char *)0xffbadd11) {

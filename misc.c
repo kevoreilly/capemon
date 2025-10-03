@@ -32,8 +32,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 
 extern char *our_process_name;
-extern int path_is_system(const wchar_t *path_w);
-extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _NtQueryInformationThread pNtQueryInformationThread;
@@ -44,6 +42,7 @@ static _NtQueryKey pNtQueryKey;
 static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
 static _RtlEqualUnicodeString pRtlEqualUnicodeString;
+static _RtlInitUnicodeString pRtlInitUnicodeString;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
@@ -52,6 +51,8 @@ _NtFreeVirtualMemory pNtFreeVirtualMemory;
 _LdrRegisterDllNotification pLdrRegisterDllNotification;
 _RtlNtStatusToDosError pRtlNtStatusToDosError;
 _RtlCompareMemory pRtlCompareMemory;
+_NtQueryEvent pNtQueryEvent;
+_NtQueryVirtualMemory pNtQueryVirtualMemory;
 
 void resolve_runtime_apis(void)
 {
@@ -75,10 +76,12 @@ void resolve_runtime_apis(void)
 	*(FARPROC *)&pRtlGenRandom = GetProcAddress(GetModuleHandle("advapi32"), "SystemFunction036");
 	*(FARPROC *)&pNtMapViewOfSection = GetProcAddress(ntdllbase, "NtMapViewOfSection");
 	*(FARPROC *)&pRtlEqualUnicodeString = GetProcAddress(ntdllbase, "RtlEqualUnicodeString");
+	*(FARPROC *)&pRtlInitUnicodeString = GetProcAddress(ntdllbase, "RtlInitUnicodeString");
 	*(FARPROC *)&pNtUnmapViewOfSection = GetProcAddress(ntdllbase, "NtUnmapViewOfSection");
 	*(FARPROC *)&pRtlAdjustPrivilege = GetProcAddress(ntdllbase, "RtlAdjustPrivilege");
 	*(FARPROC *)&pRtlNtStatusToDosError = GetProcAddress(ntdllbase, "RtlNtStatusToDosError");
 	*(FARPROC *)&pRtlCompareMemory = GetProcAddress(ntdllbase, "RtlCompareMemory");
+	*(FARPROC*)&pNtQueryVirtualMemory = GetProcAddress(ntdllbase, "NtQueryVirtualMemory");
 }
 
 ULONG_PTR g_our_dll_base;
@@ -97,6 +100,7 @@ BOOLEAN is_address_in_monitor(ULONG_PTR address)
 
 	return FALSE;
 }
+
 void raw_sleep(int msecs)
 {
 	LARGE_INTEGER interval;
@@ -126,6 +130,41 @@ void num_to_string(char *buf, unsigned int buflen, unsigned int num)
 		dec /= 10;
 	}
 	buf[i] = '\0';
+}
+
+static const char hexchars[] = "0123456789ABCDEF";
+
+char *num_to_hex(char *buf, unsigned int width, ULONG_PTR num)
+{
+    buf[width] = '\0';
+    unsigned int count = width;
+
+	while (count--) {
+        buf[count] = hexchars[num & 0xF];
+        num >>= 4;
+    }
+
+    return buf + width;
+}
+
+void uuid_to_string(IID id, char *idbuf)
+{
+    idbuf = num_to_hex(idbuf, 8, id.Data1);
+    *idbuf++ = '-';
+
+    idbuf = num_to_hex(idbuf, 4, id.Data2);
+    *idbuf++ = '-';
+
+    idbuf = num_to_hex(idbuf, 4, id.Data3);
+    *idbuf++ = '-';
+
+    for (int i = 0; i < 2; i++)
+        idbuf = num_to_hex(idbuf, 2, id.Data4[i]);
+
+    *idbuf++ = '-';
+
+    for (int i = 2; i < 8; i++)
+        idbuf = num_to_hex(idbuf, 2, id.Data4[i]);
 }
 
 unsigned short our_htons(unsigned short num)
@@ -596,6 +635,41 @@ BOOLEAN is_valid_address_range(ULONG_PTR start, DWORD len)
 	return TRUE;
 }
 
+BOOLEAN our_isbadreadptr(const void* addr, ULONG len)
+{
+	SIZE_T reslen;
+	PUCHAR startaddr = (PUCHAR)addr;
+	PUCHAR endaddr = startaddr + len;
+	PUCHAR p;
+	MEMORY_BASIC_INFORMATION meminfo;
+	lasterror_t lasterror;
+	BOOLEAN ret = FALSE;
+
+	/* check for overflow */
+	if ((ULONG_PTR)endaddr < (ULONG_PTR)startaddr)
+		return TRUE;
+
+	get_lasterrors(&lasterror);
+	for (p = startaddr; p < endaddr; p = (PUCHAR)meminfo.BaseAddress + meminfo.RegionSize) {
+		memset(&meminfo, 0, sizeof(meminfo));
+		if (pNtQueryVirtualMemory(NtCurrentProcess(), p, MemoryBasicInformation, &meminfo, sizeof(meminfo), &reslen)) {
+			ret = TRUE;
+			break;
+		}
+		if (!(meminfo.State & MEM_COMMIT) || !(meminfo.Type & (MEM_IMAGE | MEM_MAPPED | MEM_PRIVATE))) {
+			ret = TRUE;
+			break;
+		}
+		if ((meminfo.Protect & (PAGE_GUARD | PAGE_NOACCESS)) && (meminfo.Type != MEM_IMAGE || meminfo.Protect != PAGE_NOACCESS)) {
+			ret = TRUE;
+			break;
+		}
+	}
+
+	set_lasterrors(&lasterror);
+	return ret;
+}
+
 DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 {
 	PROCESS_BASIC_INFORMATION pbi;
@@ -603,6 +677,36 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 
 	if (pNtQueryInformationProcess(GetCurrentProcess(), ProcessBasicInformation, &pbi, sizeof(pbi), &ulSize) >= 0 && ulSize == sizeof(pbi))
 		return (DWORD)pbi.ParentProcessId;
+
+	return 0;
+}
+
+int path_is_system(const wchar_t *path_w)
+{
+	if (!path_w)
+		return 0;
+
+	if (!wcsnicmp(path_w, L"\\Device\\HarddiskVolume", 22))
+		path_w += 24;
+	else if (!wcsnicmp(path_w + 1, L":\\", 2))
+		path_w += 3;
+
+	if (((!wcsnicmp(path_w, L"windows\\system32\\", 17) ||
+		!wcsnicmp(path_w, L"windows\\syswow64\\", 17) ||
+		!wcsnicmp(path_w, L"windows\\sysnative\\", 18))))
+		return 1;
+
+	return 0;
+}
+
+int path_is_program_files(const wchar_t *path_w)
+{
+	if (!path_w)
+		return 0;
+
+	if (((!wcsnicmp(path_w + 1, L":\\program files\\", 16) ||
+		!wcsnicmp(path_w + 1, L":\\program files (x86)\\", 22))))
+		return 1;
 
 	return 0;
 }
@@ -814,6 +918,21 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
+BOOL test_is_in_dll_range(ULONG_PTR addr)
+{
+	DWORD i;
+	DebugOutput("is_in_dll_range: addr 0x%p", addr);
+	for (i = 0; i < loaded_dlls; i++) {
+		DebugOutput("is_in_dll_range: module %d start 0x%p end 0x%p", i, dll_ranges[i].start, dll_ranges[i].end);
+		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end) {
+			DebugOutput("is_in_dll_range: found!");
+			return TRUE;
+		}
+	}
+	DebugOutput("is_in_dll_range: NOT found :-(");
+	return FALSE;
+}
+
 ULONG_PTR base_of_dll_of_interest;
 
 void set_dll_of_interest(ULONG_PTR BaseAddress)
@@ -847,6 +966,7 @@ void add_all_dlls_to_dll_ranges(void)
 		memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length * sizeof(WCHAR));
 		// skip dlls in same directory as exe
 		if (!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
+			DebugOutput("add_all_dlls_to_dll_ranges: skipping %ws", ModulePath.Buffer);
 			free(ModulePath.Buffer);
 			continue;
 		}
@@ -1036,6 +1156,17 @@ uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
 	memcpy(&path[length], obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
 	path[length + copylen] = L'\0';
 	return length + copylen;
+}
+
+BOOL is_path_from_object_attributes(const OBJECT_ATTRIBUTES *obj, wchar_t *path)
+{
+	if (obj && obj->ObjectName) {
+		UNICODE_STRING target;
+		pRtlInitUnicodeString(&target, path);
+		if (pRtlEqualUnicodeString(obj->ObjectName, &target, TRUE))
+			return TRUE;
+	}
+	return FALSE;
 }
 
 static char *system32dir_a;
@@ -1675,57 +1806,6 @@ out:
 	return ret;
 }
 
-BOOLEAN is_suspended(DWORD pid, DWORD tid)
-{
-	ULONG length;
-	PSYSTEM_PROCESS_INFORMATION pspi = NULL, proc;
-	ULONG requestedlen = 16384;
-	lasterror_t lasterror;
-	BOOLEAN ret = FALSE;
-
-	get_lasterrors(&lasterror);
-
-	pspi = malloc(requestedlen);
-	if (pspi == NULL)
-		goto out;
-
-	while (pNtQuerySystemInformation(SystemProcessInformation, pspi, requestedlen, &length) == STATUS_INFO_LENGTH_MISMATCH) {
-		free(pspi);
-		requestedlen <<= 1;
-		pspi = malloc(requestedlen);
-		if (pspi == NULL)
-			goto out;
-	}
-	// now we have a valid list of process information
-	proc = pspi;
-	while (1) {
-		ULONG i;
-
-		if ((DWORD)(ULONG_PTR)proc->UniqueProcessId != pid)
-			goto next;
-		for (i = 0; i < proc->NumberOfThreads; i++) {
-			PSYSTEM_THREAD thread = &proc->Threads[i];
-			if (tid && (DWORD)(ULONG_PTR)thread->ClientId.UniqueThread != tid)
-				continue;
-			if (thread->WaitReason != Suspended)
-				goto out;
-		}
-		break;
-next:
-		if (!proc->NextEntryOffset)
-			break;
-		proc = (PSYSTEM_PROCESS_INFORMATION)((PCHAR)proc + proc->NextEntryOffset);
-	}
-	ret = TRUE;
-out:
-	if (pspi)
-		free(pspi);
-
-	set_lasterrors(&lasterror);
-
-	return ret;
-}
-
 static PUCHAR get_rel_target(PUCHAR buf)
 {
 	return buf + 5 + *(int *)&buf[1];
@@ -2315,4 +2395,107 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 	}
 
 	free(absolutepath);
+}
+
+static size_t append_octet(char** p, size_t* remaining, unsigned char octet) {
+	char* start = *p;
+	size_t written_chars = 0;
+
+	// A temporary buffer to hold the characters of the octet (max 3 chars for 0-255)
+	char temp_buffer[3];
+	int i = 0;
+
+	// Handle 0
+	if (octet == 0) {
+		temp_buffer[i++] = '0';
+	}
+	else {
+		// Extract digits in reverse order
+		unsigned char val = octet;
+		while (val > 0) {
+			temp_buffer[i++] = (val % 10) + '0';
+			val /= 10;
+		}
+	}
+
+	// Write the digits to the destination buffer in the correct order
+	written_chars = i;
+	if (*remaining <= written_chars) { // Check if there's enough space (including null terminator)
+		return 0;
+	}
+
+	while (i > 0) {
+		*(*p)++ = temp_buffer[--i];
+	}
+
+	*remaining -= written_chars;
+	return written_chars;
+}
+
+const char* our_inet_ntop(int af, const void* src, char* dst, size_t size) {
+	if (src == NULL || dst == NULL) {
+		return NULL;
+	}
+
+	if (af != AF_INET) {
+		return NULL;
+	}
+
+	if (size < OUR_INET_ADDRSTRLEN) {
+		return NULL;
+	}
+
+	// Cast the source to a pointer to raw bytes (unsigned char).
+	const unsigned char* p_addr = (const unsigned char*)src;
+	char* p = dst;
+	size_t remaining = size;
+
+	for (int i = 0; i < 4; ++i) {
+		// Read the i-th byte directly from memory. This avoids all endianness problems.
+		unsigned char octet = p_addr[i];
+		if (append_octet(&p, &remaining, octet) == 0) {
+			return NULL;
+		}
+
+		if (i < 3) {
+			if (remaining <= 1) {
+				return NULL;
+			}
+			*p++ = '.';
+			remaining--;
+		}
+	}
+
+	*p = '\0';
+	return dst;
+}
+
+unsigned short our_ntohs(unsigned short netshort) {
+	return (netshort >> 8) | (netshort << 8);
+}
+
+DWORD wait_for_event_to_be_signaled(HANDLE hEvent, DWORD dwTimeout) {
+	ULONGLONG startTime = raw_gettickcount();
+	ULONGLONG currentTime;
+	NTSTATUS status;
+	EVENT_BASIC_INFORMATION eventInfo;
+	ULONG returnLength;
+
+	while (TRUE) {
+		status = pNtQueryEvent(hEvent, EventBasicInformation, &eventInfo, sizeof(eventInfo), &returnLength);
+		if (status == STATUS_SUCCESS) {
+			// Check the state. 1 means signaled.
+			if (eventInfo.EventState == 1) {
+				return WAIT_OBJECT_0;
+			}
+		}
+
+		// Check for timeout.
+		currentTime = raw_gettickcount();
+		if ((currentTime - startTime) > dwTimeout) {
+			return WAIT_TIMEOUT;
+		}
+
+		raw_sleep(250);
+	}
 }

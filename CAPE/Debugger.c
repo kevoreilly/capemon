@@ -39,40 +39,28 @@ typedef struct _INJECT_STRUCT {
 DWORD LengthMask[MAX_DEBUG_REGISTER_DATA_SIZE + 1] = DEBUG_REGISTER_LENGTH_MASKS;
 
 extern OSVERSIONINFO OSVersion;
-extern SYSTEM_INFO SystemInfo;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
-extern BOOLEAN is_address_in_ntdll(ULONG_PTR address);
 extern void add_force_hook_thread_func(const char* function);
 extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
-extern LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
-extern BOOL UnpackerGuardPageHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
-extern PTRACKEDREGION GetTrackedRegion(PVOID Address);
-extern PVOID GetPageAddress(PVOID Address);
 extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_direct_syscall(const char *function, PVOID addr);
 extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL WoW64fix(void);
 extern BOOL WoW64PatchBreakpoint(unsigned int Register);
 extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
-extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POINTERS* ExceptionInfo), SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
-extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
 extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue, SyscallBreakpointSet;
 extern PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
-extern PVOID BreakOnNtContinueCallback;
 extern int StepOverRegister;
 extern int process_shutting_down;
 extern HANDLE DebuggerLog;
 
 struct ThreadBreakpoints *MainThreadBreakpointList;
-GUARD_PAGE_HANDLER GuardPageHandler;
 unsigned int TrapIndex, DepthCount;
 PVOID _KiUserExceptionDispatcher;
-HANDLE hCapePipe;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
 lookup_t SoftBPs, SyscallBPs;
 SOFTBP SyscallBP;
@@ -116,32 +104,43 @@ HANDLE GetThreadHandle(DWORD ThreadId)
 }
 
 //**************************************************************************************
-BOOL PatchByte(LPVOID Address, BYTE Byte)
+BOOL PatchBytes(LPVOID Address, const char* HexBytes)
 //**************************************************************************************
 {
-	DWORD OldProtect;
-
-	if (!Address || !IsAddressAccessible(Address))
-		return FALSE;
-
-	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+    if (!Address || !HexBytes || !IsAddressAccessible(Address))
 	{
-		DebugOutput("PatchByte: Unable to change memory protection at 0x%p", Address);
-		return FALSE;
-	}
+        DebugOutput("PatchBytes: Invalid address or hex string");
+        return FALSE;
+    }
 
-#ifdef DEBUG_COMMENTS
-	DebugOutput("PatchByte: Changed memory protection at 0x%p", Address);
-#endif
+    SIZE_T HexLen = strlen(HexBytes);
+    if (HexLen == 0 || HexLen % 2 != 0)
+	{
+        DebugOutput("PatchBytes: Invalid hex string length %d", HexLen);
+        return FALSE;
+    }
 
-	*(PBYTE)Address = Byte;
+    SIZE_T ByteCount = HexLen / 2;
+    DWORD OldProtect;
+    if (!VirtualProtect(Address, ByteCount, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+        DebugOutput("PatchBytes: Failed to change memory protection at 0x%p", Address);
+        return FALSE;
+    }
 
-#ifdef DEBUG_COMMENTS
-	DebugOutput("PatchByte: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
-#endif
-	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+    PBYTE Dest = (PBYTE)Address;
+    for (SIZE_T i = 0; i < HexLen; i += 2)
+	{
+        char HexByte[3] = { HexBytes[i], HexBytes[i + 1], '\0' };
+        BYTE Byte = (BYTE)strtoul(HexByte, NULL, 16);
+        *Dest++ = Byte;
+    }
 
-	return TRUE;
+    VirtualProtect(Address, ByteCount, OldProtect, &OldProtect);
+
+    DebugOutput("PatchBytes: Patched %zu bytes at 0x%p: %s", ByteCount, Address, HexBytes);
+
+    return TRUE;
 }
 
 //**************************************************************************************
@@ -2348,7 +2347,9 @@ BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
+#ifdef DEBUG_COMMENTS
 	DebugOutput("ClearSoftwareBreakpoint: Restored instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
+#endif
 
 	lookup_del(BPs, (ULONG_PTR)Address);
 

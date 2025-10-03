@@ -46,6 +46,8 @@ extern char *our_process_name;
 extern void hook_disable();
 extern void hook_enable();
 
+void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+
 //**************************************************************************************
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId)
 //**************************************************************************************
@@ -514,8 +516,10 @@ void DumpSectionViewsForHandle(HANDLE SectionHandle)
 	return;
 }
 
-void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context)
+__declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context)
 {
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 	{
 		struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
@@ -527,12 +531,44 @@ void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context)
 			CurrentInjectionInfo->StackPointer = (LPVOID)Context->Esp;
 #endif
 	}
+
+	if (g_config.debugger)
+	{
+		Context->Dr0 = 0;
+		Context->Dr1 = 0;
+		Context->Dr2 = 0;
+		Context->Dr3 = 0;
+		Context->Dr6 = 0;
+		Context->Dr7 = 0;
+	}
 }
 
-void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
+__declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *Context)
 {
 	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
 		return;
+
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
+	if (Pid != GetCurrentProcessId())
+		ProcessMessage(Pid, 0);
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+			ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
+#endif
+	}
+	else
+		DebugOutput("SetThreadContextHandler: not taken #1");
 
 	MEMORY_BASIC_INFORMATION MemoryInfo;
 	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);

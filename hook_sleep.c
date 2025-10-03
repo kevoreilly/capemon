@@ -49,7 +49,7 @@ static int num_wait_small = 0;
 void disable_sleep_skip()
 {
 	if (sleep_skip_active && g_config.force_sleepskip < 1) {
-		pipe("INFO:Disabling sleep skipping.");
+		DebugOutput("Disabling sleep skipping.");
 		sleep_skip_active = 0;
 	}
 }

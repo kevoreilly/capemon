@@ -19,8 +19,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "hooking.h"
 #include "hooks.h"
+#include "CAPE\CAPE.h"
 
+typedef struct
+{
+	PCHAR FunctionName;
+	PVOID Address;
+} NameByAddress;
+
+extern NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZE_T FunctionCount, SIZE_T* OutFoundCount);
 extern VOID CALLBACK New_DllLoadNotification(ULONG NotificationReason, const PLDR_DLL_NOTIFICATION_DATA NotificationData, PVOID Context);
+extern PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
@@ -38,6 +47,9 @@ void disable_tail_call_optimization(void)
 #define HOOK(library, funcname) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
 
+#define HOOK_WITHNAME(library, funcname, mangled) {L###library, mangled, NULL, NULL, \
+    &New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
+
 #define HOOK_SPECIAL(library, funcname) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, TRUE, FALSE, 0, FALSE}
 
@@ -53,15 +65,23 @@ void disable_tail_call_optimization(void)
 #define HOOK_FUNCRVA(library, funcname, timestamp, rva) {L###library, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
-hook_t full_hooks[] = {
+#define HOOK_EXE(funcname) {NULL, #funcname, NULL, NULL, \
+	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE}
 
+#define HOOK_EXERVA(funcname, timestamp, rva) {NULL, #funcname, NULL, NULL, \
+	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
+
+hook_t full_hooks[] = {
 	// Process Hooks
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
+
+	HOOK(ntdll, LdrpCallInitRoutine),
 	HOOK(ntdll, NtAllocateVirtualMemory),
 	HOOK(ntdll, NtAllocateVirtualMemoryEx),
 	HOOK(ntdll, NtReadVirtualMemory),
@@ -108,6 +128,7 @@ hook_t full_hooks[] = {
 	// all variants of ShellExecute end up in ShellExecuteExW
 	HOOK(shell32, ShellExecuteExW),
 	HOOK(msvcrt, system),
+	HOOK(ntdll, vDbgPrintExWithPrefixInternal),
 
 	// Thread Hooks
 	HOOK_SPECIAL(ntdll, NtCreateThread),
@@ -153,6 +174,19 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoGetObject),
+
+	// WMI Hooks
+#ifdef _WIN64
+	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UEAAJPEBGJPEAUtagVARIANT@@PEAJ2@Z"),
+#else
+	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z"),
+#endif
+	HOOK_NOTAIL(fastprox, WMI_ExecQuery, 6),
+	HOOK_NOTAIL(fastprox, WMI_ExecMethod, 8),
+	HOOK_NOTAIL(fastprox, WMI_ExecQueryAsync, 6),
+	HOOK_NOTAIL(fastprox, WMI_ExecMethodAsync, 7),
+	HOOK_NOTAIL(fastprox, WMI_GetObject, 6),
+	HOOK_NOTAIL(fastprox, WMI_GetObjectAsync, 5),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
@@ -209,7 +243,7 @@ hook_t full_hooks[] = {
 	HOOK(rstrtmgr, RmStartSession),
 
 	// Registry Hooks
-	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as 
+	// Note: Most, if not all, of the Registry API go natively from both the 'A' as well as
 	// the 'W' versions. So we have to hook all the ascii *and* unicode APIs of those functions.
 	HOOK(advapi32, RegOpenKeyExA),
 	HOOK(advapi32, RegOpenKeyExW),
@@ -298,6 +332,8 @@ hook_t full_hooks[] = {
 	HOOK(user32, SetWindowLongPtrW),
 	HOOK(user32, EnumDisplayDevicesA),
 	HOOK(user32, EnumDisplayDevicesW),
+	HOOK(msi, MsiInstallProductA),
+	HOOK(msi, MsiInstallProductW),
 //	HOOK_NOTAIL(user32, CreateWindowExA, 12),	// maldoc detonation issues
 //	HOOK_NOTAIL(user32, CreateWindowExW, 12),	//
 //	HOOK(user32, EnumWindows),	// Disable for now, invokes a user-specified callback that can contain
@@ -327,6 +363,7 @@ hook_t full_hooks[] = {
 	//HOOK(ntdll, RtlMoveMemory),
 	HOOK(kernel32, GetCommandLineA),
 	HOOK(kernel32, GetCommandLineW),
+	HOOK(shcore, CommandLineToArgvW),
 	HOOK(kernel32, OutputDebugStringA),
 	HOOK(kernel32, OutputDebugStringW),
 	HOOK(kernel32, HeapCreate),
@@ -405,6 +442,9 @@ hook_t full_hooks[] = {
 	HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
+	HOOK(ntdll, NtPowerInformation),
+
+	HOOK(cmd, FindFixAndRun),
 
 	// Language related hooks
 	HOOK(ntdll, NtQueryDefaultUILanguage),
@@ -742,27 +782,158 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(vbscript, VbsPrint),
 };
 
+hook_t native_hooks[] = {
+
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
+	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
+	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
+
+	// File Hooks
+	HOOK(ntdll, NtQueryAttributesFile),
+	HOOK(ntdll, NtQueryFullAttributesFile),
+	HOOK(ntdll, NtCreateFile),
+	HOOK(ntdll, NtOpenFile),
+	HOOK(ntdll, NtReadFile),
+	HOOK(ntdll, NtWriteFile),
+	HOOK(ntdll, NtDeleteFile),
+	HOOK(ntdll, NtDeviceIoControlFile),
+	HOOK(ntdll, NtQueryDirectoryFile),
+	HOOK(ntdll, NtQueryInformationFile),
+	HOOK(ntdll, NtSetInformationFile),
+	HOOK(ntdll, NtOpenDirectoryObject),
+	HOOK(ntdll, NtCreateDirectoryObject),
+	HOOK(ntdll, NtQueryDirectoryObject),
+
+	// Native Registry Hooks
+	HOOK(ntdll, NtCreateKey),
+	HOOK(ntdll, NtOpenKey),
+	HOOK(ntdll, NtOpenKeyEx),
+	HOOK(ntdll, NtRenameKey),
+	HOOK(ntdll, NtReplaceKey),
+	HOOK(ntdll, NtEnumerateKey),
+	HOOK(ntdll, NtEnumerateValueKey),
+	HOOK(ntdll, NtSetValueKey),
+	HOOK(ntdll, NtQueryValueKey),
+	HOOK(ntdll, NtQueryMultipleValueKey),
+	HOOK(ntdll, NtDeleteKey),
+	HOOK(ntdll, NtDeleteValueKey),
+	HOOK(ntdll, NtLoadKey),
+	HOOK(ntdll, NtLoadKey2),
+	HOOK(ntdll, NtLoadKeyEx),
+	HOOK(ntdll, NtQueryKey),
+	HOOK(ntdll, NtSaveKey),
+	HOOK(ntdll, NtSaveKeyEx),
+
+	// Sync Hooks
+	HOOK(ntdll, NtCreateMutant),
+	HOOK(ntdll, NtOpenMutant),
+	HOOK(ntdll, NtReleaseMutant),
+	HOOK(ntdll, NtCreateEvent),
+	HOOK(ntdll, NtOpenEvent),
+	HOOK(ntdll, NtCreateNamedPipeFile),
+	HOOK(ntdll, NtAddAtom),
+	HOOK(ntdll, NtAddAtomEx),
+	HOOK(ntdll, NtFindAtom),
+	HOOK(ntdll, NtDeleteAtom),
+	HOOK(ntdll, NtQueryInformationAtom),
+
+	// Process Hooks
+	HOOK(ntdll, NtAllocateVirtualMemory),
+	HOOK(ntdll, NtAllocateVirtualMemoryEx),
+	HOOK(ntdll, NtReadVirtualMemory),
+	HOOK(ntdll, NtWriteVirtualMemory),
+	HOOK(ntdll, NtWow64WriteVirtualMemory64),
+	HOOK(ntdll, NtWow64ReadVirtualMemory64),
+	HOOK(ntdll, NtProtectVirtualMemory),
+	HOOK(ntdll, NtFreeVirtualMemory),
+	HOOK(ntdll, NtCreateProcess),
+	HOOK(ntdll, NtCreateProcessEx),
+	HOOK(ntdll, RtlCreateUserProcess),
+	HOOK(ntdll, NtOpenProcess),
+	HOOK(ntdll, NtTerminateProcess),
+	HOOK(ntdll, RtlReportSilentProcessExit),
+	HOOK(ntdll, NtResumeProcess),
+	HOOK(ntdll, NtCreateSection),
+	HOOK(ntdll, NtDuplicateObject),
+	HOOK(ntdll, NtMakeTemporaryObject),
+	HOOK(ntdll, NtMakePermanentObject),
+	HOOK(ntdll, NtOpenSection),
+	HOOK(ntdll, NtMapViewOfSection),
+	HOOK(ntdll, NtMapViewOfSectionEx),
+	HOOK(ntdll, NtUnmapViewOfSection),
+	HOOK(ntdll, NtUnmapViewOfSectionEx),
+	HOOK(ntdll, NtOpenProcessToken),
+	HOOK(ntdll, NtQueryInformationToken),
+	HOOK(ntdll, DbgUiWaitStateChange),
+
+	// Thread Hooks
+	HOOK(ntdll, NtCreateThread),
+	HOOK(ntdll, NtCreateThreadEx),
+	HOOK(ntdll, NtTerminateThread),
+	HOOK(ntdll, NtQueueApcThread),
+	HOOK(ntdll, NtQueueApcThreadEx),
+	HOOK(ntdll, NtOpenThread),
+	HOOK(ntdll, NtGetContextThread),
+	HOOK(ntdll, RtlWow64GetThreadContext),
+	HOOK(ntdll, NtSetContextThread),
+	HOOK(ntdll, NtSuspendThread),
+	HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, RtlCreateUserThread),
+	HOOK(ntdll, NtSetInformationThread),
+	HOOK(ntdll, NtQueryInformationThread),
+	HOOK(ntdll, NtYieldExecution),
+	HOOK(ntdll, NtContinue),
+
+	// Misc Hooks
+	//HOOK(ntdll, RtlMoveMemory),
+	HOOK(ntdll, RtlAddVectoredExceptionHandler),
+	HOOK(ntdll, LdrGetDllHandle),
+	HOOK(ntdll, LdrGetProcedureAddress),
+	HOOK(ntdll, LdrGetProcedureAddressForCaller),
+	HOOK_NOTAIL(ntdll, NtShutdownSystem, 1),
+	HOOK_NOTAIL(ntdll, NtSetSystemPowerState, 3),
+	HOOK_NOTAIL(ntdll, NtRaiseHardError, 6),
+	HOOK(ntdll, NtClose),
+	HOOK(ntdll, NtLoadDriver),
+	HOOK(ntdll, NtSetInformationProcess),
+	//HOOK(ntdll, NtQueryInformationProcess),
+	HOOK(ntdll, RtlDecompressBuffer),
+	HOOK(ntdll, RtlCompressBuffer),
+	HOOK(ntdll, NtQuerySystemInformation),
+#ifndef _WIN64
+	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
+	HOOK(ntdll, NtQueryLicenseValue),
+#endif
+
+	// transaction functions (for process doppelganging)
+	HOOK(ntdll, NtCreateTransaction),
+	HOOK(ntdll, NtOpenTransaction),
+	HOOK(ntdll, NtRollbackTransaction),
+	HOOK(ntdll, NtCommitTransaction),
+	HOOK(ntdll, RtlSetCurrentTransaction),
+
+	// Sleep Hooks
+	HOOK(ntdll, NtQueryPerformanceCounter),
+	HOOK(ntdll, NtDelayExecution),
+	HOOK(ntdll, NtWaitForSingleObject),
+	HOOK_SPECIAL(ntdll, NtQuerySystemTime),
+	HOOK(ntdll, NtSetTimer),
+	HOOK(ntdll, NtSetTimerEx),
+};
+
 // This hook set is intended to include only hooks which are necessary
 // to follow the execution chain with base functionality
 
 hook_t min_hooks[] = {
+	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
+	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
+
 	HOOK_NOTAIL_ALT(ntdll, LdrLoadDll, 4),
 	HOOK_NOTAIL(ntdll, LdrUnloadDll, 1),
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
-
-	HOOK_SPECIAL(clrjit, compileMethod),
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ole32, CoGetObject),
-	HOOK_SPECIAL(combase, CoCreateInstance),
-	HOOK_SPECIAL(combase, CoCreateInstanceEx),
-	HOOK_SPECIAL(combase, CoGetClassObject),
-	HOOK_SPECIAL(combase, CoGetObject),
-
-	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
-	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 
 	HOOK(ntdll, NtCreateProcess),
 	HOOK(ntdll, NtCreateProcessEx),
@@ -790,13 +961,23 @@ hook_t min_hooks[] = {
 	HOOK(ntdll, RtlCreateUserThread),
 	HOOK(kernel32, CreateRemoteThread),
 	HOOK(kernel32, CreateRemoteThreadEx),
+
+	HOOK_SPECIAL(clrjit, compileMethod),
+	HOOK_SPECIAL(ole32, CoCreateInstance),
+	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
+	HOOK_SPECIAL(ole32, CoGetClassObject),
+	HOOK_SPECIAL(ole32, CoGetObject),
+	HOOK_SPECIAL(combase, CoCreateInstance),
+	HOOK_SPECIAL(combase, CoCreateInstanceEx),
+	HOOK_SPECIAL(combase, CoGetClassObject),
+	HOOK_SPECIAL(combase, CoGetObject),
+
 	HOOK(user32, SendNotifyMessageA),
 	HOOK(user32, SendNotifyMessageW),
 	HOOK(user32, SetWindowLongA),
 	HOOK(user32, SetWindowLongW),
 	HOOK(user32, SetWindowLongPtrA),
 	HOOK(user32, SetWindowLongPtrW),
-
 	HOOK(user32, SetWindowsHookExA),
 	HOOK(user32, SetWindowsHookExW),
 
@@ -916,6 +1097,7 @@ hook_t office_hooks[] = {
 	HOOK(kernel32, GetDiskFreeSpaceW),
 	HOOK(kernel32, GetVolumeNameForVolumeMountPointW),
 	HOOK(kernel32, GetVolumeInformationByHandleW),
+	HOOK(kernel32, SetFileInformationByHandle),
 	HOOK(shell32, SHGetFolderPathW),
 	HOOK(shell32, SHGetKnownFolderPath),
 	HOOK(shell32, SHGetFileInfoW),
@@ -1171,6 +1353,7 @@ hook_t office_hooks[] = {
 	HOOK(oleaut32, VarBstrCat),
 	HOOK_NOTAIL(usp10, ScriptIsComplex, 3),
 	HOOK_NOTAIL(inseng,DownloadFile,3),
+	HOOK(imagehlp, MapFileAndCheckSumA),
 #ifndef _WIN64
 	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
 	HOOK(ntdll, NtQueryLicenseValue),
@@ -1458,6 +1641,10 @@ hook_t test_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtContinue),
 };
 
+hook_t exe_hooks[] = {
+	HOOK_EXE(FindFixAndRun),
+};
+
 BOOL inside_hook(LPVOID Address)
 {
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
@@ -1476,9 +1663,57 @@ BOOL set_hooks_dll(const wchar_t *library)
 			ret = TRUE;
 			if (hook_api(hooks+i, g_config.hook_type) < 0)
 				DebugOutput("set_hooks_dll: Unable to hook %s", (hooks+i)->funcname);
+			else if (g_config.hook_range)
+				DebugOutput("set_hooks_dll: Hooked %s", (hooks+i)->funcname);
 		}
 	}
 	return ret;
+}
+
+void set_hooks_exe(void)
+{
+    LDR_MODULE* mod;
+    PEB* peb = (PEB*)get_peb();
+    mod = (LDR_MODULE*)peb->LoaderData->InLoadOrderModuleList.Flink;
+    HMODULE ullExeBase = (HMODULE)(mod->BaseAddress);
+
+    int hook_count = sizeof(exe_hooks) / sizeof(exe_hooks[0]);
+    char* func_names[sizeof(exe_hooks) / sizeof(exe_hooks[0])];
+
+    for (int i = 0; i < hook_count; i++)
+        func_names[i] = (char*)exe_hooks[i].funcname;
+
+    SIZE_T found_count = 0;
+    NameByAddress* results = GetAddressesByYara(ullExeBase, func_names, hook_count, &found_count);
+
+    if (!results || found_count == 0) {
+        if (results) free(results);
+        return;
+    }
+
+    for (int i = 0; i < hook_count; i++) {
+		if (exe_hooks[i].timestamp && exe_hooks[i].rva) {
+			hook_t* hook = &exe_hooks[i];
+			if (hook_api(hook, g_config.hook_type) < 0)
+				DebugOutput("set_hooks_exe: Failed to hook %s at RVA 0x%x", hook->funcname, hook->rva);
+			else
+				DebugOutput("set_hooks_exe: Hooked %s at RVA 0x%x", hook->funcname, hook->rva);
+		}
+        else for (SIZE_T j = 0; j < found_count; j++) {
+            if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, exe_hooks[i].funcname)) {
+                hook_t* hook = &exe_hooks[i];
+                hook->addr = results[j].Address;
+
+                if (hook_api(hook, g_config.hook_type) < 0)
+                    DebugOutput("set_hooks_exe: Failed to hook %s at 0x%p", hook->funcname, hook->addr);
+                else
+                    DebugOutput("set_hooks_exe: Hooked %s at 0x%p", hook->funcname, hook->addr);
+            }
+        }
+    }
+
+    free(results);
+
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)
@@ -1589,6 +1824,11 @@ void set_hooks()
 		hooks_size = sizeof(browser_hooks);
 		hooks_arraysize = ARRAYSIZE(browser_hooks);
 	}
+	else if (g_config.native) {
+		hooks = native_hooks;
+		hooks_size = sizeof(native_hooks);
+		hooks_arraysize = ARRAYSIZE(native_hooks);
+	}
 	else {
 		hooks = full_hooks;
 		hooks_size = sizeof(full_hooks);
@@ -1648,6 +1888,8 @@ void set_hooks()
 		register_dll_notification_manually(&New_DllLoadNotification);
 
 	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
+
+	set_hooks_exe();
 
 	hook_enable();
 }

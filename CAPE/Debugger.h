@@ -181,7 +181,7 @@ BOOL InitialiseDebugger(void);
 BOOL ResumeFromBreakpoint(PCONTEXT Context);
 void OutputThreadBreakpoints(DWORD ThreadId);
 void DebugOutputThreadBreakpoints();
-BOOL PatchByte(LPVOID Address, BYTE Byte);
+BOOL PatchBytes(LPVOID Address, const char* HexBytes);
 
 void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords);
 

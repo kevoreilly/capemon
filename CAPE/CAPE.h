@@ -15,6 +15,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
@@ -38,12 +42,14 @@ PVOID GetAllocationBase(PVOID Address);
 SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
 SIZE_T GetAccessibleSize(PVOID Address);
+PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName);
 PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
 BOOL IsAddressExecutable(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
-SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
+SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader);
 double GetEntropy(PUCHAR Buffer);
+void SanitiseString(char *Dst, const char *Src, size_t Size);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
 PWCHAR TranslatePathFromDeviceToLetterW(PWCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
@@ -72,9 +78,10 @@ int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
 BOOL DumpRange(PVOID Address, SIZE_T Size);
 BOOL DumpStackRegion(void);
+void DumpStrings(void);
 
 BOOL ProcessDumped;
-unsigned int DumpCount;
+unsigned int DumpCount, DotNetCacheDumpCount;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
@@ -182,3 +189,7 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 void TestProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 BOOL TrackExecution(PVOID CIP);
+
+#ifdef __cplusplus
+}
+#endif

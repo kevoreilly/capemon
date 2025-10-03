@@ -23,6 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Debugger.h"
 #include "YaraHarness.h"
 #include "..\config.h"
+#include "..\alloc.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -44,13 +45,49 @@ static char NewLine[MAX_PATH];
 
 char InternalYara[] =
 	"rule RtlInsertInvertedFunctionTable"
-	"{strings:$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
+	"{strings:$10_0_26100_3476 = {48 8D 0D [4] 49 F7 D8 48 8B F8 1B DB 23 5C 24 ?? E8 [4] 33 C9 E8}"
+	"$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
 	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
 	"$10_0_10240_16384 = {48 8D 0D [4] 48 8B E8 E8 [4] 33 C9 E8 [4] 8B 15 [4] 3B 15 [4] 0F 84}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule LdrpCallInitRoutine"
-	"{strings:$function = {55 8B EC 56 57 53 8B F4 [0-2] FF 75 14 FF 75 10 FF 75 0C FF 55 08 8B E6 5B 5F 5E 5D C2 10 00}"
+	"{strings:$10_0_26100_3476 = {40 53 56 57 41 54 41 55 [65-85] 84 03 FE 7F}"
+	"$function = {55 8B EC 56 57 53 8B F4 [0-2] FF 75 14 FF 75 10 FF 75 0C FF 55 08 8B E6 5B 5F 5E 5D C2 10 00}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecQuery"
+	"{strings:$function = {4C 8B DC 56 57 41 54 41 56 41 57 48 83 EC 60 49 C7 43 B8 FE FF FF FF 49 89 5B 10 49 89 6B 18 45 8B E1 4D 8B F0 4C 8B F9 48 8B 41 08 48 83 78 20 00 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecMethod"
+	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 70 48 C7 40 B8 FE FF FF FF 48 89 58 10 48 89 68 18 45 8B E1 4D 8B F0 48 8B EA 4C 8B F9 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecQueryAsync"
+	"{strings:$function = {4C 8B DC 56 57 41 54 41 56 41 57 48 83 EC 60 49 C7 43 B8 FE FF FF FF 49 89 5B 10 49 89 6B 18 45 8B E1 4D 8B F0 48 8B E9 48 8B 41 08 48 83 78 20 00 0F 84 [4] 49 83 63 08 00 4D 8D 43 08 E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_ExecMethodAsync"
+	"{strings:$function = {48 8B C4 57 41 54 41 55 41 56 41 57 48 83 EC 60 48 C7 40 B8 FE FF FF FF 48 89 58 10 48 89 68 18 48 89 70 20 45 8B E9 4D 8B F8 4C 8B F2 48 8B E9 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_GetObject"
+	"{strings:$function = {4C 8B DC 56 57 41 54 41 56 41 57 48 83 EC 50 49 C7 43 ?? FE FF FF FF 49 89 5B 10 49 89 6B 18 4D 8B F9 45 8B E0 48 8B EA 4C 8B F1 48 8B 41 08 48 83 78 20 00 0F 84 12 AB 02 00 49 83 63 08 00 4D 8D 43 08 E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule WMI_GetObjectAsync"
+	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#ifdef _WIN64
+	"rule vDbgPrintExWithPrefixInternal"
+	"{strings:$10_0_26100_3476 = {48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 48 89 78 20 41 54 41 56 41 57 48 83 EC 40 44 8A BC 24}"
+	"$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule FindFixAndRun"
+	"{strings:$function = {48 89 5C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC [80-110] 85 C0 0F 88 [2] 00 00 49 8B 4? 70 66 83 (78|79) 02 3A 0F 84 [2] 00 00 48 8D 54 24 20 49 8B CE E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#else
+	"rule vDbgPrintExWithPrefixInternal"
+	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule FindFixAndRun"
+	"{strings:$function = {8B FF 55 8B EC 6A FE 68 [4] 68 [4] 64 A1 00 00 00 00 50 81 EC [90-96] 00 0F 84 [4] B8 E7 7F 00 00 50 8D 8D [4] E8 [4] 85 C0 0F 88 [4] 8B 4? 38 66 83 7? 02 3A 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#endif
 	"rule capemon"
 	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
 	"condition:all of them}";
@@ -90,21 +127,25 @@ void ScannerError(int Error)
 	}
 }
 
-BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
+void ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match, void* user_data)
 {
 	char *Value, *Key, *p, *q, *r, c = 0;
-	unsigned int ValueLength;
-	int delta=0;
+	ULONG_PTR delta=0;
+	SIZE_T ValueLength = 0;
+
 	if (!Line || !Identifier)
-		return FALSE;
+		return;
+
 	p = strchr(Line, '$');
 	if (!p)
-		return FALSE;
+		return;
+
 	p = strchr(Line, '=');
 	if (!p)
-		return FALSE;
+		return;
+
 	r = strchr(p, ':');
-	if (r)
+	if (r && *(r + 1) == '$')
 		Value = r + 1;
 	else
 		Value = p + 1;
@@ -127,12 +168,12 @@ BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 	}
 	if (q)
 	{
-		ValueLength = (unsigned int)(DWORD_PTR)(q-(DWORD_PTR)Value);
+		ValueLength = (SIZE_T)(DWORD_PTR)(q-(DWORD_PTR)Value);
 		if (*(q-1) == '*')
 			ValueLength--;
 	}
 	else
-		ValueLength = (unsigned int)strlen(Value);
+		ValueLength = (SIZE_T)strlen(Value);
 
 	if (*(Value+ValueLength-1) == '*')
 	{
@@ -140,28 +181,44 @@ BOOL ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match)
 		delta += Match->match_length - 1;
 	}
 
-	if (strncmp(Value, Identifier, ValueLength))
-		return FALSE;
+	SIZE_T IdentifierLength = strlen(Identifier);
+	if (strncmp(Value, Identifier, IdentifierLength < ValueLength ? IdentifierLength : ValueLength))
+		return;
 
 	Key = Line;
-	if (r) {
+	if (r && *(r + 1) == '$')
+	{
 		c = *r;
 		*r = 0;
 	}
-	else {
+	else
+	{
 		c = *p;
 		*p = 0;
 	}
+
+	if (_strnicmp(Line, "bp", 2) && strncmp(Line, "br", 2) && strncmp(Line, "sysbp", 5))
+		delta += (ULONG_PTR)user_data;
+
 	memset(NewLine, 0, sizeof(NewLine));
-	sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
 	if (r)
+		sprintf(NewLine, "%s%c0x%p%s\0", Key, c, (PUCHAR)Match->offset+delta, r);
+	else
+		sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
+
+	if (r && *(r + 1) == '$')
 		*r = c;
 	else
 		*p = c;
-	p = strchr(NewLine, '$');
-	if (p)
-		return FALSE;
-	return TRUE;
+
+#ifdef DEBUG_COMMENTS
+	DebugOutput("ParseOptionLine: %s", NewLine);
+#endif
+
+	if (!strchr(NewLine, '$'))
+		parse_config_line(NewLine);
+
+	return;
 }
 
 int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
@@ -195,27 +252,23 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						char *p = strchr(OptionLine, ',');
 						if (p)
 							*p = 0;
-						yr_rule_strings_foreach(Rule, String)
+						if (!strchr(OptionLine, '$'))
+							parse_config_line(OptionLine);
+						else
 						{
-							yr_string_matches_foreach(context, String, Match)
+							yr_rule_strings_foreach(Rule, String)
 							{
-#ifdef DEBUG_COMMENTS
-								DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
-#endif
-								if (ParseOptionLine(OptionLine, (char*)String->identifier, Match))
+								yr_string_matches_foreach(context, String, Match)
 								{
 #ifdef DEBUG_COMMENTS
-									DebugOutput("YaraScan: NewLine %s", NewLine);
+									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
 #endif
-									parse_config_line(NewLine);
-									SetBreakpoints = TRUE;
+									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
 								}
-								else if (!strchr(OptionLine, '$') && _strnicmp(OptionLine, "bp", 2) || strncmp(OptionLine, "br", 2))
-									SetBreakpoints = TRUE;
-
 							}
 						}
-
+						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
+							SetBreakpoints = TRUE;
 						if (!_stricmp("dump", OptionLine))
 							DoDumpRegion = TRUE;
 						if (!_stricmp("clear", OptionLine))
@@ -234,8 +287,6 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							memset(Action2, 0, MAX_PATH);
 							memset(Action3, 0, MAX_PATH);
 						}
-						if (!strchr(OptionLine, '$'))
-							parse_config_line(OptionLine);
 						if (p)
 						{
 							*p = ',';
@@ -262,111 +313,133 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 	return CALLBACK_ERROR;
 }
 
-typedef struct
+int GetAddressesByYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
 {
-	PCHAR FunctionName;
-	PVOID Address;
-} NameByAddress;
+    switch(message)
+    {
+        case CALLBACK_MSG_RULE_NOT_MATCHING:
+#ifdef DEBUG_COMMENTS
+            DebugOutput("YaraScan rule did not match.");
+#endif
+        case CALLBACK_MSG_IMPORT_MODULE:
+            return CALLBACK_CONTINUE;
 
-int GetAddressByYaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void* user_data)
+        case CALLBACK_MSG_RULE_MATCHING:
+            YR_MATCH* Match;
+            YR_STRING* String;
+            YR_RULE* Rule = (YR_RULE*)message_data;
+            NameByAddress* AddressInfos = (NameByAddress*)user_data;
+
+#ifdef DEBUG_COMMENTS
+            DebugOutput("GetAddressesByYaraCallback hit: %s\n", Rule->identifier);
+#endif
+
+            yr_rule_strings_foreach(Rule, String)
+            {
+                yr_string_matches_foreach(context, String, Match)
+                {
+                    for (SIZE_T i = 0; AddressInfos[i].FunctionName != NULL; i++)
+                    {
+                        if (!strcmp(Rule->identifier, AddressInfos[i].FunctionName))
+                        {
+#ifdef DEBUG_COMMENTS
+                            DebugOutput("GetAddressesByYaraCallback: Found %s at RVA 0x%x", AddressInfos[i].FunctionName, Match->offset);
+#endif
+							AddressInfos[i].Address = (PVOID)Match->offset;
+                            break;
+                        }
+                    }
+                }
+            }
+            return CALLBACK_CONTINUE;
+    }
+
+    return CALLBACK_ERROR;
+}
+
+NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZE_T FunctionCount, SIZE_T* OutFoundCount)
 {
-	switch(message)
-	{
-		case CALLBACK_MSG_RULE_NOT_MATCHING:
-#ifdef DEBUG_COMMENTS
-			DebugOutput("YaraScan rule did not match.");
-#endif
-		case CALLBACK_MSG_IMPORT_MODULE:
-			return CALLBACK_CONTINUE;
-		case CALLBACK_MSG_RULE_MATCHING:
-			YR_MATCH* Match;
-			YR_STRING* String;
-			YR_RULE* Rule = (YR_RULE*)message_data;
+    if (!YaraActivated || !FunctionNames || FunctionCount == 0)
+        return NULL;
 
-#ifdef DEBUG_COMMENTS
-			DebugOutput("GetAddressByYaraCallback hit: %s\n", Rule->identifier);
-#endif
+    SIZE_T Size = GetAccessibleSize(ModuleBase);
+    if (!Size)
+        return NULL;
 
-			yr_rule_strings_foreach(Rule, String)
-			{
-				yr_string_matches_foreach(context, String, Match)
-				{
-					NameByAddress *AddressInfo = user_data;
+    Size = (SIZE_T)ReverseScanForNonZero(ModuleBase, Size);
+    if (!Size)
+    {
+        if (YaraLogging)
+            DebugOutput("GetAddressesByYara: Nothing to scan at 0x%p!\n", ModuleBase);
+        return NULL;
+    }
 
-					if (!strcmp(Rule->identifier, AddressInfo->FunctionName))
-					{
-#ifdef DEBUG_COMMENTS
-						DebugOutput("GetAddressByYaraCallback: Function %s found at RVA 0x%x", AddressInfo->FunctionName, Match->offset);
-#endif
-						AddressInfo->Address = (PVOID)Match->offset;
-						break;
-					}
-#ifdef DEBUG_COMMENTS
-					else
-						DebugOutput("GetAddressByYaraCallback: Function %s not found", AddressInfo->FunctionName);
-#endif
-				}
-			}
-			return CALLBACK_CONTINUE;
-	}
+    NameByAddress* AddressInfos = (NameByAddress*)calloc(FunctionCount + 1, sizeof(NameByAddress));
+    if (!AddressInfos)
+        return NULL;
 
-	return CALLBACK_ERROR;
+    for (SIZE_T i = 0; i < FunctionCount; i++)
+    {
+        AddressInfos[i].FunctionName = FunctionNames[i];
+        AddressInfos[i].Address = NULL;
+    }
+
+    int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+    __try
+    {
+        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, Timeout);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        if (YaraLogging)
+            DebugOutput("GetAddressesByYara: Unable to scan 0x%p\n", ModuleBase);
+        free(AddressInfos);
+        return NULL;
+    }
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (YaraLogging)
+            ScannerError(Result);
+        free(AddressInfos);
+        return NULL;
+    }
+
+    SIZE_T FoundCount = 0;
+    for (SIZE_T i = 0; i < FunctionCount; i++)
+    {
+        if (AddressInfos[i].Address)
+        {
+            AddressInfos[i].Address = (PVOID)((ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfos[i].Address);
+            FoundCount++;
+        }
+    }
+
+    if (OutFoundCount)
+        *OutFoundCount = FoundCount;
+
+    return AddressInfos;
 }
 
 PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName)
 {
-	if (!YaraActivated)
-		return NULL;
+    if (!YaraActivated)
+        return NULL;
 
-	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
-	DebugOutput("GetAddressByYara: ModuleBase 0x%p FunctionName %s\n", ModuleBase, FunctionName);
+    PCHAR FunctionNames[] = {FunctionName, NULL};
+    SIZE_T FunctionCount = 1;
+    SIZE_T FoundCount = 0;
 
+    NameByAddress* Results = GetAddressesByYara(ModuleBase, FunctionNames, FunctionCount, &FoundCount);
 
-	SIZE_T Size = GetAccessibleSize(ModuleBase);
+    PVOID FoundAddress = NULL;
+    if (Results && FoundCount > 0)
+    {
+        FoundAddress = Results[0].Address;
+        free(Results);
+    }
 
-	if (!Size)
-		return NULL;
-
-	Size = (SIZE_T)ReverseScanForNonZero(ModuleBase, Size);
-
-	if (!Size)
-	{
-		if (YaraLogging)
-			DebugOutput("GetAddressByYara: Nothing to scan at 0x%p!\n", ModuleBase);
-		return NULL;
-	}
-
-	NameByAddress AddressInfo;
-	AddressInfo.FunctionName = FunctionName;
-	AddressInfo.Address = NULL;
-
-	__try
-	{
-		Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressByYaraCallback, &AddressInfo, Timeout);
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		if (YaraLogging)
-			DebugOutput("GetAddressByYara: Unable to scan 0x%p\n", ModuleBase);
-		return NULL;
-	}
-
-	if (Result != ERROR_SUCCESS)
-		if (YaraLogging)
-			ScannerError(Result);
-#ifdef DEBUG_COMMENTS
-	else
-		DebugOutput("GetAddressByYara: successfully scanned 0x%p\n", ModuleBase);
-#endif
-
-	if (!AddressInfo.Address)
-		return NULL;
-
-#ifdef DEBUG_COMMENTS
-	DebugOutput("GetAddressByYara: %s found at 0x%x", FunctionName, (ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
-#endif
-
-	return (PVOID)((ULONG_PTR)ModuleBase + (ULONG_PTR)AddressInfo.Address);
+    return FoundAddress;
 }
 
 void YaraShutdown()

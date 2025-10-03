@@ -23,6 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Scylla\IATSearch.h"
 #include "Scylla\ImportRebuilder.h"
 #include "Scylla\ImportsHandling.h"
+#include "CAPE.h"
 
 typedef unsigned __int64 QWORD;
 
@@ -34,16 +35,6 @@ typedef unsigned __int64 QWORD;
 #define OFT_SUPPORT FALSE
 
 #define PE_HEADER_LIMIT 0x200
-#define CAPE_OUTPUT_FILE "CapeOutput.bin"
-
-extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
-extern "C" int ScanForNonZero(LPVOID Buffer, unsigned int Size);
-extern "C" PVOID GetAllocationBase(PVOID Address);
-extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
-extern "C" BOOL IsAddressAccessible(PVOID Address);
-
-extern char CapeOutputPath[MAX_PATH];
 
 //**************************************************************************************
 void ScyllaInit(HANDLE hProcess)
@@ -54,15 +45,9 @@ void ScyllaInit(HANDLE hProcess)
 	NativeWinApi::initialize();
 
 	if (hProcess)
-	{
 		ProcessAccessHelp::hProcess = hProcess;
-		ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
-	}
 	else
-	{
 		ProcessAccessHelp::setCurrentProcessAsTarget();
-		ProcessAccessHelp::getProcessModules(GetCurrentProcess(), ProcessAccessHelp::ownModuleList);
-	}
 }
 
 //**************************************************************************************
@@ -198,15 +183,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
 		}
 
-		if (FixImports)
-			if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
-				DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
-			else
-			{
-				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
-				goto fail;
-			}
-		else
+		if (!FixImports)
 			if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 				DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 			else
@@ -215,128 +192,125 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				goto fail;
 			}
 	}
-	else
+	else if (IsDisguisedPEHeader((LPVOID)ModuleBase))
 	{
 		PBYTE PEImage = NULL;
 		PIMAGE_NT_HEADERS pNtHeader = NULL;
-		PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)ModuleBase;
 
-		if (IsDisguisedPEHeader((LPVOID)ModuleBase) && *(WORD*)pDosHeader != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
+		DebugOutput("DumpProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
+
+		SIZE_T ImageSize = GetAccessibleSize((PVOID)ModuleBase);
+
+		PEImage = (BYTE*)calloc(ImageSize, sizeof(BYTE));
+		if (!PEImage)
 		{
-			MEMORY_BASIC_INFORMATION MemInfo;
-
-			DebugOutput("DumpProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
-
-			if (!VirtualQuery((LPVOID)ModuleBase, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
-			{
-				ErrorOutput("DumpProcess: unable to query memory address 0x%p", ModuleBase);
-				goto fail;
-			}
-
-			PEImage = (BYTE*)calloc(MemInfo.RegionSize, sizeof(BYTE));
-			if (!PEImage)
-				goto fail;
-
-			memcpy(PEImage, MemInfo.BaseAddress, MemInfo.RegionSize);
-
-			if (!pDosHeader->e_lfanew)
-			{
-				// In case the header until and including 'PE' has been zeroed
-				WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-				while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-				{
-					if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-					{
-						if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
-							pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-					}
-					MachineProbe += sizeof(WORD);
-				}
-
-				if (pNtHeader)
-					pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-			}
-
-			if (!pDosHeader->e_lfanew)
-			{
-				// In case the header until and including 'PE' is missing
-				pNtHeader = NULL;
-				WORD* MachineProbe = (WORD*)pDosHeader;
-				while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-				{
-					if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-					{
-						if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
-						{
-							pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-							//break;
-						}
-					}
-					MachineProbe += sizeof(WORD);
-
-					if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
-					{
-						SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
-						memmove(PEImage + HeaderShift, PEImage, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
-						memset(PEImage, 0, HeaderShift);
-						pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
-						pNtHeader = (PIMAGE_NT_HEADERS)(PEImage + HeaderShift);
-						pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-						DebugOutput("DumpProcess: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
-					}
-				}
-			}
-
-			delete peFile;
-			peFile = new PeParser((char*)PEImage, TRUE);
-
-			if (peFile->isValidPeFile())
-			{
-				if (NewEP)
-					entrypoint = NewEP;
-				else
-					entrypoint = peFile->getEntryPoint();
-
-				SectionBasedSizeOfImage = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
-
-				if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
-				{
-					DebugOutput("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
-					entrypoint = NULL;
-				}
-				else
-				{
-					DebugOutput("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
-					entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
-				}
-
-				if (FixImports)
-					if (peFile->dumpProcess(ModuleBase, entrypoint, CAPE_OUTPUT_FILE))
-						DebugOutput("DumpProcess: Module image dump success %s - dump size 0x%x.\n", CapeOutputPath, peFile->dumpSize);
-					else
-						DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
-				else
-					if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
-						DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
-					else
-						DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
-			}
-		}
-		else
-		{
-			DebugOutput("DumpProcess: Invalid PE file or invalid PE header.\n");
+			DebugOutput("DumpProcess: unable to allocate memory region of size 0x%x\n", ImageSize);
 			goto fail;
 		}
+
+		memcpy(PEImage, (PVOID)ModuleBase, ImageSize);
+
+		PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
+
+		if (!pDosHeader->e_lfanew)
+		{
+			// In case the header until and including 'PE' has been zeroed
+			WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
+			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+			{
+				if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+				{
+					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
+						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+				}
+				MachineProbe += sizeof(WORD);
+			}
+
+			if (pNtHeader)
+				pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+		}
+
+		if (!pDosHeader->e_lfanew)
+		{
+			// In case the header until and including 'PE' is missing
+			pNtHeader = NULL;
+			WORD* MachineProbe = (WORD*)pDosHeader;
+			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+			{
+				if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+				{
+					if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
+					{
+						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
+						//break;
+					}
+				}
+				MachineProbe += sizeof(WORD);
+
+				if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
+				{
+					SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
+					memmove(PEImage + HeaderShift, PEImage, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
+					memset(PEImage, 0, HeaderShift);
+					pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
+					pNtHeader = (PIMAGE_NT_HEADERS)(PEImage + HeaderShift);
+					pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
+					DebugOutput("DumpProcess: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
+				}
+			}
+		}
+
+		delete peFile;
+		peFile = new PeParser((DWORD_PTR)PEImage, TRUE);
+
+		if (peFile->isValidPeFile())
+		{
+			if (NewEP)
+				entrypoint = NewEP;
+			else
+				entrypoint = peFile->getEntryPoint();
+
+			SectionBasedSizeOfImage = (SIZE_T)peFile->getSectionHeaderBasedSizeOfImage();
+
+			if ((SIZE_T)entrypoint >= SectionBasedSizeOfImage)
+			{
+				DebugOutput("DumpProcess: Error - entry point too big: 0x%x, ignoring.\n", entrypoint);
+				entrypoint = NULL;
+			}
+			else
+			{
+				DebugOutput("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
+				entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
+			}
+
+			if (!FixImports)
+				if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+					DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+				else
+					DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+		}
+		else
+			DebugOutput("DumpProcess: Unable to fix PE image for dumping.\n");
+	}
+	else
+	{
+		DebugOutput("DumpProcess: Invalid PE file or invalid PE header.\n");
+		goto fail;
 	}
 
 	if (FixImports)
 	{
-		//  We'll try the simple search first
-		IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, FALSE);
+		ProcessAccessHelp::targetImageBase = ModuleBase;
+		ProcessAccessHelp::getSizeOfImageCurrentProcess();
+		ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList);
 
-		//  Let's try the advanced search now
-		if (IAT_Found == FALSE)
-			IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, TRUE);
+		// Enumerate DLLs and imported functions
+		apiReader.readApisFromModuleList();
+		IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, FALSE);
+
+		// Try advanced search
+		if (!IAT_Found)
+			IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, TRUE);
 
 		if (addressIAT && sizeIAT)
 		{
@@ -358,9 +332,8 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				{
 					if (iatReferenceScan.numberOfDirectImportApisNotInIat() > 0)
 					{
-						DebugOutput("DumpProcess: Direct imports - Found %d additional api addresses", iatReferenceScan.numberOfDirectImportApisNotInIat());
 						DWORD sizeIatNew = iatReferenceScan.addAdditionalApisToList();
-						DebugOutput("DumpProcess: Direct imports - Old IAT size 0x%08x new IAT size 0x%08x.\n", sizeIAT, sizeIatNew);
+						DebugOutput("DumpProcess: Direct imports - Found %d additional api addresses, old IAT size 0x%08x new IAT size 0x%08x\n", iatReferenceScan.numberOfDirectImportApisNotInIat(), sizeIAT, sizeIatNew);
 						importsHandling.scanAndFixModuleList();
 					}
 
@@ -382,7 +355,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			if (isIATOutsidePeImage(addressIAT))
 				DebugOutput("DumpProcess: Warning - IAT is not inside the PE image, requires rebasing.\n");
 
-			ImportRebuilder importRebuild(CapeOutputPath);
+			ImportRebuilder importRebuild((DWORD_PTR)ModuleBase);
 
 			if (OFT_SUPPORT)
 			{
@@ -407,7 +380,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				importRebuild.enableNewIatInSection(addressIAT, sizeIAT);
 			}
 
-			if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList))
+			if (importRebuild.rebuildImportTable(NULL, importsHandling.moduleList, entrypoint))
 			{
 				DebugOutput("DumpProcess: Import table rebuild success.\n");
 				delete peFile;
@@ -420,9 +393,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			}
 		}
 		else
-		{
-			DebugOutput("DumpProcess: Warning: Unable to find IAT in scan.\n");
-		}
+			DebugOutput("DumpProcess: Unable to find IAT in scan.\n");
 	}
 
 	delete peFile;

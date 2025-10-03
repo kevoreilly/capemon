@@ -69,23 +69,6 @@ extern void set_hooks_by_export_directory(const wchar_t *exportdirectory, const 
 extern void revalidate_all_hooks(void);
 extern void set_hooks();
 
-int path_is_system(const wchar_t *path_w)
-{
-	if (((!wcsnicmp(path_w, L"c:\\windows\\system32\\", 20) ||
-		!wcsnicmp(path_w, L"c:\\windows\\syswow64\\", 20) ||
-		!wcsnicmp(path_w, L"c:\\windows\\sysnative\\", 21))))
-		return 1;
-	return 0;
-}
-
-int path_is_program_files(const wchar_t *path_w)
-{
-	if (((!wcsnicmp(path_w, L"c:\\program files\\", 17) ||
-		!wcsnicmp(path_w, L"c:\\program files (x86)\\", 23))))
-		return 1;
-	return 0;
-}
-
 int loader_is_allowed(const char *loader_name)
 {
 	if (!loader_name)
@@ -635,26 +618,24 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		get_our_commandline();
 
-		if (g_config.standalone) {
-			// initialise CAPE
-			CAPE_init();
-			DebugOutput("Standalone mode initialised.\n");
-			return TRUE;
-		}
-
 		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
 
 		// read the config settings
-		if (!read_config())
-#if CUCKOODBG
-			;
-		else
-			DebugOutput("Config loaded.\n");
-#else
-			// if we're not debugging, then failure to read the capemon config should be a critical error
-			goto abort;
-#endif
+		read_config();
+
+		if (g_config.standalone) {
+			// initialize these because some hooks behave badly when they are empty
+			if (!g_config.w_analyzer[0]) {
+				for (i = 0; i < ARRAYSIZE(g_config.analyzer); i++)
+					g_config.w_analyzer[i] = (wchar_t)(unsigned short)g_config.analyzer[i];
+			}
+			if (!g_config.w_results[0]) {
+				for (i = 0; i < ARRAYSIZE(g_config.results); i++)
+					g_config.w_results[i] = (wchar_t)(unsigned short)g_config.results[i];
+			}
+			DebugOutput("Running in standalone mode.\n");
+		}
 
 		// don't inject into our own binaries run out of the analyzer directory unless they're the first process (intended)
 		if (wcslen(g_config.w_analyzer) && !wcsnicmp(our_process_path_w, g_config.w_analyzer, wcslen(g_config.w_analyzer)) && !g_config.first_process)
