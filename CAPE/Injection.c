@@ -519,6 +519,7 @@ void DumpSectionViewsForHandle(HANDLE SectionHandle)
 __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context)
 {
 	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
 
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 	{
@@ -532,14 +533,36 @@ __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT
 #endif
 	}
 
-	if (g_config.debugger)
+	if (g_config.debugger && Pid == GetCurrentProcessId())
 	{
-		Context->Dr0 = 0;
-		Context->Dr1 = 0;
-		Context->Dr2 = 0;
-		Context->Dr3 = 0;
-		Context->Dr6 = 0;
-		Context->Dr7 = 0;
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if (ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[0].Address == Context->Dr0)
+			{
+				Context->Dr0 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[1].Address == Context->Dr1)
+			{
+				Context->Dr1 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[2].Address == Context->Dr2)
+			{
+				Context->Dr2 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[3].Address == Context->Dr3)
+			{
+				Context->Dr3 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+		}
 	}
 }
 
@@ -559,16 +582,23 @@ __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
 		if (ThreadBreakpoints)
 		{
-			DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
-			ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+			if
+			(
+				(ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[0].Address != Context->Dr0) ||
+				(ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[1].Address != Context->Dr1) ||
+				(ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[2].Address != Context->Dr2) ||
+				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
+			)
+			{
+				DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+				ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+			}
 		}
 #ifdef DEBUG_COMMENTS
 		else
 			DebugOutput("SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
 #endif
 	}
-	else
-		DebugOutput("SetThreadContextHandler: not taken #1");
 
 	MEMORY_BASIC_INFORMATION MemoryInfo;
 	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
