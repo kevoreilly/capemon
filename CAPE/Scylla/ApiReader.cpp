@@ -1116,7 +1116,7 @@ void ApiReader::clearAll()
 	minApiAddress = (DWORD_PTR)-1;
 	maxApiAddress = 0;
 
-	for ( stdext::hash_map<DWORD_PTR, ApiInfo *>::iterator it = apiList.begin(); it != apiList.end(); ++it )
+	for ( std::unordered_multimap<DWORD_PTR, ApiInfo *>::iterator it = apiList.begin(); it != apiList.end(); ++it )
 	{
 		delete it->second;
 	}

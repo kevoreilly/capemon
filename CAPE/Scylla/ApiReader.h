@@ -70,6 +70,6 @@ private:
 	bool isApiBlacklisted( const char * functionName );
 	bool isWinSxSModule( ModuleInfo * module );
 
-	ApiInfo * getScoredApi(stdext::hash_map<DWORD_PTR, ApiInfo *>::iterator it1,size_t countDuplicates, bool hasName, bool hasUnicodeAnsiName, bool hasNoUnderlineInName, bool hasPrioDll,bool hasPrio0Dll,bool hasPrio1Dll, bool hasPrio2Dll, bool firstWin );
+	ApiInfo * getScoredApi(std::unordered_multimap<DWORD_PTR, ApiInfo *>::iterator it1,size_t countDuplicates, bool hasName, bool hasUnicodeAnsiName, bool hasNoUnderlineInName, bool hasPrioDll,bool hasPrio0Dll,bool hasPrio1Dll, bool hasPrio2Dll, bool firstWin );
 
 };
