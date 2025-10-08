@@ -707,6 +707,19 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		"vDbgPrintExWithPrefixInternal",
 	};
 
+	BOOL InYaraFunctions = FALSE;
+	for (SIZE_T i = 0; YaraFunctions[i]; i++)
+	{
+		if (!strcmp(YaraFunctions[i], FunctionName))
+		{
+			InYaraFunctions = TRUE;
+			break;
+		}
+	}
+
+	if (!InYaraFunctions)
+		return NULL;
+
 	SIZE_T FoundCount = 0, FuncCount = sizeof(YaraFunctions) / sizeof(YaraFunctions[0]);
 	NameByAddress* results = GetAddressesByYara(ModuleBase, YaraFunctions, FuncCount, &FoundCount);
 
@@ -717,10 +730,11 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		return NULL;
 	}
 
-	for (SIZE_T i = 0; i < FuncCount; i++)
-		for (SIZE_T j = 0; j < FoundCount; j++)
-			if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, YaraFunctions[i]))
-				return results[j].Address;
+	for (SIZE_T j = 0; j < FoundCount; j++)
+		if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, FunctionName))
+			return results[j].Address;
+
+	free(results);
 
 	return NULL;
 }
