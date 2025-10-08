@@ -705,6 +705,7 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		"WMI_GetObject",
 		"WMI_GetObjectAsync",
 		"vDbgPrintExWithPrefixInternal",
+		NULL
 	};
 
 	BOOL InYaraFunctions = FALSE;
@@ -730,13 +731,14 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 		return NULL;
 	}
 
+	PVOID Address = NULL;
 	for (SIZE_T j = 0; j < FoundCount; j++)
 		if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, FunctionName))
-			return results[j].Address;
+			Address = results[j].Address;
 
 	free(results);
 
-	return NULL;
+	return Address;
 }
 
 //**************************************************************************************
