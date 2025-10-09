@@ -1923,12 +1923,12 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 	}
 	else if (!strnicmp(DecodedInstruction.mnemonic.p, "j", 1))
 	{
-		int JumpOffset = (int)*((PCHAR)CIP + 1);
-		PVOID JumpTarget = (PVOID)((PUCHAR)CIP + DecodedInstruction.size + JumpOffset);
+		PVOID JumpTarget = GetTarget(ExceptionInfo->ContextRecord, DecodedInstruction);
 		if (!FilterTrace || g_config.trace_all)
 			TraceOutputFuncAddress(CIP, DecodedInstruction, JumpTarget);
 		if (g_config.loopskip)
 		{
+			int JumpOffset = (int)((PUCHAR)JumpTarget - (PUCHAR)CIP);
 			for (unsigned int i = 0; i < 4; i++)
 			{
 				if (JumpOffset < 0 && PreviousJumps[i] == CIP)
