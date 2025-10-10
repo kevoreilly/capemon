@@ -734,7 +734,10 @@ PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName)
 	PVOID Address = NULL;
 	for (SIZE_T j = 0; j < FoundCount; j++)
 		if (results[j].FunctionName && results[j].Address && !strcmp(results[j].FunctionName, FunctionName))
+		{
 			Address = results[j].Address;
+			break;
+		}
 
 	free(results);
 
