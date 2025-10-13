@@ -249,7 +249,10 @@ void parse_config_line(char* line)
 		}
 		else if (!strcmp(key, "dump-limit")) { //Override the default dump limit of 10 payloads
 			g_config.dump_limit = (unsigned int)strtoul(value, NULL, 10);
-			DebugOutput("Dropped file limit set to %d.\n", g_config.dump_limit);
+			if (g_config.dump_limit)
+				DebugOutput("Payload capture limit set to %d.\n", g_config.dump_limit);
+			else
+				DebugOutput("Payload capture limit disabled.\n");
 		}
 		else if (!strcmp(key, "dropped-limit")) { //Override the default dropped file limit of 100 files
 			g_config.dropped_limit = (unsigned int)strtoul(value, NULL, 10);
