@@ -1537,6 +1537,18 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		else
 			DebuggerOutput("ActionDispatcher: Failed to dump breaking module at 0x%p.\n", CallingModule);
 	}
+	else if (!strnicmp(Action, "DumpImage:", 10))
+	{
+		if (Target)
+		{
+			if (DumpImageInCurrentProcess(Target))
+				DebuggerOutput("ActionDispatcher: Dumped image at 0x%p.\n", Target);
+			else
+				DebuggerOutput("ActionDispatcher: Failed to dump image at 0x%p.\n", Target);
+		}
+		else
+			DebuggerOutput("ActionDispatcher: Failed to dump image - target missing or invalid.\n");
+	}
 	else if (!strnicmp(Action, "DumpSize:", 9))
 	{
 		if (Target)
