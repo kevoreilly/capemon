@@ -2813,7 +2813,7 @@ void NtContinueHandler(PCONTEXT ThreadContext)
 
 	TrackExecution(CIP);
 
-	if (BreakpointsSet)
+	if (g_config.debugger)
 	{
 		DWORD ThreadId = GetCurrentThreadId();
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(ThreadId);
