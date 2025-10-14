@@ -538,25 +538,25 @@ __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
 		if (ThreadBreakpoints)
 		{
-			if (ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[0].Address == Context->Dr0)
+			if (ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address == Context->Dr0)
 			{
 				Context->Dr0 = 0;
 				Context->Dr6 = 0;
 				Context->Dr7 = 0;
 			}
-			if (ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[1].Address == Context->Dr1)
+			if (ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address == Context->Dr1)
 			{
 				Context->Dr1 = 0;
 				Context->Dr6 = 0;
 				Context->Dr7 = 0;
 			}
-			if (ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[2].Address == Context->Dr2)
+			if (ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address == Context->Dr2)
 			{
 				Context->Dr2 = 0;
 				Context->Dr6 = 0;
 				Context->Dr7 = 0;
 			}
-			if (ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[3].Address == Context->Dr3)
+			if (ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address == Context->Dr3)
 			{
 				Context->Dr3 = 0;
 				Context->Dr6 = 0;
@@ -584,10 +584,10 @@ __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *
 		{
 			if
 			(
-				(ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[0].Address != Context->Dr0) ||
-				(ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[1].Address != Context->Dr1) ||
-				(ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[2].Address != Context->Dr2) ||
-				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
+				(ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address != Context->Dr0) ||
+				(ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address != Context->Dr1) ||
+				(ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address != Context->Dr2) ||
+				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
 			)
 			{
 				DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
