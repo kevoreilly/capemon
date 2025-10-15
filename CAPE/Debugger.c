@@ -46,9 +46,6 @@ extern char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int
 extern PCHAR GetNameBySsn(unsigned int Number);
 extern void log_direct_syscall(const char *function, PVOID addr);
 extern unsigned int address_is_in_stack(DWORD Address);
-extern BOOL WoW64fix(void);
-extern BOOL WoW64PatchBreakpoint(unsigned int Register);
-extern BOOL WoW64UnpatchBreakpoint(unsigned int Register);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POINTERS* ExceptionInfo), SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
@@ -635,64 +632,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("CAPEExceptionFilter: Anomaly detected! bp3 address (0x%p) different to BreakpointInfo (0x%x)!\n", ExceptionInfo->ContextRecord->Dr3, pBreakpointInfo->Address);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
-#ifndef _WIN64
-		if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Type != ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE0))
-		{
-			if (pBreakpointInfo->Type == BP_READWRITE && ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE0 == BP_WRITE && address_is_in_stack((DWORD_PTR)pBreakpointInfo->Address))
-			{
-				DebugOutput("CAPEExceptionFilter: Reinstated BP_READWRITE on breakpoint %d (WoW64 workaround)\n", pBreakpointInfo->Register);
-
-				ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, pBreakpointInfo->Size, (BYTE*)pBreakpointInfo->Address, pBreakpointInfo->Type, pBreakpointInfo->HitCount, pBreakpointInfo->Callback);
-			}
-			else
-			{
-				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp0 type (0x%x) different to BreakpointInfo (0x%x)!\n", ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE0, pBreakpointInfo->Type);
-				CheckDebugRegisters(0, ExceptionInfo->ContextRecord);
-			}
-		}
-		if (bp == 1 && ((DWORD)pBreakpointInfo->Type != ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE1))
-		{
-			if (pBreakpointInfo->Type == BP_READWRITE && ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE1 == BP_WRITE && address_is_in_stack((DWORD_PTR)pBreakpointInfo->Address))
-			{
-				DebugOutput("CAPEExceptionFilter: Reinstated BP_READWRITE on breakpoint %d (WoW64 workaround)\n", pBreakpointInfo->Register);
-
-				ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, pBreakpointInfo->Size, (BYTE*)pBreakpointInfo->Address, pBreakpointInfo->Type, pBreakpointInfo->HitCount, pBreakpointInfo->Callback);
-			}
-			else
-			{
-				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp1 type (0x%x) different to BreakpointInfo (0x%x)!\n", ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE1, pBreakpointInfo->Type);
-				CheckDebugRegisters(0, ExceptionInfo->ContextRecord);
-			}
-		}
-		if (bp == 2 && ((DWORD)pBreakpointInfo->Type != ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE2))
-		{
-			if (pBreakpointInfo->Type == BP_READWRITE && ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE2 == BP_WRITE && address_is_in_stack((DWORD_PTR)pBreakpointInfo->Address))
-			{
-				DebugOutput("CAPEExceptionFilter: Reinstated BP_READWRITE on stack breakpoint %d (WoW64 workaround)\n", pBreakpointInfo->Register);
-
-				ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, pBreakpointInfo->Size, (BYTE*)pBreakpointInfo->Address, pBreakpointInfo->Type, pBreakpointInfo->HitCount, pBreakpointInfo->Callback);
-			}
-			else
-			{
-				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp2 type (0x%x) different to BreakpointInfo (0x%x)!\n", ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE2, pBreakpointInfo->Type);
-				CheckDebugRegisters(0, ExceptionInfo->ContextRecord);
-			}
-		}
-		if (bp == 3 && ((DWORD)pBreakpointInfo->Type != ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE3))
-		{
-			if (pBreakpointInfo->Type == BP_READWRITE && ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE3 == BP_WRITE && address_is_in_stack((DWORD_PTR)pBreakpointInfo->Address))
-			{
-				DebugOutput("CAPEExceptionFilter: Reinstated BP_READWRITE on breakpoint %d (WoW64 workaround)\n", pBreakpointInfo->Register);
-
-				ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register, pBreakpointInfo->Size, (BYTE*)pBreakpointInfo->Address, pBreakpointInfo->Type, pBreakpointInfo->HitCount, pBreakpointInfo->Callback);
-			}
-			else
-			{
-				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp3 type (0x%x) different to BreakpointInfo (0x%x)!\n", ((PDR7)&(ExceptionInfo->ContextRecord->Dr7))->RWE3, pBreakpointInfo->Type);
-				CheckDebugRegisters(0, ExceptionInfo->ContextRecord);
-			}
-		}
-#endif // !_WIN64
 
 		if (pBreakpointInfo->HitCount)
 		{
@@ -928,11 +867,6 @@ BOOL ContextSetDebugRegisterEx
 	if (Type == BP_EXEC)
 		Length = 0;
 
-#ifndef _WIN64
-	if (Type == BP_READWRITE && address_is_in_stack((DWORD_PTR)Address))
-		WoW64PatchBreakpoint(Register);
-#endif
-
 	if (Register == 0)
 	{
 		*Dr0 = (DWORD_PTR)Address;
@@ -1073,11 +1007,6 @@ BOOL SetDebugRegister
 	// intel spec requires 0 for bp on execution
 	if (Type == BP_EXEC)
 		Length = 0;
-
-#ifndef _WIN64
-	if (Type == BP_READWRITE && address_is_in_stack((DWORD_PTR)Address))
-		WoW64PatchBreakpoint(Register);
-#endif
 
 	if (Register == 0)
 	{
@@ -1382,11 +1311,6 @@ BOOL ContextClearBreakpointEx(PCONTEXT Context, PBREAKPOINTINFO pBreakpointInfo,
 		Dr7->RWE3 = 0;
 		Dr7->L3 = 0;
 	}
-
-#ifndef _WIN64
-	if (pBreakpointInfo->Type == BP_READWRITE && address_is_in_stack((DWORD_PTR)pBreakpointInfo->Address))
-		WoW64UnpatchBreakpoint(pBreakpointInfo->Register);
-#endif
 
 	pBreakpointInfo->Address = 0;
 	pBreakpointInfo->Size = 0;
@@ -1874,11 +1798,6 @@ BOOL ClearDebugRegister
 		Dr7->RWE3 = 0;
 		Dr7->L3 = 0;
 	}
-
-#ifndef _WIN64
-	if (Type == BP_READWRITE && address_is_in_stack((DWORD_PTR)Address))
-		WoW64UnpatchBreakpoint(Register);
-#endif
 
 	Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
 
@@ -2761,12 +2680,6 @@ BOOL InitialiseDebugger(void)
 	// Initialise global variables
 	ChildProcessId = 0;
 	SingleStepHandler = NULL;
-
-#ifndef _WIN64
-	// Ensure wow64 patch is installed if needed
-	if (!g_config.msi)
-		WoW64fix();
-#endif
 
 	g_config.debugger = 1;
 	DebuggerInitialised = TRUE;

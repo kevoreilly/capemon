@@ -31,9 +31,6 @@
     <Filter Include="Header Files\CAPE\w64wow64">
       <UniqueIdentifier>{2870ff64-a1ae-437b-b93d-b815724102e4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\CAPE\w64wow64">
-      <UniqueIdentifier>{cf36b66e-1611-4be7-abe4-482a5fbacbe2}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="config.c">
@@ -260,12 +257,6 @@
     </ClCompile>
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp">
       <Filter>Source Files\CAPE\Scylla</Filter>
-    </ClCompile>
-    <ClCompile Include="CAPE\w64wow64\w64wow64.c">
-      <Filter>Source Files\CAPE\w64wow64</Filter>
-    </ClCompile>
-    <ClCompile Include="CAPE\wow64_fix.c">
-      <Filter>Source Files\CAPE</Filter>
     </ClCompile>
     <ClCompile Include="CAPE\Injection.c">
       <Filter>Source Files\CAPE</Filter>
