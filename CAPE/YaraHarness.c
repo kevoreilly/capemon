@@ -270,7 +270,10 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
 							SetBreakpoints = TRUE;
 						if (!_stricmp("dump", OptionLine))
-							DoDumpRegion = TRUE;
+						{
+							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
+							DumpRegion(user_data);
+						}
 						if (!_stricmp("clear", OptionLine))
 						{
 							BreakpointsHit = FALSE;
@@ -300,12 +303,6 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 
 			if (DebuggerInitialised && SetBreakpoints)
 				SetInitialBreakpoints(user_data);
-
-			if (DoDumpRegion)
-			{
-				DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
-				DumpRegion(user_data);
-			}
 
 			return CALLBACK_CONTINUE;
 	}
