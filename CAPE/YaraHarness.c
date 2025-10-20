@@ -523,7 +523,10 @@ BOOL ScanForRulesCanary(PVOID Address, SIZE_T Size)
 	YaraLogging = FALSE;
 	BOOL CapemonRulesDetected = FALSE;
 	if (GetAddressByYara(Address, "capemon"))
+	{
 		CapemonRulesDetected = TRUE;
+		DebugOutput("ScanForRulesCanary: capemon rules detected");
+	}
 	YaraLogging = PreviousYaraLogging;
 	return CapemonRulesDetected;
 }
