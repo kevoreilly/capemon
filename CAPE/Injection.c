@@ -1041,7 +1041,8 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 		{
 			// Looks like a previously dumped PE image is being written a section at a time to the target process.
 			// We don't want to dump these writes.
-			DebugOutput("WriteMemoryHandler: injection of section of PE image which has already been dumped.\n");
+			if (NumberOfBytesWritten >= 0x1000)
+				DebugOutput("WriteMemoryHandler: injection of section of PE image which has already been dumped.\n");
 		}
 		else
 		{
