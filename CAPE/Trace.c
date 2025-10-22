@@ -54,7 +54,7 @@ extern PVOID _KiUserExceptionDispatcher;
 extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
-PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4];
+PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4], GuardedPages;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ReDisassemble, SyscallBreakpointSet, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
@@ -1505,6 +1505,27 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("ActionDispatcher: Nothing to print at 0x%p\n", Target);
 	}
 #endif
+	else if (!stricmp(Action, "Guard"))
+	{
+		DWORD OldProtect;
+		MEMORY_BASIC_INFORMATION MemInfo;
+		if (!SystemInfo.dwPageSize)
+			GetSystemInfo(&SystemInfo);
+		SIZE_T GuardedSize = SystemInfo.dwPageSize;
+		GuardedPages = GetAllocationBase(CIP);
+		if (VirtualQuery(GuardedPages, &MemInfo, GuardedSize))
+		{
+			if (VirtualProtect(GuardedPages, GuardedSize, MemInfo.Protect | PAGE_GUARD, &OldProtect))
+				DebuggerOutput("ActionDispatcher: Instated guard page(s) at 0x%p size 0x%x", GuardedPages, GuardedSize);
+			else
+			{
+				ErrorOutput("ActionDispatcher: Failed to instate guard page(s) at 0x%p size 0x%x", GuardedPages, GuardedSize);
+				DebuggerOutput("ActionDispatcher: Failed to instate guard page(s) at 0x%p size 0x%x", GuardedPages, GuardedSize);
+			}
+		}
+		else
+			DebuggerOutput("Problem calling VirtualQuery on 0x%p", GuardedPages);
+	}
 	else if (!stricmp(Action, "DumpImage"))
 	{
 #ifdef _WIN64
@@ -2604,6 +2625,104 @@ BOOL SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else
 		SetSingleStepMode(ExceptionInfo->ContextRecord, Trace);
+
+	return TRUE;
+}
+
+BOOL GuardPageCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+	BOOL StepOver = FALSE, ForceStepOver = FALSE;
+
+	StopTrace = FALSE;
+
+	BreakpointsHit = TRUE;
+
+	DebuggerOutput("Guard break hit by instruction at 0x%p (thread %d)", ExceptionInfo->ExceptionRecord->ExceptionAddress, GetCurrentThreadId());
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	if (g_config.log_breakpoints)
+	{
+		// Log breakpoint to behavior log
+		memset(DebuggerBuffer, 0, MAX_PATH*sizeof(CHAR));
+		_snprintf_s(DebuggerBuffer, MAX_PATH, _TRUNCATE, "Breakpoint hit at 0x%p", CIP);
+		log_breakpoint("Debugger", DebuggerBuffer);
+	}
+
+	FilterTrace = FALSE;
+
+	if (InsideMonitor(NULL, CIP) && g_config.trace_all == 1)
+		FilterTrace = TRUE;
+
+	if (inside_hook(CIP) && !g_config.trace_all)
+		FilterTrace = TRUE;
+
+	if (is_in_dll_range((ULONG_PTR)CIP) && !g_config.trace_all)
+		FilterTrace = TRUE;
+
+	//StepCount++;
+
+	OutputRegisterChanges(ExceptionInfo->ContextRecord);
+
+	if (!FilterTrace)
+		DebuggerOutput("\n");
+
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	// Instruction handling
+	InstructionHandler(ExceptionInfo, DecodedInstruction, &StepOver, &ForceStepOver);
+
+	LastContext = *ExceptionInfo->ContextRecord;
+
+	if (!StepLimit || StepCount > StepLimit || StopTrace)
+	{
+		if (StepLimit)
+			DebuggerOutput("\nGuardPageCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
+		memset(&LastContext, 0, sizeof(CONTEXT));
+		StopTrace = TRUE;
+		StepCount = 0;
+		TraceRunning = FALSE;
+		ReturnAddress = NULL;
+	}
+	else if (ReturnAddress && (StepOver == TRUE && !g_config.trace_all) || ForceStepOver)
+	{
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("GuardPageCallback: Set breakpoint on return address 0x%p\n", ReturnAddress);
+#endif
+			ReturnAddress = NULL;
+		}
+		else
+			DebugOutput("GuardPageCallback: Failed to set breakpoint on return address 0x%p\n", ReturnAddress);
+	}
+	else
+	{
+		DWORD OldProtect;
+		MEMORY_BASIC_INFORMATION MemInfo;
+		GuardedPages = GetAllocationBase(CIP);
+		SIZE_T AllocationSize = GetAllocationSize(GuardedPages);
+		if (VirtualQuery(GuardedPages, &MemInfo, AllocationSize))
+		{
+			if (VirtualProtect(GuardedPages, AllocationSize, MemInfo.Protect | PAGE_GUARD, &OldProtect))
+				DebuggerOutput("GuardPageCallback: Instated guard page(s) at 0x%p size 0x%x", GuardedPages, AllocationSize);
+			else
+				DebuggerOutput("GuardPageCallback: Failed to instate guard page(s) at 0x%p size 0x%x", GuardedPages, AllocationSize);
+		}
+	}
 
 	return TRUE;
 }

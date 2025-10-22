@@ -48,12 +48,14 @@ extern void log_direct_syscall(const char *function, PVOID addr);
 extern unsigned int address_is_in_stack(DWORD Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POINTERS* ExceptionInfo), SoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
+extern BOOL GuardPageCallback(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
 extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue, SyscallBreakpointSet;
 extern PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 extern int StepOverRegister;
 extern int process_shutting_down;
 extern HANDLE DebuggerLog;
+extern PVOID GuardedPages;
 
 struct ThreadBreakpoints *MainThreadBreakpointList;
 unsigned int TrapIndex, DepthCount;
@@ -504,7 +506,7 @@ BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 #ifdef DEBUG_COMMENTS
 	else
-		DebugOutput("SyscallBreakpointHandler: Calling SSN 0x%x -> 0x%p: %s\n", SSN, Function, FunctionName);
+		DebugOutput("SyscallBreakpointHandler: Syscall at 0x%p, SSN 0x%x -> 0x%p: %s\n", ExceptionInfo->ExceptionRecord->ExceptionAddress, SSN, Function, FunctionName);
 #endif
 
 	log_direct_syscall(FunctionName, (PVOID)CIP);
@@ -759,6 +761,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("RtlDispatchException: Unhandled privileged instruction at 0x%p\n", ExceptionInfo->ContextRecord->Eip);
 #endif
 #endif
+	}
+	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("CAPEExceptionFilter: Guard page violation at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+#endif
+		if (GetAllocationBase(ExceptionInfo->ExceptionRecord->ExceptionAddress) == GuardedPages && GuardPageCallback(ExceptionInfo))
+			return EXCEPTION_CONTINUE_EXECUTION;
 	}
 
 	// Exceptions in capemon
