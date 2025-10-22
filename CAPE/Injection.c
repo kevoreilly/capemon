@@ -1003,7 +1003,7 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 	if (IsDisguisedPEHeader((PVOID)Buffer))
 	{
 		CurrentInjectionInfo->ImageBase = (DWORD_PTR)BaseAddress;
-		DebugOutput("WriteMemoryHandler: Executable binary injected into process %d (ImageBase 0x%x)\n", Pid, CurrentInjectionInfo->ImageBase);
+		DebugOutput("WriteMemoryHandler: Executable binary injected from 0x%p (size 0x%x) into process %d at 0x%p.\n", Buffer, NumberOfBytesWritten, Pid, BaseAddress);
 
 		if (CurrentInjectionInfo->ImageDumped == FALSE)
 		{
@@ -1045,7 +1045,7 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 		}
 		else
 		{
-			DebugOutput("WriteMemoryHandler: shellcode at 0x%p (size 0x%x) injected into process %d.\n", Buffer, NumberOfBytesWritten, Pid);
+			DebugOutput("WriteMemoryHandler: shellcode at 0x%p (size 0x%x) injected into process %d at 0x%p.\n", Buffer, NumberOfBytesWritten, Pid, BaseAddress);
 
 			// dump injected code/data
 			CapeMetaData->DumpType = INJECTION_SHELLCODE;
@@ -1177,9 +1177,24 @@ void TerminateHandler()
 	}
 }
 
+#define ProcessMessageLimit 0x20
+DWORD PreviousPid;
+unsigned int ProcessMessageCount;
+
 void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 {
 	if (ProcessId == GetCurrentProcessId())
+		return;
+
+	if (ProcessId == PreviousPid)
+		ProcessMessageCount++;
+	else
+	{
+		PreviousPid = ProcessId;
+		ProcessMessageCount = 0;
+	}
+
+	if (ProcessMessageCount >= ProcessMessageLimit)
 		return;
 
 	PINJECTIONINFO CurrentInjectionInfo = GetInjectionInfo(ProcessId);
