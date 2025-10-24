@@ -86,7 +86,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
-	char *module_name = NULL;
+	char *module_name = NULL, *function_name = NULL;
 	unsigned int offset;
 	NTSTATUS ret;
 
@@ -96,8 +96,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)ApcRoutine, &offset);
+	function_name = GetExportNameByAddress((PVOID)ApcRoutine);
 
-	if (module_name)
+	if (function_name && module_name)
+		LOQ_ntstatus("threading", "iippss", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name);
+	else if (module_name)
 		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
 	else
 		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
@@ -121,7 +124,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 ) {
 	DWORD pid = pid_from_thread_handle(ThreadHandle);
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
-	char *module_name = NULL;
+	char *module_name = NULL, *function_name = NULL;
 	unsigned int offset;
 	NTSTATUS ret;
 
@@ -131,8 +134,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)ApcRoutine, &offset);
+	function_name = GetExportNameByAddress((PVOID)ApcRoutine);
 
-	if (module_name)
+	if (function_name && module_name)
+		LOQ_ntstatus("threading", "iippss", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name);
+	else if (module_name)
 		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
 	else
 		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
@@ -211,7 +217,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 	OUT	PVOID lpBytesBuffer
 ) {
 	DWORD pid = pid_from_process_handle(ProcessHandle);
-	char *module_name = NULL;
+	char *module_name = NULL, *function_name = NULL;
 	unsigned int offset;
 	disable_sleep_skip();
 
@@ -221,6 +227,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 		lpBytesBuffer);
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &offset);
+	function_name = GetExportNameByAddress((PVOID)lpStartAddress);
 
 	if (NT_SUCCESS(ret)) {
 		DWORD tid = tid_from_thread_handle(*hThread);
@@ -245,7 +252,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 			set_lasterrors(&lasterror);
 		}
 
-		if (module_name)
+		if (function_name && module_name)
+			LOQ_ntstatus("threading", "Pppphiiss", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "ThreadId", tid,
+				"ProcessId", pid, "Module", module_name, "Name", function_name);
+		else if (module_name)
 			LOQ_ntstatus("threading", "Pppphiis", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
 				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "ThreadId", tid,
 				"ProcessId", pid, "Module", module_name);
@@ -255,7 +266,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateThreadEx,
 				"ProcessId", pid);
 	}
 	else {
-		if (module_name)
+		if (function_name && module_name)
+			LOQ_ntstatus("threading", "Pppphss", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
+				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "Module", module_name, "Name", function_name);
+		else if (module_name)
 			LOQ_ntstatus("threading", "Pppphs", "ThreadHandle", hThread, "ProcessHandle", ProcessHandle,
 				"StartAddress", lpStartAddress, "Parameter", lpParameter, "CreateFlags", CreateFlags, "Module", module_name);
 		else
@@ -606,9 +620,10 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	ENSURE_DWORD(lpThreadId);
 
 	unsigned int DllRVA;
-	char *module_name = NULL;
+	char *module_name = NULL, *function_name = NULL;
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &DllRVA);
+	function_name = GetExportNameByAddress((PVOID)*lpStartAddress);
 	disable_sleep_skip();
 
 	ret = Old_CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
@@ -628,14 +643,20 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 			set_lasterrors(&lasterror);
 		}
 
-		if (module_name)
+		if (function_name && module_name)
+			LOQ_nonnull("threading", "pssphI", "StartRoutine", lpStartAddress, "ModuleName", module_name, "Name", function_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
+		else if (module_name)
 			LOQ_nonnull("threading", "psphI", "StartRoutine", lpStartAddress, "ModuleName", module_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
 		else
 			LOQ_nonnull("threading", "pphI", "StartRoutine", lpStartAddress, "Parameter", lpParameter, "CreationFlags", dwCreationFlags, "ThreadId", lpThreadId);
 	}
 	else
-		LOQ_nonnull("threading", "pph", "StartRoutine", lpStartAddress, "Parameter", lpParameter,
-			"CreationFlags", dwCreationFlags);
+		if (function_name && module_name)
+			LOQ_nonnull("threading", "pssph", "StartRoutine", lpStartAddress, "ModuleName", module_name, "Name", function_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags);
+		else if (module_name)
+			LOQ_nonnull("threading", "psph", "StartRoutine", lpStartAddress, "ModuleName", module_name, "Parameter", lpParameter, "CreationFlags", dwCreationFlags);
+		else
+			LOQ_nonnull("threading", "pph", "StartRoutine", lpStartAddress, "Parameter", lpParameter, "CreationFlags", dwCreationFlags);
 
 	if (module_name)
 		free(module_name);
