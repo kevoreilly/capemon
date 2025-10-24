@@ -114,7 +114,7 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+		DebugOutput("ScanForNonZero: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
 		return 0;
 	}
 
@@ -1357,8 +1357,8 @@ int CreateMonitorPipe(char* Name, char* Dll)
 				char *p;
 				if ((p = strchr(buf, ','))) {
 					*p = '\0';
-					ProcessId = atoi(&buf[10]); // skipping the '0:' or '1:' suspended flag
-					ThreadId = atoi(p + 1);	 // (soon to be deprecated)
+					ProcessId = atoi(&buf[8]);
+					ThreadId = atoi(p + 1);
 				}
 				else {
 					ProcessId = atoi(&buf[10]);
