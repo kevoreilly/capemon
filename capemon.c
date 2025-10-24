@@ -59,8 +59,8 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase);
-extern PCHAR ScyllaGetExportDirectory(PVOID Address);
-extern PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZE_T ScanSize);
+extern PCHAR GetExportDirectory(PVOID Address);
+extern PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax);
 extern void YaraScan(PVOID Address, SIZE_T Size);
 extern BOOL IsAddressAccessible(PVOID Address);
 
@@ -164,7 +164,7 @@ VOID CALLBACK New_DllLoadNotification(
 			add_dll_range((ULONG_PTR)NotificationData->Loaded.DllBase, (ULONG_PTR)NotificationData->Loaded.DllBase + GetAllocationSize(NotificationData->Loaded.DllBase));
 
 			if (!set_hooks_dll(dllname)) {
-				exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
+				exportdirectory = GetExportDirectory(NotificationData->Loaded.DllBase);
 				if (exportdirectory) {
 					size = strlen(exportdirectory);
 					mbstowcs_s(&numconverted, exportdirectory_w, MAX_PATH, exportdirectory, size+1);
@@ -196,12 +196,7 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 	char *buf = convert_address_to_dll_name_and_offset(addr, &offset);
 	if (buf) {
 		PCHAR funcname;
-		__try {
-			funcname = ScyllaGetExportNameByScan((PVOID)addr, NULL, 0x50);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER) {
-			;
-		}
+		funcname = ScanForExport((PVOID)addr, 0x50);
 		if (funcname)
 			snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s::%s(0x%x)\n", buf, funcname, offset);
 		else
@@ -372,12 +367,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 	sprintf(msg, "Exception Caught! PID: %u EIP:", GetCurrentProcessId());
 	if (dllname) {
 		PCHAR FunctionName;
-		__try {
-			FunctionName = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x50);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER) {
-			;
-		}
+		FunctionName = ScanForExport((PVOID)eip, 0x50);
 		if (FunctionName)
 			snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)", dllname, FunctionName, offset);
 		else
@@ -418,12 +408,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 			char *buf = convert_address_to_dll_name_and_offset(stack[i], &offset);
 			if (buf) {
 				PCHAR funcname = NULL;
-				__try {
-					funcname = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x50);
-				}
-				__except(EXCEPTION_EXECUTE_HANDLER) {
-					;
-				}
+				funcname = ScanForExport((PVOID)eip, 0x50);
 				if (funcname)
 					snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)\n", buf, funcname, offset);
 				else
@@ -455,13 +440,9 @@ next:
 #endif
 		Result = distorm_decode(Offset, (const unsigned char*)eip, 0x100, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
-		if (dllname) {
-			__try {
-				FunctionName = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x40);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER) {
-				;
-			}
+		if (dllname)
+		{
+			FunctionName = ScanForExport((PVOID)eip, 0x40);
 			if (FunctionName)
 			{
 				DebugOutput("%s::%s (`) %-20s %-6s%-4s%-30s\n", dllname, FunctionName, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);

@@ -2140,6 +2140,46 @@ PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax)
 }
 
 //**************************************************************************************
+PCHAR GetExportDirectory(PVOID Address)
+//**************************************************************************************
+{
+	if (!Address)
+		return NULL;
+
+	__try
+	{
+		PVOID Base = GetAllocationBase(Address);
+		if (!Base || !IsAddressAccessible(Base))
+			return NULL;
+
+		PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER)Base;
+		if (DosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+			return NULL;
+
+		PIMAGE_NT_HEADERS NtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)Base + DosHeader->e_lfanew);
+		if (NtHeader->Signature != IMAGE_NT_SIGNATURE)
+			return NULL;
+
+		IMAGE_DATA_DIRECTORY ExportDirEntry = NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+		if (ExportDirEntry.VirtualAddress == 0 || ExportDirEntry.Size == 0)
+			return NULL;
+
+		PIMAGE_EXPORT_DIRECTORY ExportDir = (PIMAGE_EXPORT_DIRECTORY)((PUCHAR)Base + ExportDirEntry.VirtualAddress);
+		if (!IsAddressAccessible(ExportDir))
+			return NULL;
+
+		if (ExportDir && ExportDir->Name)
+			return ((PCHAR)Base + ExportDir->Name);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		return NULL;
+	}
+
+	return NULL;
+}
+
+//**************************************************************************************
 PCHAR GetExportNameByAddress(PVOID Address)
 //**************************************************************************************
 {
