@@ -50,7 +50,7 @@ extern BOOL inside_hook(LPVOID Address);
 extern void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 extern void log_flush();
-extern PVOID _KiUserExceptionDispatcher;
+extern PVOID KiUserExceptionDispatcher;
 extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
@@ -2178,7 +2178,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
 	if (ModuleName)
 	{
-		if (CIP == (PVOID)((PCHAR)_KiUserExceptionDispatcher+1))
+		if (CIP == (PVOID)((PCHAR)KiUserExceptionDispatcher+1))
 		{
 			DebugOutput("Trace: Stepping out of KiUserExceptionDispatcher\n");
 			ForceStepOver = TRUE;

@@ -59,7 +59,7 @@ extern PVOID GuardedPages;
 
 struct ThreadBreakpoints *MainThreadBreakpointList;
 unsigned int TrapIndex, DepthCount;
-PVOID _KiUserExceptionDispatcher;
+PVOID KiUserExceptionDispatcher;
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
 lookup_t SoftBPs, SyscallBPs;
 SOFTBP SyscallBP;
@@ -2675,16 +2675,17 @@ BOOL InitialiseDebugger(void)
 		return FALSE;
 	}
 
+	HMODULE ntdll = GetModuleHandle("ntdll");
 	// Store address of KiUserExceptionDispatcher
-	_KiUserExceptionDispatcher = GetProcAddress(GetModuleHandle("ntdll"), "KiUserExceptionDispatcher");
+	KiUserExceptionDispatcher = (PDWORD)GetProcAddress(ntdll, "KiUserExceptionDispatcher");
 
-	if (_KiUserExceptionDispatcher == NULL)
+	if (KiUserExceptionDispatcher == NULL)
 	{
 		DebugOutput("InitialiseDebugger error: could not resolve ntdll::KiUserExceptionDispatcher.\n");
 		return FALSE;
 	}
 #ifdef DEBUG_COMMENTS
-	else DebugOutput("InitialiseDebugger: ntdll::KiUserExceptionDispatcher = 0x%p\n", _KiUserExceptionDispatcher);
+	else DebugOutput("InitialiseDebugger: ntdll::KiUserExceptionDispatcher = 0x%p\n", KiUserExceptionDispatcher);
 #endif
 
 	// Initialise global variables
