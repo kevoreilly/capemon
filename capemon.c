@@ -336,9 +336,12 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 	stack = (ULONG_PTR *)(ULONG_PTR)(ExceptionInfo->ContextRecord->Esp);
 	ebp_or_rip = (ULONG_PTR)(ExceptionInfo->ContextRecord->Ebp);
 	{
-		DWORD *tebtmp = (DWORD *)NtCurrentTeb();
-		if (tebtmp[0] != 0xffffffff)
-			seh = ((DWORD *)tebtmp[0])[1];
+		PTEB teb = NtCurrentTeb();
+		if (teb) {
+			PEXCEPTION_REGISTRATION_RECORD sehrecord = teb->NtTib.ExceptionList;
+			if (sehrecord && sehrecord != EXCEPTION_CHAIN_END)
+				seh = (ULONG_PTR)sehrecord->Handler;
+		}
 	}
 #endif
 

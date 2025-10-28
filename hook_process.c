@@ -1375,13 +1375,16 @@ HOOKDEF_NOTAIL(WINAPI, RtlDispatchException,
 	if (ExceptionRecord && (ULONG_PTR)ExceptionRecord->ExceptionAddress >= g_our_dll_base && (ULONG_PTR)ExceptionRecord->ExceptionAddress < (g_our_dll_base + g_our_dll_size)) {
 		if (!(g_config.debugger && ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)) {
 			char buf[160];
-			ULONG_PTR seh = 0;
-			DWORD *tebtmp = (DWORD *)NtCurrentTeb();
-			if (tebtmp[0] != 0xffffffff)
-				seh = ((DWORD*)(DWORD_PTR)tebtmp[0])[1];
-			if (seh < g_our_dll_base || seh >= (g_our_dll_base + g_our_dll_size)) {
-				_snprintf(buf, sizeof(buf), "Exception 0x%x reported at offset 0x%x in capemon itself while accessing 0x%p from hook %s", ExceptionRecord->ExceptionCode, (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), (PVOID)ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
-				log_anomaly("capemon crash", buf);
+			PTEB Teb = NtCurrentTeb();
+			if (Teb) {
+				PEXCEPTION_REGISTRATION_RECORD SehRecord = Teb->NtTib.ExceptionList;
+				if (SehRecord && SehRecord != EXCEPTION_CHAIN_END) {
+					ULONG_PTR HandlerAddress = (ULONG_PTR)SehRecord->Handler;
+					if (HandlerAddress < g_our_dll_base || HandlerAddress >= (g_our_dll_base + g_our_dll_size)) {
+						_snprintf(buf, sizeof(buf), "Exception 0x%x reported at offset 0x%x in capemon itself while accessing 0x%p from hook %s", ExceptionRecord->ExceptionCode, (DWORD)((ULONG_PTR)ExceptionRecord->ExceptionAddress - g_our_dll_base), (PVOID)ExceptionRecord->ExceptionInformation[1], hook_info()->current_hook ? hook_info()->current_hook->funcname : "unknown");
+						log_anomaly("capemon crash", buf);
+					}
+				}
 			}
 		}
 	}
