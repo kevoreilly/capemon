@@ -1224,6 +1224,8 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock on Win10
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
+				if (our_isbadreadptr((PVOID)ctx.Rsp, sizeof(PVOID)))
+					break;
 				ctx.Rip = (ULONG_PTR)(*(ULONG_PTR *)ctx.Rsp);
 				ctx.Rsp += 8;
 			}
