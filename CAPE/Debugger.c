@@ -2675,9 +2675,9 @@ BOOL InitialiseDebugger(void)
 		return FALSE;
 	}
 
-	HMODULE ntdll = GetModuleHandle("ntdll");
 	// Store address of KiUserExceptionDispatcher
-	KiUserExceptionDispatcher = (PDWORD)GetProcAddress(ntdll, "KiUserExceptionDispatcher");
+	HMODULE ntdll = GetModuleHandle("ntdll");
+	KiUserExceptionDispatcher = GetProcAddress(ntdll, "KiUserExceptionDispatcher");
 
 	if (KiUserExceptionDispatcher == NULL)
 	{
