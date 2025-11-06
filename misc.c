@@ -1125,19 +1125,23 @@ uint32_t path_from_handle(HANDLE handle,
 	return length;
 }
 
-uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj,
-	wchar_t *path, uint32_t buffer_length)
+uint32_t path_from_object_attributes(const OBJECT_ATTRIBUTES *obj, wchar_t *path, uint32_t buffer_length)
 {
 	uint32_t copylen, obj_length, length;
 
-	if (obj->ObjectName == NULL || obj->ObjectName->Buffer == NULL) {
-		return path_from_handle(obj->RootDirectory, path, buffer_length);;
-	}
+	if (obj == NULL)
+		return 0;
+
+	if (obj->ObjectName == NULL || obj->ObjectName->Buffer == NULL)
+		return path_from_handle(obj->RootDirectory, path, buffer_length);
 
 	// ObjectName->Length is actually the size in bytes.
 	obj_length = obj->ObjectName->Length / sizeof(wchar_t);
 
 	copylen = min(obj_length, buffer_length - 1);
+
+	if (our_isbadreadptr(obj->ObjectName->Buffer, copylen * sizeof(wchar_t)))
+		return 0;
 
 	if (obj->RootDirectory == NULL) {
 		memcpy(path, obj->ObjectName->Buffer, copylen * sizeof(wchar_t));
