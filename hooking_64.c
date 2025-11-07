@@ -587,7 +587,7 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 	unsigned char pre_tramp2[] = {
 		// test eax, eax
 		0x85, 0xc0,
-		// jnz 0x21
+		// jnz 0x21 -> pre_tramp3_nostack
 		0x75, 0x21,
 		// add rsp, 0x20
 		0x48, 0x83, 0xc4, 0x20,
@@ -666,7 +666,7 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 	unsigned char pre_tramp4_nostack[] = {
 		// test eax, eax
 		0x85, 0xc0,
-		// jnz 0x21
+		// jnz 0x21 -> pre_tramp4_stack
 		0x75, 0x21,
 		// add rsp, 0x20 (from pre_tramp12)
 		0x48, 0x83, 0xc4, 0x20,
@@ -686,7 +686,7 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 	unsigned char pre_tramp4_stack[] = {
 		// test eax, eax
 		0x85, 0xc0,
-		// jnz 0x3c
+		// jnz 0x3c -> pre_tramp5_nostack
 		0x75, 0x3c,
 		// mov eax, numargs
 		0xb8, h->numargs, 0x00, 0x00, 0x00,
