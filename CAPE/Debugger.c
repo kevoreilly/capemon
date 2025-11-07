@@ -613,25 +613,29 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		if (bp == 0 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr0))
 		{
-			DebugOutput("CAPEExceptionFilter: Anomaly detected! bp0 address (0x%p) different to BreakpointInfo (0x%x)!\n", ExceptionInfo->ContextRecord->Dr0, pBreakpointInfo->Address);
+			if (pBreakpointInfo->Address)
+				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp0 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr0, pBreakpointInfo->Address);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
 		if (bp == 1 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr1))
 		{
-			DebugOutput("CAPEExceptionFilter: Anomaly detected! bp1 address (0x%p) different to BreakpointInfo (0x%x)!\n", ExceptionInfo->ContextRecord->Dr1, pBreakpointInfo->Address);
+			if (pBreakpointInfo->Address)
+				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp1 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr1, pBreakpointInfo->Address);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
 		if (bp == 2 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr2))
 		{
-			DebugOutput("CAPEExceptionFilter: Anomaly detected! bp2 address (0x%p) different to BreakpointInfo (0x%x)!\n", ExceptionInfo->ContextRecord->Dr2, pBreakpointInfo->Address);
+			if (pBreakpointInfo->Address)
+				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp2 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr2, pBreakpointInfo->Address);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
 		if (bp == 3 && ((DWORD_PTR)pBreakpointInfo->Address != ExceptionInfo->ContextRecord->Dr3))
 		{
-			DebugOutput("CAPEExceptionFilter: Anomaly detected! bp3 address (0x%p) different to BreakpointInfo (0x%x)!\n", ExceptionInfo->ContextRecord->Dr3, pBreakpointInfo->Address);
+			if (pBreakpointInfo->Address)
+				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp3 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr3, pBreakpointInfo->Address);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
