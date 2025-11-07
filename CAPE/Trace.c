@@ -54,7 +54,7 @@ extern PVOID KiUserExceptionDispatcher;
 extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
-PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, BreakOnNtContinueCallback, PreviousJumps[4], GuardedPages;
+PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, PreviousJumps[4], GuardedPages;
 BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ReDisassemble, SyscallBreakpointSet, TraceRunning, BreakOnNtContinue;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
