@@ -41,6 +41,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define PrintEAX		3
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern char *our_dll_path;
 extern char *our_process_name;
 extern wchar_t *our_process_path_w;
@@ -1387,6 +1388,15 @@ void parse_config_line(char* line)
 			g_config.hook_watch = value[0] == '1';
 			if (g_config.hook_watch)
 				DebugOutput("Config: Hook watch enabled.\n");
+		}
+		else if (!stricmp(key, "monitor")) {
+			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
+			if (!pid && !stricmp(value, "explorer"))
+				GetWindowThreadProcessId(GetShellWindow(), &pid);
+			if (pid) {
+				ProcessMessage(pid, 0);
+				DebugOutput("Config: Injected monitor into pid %d.\n", pid);
+			}
 		}
 		else if (stricmp(key, "no-iat"))
 			DebugOutput("Monitor config - unrecognised key %s.\n", key);
