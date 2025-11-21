@@ -55,7 +55,7 @@ extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, PreviousJumps[4], GuardedPages;
-BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ReDisassemble, SyscallBreakpointSet, TraceRunning, BreakOnNtContinue;
+BOOL BreakpointsSet, BreakpointsHit, FilterTrace, StopTrace, ReDisassemble, SyscallBreakpointSet, TraceRunning;
 unsigned int Correction, StepCount, StepLimit, TraceDepthLimit, BreakOnReturnRegister, JumpCount;
 char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 char *Instruction0, *Instruction1, *Instruction2, *Instruction3, *procname0;
@@ -1890,7 +1890,8 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 
 		if (ReturnAddress && (unsigned int)abs(TraceDepthCount) >= TraceDepthLimit)
 			*StepOver = TRUE;
-		else
+
+		if (*StepOver == FALSE && *ForceStepOver == FALSE)
 			TraceDepthCount++;
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
