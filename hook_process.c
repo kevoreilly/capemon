@@ -569,7 +569,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 	if (g_config.injection)
 		ResumeProcessHandler(ProcessHandle, pid);
-	pipe("RESUME:%d", pid);
+	pipe("RESUME:%d,0", pid);
 	ret = Old_NtResumeProcess(ProcessHandle);
 	LOQ_ntstatus("process", "pl", "ProcessHandle", ProcessHandle, "ProcessId", pid);
 	return ret;
