@@ -50,7 +50,7 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase), Trace(struct _EXCEPTION_POIN
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL GuardPageCallback(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...), DoTraceOutput(PVOID Address);
-extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, BreakOnNtContinue, SyscallBreakpointSet;
+extern BOOL TraceRunning, BreakpointsSet, BreakpointsHit, StopTrace, SyscallBreakpointSet;
 extern PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 extern int StepOverRegister;
 extern int process_shutting_down;
@@ -60,7 +60,7 @@ extern PVOID GuardedPages;
 struct ThreadBreakpoints *MainThreadBreakpointList;
 unsigned int TrapIndex, DepthCount;
 PVOID KiUserExceptionDispatcher;
-BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
+BOOL BreakOnNtContinue, SetSingleStepMode(PCONTEXT Context, PVOID Handler), ClearSingleStepMode(PCONTEXT Context);
 lookup_t SoftBPs, SyscallBPs;
 SOFTBP SyscallBP;
 
