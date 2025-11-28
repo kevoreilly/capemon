@@ -1686,8 +1686,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
-			if ((PUCHAR)Target < (PUCHAR)Base)
-				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 0, 0, Target, BP_EXEC, 0, BreakpointCallback);
 			DebuggerOutput("SetBp0: Breakpoint 0 set to 0x%p.\n", Target);
 		}
@@ -1699,8 +1697,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
-			if ((PUCHAR)Target < (PUCHAR)Base)
-				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 1, 0, Target, BP_EXEC, 0, BreakpointCallback);
 			DebuggerOutput("SetBp1: Breakpoint 1 set to 0x%p.\n", Target);
 		}
@@ -1712,8 +1708,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
-			if ((PUCHAR)Target < (PUCHAR)Base)
-				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 2, 0, Target, BP_EXEC, 0, BreakpointCallback);
 			DebuggerOutput("SetBp2: Breakpoint 2 set to 0x%p.\n", Target);
 		}
@@ -1725,8 +1719,6 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		PVOID Base = GetAllocationBase(CIP);
 		if (Target)
 		{
-			if ((PUCHAR)Target < (PUCHAR)Base)
-				Target = (PVOID)((PUCHAR)Target + (DWORD_PTR)Base);
 			ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, 3, 0, Target, BP_EXEC, 0, BreakpointCallback);
 			DebuggerOutput("SetBp3: Breakpoint 3 set to 0x%p.\n", Target);
 		}
