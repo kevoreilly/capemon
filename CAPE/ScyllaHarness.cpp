@@ -179,8 +179,8 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 		}
 		else
 		{
-			DebugOutput("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
 			entrypoint = entrypoint + (DWORD_PTR)ModuleBase;
+			DebugOutput("DumpProcess: Module entry point VA is 0x%p.\n", entrypoint);
 		}
 
 		if (!FixImports)
