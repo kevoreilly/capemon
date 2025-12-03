@@ -44,6 +44,25 @@ extern PVOID LdrpInvertedFunctionTableSRWLock;
 static char NewLine[MAX_PATH];
 
 char InternalYara[] =
+	"rule capemon"
+	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
+	"condition:all of them}"
+#ifdef _WIN64
+	"rule vDbgPrintExWithPrefixInternal"
+	"{strings:$10_0_26100_3476 = {48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 48 89 78 20 41 54 41 56 41 57 48 83 EC 40 44 8A BC 24}"
+	"$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule FindFixAndRun"
+	"{strings:$function = {48 89 5C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC [80-110] 85 C0 0F 88 [2] 00 00 49 8B 4? 70 66 83 (78|79) 02 3A 0F 84 [2] 00 00 48 8D 54 24 20 49 8B CE E8}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#else
+	"rule vDbgPrintExWithPrefixInternal"
+	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule FindFixAndRun"
+	"{strings:$function = {8B FF 55 8B EC 6A FE 68 [4] 68 [4] 64 A1 00 00 00 00 50 81 EC [90-96] 00 0F 84 [4] B8 E7 7F 00 00 50 8D 8D [4] E8 [4] 85 C0 0F 88 [4] 8B 4? 38 66 83 7? 02 3A 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+#endif
 	"rule RtlInsertInvertedFunctionTable"
 	"{strings:$10_0_26100_3476 = {48 8D 0D [4] 49 F7 D8 48 8B F8 1B DB 23 5C 24 ?? E8 [4] 33 C9 E8}"
 	"$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
@@ -71,26 +90,7 @@ char InternalYara[] =
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule WMI_GetObjectAsync"
 	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
-	"condition:uint16(0) == 0x5a4d and any of them}"
-#ifdef _WIN64
-	"rule vDbgPrintExWithPrefixInternal"
-	"{strings:$10_0_26100_3476 = {48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 48 89 78 20 41 54 41 56 41 57 48 83 EC 40 44 8A BC 24}"
-	"$function = {40 55 53 56 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 48 8D 6C 24 20 48 8B 05 [4] 48 33 C5 48 89 85 ?? 00 00 00 4C 89 4D ?? 44 89 45 ?? 44 8B E2 89 55 ?? 48 8B D1 48 89 4D ?? 48 8B 85}"
-	"condition:uint16(0) == 0x5a4d and any of them}"
-	"rule FindFixAndRun"
-	"{strings:$function = {48 89 5C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC [80-110] 85 C0 0F 88 [2] 00 00 49 8B 4? 70 66 83 (78|79) 02 3A 0F 84 [2] 00 00 48 8D 54 24 20 49 8B CE E8}"
-	"condition:uint16(0) == 0x5a4d and any of them}"
-#else
-	"rule vDbgPrintExWithPrefixInternal"
-	"{strings:$function = {68 90 00 00 00 68 [4] E8 [4] 89 95 [4] 89 8D [4] 8B 45 ?? 89 85 [4] 8B 45 ?? 89 85 [4] 64 A1 18 00 00 00 89 45 ?? 83 FA FF 0F 84}"
-	"condition:uint16(0) == 0x5a4d and any of them}"
-	"rule FindFixAndRun"
-	"{strings:$function = {8B FF 55 8B EC 6A FE 68 [4] 68 [4] 64 A1 00 00 00 00 50 81 EC [90-96] 00 0F 84 [4] B8 E7 7F 00 00 50 8D 8D [4] E8 [4] 85 C0 0F 88 [4] 8B 4? 38 66 83 7? 02 3A 0F 84}"
-	"condition:uint16(0) == 0x5a4d and any of them}"
-#endif
-	"rule capemon"
-	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
-	"condition:all of them}";
+	"condition:uint16(0) == 0x5a4d and any of them}";
 
 void ScannerError(int Error)
 {
@@ -237,6 +237,9 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 			YR_STRING* String;
 			YR_META* Meta;
 			YR_RULE* Rule = (YR_RULE*)message_data;
+
+			if (!strcmp(Rule->identifier, "capemon"))
+				return CALLBACK_CONTINUE;
 
 			DebugOutput("YaraScan hit: %s\n", Rule->identifier);
 
@@ -573,6 +576,10 @@ BOOL YaraInit()
 			goto exit;
 		}
 
+		// Add 'internal' yara first
+		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)
+			DebugOutput("YaraInit: Failed to add internal yara rules.\n", compiled_rules);
+
 		if (g_config.yarascan)
 		{
 			char FindString[MAX_PATH];
@@ -625,10 +632,6 @@ BOOL YaraInit()
 			else
 				DebugOutput("YaraInit: Found no Yara rules in %s\n", yara_dir);
 		}
-
-		// Add 'internal' yara
-		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)
-			DebugOutput("YaraInit: Failed to add internal yara rules.\n", compiled_rules);
 
 		Result = yr_compiler_get_rules(Compiler, &Rules);
 
