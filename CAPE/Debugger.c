@@ -1218,59 +1218,8 @@ BOOL ContextClearAllBreakpoints(PCONTEXT Context)
 BOOL ClearAllBreakpoints()
 //**************************************************************************************
 {
-	CONTEXT	Context;
-	PTHREADBREAKPOINTS ThreadBreakpoints;
-	unsigned int Register;
-
-	ThreadBreakpoints = MainThreadBreakpointList;
-
-	while (ThreadBreakpoints)
-	{
-		if (!ThreadBreakpoints->ThreadId)
-		{
-			DebugOutput("ClearAllBreakpoints: Error: no thread id for thread breakpoints 0x%x.\n", ThreadBreakpoints);
-			return FALSE;
-		}
-
-		if (!ThreadBreakpoints->ThreadHandle)
-		{
-			DebugOutput("ClearAllBreakpoints: Error no thread handle for thread %d.\n", ThreadBreakpoints->ThreadId);
-			return FALSE;
-		}
-
-		for (Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++)
-		{
-			ThreadBreakpoints->BreakpointInfo[Register].Size = 0;
-			ThreadBreakpoints->BreakpointInfo[Register].Address = NULL;
-			ThreadBreakpoints->BreakpointInfo[Register].Type = 0;
-			ThreadBreakpoints->BreakpointInfo[Register].HitCount = 0;
-			ThreadBreakpoints->BreakpointInfo[Register].Callback = NULL;
-		}
-
-		memset(&Context, 0, sizeof(CONTEXT));
-		Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-
-		Context.Dr0 = 0;
-		Context.Dr1 = 0;
-		Context.Dr2 = 0;
-		Context.Dr3 = 0;
-		Context.Dr6 = 0;
-		Context.Dr7 = 0;
-
-		if (!SetThreadContext(ThreadBreakpoints->ThreadHandle, &Context))
-		{
-#ifdef DEBUG_COMMENTS
-			DebugOutput("ClearAllBreakpoints: Error setting thread context (thread %d).\n", ThreadBreakpoints->ThreadId);
-#endif
-			return FALSE;
-		}
-#ifdef DEBUG_COMMENTS
-		else
-			DebugOutput("ClearAllBreakpoints: Cleared breakpoints for thread %d (handle 0x%x).\n", ThreadBreakpoints->ThreadId, ThreadBreakpoints->ThreadHandle);
-#endif
-
-		ThreadBreakpoints = ThreadBreakpoints->NextThreadBreakpoints;
-	}
+	for (unsigned int Register = 0; Register < NUMBER_OF_DEBUG_REGISTERS; Register++)
+		ClearBreakpoint(Register);
 
 	ClearSoftwareBreakpoints();
 
