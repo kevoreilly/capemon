@@ -28,13 +28,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "lookup.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
+#include "CAPE\Injection.h"
 
 extern _RtlNtStatusToDosError pRtlNtStatusToDosError;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
-extern void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context);
-extern void SetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context);
-extern void ResumeThreadHandler(DWORD Pid);
-extern void CreateRemoteThreadHandler(DWORD Pid);
 extern void NtContinueHandler(PCONTEXT ThreadContext);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern BOOL BreakpointsSet;
@@ -403,19 +400,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	return ret;
 }
 
-HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
-	__in	 HANDLE ThreadHandle,
-	__inout  PWOW64_CONTEXT Context
-) {
-	DWORD pid = pid_from_thread_handle(ThreadHandle);
-
-	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
-
-	LOQ_ntstatus("threading", "pi", "ThreadHandle", ThreadHandle, "ProcessId", pid);
-
-	return ret;
-}
-
 HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	__in  HANDLE ThreadHandle,
 	__in  CONTEXT *Context
@@ -502,10 +486,117 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 #endif
 	}
 	else
+
+	LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
+
+	return ret;
+}
+
+#ifdef _WIN64
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
+) {
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+	DWORD tid = tid_from_thread_handle(ThreadHandle);
+
+	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
+
+	if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
+		LOQ_ntstatus(
+			"threading", "pppppppii",
+			"ThreadHandle", ThreadHandle,
+			"InstructionPointer", Context->Eip,
+			"Eax", Context->Eax,
+			"Ebx", Context->Ebx,
+			"Ecx", Context->Ecx,
+			"Edx", Context->Edx,
+			"Esp", Context->Esp,
+			"ProcessId", pid,
+			"ThreadId", tid
+		);
+	else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
+		LOQ_ntstatus(
+			"threading", "pppppii",
+			"ThreadHandle", ThreadHandle,
+			"Eax", Context->Eax,
+			"Ebx", Context->Ebx,
+			"Ecx", Context->Ecx,
+			"Edx", Context->Edx,
+			"ProcessId", pid,
+			"ThreadId", tid
+		);
+	}
+	else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
+		LOQ_ntstatus(
+			"threading", "pppii",
+			"ThreadHandle", ThreadHandle,
+			"InstructionPointer", Context->Eip,
+			"Esp", Context->Esp,
+			"ProcessId", pid,
+			"ThreadId", tid
+		);
+	}
+	else
+		LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
+
+	Wow64GetThreadContextHandler(ThreadHandle, Context);
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
+) {
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+	DWORD tid = tid_from_thread_handle(ThreadHandle);
+
+	Wow64SetThreadContextHandler(ThreadHandle, Context);
+
+	NTSTATUS ret = Old_RtlWow64SetThreadContext(ThreadHandle, Context);
+
+	if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
+		LOQ_ntstatus(
+			"threading", "pppppppii",
+			"ThreadHandle", ThreadHandle,
+			"InstructionPointer", Context->Eip,
+			"Eax", Context->Eax,
+			"Ebx", Context->Ebx,
+			"Ecx", Context->Ecx,
+			"Edx", Context->Edx,
+			"Esp", Context->Esp,
+			"ProcessId", pid,
+			"ThreadId", tid
+		);
+	else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
+		LOQ_ntstatus(
+			"threading", "pppppii",
+			"ThreadHandle", ThreadHandle,
+			"Eax", Context->Eax,
+			"Ebx", Context->Ebx,
+			"Ecx", Context->Ecx,
+			"Edx", Context->Edx,
+			"ProcessId", pid,
+			"ThreadId", tid
+		);
+	}
+	else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
+		LOQ_ntstatus(
+			"threading", "pppii",
+			"ThreadHandle", ThreadHandle,
+			"InstructionPointer", Context->Eip,
+			"Esp", Context->Esp,
+			"ProcessId", pid,
+			"ThreadId", tid
+		);
+	}
+	else
 		LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 
 	return ret;
 }
+#endif
 
 HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	__in		HANDLE ThreadHandle,

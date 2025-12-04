@@ -138,8 +138,11 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtQueueApcThreadEx),
 	HOOK(ntdll, NtOpenThread),
 	HOOK(ntdll, NtGetContextThread),
-	HOOK(ntdll, RtlWow64GetThreadContext),
 	HOOK(ntdll, NtSetContextThread),
+#ifdef _WIN64
+	HOOK(ntdll, RtlWow64GetThreadContext),
+	HOOK(ntdll, RtlWow64SetThreadContext),
+#endif
 	HOOK(ntdll, NtSuspendThread),
 	HOOK(ntdll, NtResumeThread),
 	HOOK(ntdll, NtAlertResumeThread),
@@ -876,7 +879,10 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtQueueApcThreadEx),
 	HOOK(ntdll, NtOpenThread),
 	HOOK(ntdll, NtGetContextThread),
+#ifdef _WIN64
 	HOOK(ntdll, RtlWow64GetThreadContext),
+	HOOK(ntdll, RtlWow64SetThreadContext),
+#endif
 	HOOK(ntdll, NtSetContextThread),
 	HOOK(ntdll, NtSuspendThread),
 	HOOK(ntdll, NtResumeThread),
@@ -1714,6 +1720,18 @@ void set_hooks_exe(void)
 
     free(results);
 
+}
+
+BOOL dll_is_hooked(const wchar_t *library)
+{
+	if (!library)
+		return FALSE;
+	BOOL ret = FALSE;
+	for (unsigned int i = 0; i < hooks_arraysize; i++) {
+		if (!wcsicmp((hooks+i)->library, library))
+			ret = TRUE;
+	}
+	return ret;
 }
 
 void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library)

@@ -1572,15 +1572,22 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	__inout  LPCONTEXT Context
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
+	__in  HANDLE ThreadHandle,
+	__in  CONTEXT *Context
+);
+
+#ifdef _WIN64
 HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 	__in	 HANDLE ThreadHandle,
 	__inout  PWOW64_CONTEXT Context
 );
 
-HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
-	__in  HANDLE ThreadHandle,
-	__in  CONTEXT *Context
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
 );
+#endif
 
 HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	__in	   HANDLE ThreadHandle,

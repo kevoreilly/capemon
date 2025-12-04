@@ -645,6 +645,112 @@ __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *
 #endif
 }
 
+#ifdef _WIN64
+__declspec(noinline) void Wow64GetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context)
+{
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
+	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
+	{
+		struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
+		if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
+			CurrentInjectionInfo->StackPointer = (PVOID)(DWORD_PTR)Context->Esp;
+	}
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if (ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address == Context->Dr0)
+			{
+				Context->Dr0 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address == Context->Dr1)
+			{
+				Context->Dr1 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address == Context->Dr2)
+			{
+				Context->Dr2 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address == Context->Dr3)
+			{
+				Context->Dr3 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+		}
+	}
+}
+
+__declspec(noinline) void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context)
+{
+	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
+		return;
+
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
+	if (Pid != GetCurrentProcessId())
+		ProcessMessage(Pid, 0);
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if
+			(
+				(ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address != Context->Dr0) ||
+				(ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address != Context->Dr1) ||
+				(ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address != Context->Dr2) ||
+				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
+			)
+			{
+				DebugOutput("Wow64SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+				//ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+			}
+		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("Wow64SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
+#endif
+	}
+
+	MEMORY_BASIC_INFORMATION MemoryInfo;
+	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
+
+	if (!CurrentInjectionInfo)
+		return;
+
+	if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)(DWORD_PTR)Context->Eax, &MemoryInfo, sizeof(MemoryInfo)))
+		CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
+	else
+	{
+		ErrorOutput("Wow64SetThreadContextHandler: Failed to query target process memory at address 0x%x", Context->Eax);
+		return;
+	}
+
+	if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
+		return;
+
+	CurrentInjectionInfo->EntryPoint = Context->Eax - CurrentInjectionInfo->ImageBase;  // eax holds ep on 32-bit
+
+	if (Context->Eip == (DWORD_PTR)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
+		DebugOutput("Wow64SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
+	else
+		DebugOutput("Wow64SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
+}
+#endif
+
 BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 {
 	const wchar_t *DontMonitorList[] =

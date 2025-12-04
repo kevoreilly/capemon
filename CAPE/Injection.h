@@ -71,4 +71,12 @@ void ResumeProcessHandler(HANDLE ProcessHandle, DWORD Pid);
 void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID BaseAddress, SIZE_T ViewSize);
 void UnmapSectionViewHandler(PVOID BaseAddress);
 void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer, SIZE_T NumberOfBytesWritten);
+void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context);
+void SetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context);
+#ifdef _WIN64
+void Wow64GetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context);
+void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context);
+#endif
+void ResumeThreadHandler(DWORD Pid);
+void CreateRemoteThreadHandler(DWORD Pid);
 void TerminateHandler();
