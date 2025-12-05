@@ -273,6 +273,13 @@ void parse_config_line(char* line)
             else
                 DebugOutput("Config: ntdll write protection disabled.");
 		}
+		else if (!strcmp(key, "hook-protect")) {
+			g_config.hook_protect = (unsigned int)strtoul(value, NULL, 10);
+            if (g_config.hook_protect)
+                DebugOutput("Config: hook write protection enabled.");
+            else
+                DebugOutput("Config: hook write protection disabled.");
+		}
 		else if (!strcmp(key, "ntdll-remap")) {
 			g_config.ntdll_remap = (unsigned int)strtoul(value, NULL, 10);
             if (g_config.ntdll_remap)

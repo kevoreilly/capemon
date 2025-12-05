@@ -144,6 +144,9 @@ struct _g_config {
 	// ntdll write protection
 	unsigned int ntdll_protect;
 
+	// hook write protection
+	unsigned int hook_protect;
+
 	// ntdll remap protection
 	unsigned int ntdll_remap;
 
