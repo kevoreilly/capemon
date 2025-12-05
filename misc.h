@@ -181,6 +181,7 @@ void raw_sleep(int msecs);
 DWORD randint(DWORD min, DWORD max);
 BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj);
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj);
+UNICODE_STRING* get_module_name(ULONG_PTR addr);
 void hide_module_from_peb(HMODULE module_handle);
 int path_is_system(const wchar_t *path_w);
 int path_is_program_files(const wchar_t *path_w);

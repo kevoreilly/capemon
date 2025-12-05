@@ -1031,6 +1031,26 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 	return NULL;
 }
 
+UNICODE_STRING* get_module_name(ULONG_PTR addr)
+{
+	PLDR_DATA_TABLE_ENTRY mod;
+	PLIST_ENTRY pHeadEntry;
+	PLIST_ENTRY pListEntry;
+	PEB *peb = (PEB *)get_peb();
+
+	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+	for(pListEntry = pHeadEntry->Flink;
+		pListEntry != pHeadEntry;
+		pListEntry = pListEntry->Flink)
+	{
+		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+		if (addr < (ULONG_PTR)mod->BaseAddress || addr >= ((ULONG_PTR)mod->BaseAddress + mod->SizeOfImage))
+			continue;
+		return &mod->BaseDllName;
+	}
+	return NULL;
+}
+
 // hide our module from PEB
 // http://www.openrce.org/blog/view/844/How_to_hide_dll
 
