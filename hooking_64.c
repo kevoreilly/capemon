@@ -1039,8 +1039,8 @@ int hook_api(hook_t *h, int type)
 				addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
 			if (exportaddr && addr && (PVOID)addr != exportaddr) {
 				unsigned int offset;
-				char *module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)addr, &offset);
-				DebugOutput("hook_api: Warning - %s export address 0x%p differs from GetProcAddress -> 0x%p (%s::0x%x)\n", h->funcname, exportaddr, addr, module_name, offset);
+				UNICODE_STRING *module_name = get_module_name((ULONG_PTR)addr);
+				DebugOutput("hook_api: Warning - %s export address 0x%p differs from GetProcAddress -> 0x%p (%wZ::0x%x)\n", h->funcname, exportaddr, addr, module_name, offset);
 			}
 			else if (exportaddr && !addr) {
 				addr = exportaddr;
