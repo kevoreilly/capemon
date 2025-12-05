@@ -900,6 +900,15 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	return ret;
 }
 
+HOOKDEF_NOTAIL(WINAPI, RtlUserThreadStart,
+	__in   LPTHREAD_START_ROUTINE lpStartAddress,
+	__in   LPVOID lpParameter
+) {
+	NTSTATUS ret = 0;
+	LOQ_void("threading", "pp", "StartAddress", lpStartAddress, "Parameter", lpParameter);
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtSetInformationThread,
 	IN HANDLE ThreadHandle,
 	IN THREADINFOCLASS ThreadInformationClass,

@@ -139,6 +139,7 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtOpenThread),
 	HOOK(ntdll, NtGetContextThread),
 	HOOK(ntdll, NtSetContextThread),
+	HOOK_NOTAIL(ntdll, RtlUserThreadStart, 2),
 #ifdef _WIN64
 	HOOK(ntdll, RtlWow64GetThreadContext),
 	HOOK(ntdll, RtlWow64SetThreadContext),

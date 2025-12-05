@@ -1639,6 +1639,11 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThreadEx,
 	__out_opt	LPDWORD lpThreadId
 );
 
+HOOKDEF_NOTAIL(WINAPI, RtlUserThreadStart,
+	__in   LPTHREAD_START_ROUTINE lpStartAddress,
+	__in   LPVOID lpParameter
+);
+
 HOOKDEF(BOOL, WINAPI, TerminateThread,
 	__inout  HANDLE hThread,
 	__in	 DWORD dwExitCode
