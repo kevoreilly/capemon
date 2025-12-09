@@ -640,6 +640,7 @@ hook_t full_hooks[] = {
 	HOOK(advapi32, CryptImportKey),
 	HOOK(wintrust, HTTPSCertificateTrust),
 	HOOK(wintrust, HTTPSFinalProv),
+	HOOK(wintrust, WTGetSignatureInfo),
 	HOOK(crypt32, CryptDecodeObjectEx),
 	HOOK(crypt32, CryptImportPublicKeyInfo),
 	HOOK(ncrypt, NCryptImportKey),

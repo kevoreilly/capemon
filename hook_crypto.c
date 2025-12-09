@@ -359,6 +359,19 @@ HOOKDEF(HRESULT, WINAPI, HTTPSFinalProv,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, WTGetSignatureInfo,
+	_In_	LPWSTR	pszFile,
+	_In_	HANDLE	hFile,
+	_In_	DWORD	sigInfoFlags,
+	_Out_	PVOID	psiginfo,
+	_Out_	PVOID	ppCertContext,
+	_Out_	PVOID	phWVTStateData
+) {
+	NTSTATUS ret = Old_WTGetSignatureInfo(pszFile, hFile, sigInfoFlags, psiginfo, ppCertContext, phWVTStateData);
+	LOQ_ntstatus("crypto", "uhh", "FileName", pszFile, "hFile", hFile, "InfoFlags", sigInfoFlags);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, CryptDecodeObjectEx,
 	_In_		  DWORD			  dwCertEncodingType,
 	_In_		  LPCSTR			 lpszStructType,

@@ -3112,6 +3112,15 @@ HOOKDEF(HRESULT, WINAPI, HTTPSFinalProv,
 	PVOID data // PCRYPT_PROVIDER_DATA
 );
 
+HOOKDEF(NTSTATUS, WINAPI, WTGetSignatureInfo,
+	_In_	LPWSTR	pszFile,
+	_In_	HANDLE	hFile,
+	_In_	DWORD	sigInfoFlags,
+	_Out_	PVOID	psiginfo,
+	_Out_	PVOID	ppCertContext,
+	_Out_	PVOID	phWVTStateData
+);
+
 HOOKDEF(BOOL, WINAPI, CryptDecodeObjectEx,
 	_In_		  DWORD			  dwCertEncodingType,
 	_In_		  LPCSTR			 lpszStructType,
