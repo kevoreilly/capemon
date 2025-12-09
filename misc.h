@@ -297,6 +297,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 
 BOOLEAN prevent_module_unloading(PVOID BaseAddress);
 void prevent_module_reloading(PVOID *BaseAddress);
+void prevent_module_unhooking(PVOID buffer, wchar_t *filename);
 
 struct envstruct {
 	ULONG k;

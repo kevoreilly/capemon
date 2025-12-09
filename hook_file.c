@@ -508,6 +508,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 		fname = calloc(32768, sizeof(wchar_t));
 		path_from_handle(FileHandle, fname, 32768);
 
+		if (!g_config.no_stealth && g_config.ntdll_unhook && InitialBufferLength)
+			prevent_module_unhooking(Buffer, fname);
+
 		if (read_count < 50)
 			LOQ_ntstatus("filesystem", "pFbl", "FileHandle", FileHandle,
 				"HandleName", fname, "Buffer", InitialBufferLength, InitialBuffer, "Length", AccumulatedLength);

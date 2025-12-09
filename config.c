@@ -268,10 +268,17 @@ void parse_config_line(char* line)
 		}
 		else if (!strcmp(key, "ntdll-protect")) {
 			g_config.ntdll_protect = (unsigned int)strtoul(value, NULL, 10);
-            if (g_config.ntdll_protect)
-                DebugOutput("Config: ntdll write protection enabled.");
-            else
-                DebugOutput("Config: ntdll write protection disabled.");
+			if (g_config.ntdll_protect)
+				DebugOutput("Config: ntdll write protection enabled.");
+			else
+				DebugOutput("Config: ntdll write protection disabled.");
+		}
+		else if (!strcmp(key, "ntdll-unhook")) {
+			g_config.ntdll_unhook = (unsigned int)strtoul(value, NULL, 10);
+			if (g_config.ntdll_unhook)
+				DebugOutput("Config: ntdll unhook protection enabled.");
+			else
+				DebugOutput("Config: ntdll unhook protection disabled.");
 		}
 		else if (!strcmp(key, "hook-protect")) {
 			g_config.hook_protect = (unsigned int)strtoul(value, NULL, 10);

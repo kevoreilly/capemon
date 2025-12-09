@@ -1942,6 +1942,29 @@ static BOOL get_section_bounds(HMODULE mod, const char * sectionname, PUCHAR *st
 	return FALSE;
 }
 
+static BOOL get_section_file_bounds(HMODULE mod, const char * sectionname, PUCHAR *start, PUCHAR *end)
+{
+	PUCHAR buf = (PUCHAR)mod;
+	PIMAGE_DOS_HEADER doshdr;
+	PIMAGE_NT_HEADERS nthdr;
+	PIMAGE_SECTION_HEADER sechdr;
+	unsigned int numsecs, i;
+
+	doshdr = (PIMAGE_DOS_HEADER)buf;
+	nthdr = (PIMAGE_NT_HEADERS)(buf + doshdr->e_lfanew);
+	sechdr = (PIMAGE_SECTION_HEADER)((PUCHAR)&nthdr->OptionalHeader + nthdr->FileHeader.SizeOfOptionalHeader);
+	numsecs = nthdr->FileHeader.NumberOfSections;
+
+	for (i = 0; i < numsecs; i++) {
+		if (memcmp(sechdr[i].Name, sectionname, strlen(sectionname)))
+			continue;
+		*start = buf + sechdr[i].PointerToRawData;
+		*end = *start + sechdr[i].SizeOfRawData;
+		return TRUE;
+	}
+	return FALSE;
+}
+
 ULONG_PTR get_connectex_addr(HMODULE mod)
 {
 	PUCHAR start, end;
@@ -2419,6 +2442,37 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 	}
 
 	free(absolutepath);
+}
+
+void prevent_module_unhooking(PVOID buffer, wchar_t *filename)
+{
+	PUCHAR file_start = NULL, file_end = NULL, mem_start = NULL, mem_end = NULL;
+
+	DebugOutput("prevent_module_unhooking buffer 0x%p, filename %ws", buffer, filename);
+
+	wchar_t *whitelist[] = {
+#ifdef _WIN64
+		L"\\Device\\HarddiskVolume2\\Windows\\System32\\ntdll.dll",
+#else
+		L"\\Device\\HarddiskVolume2\\Windows\\SysWOW64\\ntdll.dll",
+#endif
+		NULL
+	};
+
+	for (int i = 0; whitelist[i]; i++) {
+		if (!wcsicmp(whitelist[i], filename)) {
+			get_section_file_bounds(buffer, ".text", &file_start, &file_end);
+			break;
+		}
+	}
+
+	if (!file_start)
+		return;
+
+	if (!get_section_bounds((HMODULE)ntdll_base, ".text", &mem_start, &mem_end))
+		return;
+
+	memcpy(file_start, mem_start, (unsigned int)(file_end - file_start));
 }
 
 static size_t append_octet(char** p, size_t* remaining, unsigned char octet) {
