@@ -191,6 +191,21 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandle,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandleEx,
+    __in ULONG Flags,
+    __in_opt PWSTR DllPath,
+    __in PULONG DllCharacteristics,
+    __in PUNICODE_STRING DllName,
+    __out_opt PVOID *DllHandle
+) {
+	NTSTATUS ret = Old_LdrGetDllHandleEx(Flags, DllPath, DllCharacteristics, DllName, DllHandle);
+	if (DllHandle)
+		LOQ_ntstatus("system", "oP", "DllName", DllName, "DllHandle", DllHandle);
+	else
+		LOQ_ntstatus("system", "o", "DllName", DllName);
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 	__in		HMODULE ModuleHandle,
 	__in_opt	PANSI_STRING FunctionName,

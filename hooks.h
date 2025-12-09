@@ -1760,6 +1760,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandle,
 	__out	   PHANDLE pHModule
 );
 
+HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandleEx,
+    __in ULONG Flags,
+    __in_opt PWSTR DllPath,
+    __in PULONG DllCharacteristics,
+    __in PUNICODE_STRING DllName,
+    __out_opt PVOID *DllHandle
+);
+
 HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 	__in		HMODULE ModuleHandle,
 	__in_opt	PANSI_STRING FunctionName,
