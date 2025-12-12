@@ -1666,6 +1666,15 @@ HOOKDEF(BOOL, WINAPI, NtTestAlert,
 	VOID
 );
 
+HOOKDEF(BOOL, WINAPI, SetThreadStackGuarantee,
+	_Inout_	PULONG	StackSizeInBytes
+);
+
+HOOKDEF(NTSTATUS, WINAPI, SetThreadDescription,
+	_In_	HANDLE	hThread,
+	_In_	PCWSTR	lpThreadDescription
+);
+
 //
 // Misc Hooks
 //

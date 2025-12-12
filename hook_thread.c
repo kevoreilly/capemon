@@ -1006,3 +1006,36 @@ HOOKDEF(BOOL, WINAPI, NtTestAlert,
 	ret = Old_NtTestAlert();
 	return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, SetThreadStackGuarantee,
+	_Inout_	PULONG	StackSizeInBytes
+) {
+	ULONG inputSize = 0;
+	if (StackSizeInBytes != NULL) {
+		__try {
+			inputSize = *StackSizeInBytes;
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			;
+		}
+	}
+
+	BOOL ret = Old_SetThreadStackGuarantee(StackSizeInBytes);
+	if (ret) {
+		LOQ_bool("threading", "ii", "InputSize", inputSize, "OutputSize", *StackSizeInBytes);
+	}
+	else {
+		LOQ_bool("threading", "i", "InputSize", inputSize);
+	}
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, SetThreadDescription,
+	_In_	HANDLE	hThread,
+	_In_	PCWSTR	lpThreadDescription
+) {
+	NTSTATUS ret = Old_SetThreadDescription(hThread, lpThreadDescription);
+	LOQ_ntstatus("threading", "pu", "ThreadHandle", hThread, "ThreadDescription", lpThreadDescription);
+	return ret;
+}

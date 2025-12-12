@@ -154,6 +154,8 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtContinue),
 	HOOK(ntdll, NtContinueEx),
 	HOOK(ntdll, NtTestAlert),
+	HOOK(kernelbase, SetThreadStackGuarantee),
+	HOOK(kernelbase, SetThreadDescription),
 	HOOK(kernel32, CreateThread),
 	HOOK(kernel32, CreateRemoteThread),
 	HOOK(kernel32, CreateRemoteThreadEx),
