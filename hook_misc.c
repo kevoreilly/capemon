@@ -114,6 +114,25 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	return res;
 }
 
+#define ALLOW_UNHANDLED_EXCEPTIONS 1
+
+HOOKDEF(LONG, WINAPI, UnhandledExceptionFilter,
+	__in PEXCEPTION_POINTERS ExceptionInfo
+) {
+	LONG ret;
+	if (ALLOW_UNHANDLED_EXCEPTIONS)
+		ret = Old_UnhandledExceptionFilter(ExceptionInfo);
+	else
+		ret = EXCEPTION_EXECUTE_HANDLER;
+	if (ExceptionInfo && !ExceptionInfo->ExceptionRecord->NumberParameters && (ExceptionInfo->ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+		LOQ_zero("process", "ppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags);
+	else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1 && (ExceptionInfo->ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+		LOQ_zero("process", "pppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+	else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2 && (ExceptionInfo->ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+		LOQ_zero("process", "ppppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+	return ret;
+}
+
 PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 
 LONG WINAPI New_VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
@@ -1181,8 +1200,8 @@ HOOKDEF(void, WINAPI, GlobalMemoryStatus,
 ) {
 	BOOL ret = TRUE;
 	Old_GlobalMemoryStatus(lpBuffer);
-	if (!g_config.no_stealth && lpBuffer->dwTotalPhys < 0x400000000)
-		lpBuffer->dwTotalPhys = (SIZE_T)0x400000000;
+	if (!g_config.no_stealth && lpBuffer->dwTotalPhys < SPOOFED_RAM)
+		lpBuffer->dwTotalPhys = (SIZE_T)SPOOFED_RAM;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->dwTotalPhys / (1024 * 1024));
 }
 
@@ -1190,8 +1209,8 @@ HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 	_Out_ LPMEMORYSTATUSEX lpBuffer
 ) {
 	BOOL ret = Old_GlobalMemoryStatusEx(lpBuffer);
-	if (ret && !g_config.no_stealth && lpBuffer->ullTotalPhys < 0x400000000)
-		lpBuffer->ullTotalPhys = 0x400000000;
+	if (ret && !g_config.no_stealth && lpBuffer->ullTotalPhys < SPOOFED_RAM)
+		lpBuffer->ullTotalPhys = SPOOFED_RAM;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->ullTotalPhys / (1024 * 1024));
 	return ret;
 }
@@ -1201,7 +1220,7 @@ HOOKDEF(BOOL, WINAPI, GetPhysicallyInstalledSystemMemory,
 ) {
 	BOOL ret = Old_GetPhysicallyInstalledSystemMemory(TotalMemoryInKilobytes);
 	if (ret && !g_config.no_stealth && (*TotalMemoryInKilobytes * 1024) < 0x400000000)
-		*TotalMemoryInKilobytes = 0x400000000 / 1024;
+		*TotalMemoryInKilobytes = SPOOFED_RAM / 1024;
 	LOQ_void("misc", "i", "TotalMemoryInKilobytes", *TotalMemoryInKilobytes);
 	return ret;
 }
