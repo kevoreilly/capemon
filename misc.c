@@ -2448,8 +2448,6 @@ void prevent_module_unhooking(PVOID buffer, wchar_t *filename)
 {
 	PUCHAR file_start = NULL, file_end = NULL, mem_start = NULL, mem_end = NULL;
 
-	DebugOutput("prevent_module_unhooking buffer 0x%p, filename %ws", buffer, filename);
-
 	wchar_t *whitelist[] = {
 #ifdef _WIN64
 		L"\\Device\\HarddiskVolume2\\Windows\\System32\\ntdll.dll",
@@ -2576,4 +2574,12 @@ DWORD wait_for_event_to_be_signaled(HANDLE hEvent, DWORD dwTimeout) {
 
 		raw_sleep(250);
 	}
+}
+
+void* gettib() {
+#ifdef _WIN64
+    return (void *)__readgsqword(0);
+#else
+    return (void *)__readfsdword(0);
+#endif
 }
