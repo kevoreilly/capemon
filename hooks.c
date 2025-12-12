@@ -435,6 +435,7 @@ hook_t full_hooks[] = {
 	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
+	HOOK(kernel32, GetPhysicallyInstalledSystemMemory),
 	HOOK(user32, SystemParametersInfoA),
 	HOOK(user32, SystemParametersInfoW),
 	HOOK(pstorec, PStoreCreateInstance),

@@ -2077,6 +2077,10 @@ HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 	_Out_ LPMEMORYSTATUSEX lpBuffer
 );
 
+HOOKDEF(BOOL, WINAPI, GetPhysicallyInstalledSystemMemory,
+	_Out_ PULONGLONG TotalMemoryInKilobytes
+);
+
 HOOKDEF(BOOL, WINAPI, SystemParametersInfoA,
 	_In_	UINT  uiAction,
 	_In_	UINT  uiParam,

@@ -1196,6 +1196,16 @@ HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, GetPhysicallyInstalledSystemMemory,
+	_Out_ PULONGLONG TotalMemoryInKilobytes
+) {
+	BOOL ret = Old_GetPhysicallyInstalledSystemMemory(TotalMemoryInKilobytes);
+	if (ret && !g_config.no_stealth && (*TotalMemoryInKilobytes * 1024) < 0x400000000)
+		*TotalMemoryInKilobytes = 0x400000000 / 1024;
+	LOQ_void("misc", "i", "TotalMemoryInKilobytes", *TotalMemoryInKilobytes);
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, SystemParametersInfoA,
 	_In_	UINT  uiAction,
 	_In_	UINT  uiParam,
