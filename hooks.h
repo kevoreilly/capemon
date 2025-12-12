@@ -1030,6 +1030,28 @@ HOOKDEF(BOOL, WINAPI, Module32NextW,
 	__out LPMODULEENTRY32W lpme
 );
 
+HOOKDEF(BOOL, WINAPI, K32EnumProcesses,
+	_Out_writes_bytes_(cb)	DWORD*	lpidProcess,
+	_In_					DWORD	cb,
+	_Out_					LPDWORD	lpcbNeeded
+);
+
+HOOKDEF(BOOL, WINAPI, WTSEnumerateProcessesW,
+	_In_	HANDLE				hServer,
+	_In_	DWORD				Reserved,
+	_In_	DWORD				Version,
+	_Out_	PWTS_PROCESS_INFOW* ppProcessInfo,
+	_Out_	DWORD*				pCount
+);
+
+HOOKDEF(BOOL, WINAPI, WTSEnumerateProcessesExW,
+	_In_	HANDLE	hServer,
+	_Inout_	DWORD*	pLevel,
+	_In_	DWORD	SessionId,
+	_Out_	LPWSTR*	ppProcessInfo,
+	_Out_	DWORD*	pCount
+);
+
 HOOKDEF(UINT, WINAPI, WinExec,
 	__in LPCSTR lpCmdLine,
 	__in UINT   uCmdShow

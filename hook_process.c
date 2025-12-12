@@ -127,6 +127,46 @@ HOOKDEF(BOOL, WINAPI, Module32FirstW,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, WTSEnumerateProcessesW,
+	_In_	HANDLE				hServer,
+	_In_	DWORD				Reserved,
+	_In_	DWORD				Version,
+	_Out_	PWTS_PROCESS_INFOW* ppProcessInfo,
+	_Out_	DWORD*				pCount
+) {
+	BOOL ret = Old_WTSEnumerateProcessesW(hServer, Reserved, Version, ppProcessInfo, pCount);
+
+	LOQ_bool("process", "");
+
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, WTSEnumerateProcessesExW,
+	_In_	HANDLE	hServer,
+	_Inout_	DWORD*	pLevel,
+	_In_	DWORD	SessionId,
+	_Out_	LPWSTR*	ppProcessInfo,
+	_Out_	DWORD*	pCount
+) {
+	BOOL ret = Old_WTSEnumerateProcessesExW(hServer, pLevel, SessionId, ppProcessInfo, pCount);
+
+	LOQ_bool("process", "");
+
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, K32EnumProcesses,
+	_Out_writes_bytes_(cb)	DWORD*	lpidProcess,
+	_In_					DWORD	cb,
+	_Out_					LPDWORD	lpcbNeeded
+) {
+	BOOL ret = Old_K32EnumProcesses(lpidProcess, cb, lpcbNeeded);
+
+	LOQ_bool("process", "");
+
+	return ret;
+}
+
 HOOKDEF(UINT, WINAPI, WinExec,
 	__in LPCSTR lpCmdLine,
 	__in UINT   uCmdShow
