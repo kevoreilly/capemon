@@ -69,6 +69,7 @@ FILETIME LastTime;
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
+BOOL SimpleCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 
 BOOL DoSetSingleStepMode(int Register, PCONTEXT Context, PVOID Handler)
 {
@@ -2251,6 +2252,51 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	return TRUE;
 }
 
+BOOL SimpleTrace(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	StepCount++;
+
+	if (!StepLimit || StepCount > StepLimit)
+	{
+		if (StepLimit)
+			DebuggerOutput("\nSimpleTrace: Single-step limit reached (%d), releasing.\n", StepLimit);
+		else
+			DebuggerOutput("\n");
+		ClearSingleStepMode(ExceptionInfo->ContextRecord);
+		return TRUE;
+	}
+
+	DebuggerOutput("\n");
+
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	TraceOutput(CIP, DecodedInstruction);
+
+	if (!StopTrace)
+		SetSingleStepMode(ExceptionInfo->ContextRecord, SimpleTrace);
+	else
+		TraceRunning = FALSE;
+
+	return TRUE;
+}
+
 BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
@@ -2510,6 +2556,59 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 	else
 		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+
+	return TRUE;
+}
+
+BOOL SimpleCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+	if (pBreakpointInfo == NULL)
+	{
+		DebugOutput("SimpleCallback executed with pBreakpointInfo NULL.\n");
+		return FALSE;
+	}
+
+	if (pBreakpointInfo->ThreadHandle == NULL)
+	{
+		DebugOutput("SimpleCallback executed with NULL thread handle.\n");
+		return FALSE;
+	}
+
+	StepCount = 0;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	TraceOutput(CIP, DecodedInstruction);
+
+	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+
+	ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
+
+	if (!StepLimit || StepCount > StepLimit)
+	{
+		if (StepLimit)
+			DebuggerOutput("\nSimpleCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
+		else
+			DebuggerOutput("\n");
+	}
+	else
+		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, SimpleTrace);
 
 	return TRUE;
 }
