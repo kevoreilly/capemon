@@ -228,6 +228,7 @@
     <ClCompile Include="CAPE\Scylla\ProcessAccessHelp.cpp" />
     <ClCompile Include="CAPE\Scylla\StringConversion.cpp" />
     <ClCompile Include="CAPE\Scylla\SystemInformation.cpp" />
+    <ClCompile Include="CAPE\Solo.c" />
     <ClCompile Include="CAPE\Trace.c" />
     <ClCompile Include="CAPE\Unpacker.c" />
     <ClCompile Include="CAPE\YaraHarness.c" />
@@ -444,6 +445,7 @@
     <ClInclude Include="CAPE\Scylla\SystemInformation.h" />
     <ClInclude Include="CAPE\Scylla\Thunks.h" />
     <ClInclude Include="CAPE\Unpacker.h" />
+    <ClInclude Include="CAPE\uthash.h" />
     <ClInclude Include="CAPE\w64wow64\internal.h" />
     <ClInclude Include="CAPE\w64wow64\w64wow64.h" />
     <ClInclude Include="CAPE\w64wow64\w64wow64defs.h" />
