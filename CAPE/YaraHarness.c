@@ -288,6 +288,10 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							g_config.br1 = NULL;
 							g_config.br2 = NULL;
 							g_config.br3 = NULL;
+							g_config.hc0 = 0;
+							g_config.hc1 = 0;
+							g_config.hc2 = 0;
+							g_config.hc3 = 0;
 							memset(Action0, 0, MAX_PATH);
 							memset(Action1, 0, MAX_PATH);
 							memset(Action2, 0, MAX_PATH);
