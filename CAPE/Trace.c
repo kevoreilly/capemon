@@ -52,7 +52,6 @@ extern void loq(int index, const char *category, const char *name,
 extern void log_flush();
 extern PVOID KiUserExceptionDispatcher;
 extern lookup_t SoftBPs, SyscallBPs;
-extern int _pipe_sprintf(char *out, const char *fmt, va_list args);
 extern BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS *ExceptionInfo);
 
 char *ModuleName, *PreviousModuleName;
