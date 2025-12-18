@@ -12,7 +12,7 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 	//
 	// Spoofery logic for BSTR (wchar_t *)
 	//
-	if (pVal->vt == VT_BSTR) {
+	if (pVal->vt == VT_BSTR && pVal->bstrVal) {
 		if (!_wcsicmp(pVal->bstrVal, L"Microsoft Basic Display Adapter")) {
 			SysFreeString(pVal->bstrVal);
 			pVal->bstrVal = SysAllocString(SPOOFED_GPU_NAME);
@@ -104,7 +104,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 ) {
 	HRESULT ret;
 	WCHAR szClassName[256] = L"";
-	if (wcscmp(wszName, L"__CLASS") != 0) {
+	if (wszName && wcscmp(wszName, L"__CLASS") != 0) {
 		VARIANT classVariant;
 		VariantInit(&classVariant);
 		IWbemClassObject* pWmiObject = (IWbemClassObject*)_this;
