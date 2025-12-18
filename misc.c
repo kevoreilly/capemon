@@ -34,7 +34,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 extern char *our_process_name;
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
-static _NtQueryInformationThread pNtQueryInformationThread;
 static _RtlGenRandom pRtlGenRandom;
 static _NtQueryAttributesFile pNtQueryAttributesFile;
 static _NtQueryObject pNtQueryObject;
@@ -43,6 +42,7 @@ static _NtDelayExecution pNtDelayExecution;
 static _NtQuerySystemInformation pNtQuerySystemInformation;
 static _RtlEqualUnicodeString pRtlEqualUnicodeString;
 static _RtlInitUnicodeString pRtlInitUnicodeString;
+_NtQueryInformationThread pNtQueryInformationThread;
 _NtMapViewOfSection pNtMapViewOfSection;
 _NtUnmapViewOfSection pNtUnmapViewOfSection;
 _NtAllocateVirtualMemory pNtAllocateVirtualMemory;
