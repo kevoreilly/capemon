@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include <tlhelp32.h>
 #include <ncrypt.h>
+#include <Wbemidl.h>
 
 //
 // File Hooks
@@ -1263,69 +1264,96 @@ HOOKDEF(HRESULT, WINAPI, CoGetObject,
 
 // WMI Hooks
 HOOKDEF(HRESULT, WINAPI, WMI_Get,
-	PVOID		_this,
-	LPCWSTR		wszName,
-	LONG		lFlags,
-	VARIANT*	pVal,
-	LONG*		pType,
-	LONG*		plFlavor
+	_In_		PVOID	_this,
+	_In_		LPCWSTR	wszName,
+	_In_		LONG	lFlags,
+	_Out_		VARIANT	*pVal,
+	_Out_opt_	CIMTYPE	*pType,
+	_Out_opt_	LONG	*plFlavor
 );
 
-HOOKDEF_NOTAIL(WINAPI, WMI_ExecQuery,
-	PVOID		_this,
-	const BSTR	strQueryLanguage,
-	const BSTR	strQuery,
-	LONG		lFlags,
-	PVOID		pCtx,
-	PVOID*		ppEnum
+HOOKDEF(HRESULT, WINAPI, WMI_Next,
+	_In_		PVOID	_this,
+	_In_		LONG	lFlags,
+	_Out_		BSTR	wszName,
+	_Out_		VARIANT	*pVal,
+	_Out_opt_	CIMTYPE	*pType,
+	_Out_opt_	LONG	*plFlavor
 );
 
-HOOKDEF_NOTAIL(WINAPI, WMI_ExecQueryAsync,
-	PVOID		_this,
-	const BSTR	strQueryLanguage,
-	const BSTR	strQuery,
-	LONG		lFlags,
-	PVOID		pCtx,
-	PVOID		pResponseHandler
+HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
+	_In_	PVOID					_this,
+	_In_	const BSTR				strQueryLanguage,
+	_In_	const BSTR				strQuery,
+	_In_	LONG					lFlags,
+	_In_	IWbemContext			*pCtx,
+	_Out_	IEnumWbemClassObject	**ppEnum
 );
 
-HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethod,
-	PVOID		_this,
-	const BSTR	strObjectPath,
-	const BSTR	strMethodName,
-	long		lFlags,
-	PVOID		pCtx,
-	PVOID		pInParams,
-	PVOID*		ppOutParams,
-	PVOID*		ppCallResult
+HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
+	_In_	PVOID			_this,
+	_In_	const BSTR		strQueryLanguage,
+	_In_	const BSTR		strQuery,
+	_In_	LONG			lFlags,
+	_In_	IWbemContext	*pCtx,
+	_In_	IWbemObjectSink	*pResponseHandler
 );
 
-HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethodAsync,
-	PVOID		_this,
-	const BSTR	strObjectPath,
-	const BSTR	strMethodName,
-	long		lFlags,
-	PVOID		pCtx,
-	PVOID		pInParams,
-	PVOID		pResponseHandler
+HOOKDEF(HRESULT, WINAPI, WMI_ExecMethod,
+	_In_	PVOID				_this,
+	_In_	const BSTR			strObjectPath,
+	_In_	const BSTR			strMethodName,
+	_In_	LONG				lFlags,
+	_In_	IWbemContext		*pCtx,
+	_In_	IWbemClassObject	*pInParams,
+	_Out_	IWbemClassObject	**ppOutParams,
+	_Out_	IWbemCallResult		**ppCallResult
 );
 
-HOOKDEF_NOTAIL(WINAPI, WMI_GetObject,
-	PVOID		_this,
-	const BSTR	strObjectPath,
-	LONG		lFlags,
-	PVOID		pCtx,
-	PVOID*		ppObject,
-	PVOID*		ppCallResult
+HOOKDEF(HRESULT, WINAPI, WMI_ExecMethodAsync,
+	_In_	PVOID				_this,
+	_In_	const BSTR			strObjectPath,
+	_In_	const BSTR			strMethodName,
+	_In_	LONG				lFlags,
+	_In_	IWbemContext		*pCtx,
+	_In_	IWbemClassObject	*pInParams,
+	_In_	IWbemObjectSink		*pResponseHandler
 );
 
-HOOKDEF_NOTAIL(WINAPI, WMI_GetObjectAsync,
-	PVOID		_this,
-	const BSTR	strObjectPath,
-	LONG		lFlags,
-	PVOID		pCtx,
-	PVOID		pResultHandler
+HOOKDEF(HRESULT, WINAPI, WMI_GetObject,
+	_In_	PVOID				_this,
+	_In_	const BSTR			strObjectPath,
+	_In_	LONG				lFlags,
+	_In_	IWbemContext		*pCtx,
+	_Out_	IWbemClassObject	**ppObject,
+	_Out_	IWbemCallResult		**ppCallResult
 );
+
+HOOKDEF(HRESULT, WINAPI, WMI_GetObjectAsync,
+	_In_	PVOID			_this,
+	_In_	const BSTR		strObjectPath,
+	_In_	LONG			lFlags,
+	_In_	IWbemContext	*pCtx,
+	_In_	IWbemObjectSink	*pResultHandler
+);
+
+/*
+HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnum,
+	_In_	PVOID					_this,
+	_In_	const BSTR				strFilter,
+	_In_	long					lFlags,
+	_In_	IWbemContext			*pCtx,
+	_Out_	IEnumWbemClassObject	**ppEnum
+);
+
+HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnumAsync,
+	_In_	PVOID			_this,
+	_In_	const BSTR		strFilter,
+	_In_	long			lFlags,
+	_In_	IWbemContext	*pCtx,
+	_In_	IWbemObjectSink	*pResponseHandler
+);
+*/
 
 // End of WMI Hooks
 

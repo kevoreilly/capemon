@@ -182,15 +182,20 @@ hook_t full_hooks[] = {
 	// WMI Hooks
 #ifdef _WIN64
 	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UEAAJPEBGJPEAUtagVARIANT@@PEAJ2@Z"),
+	HOOK_WITHNAME(fastprox, WMI_Next, "?Next@CWbemObject@@UEAAJJPEAPEAGPEAUtagVARIANT@@PEAJ2@Z"),
 #else
 	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z"),
+	HOOK_WITHNAME(fastprox, WMI_Next, "?Next@CWbemObject@@UAGJJPAPAGPAUtagVARIANT@@PAJ2@Z"),
 #endif
-	HOOK_NOTAIL(fastprox, WMI_ExecQuery, 6),
-	HOOK_NOTAIL(fastprox, WMI_ExecMethod, 8),
-	HOOK_NOTAIL(fastprox, WMI_ExecQueryAsync, 6),
-	HOOK_NOTAIL(fastprox, WMI_ExecMethodAsync, 7),
-	HOOK_NOTAIL(fastprox, WMI_GetObject, 6),
-	HOOK_NOTAIL(fastprox, WMI_GetObjectAsync, 5),
+	HOOK(fastprox, WMI_ExecQuery),
+	HOOK(fastprox, WMI_ExecQueryAsync),
+	HOOK(fastprox, WMI_ExecMethod),
+	HOOK(fastprox, WMI_ExecMethodAsync),
+	HOOK(fastprox, WMI_GetObject),
+	HOOK(fastprox, WMI_GetObjectAsync),
+	// TODO: Uncomment after adding Yara prolog detection for these non-exported hooks
+	//HOOK(fastprox, WMI_CreateInstanceEnum),
+	//HOOK(fastprox, WMI_CreateInstanceEnumAsync),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
