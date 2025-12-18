@@ -40,7 +40,6 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 			if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
-				//pipe("DEBUG:WMI_Get: Spoofed LogicalDisk.Size: %Z", newSize);
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_PhysicalMemory") && !_wcsicmp(wszName, L"Capacity")) {
