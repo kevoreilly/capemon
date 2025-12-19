@@ -1775,6 +1775,10 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	_In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 );
 
+HOOKDEF(LONG, WINAPI, UnhandledExceptionFilter,
+	__in PEXCEPTION_POINTERS ExceptionInfo
+);
+
 HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
 	__in	ULONG First,
 	__out   PVECTORED_EXCEPTION_HANDLER Handler

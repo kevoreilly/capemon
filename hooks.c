@@ -382,6 +382,7 @@ hook_t full_hooks[] = {
 	HOOK(user32, SetWindowsHookExW),
 	HOOK(user32, UnhookWindowsHookEx),
 	HOOK(kernel32, SetUnhandledExceptionFilter),
+	HOOK(kernel32, UnhandledExceptionFilter),
 	HOOK(ntdll, RtlAddVectoredExceptionHandler),
 	HOOK(kernel32, SetErrorMode),
 	HOOK(ntdll, LdrGetDllHandle),
