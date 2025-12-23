@@ -19,4 +19,4 @@ There are three main files that define the hooks implemented in capemon:
 3. [hook_{category}.c](./hook_process.c) _(Link is just an example, in this case hook_process.c)_. This set of files is where the implementation of each hook is defined. When defining the behavior of a given hook, you must copy the corresponding definition from the `hooks.h` file and write the code. Remember you can call the original function with `Old_{ApiName}` .
 
 ## Documentation
-* [deepwiki](https://deepwiki.com/kevoreilly/capemon)
+* [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kevoreilly/capemon)
