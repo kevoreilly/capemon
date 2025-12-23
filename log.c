@@ -24,7 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "utf8.h"
 #include "log.h"
-#include "mpack.h" // Replaced bson.h with mpack.h
+#include "mpack.h"
 #include "pipe.h"
 #include "config.h"
 
@@ -34,6 +34,9 @@ extern char* GetResultsPath(char* FolderName);
 #define BUFFERSIZE 16 * 1024 * 1024
 #define BUFFER_LOG_MAX 256
 #define LARGE_BUFFER_LOG_MAX 2048
+// Optimización: Buffer en stack para evitar malloc en logs comunes
+#define LOG_STACK_BUFFER_SIZE 4096 
+
 size_t buffer_log_max = BUFFER_LOG_MAX;
 size_t large_buffer_log_max = LARGE_BUFFER_LOG_MAX;
 #define BUFFER_REGVAL_MAX 512
@@ -50,12 +53,6 @@ static DWORD last_api_logged;
 static BOOLEAN special_api_triggered;
 static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
-
-// mpack writer state not global per-call to support re-entrancy better if needed,
-// but for now we follow the pattern. 
-// We will allocate writers on stack or heap per loq() to avoid global state issues.
-
-static char g_istr[4]; // Used for number to string conversion, less needed for mpack but kept
 
 static char logtbl_explained[256] = {0};
 
@@ -187,7 +184,7 @@ void log_flush()
 
 void debug_message(const char *msg) {
 	mpack_writer_t w;
-	char *data; 
+	char *data;
 	size_t size;
 	
 mpack_writer_init_growable(&w, &data, &size);
@@ -431,6 +428,255 @@ static int count_format_args(const char *fmt) {
 	return args;
 }
 
+// Helper: Serializes the main API log entry. 
+// Separated to support retrying with a larger buffer if stack buffer fails.
+static void write_log_entry_payload(mpack_writer_t* writer, int index, 
+	hook_info_t* hookinfo, int is_success, ULONG_PTR return_value, 
+	const char* fmt, va_list args, size_t* out_repeat_offset)
+{
+	int count = 1; 
+	char key = 0;
+	int arg_count = count_format_args(fmt);
+
+	mpack_start_map(writer, 7); // I, C, R, P, T, t, r, args
+	
+	mpack_write_cstr(writer, "I");
+	mpack_write_int(writer, index);
+	
+	hook_info_t *hookinfo_local = hook_info(); // Use local copy
+	mpack_write_cstr(writer, "C");
+	log_ptr(writer, hookinfo_local->return_address);
+	mpack_write_cstr(writer, "R");
+	log_ptr(writer, hookinfo_local->main_caller_retaddr);
+	mpack_write_cstr(writer, "P");
+	log_ptr(writer, hookinfo_local->parent_caller_retaddr);
+	
+mpack_write_cstr(writer, "T");
+	mpack_write_int(writer, GetCurrentThreadId());
+	
+mpack_write_cstr(writer, "t");
+	mpack_write_int(writer, raw_gettickcount() - g_starttick );
+	
+mpack_write_cstr(writer, "r");
+	// Mark offset for repetition count update if needed.
+	if (out_repeat_offset) *out_repeat_offset = mpack_writer_buffer_used(writer); 
+	mpack_write_u8(writer, 0); // Fixed 1 byte 0
+
+	mpack_write_cstr(writer, "args");
+	mpack_start_array(writer, arg_count + 2);
+	
+	mpack_write_int(writer, is_success);
+	log_ptr(writer, (void*)return_value);
+
+	while (--count != 0 || *fmt != 0) {
+		if (count == 0) {
+			if (*fmt == 0) break;
+			count = *fmt >= '2' && *fmt <= '9' ? *fmt++ - '0' : 1;
+			key = *fmt++;
+		}
+		(void) va_arg(args, const char *); // Skip pname
+
+		if (key == 's') {
+			const char *s = va_arg(args, const char *);
+			log_string(writer, s ? s : "", -1);
+		}
+		else if (key == 'f') {
+			const char *s = va_arg(args, const char *);
+			char absolutepath[MAX_PATH];
+			if (s == NULL) s = "";
+			ensure_absolute_ascii_path(absolutepath, s);
+			log_string(writer, absolutepath, -1);
+		}
+		else if (key == 'S') {
+			int len = va_arg(args, int);
+			const char *s = va_arg(args, const char *);
+			log_string(writer, s ? s : "", len);
+		}
+		else if (key == 'u') {
+			const wchar_t *s = va_arg(args, const wchar_t *);
+			log_wstring(writer, s ? s : L"", -1);
+		}
+		else if (key == 'F') {
+			const wchar_t *s = va_arg(args, const wchar_t *);
+			wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+			if (s == NULL) s = L"";
+			if (absolutepath) {
+				ensure_absolute_unicode_path(absolutepath, s);
+				log_wstring(writer, absolutepath, -1);
+				free(absolutepath);
+			}
+			else {
+				log_wstring(writer, L"", -1);
+			}
+		}
+		else if (key == 'U') {
+			int len = va_arg(args, int);
+			const wchar_t *s = va_arg(args, const wchar_t *);
+			log_wstring(writer, s ? s : L"", len);
+		}
+		else if (key == 'b') {
+			size_t len = va_arg(args, size_t);
+			const char *s = va_arg(args, const char *);
+			log_buffer(writer, s, len);
+		}
+		else if (key == 'B') {
+			DWORD *len = va_arg(args, DWORD *);
+			const char *s = va_arg(args, const char *);
+			log_buffer(writer, s, len ? *len : 0);
+		}
+		else if (key == 'c') {
+			size_t len = va_arg(args, size_t);
+			const char *s = va_arg(args, const char *);
+			log_large_buffer(writer, s, len);
+		}
+		else if (key == 'C') {
+			DWORD *len = va_arg(args, DWORD *);
+			const char *s = va_arg(args, const char *);
+			log_large_buffer(writer, s, len ? *len : 0);
+		}
+		else if (key == 'i' || key == 'h') {
+			log_int32(writer, va_arg(args, int));
+		}
+		else if (key == 'I' || key == 'H') {
+			int *ptr = va_arg(args, int *);
+			int val = 0;
+			__try { if (ptr) val = *ptr; } __except(1) {}
+			log_int32(writer, val);
+		}
+		else if (key == 'l' || key == 'p') {
+			log_ptr(writer, va_arg(args, void *));
+		}
+		else if (key == 'L' || key == 'P') {
+			void **ptr = va_arg(args, void **);
+			void *val = NULL;
+			__try { if (ptr) val = *ptr; } __except(1) {}
+			log_ptr(writer, val);
+		}
+		else if (key == 'n') {
+			log_variant(writer, va_arg(args, VARIANT*));
+		}
+		else if (key == 'x') {
+			log_int64(writer, va_arg(args, LARGE_INTEGER).QuadPart);
+		}
+		else if (key == 'X') {
+			PLARGE_INTEGER ptr = va_arg(args, PLARGE_INTEGER);
+			int64_t val = 0;
+			__try { if (ptr) val = ptr->QuadPart; } __except(1) {}
+			log_int64(writer, val);
+		}
+		else if (key == 'e') {
+			HKEY reg = va_arg(args, HKEY);
+			const char *s = va_arg(args, const char *);
+			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
+			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			log_wstring(writer, get_full_key_pathA(reg, s, keybuf, allocsize), -1);
+			free(keybuf);
+		}
+		else if (key == 'E') {
+			HKEY reg = va_arg(args, HKEY);
+			const wchar_t *s = va_arg(args, const wchar_t *);
+			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
+			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			log_wstring(writer, get_full_key_pathW(reg, s, keybuf, allocsize), -1);
+			free(keybuf);
+		}
+		else if (key == 'K') {
+			OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
+			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
+			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			log_wstring(writer, get_key_path(obj, keybuf, allocsize), -1);
+			free(keybuf);
+		}
+		else if (key == 'k') {
+			HKEY reg = va_arg(args, HKEY);
+			const PUNICODE_STRING s = va_arg(args, const PUNICODE_STRING);
+			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
+			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			log_wstring(writer, get_full_keyvalue_pathUS(reg, s, keybuf, allocsize), -1);
+			free(keybuf);
+		}
+		else if (key == 'v') {
+			HKEY reg = va_arg(args, HKEY);
+			const char *s = va_arg(args, const char *);
+			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
+			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			log_wstring(writer, get_full_keyvalue_pathA(reg, s, keybuf, allocsize), -1);
+			free(keybuf);
+		}
+		else if (key == 'V') {
+			HKEY reg = va_arg(args, HKEY);
+			const wchar_t *s = va_arg(args, const wchar_t *);
+			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
+			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			log_wstring(writer, get_full_keyvalue_pathW(reg, s, keybuf, allocsize), -1);
+			free(keybuf);
+		}
+		else if (key == 'o') {
+			UNICODE_STRING *str = va_arg(args, UNICODE_STRING *);
+			if (str) log_wstring(writer, str->Buffer, str->Length / sizeof(wchar_t));
+			else log_wstring(writer, L"", 0);
+		}
+		else if (key == 'O') {
+			OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
+			if (obj) {
+				wchar_t path[MAX_PATH_PLUS_TOLERANCE];
+				wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+				if (absolutepath) {
+					path_from_object_attributes(obj, path, MAX_PATH_PLUS_TOLERANCE);
+					ensure_absolute_unicode_path(absolutepath, path);
+					log_wstring(writer, absolutepath, -1);
+					free(absolutepath);
+				} else {
+					log_wstring(writer, L"", -1);
+				}
+			} else {
+				log_wstring(writer, L"", 0);
+			}
+		}
+		else if (key == 'a') {
+			int argc = va_arg(args, int);
+			const char **argv = va_arg(args, const char **);
+			log_argv(writer, argc, argv);
+		}
+		else if (key == 'A') {
+			int argc = va_arg(args, int);
+			const wchar_t **argv = va_arg(args, const wchar_t **);
+			log_wargv(writer, argc, argv);
+		}
+		else if (key == 'r' || key == 'R') {
+			unsigned long type = va_arg(args, unsigned long);
+			unsigned long size = va_arg(args, unsigned long);
+			unsigned char *data = va_arg(args, unsigned char *);
+			if (size > BUFFER_REGVAL_MAX) size = BUFFER_REGVAL_MAX;
+			
+			if (type == REG_NONE) {
+				mpack_write_cstr(writer, "");
+			}
+			else if (type == REG_DWORD || type == REG_DWORD_LITTLE_ENDIAN) {
+				unsigned int value = 0;
+				if (data) value = *(unsigned int *)data;
+				mpack_write_u32(writer, value);
+			}
+			else if (type == REG_DWORD_BIG_ENDIAN) {
+				unsigned int value = 0;
+				if (data) value = *(unsigned int *)data;
+				mpack_write_u32(writer, our_htonl(value));
+			}
+			else if (type == REG_EXPAND_SZ || type == REG_SZ) {
+				if (!data) mpack_write_bin(writer, NULL, 0);
+				else if (key == 'r') log_string(writer, (const char*)data, strnlen((const char*)data, size));
+				else log_wstring(writer, (const wchar_t*)data, wcsnlen((const wchar_t*)data, size / sizeof(wchar_t)));
+			}
+			else {
+				mpack_write_bin(writer, (const char*)data, size);
+			}
+		}
+	}
+	
+mpack_finish_array(writer);
+	mpack_finish_map(writer);
+}
+
 void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...)
 {
@@ -439,11 +685,14 @@ void loq(int index, const char *category, const char *name,
 	int count = 1; char key = 0;
 	unsigned int repeat_offset = 0;
 	lasterror_t lasterror;
-	hook_info_t *hookinfo;
 
 	mpack_writer_t writer;
 	char *data = NULL;
 	size_t size = 0;
+	
+	// Stack buffer for optimization
+	char stack_buf[LOG_STACK_BUFFER_SIZE];
+	int used_malloc = 0;
 
 	if (index >= LOG_ID_PREDEFINED_MAX && g_config.suspend_logging)
 		return;
@@ -560,264 +809,44 @@ mpack_finish_array(&writer); // args
 	}
 
 	fmt = fmtbak;
-	va_start(args, fmt);
-	count = 1; key = 0;
 
-	mpack_writer_init_growable(&writer, &data, &size);
-	mpack_start_map(&writer, 7); // I, C, R, P, T, t, r, args
-	
-mpack_write_cstr(&writer, "I");
-	mpack_write_int(&writer, index);
-	
-hookinfo = hook_info();
-	mpack_write_cstr(&writer, "C");
-	log_ptr(&writer, hookinfo->return_address);
-	mpack_write_cstr(&writer, "R");
-	log_ptr(&writer, hookinfo->main_caller_retaddr);
-	mpack_write_cstr(&writer, "P");
-	log_ptr(&writer, hookinfo->parent_caller_retaddr);
-	
-mpack_write_cstr(&writer, "T");
-	mpack_write_int(&writer, GetCurrentThreadId());
-	
-mpack_write_cstr(&writer, "t");
-	mpack_write_int(&writer, raw_gettickcount() - g_starttick );
-	
-mpack_write_cstr(&writer, "r");
-	// Mark offset for repetition count update if we want to optimize later.
-	// Note: In-place update in MsgPack is hard due to variable length int encoding.
-	// We assume 0 fits in 1 byte (0x00). If it grows > 127 it needs more bytes.
-	// We will only deduplicate if the count is small (<127).
-	repeat_offset = mpack_writer_buffer_used(&writer); 
-	mpack_write_u8(&writer, 0); // Fixed 1 byte 0
+	// Dual-strategy write: Try Stack first, fallback to Heap
+	{
+		va_list args_retry;
+		size_t repeat_offset_out = 0;
+		va_start(args, fmt);
+		va_copy(args_retry, args); // Copy for potential retry
 
-	mpack_write_cstr(&writer, "args");
-	mpack_start_array(&writer, count_format_args(fmt) + 2);
-	
-mpack_write_int(&writer, is_success);
-	log_ptr(&writer, (void*)return_value);
+		// Attempt 1: Stack Buffer
+		mpack_writer_init_buffer(&writer, stack_buf, sizeof(stack_buf));
+		write_log_entry_payload(&writer, index, hookinfo, is_success, return_value, fmt, args, &repeat_offset_out);
 
-	while (--count != 0 || *fmt != 0) {
-		if (count == 0) {
-			if (*fmt == 0) break;
-			count = *fmt >= '2' && *fmt <= '9' ? *fmt++ - '0' : 1;
-			key = *fmt++;
+		if (mpack_writer_destroy(&writer) == mpack_ok) {
+			// Stack buffer was enough
+			data = stack_buf;
+			size = mpack_writer_buffer_used(&writer);
+			repeat_offset = (unsigned int)repeat_offset_out;
+			used_malloc = 0;
 		}
-		(void) va_arg(args, const char *); // Skip pname
-
-		if (key == 's') {
-			const char *s = va_arg(args, const char *);
-			log_string(&writer, s ? s : "", -1);
-		}
-		else if (key == 'f') {
-			const char *s = va_arg(args, const char *);
-			char absolutepath[MAX_PATH];
-			if (s == NULL) s = "";
-			ensure_absolute_ascii_path(absolutepath, s);
-			log_string(&writer, absolutepath, -1);
-		}
-		else if (key == 'S') {
-			int len = va_arg(args, int);
-			const char *s = va_arg(args, const char *);
-			log_string(&writer, s ? s : "", len);
-		}
-		else if (key == 'u') {
-			const wchar_t *s = va_arg(args, const wchar_t *);
-			log_wstring(&writer, s ? s : L"", -1);
-		}
-		else if (key == 'F') {
-			const wchar_t *s = va_arg(args, const wchar_t *);
-			wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
-			if (s == NULL) s = L"";
-			if (absolutepath) {
-				ensure_absolute_unicode_path(absolutepath, s);
-				log_wstring(&writer, absolutepath, -1);
-				free(absolutepath);
-			}
-			else {
-				log_wstring(&writer, L"", -1);
-			}
-		}
-		else if (key == 'U') {
-			int len = va_arg(args, int);
-			const wchar_t *s = va_arg(args, const wchar_t *);
-			log_wstring(&writer, s ? s : L"", len);
-		}
-		else if (key == 'b') {
-			size_t len = va_arg(args, size_t);
-			const char *s = va_arg(args, const char *);
-			log_buffer(&writer, s, len);
-		}
-		else if (key == 'B') {
-			DWORD *len = va_arg(args, DWORD *);
-			const char *s = va_arg(args, const char *);
-			log_buffer(&writer, s, len ? *len : 0);
-		}
-		else if (key == 'c') {
-			size_t len = va_arg(args, size_t);
-			const char *s = va_arg(args, const char *);
-			log_large_buffer(&writer, s, len);
-		}
-		else if (key == 'C') {
-			DWORD *len = va_arg(args, DWORD *);
-			const char *s = va_arg(args, const char *);
-			log_large_buffer(&writer, s, len ? *len : 0);
-		}
-		else if (key == 'i' || key == 'h') {
-			log_int32(&writer, va_arg(args, int));
-		}
-		else if (key == 'I' || key == 'H') {
-			int *ptr = va_arg(args, int *);
-			int val = 0;
-			__try { if (ptr) val = *ptr; } __except(1) {}
-			log_int32(&writer, val);
-		}
-		else if (key == 'l' || key == 'p') {
-			log_ptr(&writer, va_arg(args, void *));
-		}
-		else if (key == 'L' || key == 'P') {
-			void **ptr = va_arg(args, void **);
-			void *val = NULL;
-			__try { if (ptr) val = *ptr; } __except(1) {}
-			log_ptr(&writer, val);
-		}
-		else if (key == 'n') {
-			log_variant(&writer, va_arg(args, VARIANT*));
-		}
-		else if (key == 'x') {
-			log_int64(&writer, va_arg(args, LARGE_INTEGER).QuadPart);
-		}
-		else if (key == 'X') {
-			PLARGE_INTEGER ptr = va_arg(args, PLARGE_INTEGER);
-			int64_t val = 0;
-			__try { if (ptr) val = ptr->QuadPart; } __except(1) {}
-			log_int64(&writer, val);
-		}
-		else if (key == 'e') {
-			HKEY reg = va_arg(args, HKEY);
-			const char *s = va_arg(args, const char *);
-			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
-			log_wstring(&writer, get_full_key_pathA(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
-		}
-		else if (key == 'E') {
-			HKEY reg = va_arg(args, HKEY);
-			const wchar_t *s = va_arg(args, const wchar_t *);
-			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
-			log_wstring(&writer, get_full_key_pathW(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
-		}
-		else if (key == 'K') {
-			OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
-			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
-			log_wstring(&writer, get_key_path(obj, keybuf, allocsize), -1);
-			free(keybuf);
-		}
-		else if (key == 'k') {
-			HKEY reg = va_arg(args, HKEY);
-			const PUNICODE_STRING s = va_arg(args, const PUNICODE_STRING);
-			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
-			log_wstring(&writer, get_full_keyvalue_pathUS(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
-		}
-		else if (key == 'v') {
-			HKEY reg = va_arg(args, HKEY);
-			const char *s = va_arg(args, const char *);
-			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
-			log_wstring(&writer, get_full_keyvalue_pathA(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
-		}
-		else if (key == 'V') {
-			HKEY reg = va_arg(args, HKEY);
-			const wchar_t *s = va_arg(args, const wchar_t *);
-			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
-			log_wstring(&writer, get_full_keyvalue_pathW(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
-		}
-		else if (key == 'o') {
-			UNICODE_STRING *str = va_arg(args, UNICODE_STRING *);
-			if (str) log_wstring(&writer, str->Buffer, str->Length / sizeof(wchar_t));
-			else log_wstring(&writer, L"", 0);
-		}
-		else if (key == 'O') {
-			OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
-			if (obj) {
-				wchar_t path[MAX_PATH_PLUS_TOLERANCE];
-				wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
-				if (absolutepath) {
-					path_from_object_attributes(obj, path, MAX_PATH_PLUS_TOLERANCE);
-					ensure_absolute_unicode_path(absolutepath, path);
-					log_wstring(&writer, absolutepath, -1);
-					free(absolutepath);
-				} else {
-					log_wstring(&writer, L"", -1);
-				}
-			} else {
-				log_wstring(&writer, L"", 0);
-			}
-		}
-		else if (key == 'a') {
-			int argc = va_arg(args, int);
-			const char **argv = va_arg(args, const char **);
-			log_argv(&writer, argc, argv);
-		}
-		else if (key == 'A') {
-			int argc = va_arg(args, int);
-			const wchar_t **argv = va_arg(args, const wchar_t **);
-			log_wargv(&writer, argc, argv);
-		}
-		else if (key == 'r' || key == 'R') {
-			unsigned long type = va_arg(args, unsigned long);
-			unsigned long size = va_arg(args, unsigned long);
-			unsigned char *data = va_arg(args, unsigned char *);
-			if (size > BUFFER_REGVAL_MAX) size = BUFFER_REGVAL_MAX;
+		else {
+			// Attempt 2: Heap Fallback (Growable)
+			used_malloc = 1;
+			mpack_writer_init_growable(&writer, &data, &size);
+			write_log_entry_payload(&writer, index, hookinfo, is_success, return_value, fmt, args_retry, &repeat_offset_out);
 			
-			if (type == REG_NONE) {
-				mpack_write_cstr(&writer, "");
+			if (mpack_writer_destroy(&writer) != mpack_ok) {
+				// Fatal error (OOM?)
+				free(data);
+				va_end(args);
+				va_end(args_retry);
+				LeaveCriticalSection(&g_mutex);
+				goto exit;
 			}
-			else if (type == REG_DWORD || type == REG_DWORD_LITTLE_ENDIAN) {
-				unsigned int value = 0;
-				if (data) value = *(unsigned int *)data;
-				mpack_write_u32(&writer, value);
-			}
-			else if (type == REG_DWORD_BIG_ENDIAN) {
-				unsigned int value = 0;
-				if (data) value = *(unsigned int *)data;
-				mpack_write_u32(&writer, our_htonl(value));
-			}
-			else if (type == REG_EXPAND_SZ || type == REG_SZ) {
-				if (!data) mpack_write_bin(&writer, NULL, 0);
-				else if (key == 'r') log_string(&writer, (const char*)data, strnlen((const char*)data, size));
-				else log_wstring(&writer, (const wchar_t*)data, wcsnlen((const wchar_t*)data, size / sizeof(wchar_t)));
-			}
-			else if (type == REG_MULTI_SZ) {
-				// Skipping complex parsing for brevity, treat as binary if complex or string if simple
-				// Implementation similar to original BSON one but simplified for mpack binary dump if fails
-				mpack_write_bin(&writer, (const char*)data, size);
-			}
-			else {
-				mpack_write_bin(&writer, (const char*)data, size);
-			}
+			repeat_offset = (unsigned int)repeat_offset_out;
 		}
-	}
-	
-	mpack_finish_array(&writer);
-	mpack_finish_map(&writer);
-	
-	if (mpack_writer_destroy(&writer) != mpack_ok) {
-		free(data);
 		va_end(args);
-		LeaveCriticalSection(&g_mutex);
-		goto exit;
+		va_end(args_retry);
 	}
-	
-	va_end(args);
 
 	// Deduplication logic
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
@@ -852,7 +881,7 @@ mpack_write_int(&writer, is_success);
 		// Fallback: Check if the raw buffer *after* repeat_offset matches the previous one.
 		// repeat_offset points to value of 'r'. 'args' key follows immediately.
 		
-		unsigned int compare_start = (unsigned int)repeat_offset + 1; // skip 1 byte of 'r' value (0x00)
+		unsigned int compare_start = repeat_offset + 1; // skip 1 byte of 'r' value (0x00)
 		unsigned int compare_len = (unsigned int)size - compare_start;
 		
 		if (lastlog.buf && lastlog.compare_len == compare_len && 
@@ -886,13 +915,15 @@ save_new_log:
 			lastlog.len = (unsigned int)size;
 			lastlog.buf = (unsigned char*)malloc(lastlog.len);
 			memcpy(lastlog.buf, data, lastlog.len);
-			lastlog.repeat_offset = repeat_offset; // Offset of the value byte
+			lastlog.repeat_offset = repeat_offset; 
 			lastlog.compare_len = compare_len;
 			lastlog.compare_ptr = lastlog.buf + compare_start;
 		}
 	}
 	
-	free(data);
+	if (used_malloc) {
+		free(data);
+	}
 	LeaveCriticalSection(&g_mutex);
 
 exit:
@@ -906,7 +937,7 @@ exit:
 void announce_netlog()
 {
 	char protoname[32];
-	sprintf(protoname, "MPACK %u\n", GetCurrentProcessId());
+	snprintf(protoname, sizeof(protoname), "MPACK %u\n", GetCurrentProcessId());
 	log_raw_direct(protoname, strlen(protoname));
 }
 
@@ -968,13 +999,13 @@ void log_environ()
 	tmpsize = sizeof(tmp);
 	GetComputerNameA(tmp, &tmpsize);
 	computername = strdup(tmp);
-	get_registry_string(HKEY_LOCAL_MACHINE, "Software\Microsoft\Windows NT\CurrentVersion", "InstallDate", tmp, sizeof(tmp));
+	get_registry_string(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows NT\\CurrentVersion", "InstallDate", tmp, sizeof(tmp));
 	installdate = *(DWORD *)tmp;
-	get_registry_string(HKEY_LOCAL_MACHINE, "Software\Microsoft\Windows NT\CurrentVersion", "RegisteredOwner", tmp, sizeof(tmp));
+	get_registry_string(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows NT\\CurrentVersion", "RegisteredOwner", tmp, sizeof(tmp));
 	registeredowner = strdup(tmp);
-	get_registry_string(HKEY_LOCAL_MACHINE, "Software\Microsoft\Windows NT\CurrentVersion", "RegisteredOrganization", tmp, sizeof(tmp));
+	get_registry_string(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows NT\\CurrentVersion", "RegisteredOrganization", tmp, sizeof(tmp));
 	registeredorg = strdup(tmp);
-	get_registry_string(HKEY_LOCAL_MACHINE, "Software\Microsoft\Windows NT\CurrentVersion", "ProductName", tmp, sizeof(tmp));
+	get_registry_string(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows NT\\CurrentVersion", "ProductName", tmp, sizeof(tmp));
 	productname = strdup(tmp);
 	memset(tmp, 0, sizeof(tmp));
 	GetWindowsDirectoryA(tmp, sizeof(tmp));
@@ -982,7 +1013,7 @@ void log_environ()
 	memset(tmp, 0, sizeof(tmp));
 	GetTempPathA(sizeof(tmp), tmp);
 	tmppath = strdup(tmp);
-	get_registry_string(HKEY_LOCAL_MACHINE, "Software\Microsoft\Cryptography", "MachineGuid", tmp, sizeof(tmp));
+	get_registry_string(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Cryptography", "MachineGuid", tmp, sizeof(tmp));
 	machineguid = strdup(tmp);
 	memset(tmp, 0, sizeof(tmp));
 	GetVolumeInformationA("C:\\", NULL, 0, &volser, NULL, NULL, NULL, 0);
@@ -990,7 +1021,7 @@ void log_environ()
 	if (g_config.serial_number)
 		volser = g_config.serial_number;
 
-	sprintf(tmp, "%04x-%04x", HIWORD(volser), LOWORD(volser));
+	snprintf(tmp, sizeof(tmp), "%04x-%04x", HIWORD(volser), LOWORD(volser));
 	sysvolserial = strdup(tmp);
 	memset(tmp, 0, sizeof(tmp));
 	GetVolumeNameForVolumeMountPointA("C:\\", tmp, sizeof(tmp));
@@ -1130,11 +1161,11 @@ void log_hook_modification(const hook_t *h, const char *origbytes, const char *n
 
 	for (i = 0; (i < len) && (i < 124/3); i++) {
 		p = &msg1[i * 3];
-		sprintf(p, "%02X ", (unsigned char)origbytes[i]);
+		snprintf(p, 4, "%02X ", (unsigned char)origbytes[i]);
 	}
 	for (i = 0; (i < len) && (i < 124 / 3); i++) {
 		p = &msg2[i * 3];
-		sprintf(p, "%02X ", (unsigned char)newbytes[i]);
+		snprintf(p, 4, "%02X ", (unsigned char)newbytes[i]);
 	}
 
 	loq(LOG_ID_ANOMALY_HOOKMOD, "__notification__", "__anomaly__", 1, 0, "isspsss",

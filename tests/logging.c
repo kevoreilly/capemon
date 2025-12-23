@@ -8,7 +8,8 @@ int main()
 {
     int ret = 0;
 
-    log_init(0, 0, 1);
+    // log_init now takes only 1 argument (debug mode flag)
+    log_init(1);
 
     LOQ_void("test", "2s", "a", "b", "c", "d");
 	LOQ_void("test", "S", "a", 4, "hello");
