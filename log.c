@@ -803,8 +803,8 @@ mpack_finish_array(&writer); // args
 		
 		if (mpack_writer_destroy(&writer) == mpack_ok) {
 			log_raw_direct(data, size);
+			free(data);
 		}
-		free(data);
 		va_end(args);
 	}
 
@@ -836,7 +836,7 @@ mpack_finish_array(&writer); // args
 			
 			if (mpack_writer_destroy(&writer) != mpack_ok) {
 				// Fatal error (OOM?)
-				free(data);
+				// mpack library is responsible for cleanup if destroy fails.
 				va_end(args);
 				va_end(args_retry);
 				LeaveCriticalSection(&g_mutex);
@@ -1229,8 +1229,7 @@ void log_init(int debug)
 			return;
 		}
 		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
-		strcat(filename, "\\\\");
-		strcat(filename, pid);
+		        strcat(filename, "\\");		strcat(filename, pid);
 		strcat(filename, ".log");
 		g_debug_log_handle = CreateFileA(filename, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, 0, NULL);
 	}
