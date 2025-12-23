@@ -81,6 +81,9 @@
     <ClCompile Include="log.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="mpack.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="lookup.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -318,6 +321,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="log.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mpack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="lookup.h">

@@ -102,14 +102,14 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\libyara\include;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX86</TargetMachine>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>libyara32.lib;crypt32.lib;ws2_32.lib;shlwapi.lib;bson.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libyara32.lib;crypt32.lib;ws2_32.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)\Debug;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
       <BaseAddress>
       </BaseAddress>
@@ -127,13 +127,13 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\libyara\include;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>libyara64.lib;crypt32.lib;ws2_32.lib;shlwapi.lib;bson.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libyara64.lib;crypt32.lib;ws2_32.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)x64\Debug;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
       <BaseAddress>0x30000000</BaseAddress>
       <SetChecksum>true</SetChecksum>
@@ -149,7 +149,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\libyara\include;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <EnablePREfast>false</EnablePREfast>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
@@ -161,7 +161,7 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>libyara32.lib;bson.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libyara32.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)\Release;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
@@ -184,7 +184,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\libyara\include;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <EnablePREfast>false</EnablePREfast>
     </ClCompile>
@@ -193,7 +193,7 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>libyara64.lib;bson.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libyara64.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)x64\Release;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
@@ -267,6 +267,7 @@
     <ClCompile Include="hook_wmi.c" />
     <ClCompile Include="ignore.c" />
     <ClCompile Include="log.c" />
+    <ClCompile Include="mpack.c" />
     <ClCompile Include="lookup.c" />
     <ClCompile Include="misc.c" />
     <ClCompile Include="pipe.c" />
@@ -466,6 +467,7 @@
     <ClInclude Include="hook_sleep.h" />
     <ClInclude Include="ignore.h" />
     <ClInclude Include="log.h" />
+    <ClInclude Include="mpack.h" />
     <ClInclude Include="lookup.h" />
     <ClInclude Include="misc.h" />
     <ClInclude Include="ntapi.h" />
