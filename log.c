@@ -258,103 +258,103 @@ static void log_variant(mpack_writer_t* w, VARIANT* var) {
 		switch (var->vt) {
 			case VT_NULL:
 				mpack_write_cstr(w, "NULL");
-					break;
+				break;
 			case 74: // Undocumented
 				log_variant(w, (VARIANT*)var->pvRecord);
-					break;
+				break;
 			case 130:
 				log_wstring(w, var->bstrVal, -1);
-					break;
+				break;
 			case VT_BSTR:
 				log_wstring(w, var->bstrVal, -1);
-					break;
+				break;
 			case VT_BSTR | VT_BYREF:
 				log_wstring(w, var->pbstrVal ? *var->pbstrVal : NULL, -1);
-					break;
+				break;
 			case VT_BOOL:
 				mpack_write_bool(w, var->boolVal ? true : false);
-					break;
+				break;
 			case VT_BOOL | VT_BYREF:
 				mpack_write_bool(w, (*var->pboolVal) ? true : false);
-					break;
+				break;
 			case VT_INT:
 				log_int32(w, var->intVal);
-					break;
+				break;
 			case VT_INT | VT_BYREF:
 				log_int32(w, *var->pintVal);
-					break;
+				break;
 			case VT_UINT:
 				log_int32(w, var->uintVal);
-					break;
+				break;
 			case VT_UINT | VT_BYREF:
 				log_int32(w, *var->puintVal);
-					break;
+				break;
 			case VT_I8:
 				log_int64(w, var->llVal);
-					break;
+				break;
 			case VT_I8 | VT_BYREF:
 				log_int64(w, *var->pllVal);
-					break;
+				break;
 			case VT_UI8:
 				log_int64(w, var->ullVal);
-					break;
+				break;
 			case VT_UI8 | VT_BYREF:
 				log_int64(w, *var->pullVal);
-					break;
+				break;
 			case VT_I4:
 				log_int32(w, var->lVal);
-					break;
+				break;
 			case VT_I4 | VT_BYREF:
 				log_int32(w, *var->plVal);
-					break;
+				break;
 			case VT_UI4:
 				log_int32(w, var->ulVal);
-					break;
+				break;
 			case VT_UI4 | VT_BYREF:
 				log_int32(w, *var->pulVal);
-					break;
+				break;
 			case VT_I2:
 				log_int32(w, var->iVal);
-					break;
+				break;
 			case VT_I2 | VT_BYREF:
 				log_int32(w, *var->piVal);
-					break;
+				break;
 			case VT_UI2:
 				log_int32(w, var->uiVal);
-					break;
+				break;
 			case VT_UI2 | VT_BYREF:
 				log_int32(w, *var->puiVal);
-					break;
+				break;
 			case VT_I1:
 				log_int32(w, var->cVal);
-					break;
+				break;
 			case VT_I1 | VT_BYREF:
 				log_int32(w, *var->pcVal);
-					break;
+				break;
 			case VT_UI1:
 				log_int32(w, var->bVal);
-					break;
+				break;
 			case VT_UI1 | VT_BYREF:
 				log_int32(w, *var->pbVal);
-					break;
+				break;
 			case VT_VARIANT:
 				log_variant(w, var->pvarVal);
-					break;
+				break;
 			case VT_VARIANT | VT_BYREF:
 				log_variant(w, var->pvarVal);
-					break;
+				break;
 			case VT_DATE:
 				log_int64(w, (int64_t)var->date);
-					break;
+				break;
 			case VT_DATE | VT_BYREF:
 				log_int64(w, (int64_t)*var->pdate);
-					break;
+				break;
 			case VT_R8:
 				log_int64(w, (int64_t)var->dblVal);
-					break;
+				break;
 			case VT_R8 | VT_BYREF:
 				log_int64(w, (int64_t)*var->pdblVal);
-					break;
+				break;
 			default:
 				snprintf(log_msg, 32, "Unhandled VARIANT Type: %hu", var->vt);
 				mpack_write_cstr(w, log_msg);
@@ -725,24 +725,22 @@ void loq(int index, const char *category, const char *name,
 		mpack_writer_init_growable(&writer, &data, &size);
 		mpack_start_map(&writer, 5); // I, name, type, category, args
 		
-mpack_write_cstr(&writer, "I");
-		mpack_write_int(&writer, index);
+						mpack_write_cstr(&writer, "I");
 		
-mpack_write_cstr(&writer, "name");
-		mpack_write_cstr(&writer, name);
+						mpack_write_int(&writer, index);
 		
-mpack_write_cstr(&writer, "type");
-		mpack_write_cstr(&writer, "info");
+						mpack_write_cstr(&writer, "name");		mpack_write_cstr(&writer, name);
 		
-mpack_write_cstr(&writer, "category");
+						mpack_write_cstr(&writer, "type");				mpack_write_cstr(&writer, "info");
+		
+			mpack_write_cstr(&writer, "category");
 		mpack_write_cstr(&writer, category);
 
-		mpack_write_cstr(&writer, "args");
+			mpack_write_cstr(&writer, "args");
 		mpack_start_array(&writer, arg_count + 2); // +2 for is_success/retval
 		
 mpack_write_cstr(&writer, "is_success");
-		mpack_write_cstr(&writer, "retval");
-
+			mpack_write_cstr(&writer, "retval");
 		while (--count != 0 || *fmt != 0) {
 			if (count == 0) {
 				if (*fmt == 0) break;
@@ -1229,7 +1227,8 @@ void log_init(int debug)
 			return;
 		}
 		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
-		        strcat(filename, "\\");		strcat(filename, pid);
+		strcat(filename, "\");
+		strcat(filename, pid);
 		strcat(filename, ".log");
 		g_debug_log_handle = CreateFileA(filename, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, 0, NULL);
 	}
