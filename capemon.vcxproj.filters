@@ -31,6 +31,12 @@
     <Filter Include="Header Files\CAPE\w64wow64">
       <UniqueIdentifier>{2870ff64-a1ae-437b-b93d-b815724102e4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\nanopb">
+      <UniqueIdentifier>{328e6944-8d58-4353-a920-60895fa01ec5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\nanopb">
+      <UniqueIdentifier>{c88344a8-0e3a-439e-9e67-db05126b5a50}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="config.c">
@@ -297,6 +303,21 @@
     <ClCompile Include="hook_wmi.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="nanopb\pb_common.c">
+      <Filter>Source Files\nanopb</Filter>
+    </ClCompile>
+    <ClCompile Include="nanopb\pb_decode.c">
+      <Filter>Source Files\nanopb</Filter>
+    </ClCompile>
+    <ClCompile Include="nanopb\pb_encode.c">
+      <Filter>Source Files\nanopb</Filter>
+    </ClCompile>
+    <ClCompile Include="schema.pb.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="protobuf_wrapper.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">
@@ -442,6 +463,24 @@
     </ClInclude>
     <ClInclude Include="CAPE\YaraHarness.h">
       <Filter>Header Files\CAPE</Filter>
+    </ClInclude>
+    <ClInclude Include="nanopb\pb.h">
+      <Filter>Header Files\nanopb</Filter>
+    </ClInclude>
+    <ClInclude Include="nanopb\pb_common.h">
+      <Filter>Header Files\nanopb</Filter>
+    </ClInclude>
+    <ClInclude Include="nanopb\pb_decode.h">
+      <Filter>Header Files\nanopb</Filter>
+    </ClInclude>
+    <ClInclude Include="nanopb\pb_encode.h">
+      <Filter>Header Files\nanopb</Filter>
+    </ClInclude>
+    <ClInclude Include="schema.pb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="protobuf_wrapper.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
