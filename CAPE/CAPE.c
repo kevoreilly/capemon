@@ -1312,14 +1312,15 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->PagesDumped)
 	{
 		// Allow a big enough change in entropy to trigger another dump
-		if (TrackedRegion->Entropy)
-		{
-			double Entropy = GetEntropy(Address);
-			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
-				return;
-		}
-		else
+		double Entropy = GetEntropy(Address);
+		if (Entropy && Entropy == TrackedRegion->Entropy)
 			return;
+
+		if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
+			return;
+
+		DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
+		TrackedRegion->Entropy = Entropy;
 	}
 
 	// Suppress exceptions from scans/dumps in debugger log
