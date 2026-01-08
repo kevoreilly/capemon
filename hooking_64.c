@@ -1038,7 +1038,7 @@ int hook_api(hook_t *h, int type)
 			if (exportaddr)
 				addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
 			if (exportaddr && addr && (PVOID)addr != exportaddr) {
-				unsigned int offset;
+				unsigned int offset = (ULONG_PTR)addr - (ULONG_PTR)hmod;
 				UNICODE_STRING *module_name = get_module_name((ULONG_PTR)addr);
 				DebugOutput("hook_api: Warning - %s export address 0x%p differs from GetProcAddress -> 0x%p (%wZ::0x%x)\n", h->funcname, exportaddr, addr, module_name, offset);
 			}
