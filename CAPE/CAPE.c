@@ -1358,7 +1358,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->PagesDumped)
 	{
 		if (TraceIsRunning)
-			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", Address);
+			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", Address);
 		ClearTrackedRegion(TrackedRegion);
@@ -1366,7 +1366,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	else
 	{
 		if (TraceIsRunning)
-			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
+			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}

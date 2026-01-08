@@ -243,7 +243,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 
 			DebugOutput("YaraScan hit: %s\n", Rule->identifier);
 			if (TraceRunning)
-				DebuggerOutput("YaraScan hit: %s\n", Rule->identifier);
+				DebuggerOutput("YaraScan hit: %s ", Rule->identifier);
 
 			// Process cape_options metadata
 			yr_rule_metas_foreach(Rule, Meta)
@@ -267,9 +267,9 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 								{
 #ifdef DEBUG_COMMENTS
 									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
-									if (TraceRunning)
-										DebuggerOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
 #endif
+									if (TraceRunning)
+										DebuggerOutput("YaraScan match: %s, %s (0x%x) ", OptionLine, String->identifier, Match->offset);
 									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
 								}
 							}
@@ -280,7 +280,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						{
 							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
 							if (TraceRunning)
-								DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
+								DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara ", user_data);
 							DumpRegion(user_data);
 						}
 						if (!_stricmp("clear", OptionLine))
