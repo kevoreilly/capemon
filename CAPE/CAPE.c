@@ -118,6 +118,8 @@ extern _RtlCompareMemory pRtlCompareMemory;
 extern BOOLEAN is_image_base_remapped(HMODULE BaseAddress);
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
 extern wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
+extern void hook_enable();
+extern void hook_disable();
 extern int called_by_hook(void);
 extern DWORD parent_process_id();
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
@@ -1589,7 +1591,11 @@ char* GetName()
 		return 0;
 	}
 
+	hook_disable();
+
 	GetSystemTime(&Time);
+
+	hook_enable();
 
 	random = rand();
 	if (!random)
