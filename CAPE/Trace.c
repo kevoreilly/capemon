@@ -159,13 +159,13 @@ SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
 		if (Count == BufferSize)
 			break;
 		// Restrict to ASCII range
-		if ((unsigned int)*Character < 0x0a || (unsigned int)*Character > 0x7E)
+		if (*Character == 0x0a || *Character == 0x0d)
+			*Character = 0x20;
+		else if ((unsigned int)*Character < 0x20 || (unsigned int)*Character > 0x7E)
 		{
 			*Character = 0;
 			break;
 		}
-		if (*Character == 0x0d)
-			*Character = 0x20;
 		Character++;
 		Count++;
 	}
@@ -192,13 +192,13 @@ SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
 		if (Count == BufferSize)
 			break;
 		// Restrict to ASCII range
-		if ((unsigned int)*Character < 0x0a || (unsigned int)*Character > 0x7E)
+		if (*Character == 0x0a || *Character == 0x0d)
+			*Character = 0x20;
+		else if ((unsigned int)*Character < 0x20 || (unsigned int)*Character > 0x7E)
 		{
 			*Character = 0;
 			break;
 		}
-		if (*Character == 0x0d)
-			*Character = 0x20;
 		Character++;
 		Count++;
 	}
