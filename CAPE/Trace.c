@@ -50,7 +50,6 @@ extern BOOL inside_hook(LPVOID Address);
 extern void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 extern void log_flush();
-extern PVOID KiUserExceptionDispatcher;
 extern lookup_t SoftBPs, SyscallBPs;
 
 char *ModuleName, *PreviousModuleName;
@@ -1894,6 +1893,11 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 
 		if (*StepOver == FALSE && *ForceStepOver == FALSE)
 			TraceDepthCount++;
+
+		PVOID Base = GetAllocationBase(CIP);
+		PVOID TargetBase = GetAllocationBase(CallTarget);
+		if (Base != TargetBase)
+			TrackExecution(CallTarget);
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
 	{
@@ -1939,6 +1943,11 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 				*StepOver = FALSE;
 				*ForceStepOver = FALSE;
 			}
+
+			PVOID Base = GetAllocationBase(CIP);
+			PVOID TargetBase = GetAllocationBase(JumpTarget);
+			if (Base != TargetBase)
+				TrackExecution(JumpTarget);
 		}
 	}
 	else if (g_config.loopskip && (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 3) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4)))
@@ -2082,10 +2091,6 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-	PVOID CIP;
-	unsigned int DllRVA;
-	PVOID LastBranchFromIp = NULL;
-
 	StopTrace = FALSE;
 	TraceRunning = TRUE;
 	BOOL StepOver = FALSE, ForceStepOver = FALSE;
@@ -2097,10 +2102,10 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	unsigned int DecodedInstructionsCount = 0;
 
 #ifdef _WIN64
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 	DecodeType = Decode64Bits;
 #else
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 	DecodeType = Decode32Bits;
 #endif
 
@@ -2163,7 +2168,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (g_config.branch_trace && IsAddressAccessible((PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0]))
 	{
-		LastBranchFromIp = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
+		PVOID LastBranchFromIp = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
 		Result = distorm_decode(Offset, (const unsigned char*)LastBranchFromIp, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 #ifdef _WIN64
 		ExceptionInfo->ContextRecord->Rip = (DWORD64)LastBranchFromIp;
@@ -2177,44 +2182,55 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		DebuggerOutput("\n");
 	}
 
-	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
-	if (ModuleName)
+	PVOID Base = GetAllocationBase(CIP);
+#ifdef _WIN64
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Rip);
+#else
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Eip);
+#endif
+
+	if (Base != PreviousBase)
 	{
-		if (CIP == (PVOID)((PCHAR)KiUserExceptionDispatcher+1))
+		if (FilterTrace)
+			DebuggerOutput("\n");
+
+		unsigned int DllRVA;
+		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+		if (ModuleName)
 		{
-			DebugOutput("Trace: Stepping out of KiUserExceptionDispatcher\n");
-			ForceStepOver = TRUE;
-			FilterTrace = TRUE;
-		}
-		else if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
-		{
-			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-			if (FilterTrace)
-				DebuggerOutput("\n");
-			PCHAR FunctionName = GetExportNameByAddress(CIP);
-			if (FunctionName)
+			if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 			{
-				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-
-				ForceStepOver = DoStepOver(FunctionName);
-
-				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+				PCHAR FunctionName = GetExportNameByAddress(CIP);
+				if (FunctionName)
 				{
-					if (!g_config.trace_into_api[i])
-						break;
-					if (!stricmp(FunctionName, g_config.trace_into_api[i]))
-						StepOver = FALSE;
+					DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+
+					ForceStepOver = DoStepOver(FunctionName);
+
+					for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+					{
+						if (!g_config.trace_into_api[i])
+							break;
+						if (!stricmp(FunctionName, g_config.trace_into_api[i]))
+							StepOver = FALSE;
+					}
+					PreviousModuleName = ModuleName;
 				}
-				PreviousModuleName = ModuleName;
-			}
-			else
-			{
-				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-				PreviousModuleName = ModuleName;
-				FunctionName = NULL;
-				ModuleName = NULL;
+				else
+				{
+					DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+					PreviousModuleName = ModuleName;
+					FunctionName = NULL;
+					ModuleName = NULL;
+				}
 			}
 		}
+		else
+		{
+			DllRVA = (unsigned int)((DWORD_PTR)CIP - (DWORD_PTR)Base);
+			DebuggerOutput("Break at 0x%p (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+		}
+		TrackExecution(CIP);
 	}
 
 	// Instruction disassembly
@@ -2337,12 +2353,11 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-	PVOID CIP;
 	_DecodeType DecodeType;
 	_DecodeResult Result;
 	_OffsetType Offset = 0;
 	_DecodedInst DecodedInstruction;
-	unsigned int DllRVA, bp, DecodedInstructionsCount = 0;
+	unsigned int bp, DecodedInstructionsCount = 0;
 	BOOL StepOver = FALSE, ForceStepOver = FALSE;
 
 	StopTrace = FALSE;
@@ -2404,10 +2419,10 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 
 #ifdef _WIN64
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 	DecodeType = Decode64Bits;
 #else
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 	DecodeType = Decode32Bits;
 #endif
 
@@ -2438,36 +2453,52 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	if (!FilterTrace)
 		DebuggerOutput("\n");
 
-	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+	PVOID Base = GetAllocationBase(CIP);
+#ifdef _WIN64
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Rip);
+#else
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Eip);
+#endif
 
-	if (ModuleName)
+	if (Base != PreviousBase)
 	{
-		if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
+		unsigned int DllRVA;
+		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+		if (ModuleName)
 		{
-			if (FilterTrace)
-				DebuggerOutput("\n");
-			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-			PCHAR FunctionName = GetExportNameByAddress(CIP);
-			if (FunctionName)
+			if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 			{
-				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-
-				ForceStepOver = DoStepOver(FunctionName);
-
-				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+				PCHAR FunctionName = GetExportNameByAddress(CIP);
+				if (FunctionName)
 				{
-					if (!g_config.trace_into_api[i])
-						break;
-					if (!stricmp(FunctionName, g_config.trace_into_api[i]))
-						StepOver = FALSE;
+					DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+
+					ForceStepOver = DoStepOver(FunctionName);
+
+					for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+					{
+						if (!g_config.trace_into_api[i])
+							break;
+						if (!stricmp(FunctionName, g_config.trace_into_api[i]))
+							StepOver = FALSE;
+					}
+					PreviousModuleName = ModuleName;
+				}
+				else
+				{
+					DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+					PreviousModuleName = ModuleName;
+					FunctionName = NULL;
+					ModuleName = NULL;
 				}
 			}
-			else
-				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-			if (PreviousModuleName)
-				free (PreviousModuleName);
-			PreviousModuleName = ModuleName;
 		}
+		else
+		{
+			DllRVA = (unsigned int)((DWORD_PTR)CIP - (DWORD_PTR)Base);
+			DebuggerOutput("Break at 0x%p (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+		}
+		TrackExecution(CIP);
 	}
 
 	if (g_config.step_out)
