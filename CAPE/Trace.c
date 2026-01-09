@@ -952,10 +952,18 @@ BOOL ProcessOEP(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	else if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_PE;
 
-	if (DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction))
-		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p.\n", CIP);
+	BOOL Dumped = DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction);
+
+	if (!Dumped)
+	{
+		CapeMetaData->DumpType = 0;
+		Dumped = DumpRegion(AllocationBase);
+	}
+
+	if (Dumped)
+		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p, base 0x%p\n", CIP, AllocationBase);
 	else
-		DebuggerOutput("\nProcessOEP: Failed to dump module with OEP at 0x%p.\n", CIP);
+		DebuggerOutput("\nProcessOEP: Failed to dump module with OEP at 0x%p, base 0x%p\n", CIP, AllocationBase);
 
 	YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
 
