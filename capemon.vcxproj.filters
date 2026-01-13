@@ -446,9 +446,6 @@
     <ClInclude Include="CAPE\YaraHarness.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
-    <ClInclude Include="undoc_defs.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="CAPE\uthash.h">
       <Filter>Header Files\CAPE</Filter>
     </ClInclude>
