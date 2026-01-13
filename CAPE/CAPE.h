@@ -39,6 +39,7 @@ PVOID GetHookCallerBase();
 BOOL InsideMonitor(PVOID* ReturnAddress, PVOID Address);
 PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
+PVOID GetBaseAddress(PVOID Address);
 SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
 SIZE_T GetAccessibleSize(PVOID Address);

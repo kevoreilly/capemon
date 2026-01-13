@@ -118,6 +118,8 @@ extern _RtlCompareMemory pRtlCompareMemory;
 extern BOOLEAN is_image_base_remapped(HMODULE BaseAddress);
 extern uint32_t path_from_handle(HANDLE handle, wchar_t *path, uint32_t path_buffer_len);
 extern wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
+extern void hook_enable();
+extern void hook_disable();
 extern int called_by_hook(void);
 extern DWORD parent_process_id();
 extern int operate_on_backtrace(ULONG_PTR _esp, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
@@ -1312,14 +1314,15 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->PagesDumped)
 	{
 		// Allow a big enough change in entropy to trigger another dump
-		if (TrackedRegion->Entropy)
-		{
-			double Entropy = GetEntropy(Address);
-			if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
-				return;
-		}
-		else
+		double Entropy = GetEntropy(Address);
+		if (Entropy && Entropy == TrackedRegion->Entropy)
 			return;
+
+		if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
+			return;
+
+		DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
+		TrackedRegion->Entropy = Entropy;
 	}
 
 	// Suppress exceptions from scans/dumps in debugger log
@@ -1357,7 +1360,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (TrackedRegion->PagesDumped)
 	{
 		if (TraceIsRunning)
-			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", Address);
+			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Dumped region at 0x%p.\n", Address);
 		ClearTrackedRegion(TrackedRegion);
@@ -1365,7 +1368,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	else
 	{
 		if (TraceIsRunning)
-			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
+			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
@@ -1588,7 +1591,11 @@ char* GetName()
 		return 0;
 	}
 
+	hook_disable();
+
 	GetSystemTime(&Time);
+
+	hook_enable();
 
 	random = rand();
 	if (!random)

@@ -33,7 +33,7 @@ extern void parse_config_line(char* line);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
-extern BOOL BreakpointsHit;
+extern BOOL BreakpointsHit, TraceRunning;
 
 YR_RULES* Rules = NULL;
 BOOL YaraActivated, YaraLogging;
@@ -242,6 +242,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 				return CALLBACK_CONTINUE;
 
 			DebugOutput("YaraScan hit: %s\n", Rule->identifier);
+			if (TraceRunning)
+				DebuggerOutput("YaraScan hit: %s ", Rule->identifier);
 
 			// Process cape_options metadata
 			yr_rule_metas_foreach(Rule, Meta)
@@ -266,6 +268,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 #ifdef DEBUG_COMMENTS
 									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
 #endif
+									if (TraceRunning)
+										DebuggerOutput("YaraScan match: %s, %s (0x%x) ", OptionLine, String->identifier, Match->offset);
 									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
 								}
 							}
@@ -275,6 +279,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						if (!_stricmp("dump", OptionLine))
 						{
 							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
+							if (TraceRunning)
+								DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara ", user_data);
 							DumpRegion(user_data);
 						}
 						if (!_stricmp("clear", OptionLine))
@@ -288,6 +294,10 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							g_config.br1 = NULL;
 							g_config.br2 = NULL;
 							g_config.br3 = NULL;
+							g_config.hc0 = 0;
+							g_config.hc1 = 0;
+							g_config.hc2 = 0;
+							g_config.hc3 = 0;
 							memset(Action0, 0, MAX_PATH);
 							memset(Action1, 0, MAX_PATH);
 							memset(Action2, 0, MAX_PATH);

@@ -114,6 +114,25 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	return res;
 }
 
+#define ALLOW_UNHANDLED_EXCEPTIONS 1
+
+HOOKDEF(LONG, WINAPI, UnhandledExceptionFilter,
+	__in PEXCEPTION_POINTERS ExceptionInfo
+) {
+	LONG ret;
+	if (ALLOW_UNHANDLED_EXCEPTIONS)
+		ret = Old_UnhandledExceptionFilter(ExceptionInfo);
+	else
+		ret = EXCEPTION_EXECUTE_HANDLER;
+	if (ExceptionInfo && !ExceptionInfo->ExceptionRecord->NumberParameters && (ExceptionInfo->ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+		LOQ_zero("process", "ppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags);
+	else if (ExceptionInfo->ExceptionRecord->NumberParameters == 1 && (ExceptionInfo->ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+		LOQ_zero("process", "pppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "ExceptionInformation", ExceptionInfo->ExceptionRecord->ExceptionInformation[0]);
+	else if (ExceptionInfo->ExceptionRecord->NumberParameters == 2 && (ExceptionInfo->ExceptionRecord->ExceptionCode >= 0x80000000 || g_config.log_exceptions > 1))
+		LOQ_zero("process", "ppppp", "ExceptionCode", ExceptionInfo->ExceptionRecord->ExceptionCode, "ExceptionAddress", ExceptionInfo->ExceptionRecord->ExceptionAddress, "ExceptionFlags", ExceptionInfo->ExceptionRecord->ExceptionFlags, "ExceptionInformation[0]", ExceptionInfo->ExceptionRecord->ExceptionInformation[0], "ExceptionInformation[1]", ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+	return ret;
+}
+
 PVECTORED_EXCEPTION_HANDLER SampleVectoredHandler;
 
 LONG WINAPI New_VectoredExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
