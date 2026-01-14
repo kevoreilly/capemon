@@ -743,6 +743,8 @@ OutputRegisterChanges(PCONTEXT Context)
 			DebuggerOutput(" Xmm1.High=%#I64x", Context->Xmm1.High);
 			StringCheck((PVOID)Context->Xmm1.High);
 		}
+
+		OutputFlagChanges(LastContext.EFlags, Context->EFlags);
 	}
 #else
 	if (!FilterTrace)
@@ -796,10 +798,11 @@ OutputRegisterChanges(PCONTEXT Context)
 			DebuggerOutput(" EBP=0x%x", Context->Ebp);
 			StringCheck((PVOID)Context->Ebp);
 		}
+
+		OutputFlagChanges(LastContext.EFlags, Context->EFlags);
 	}
 #endif
 
-	OutputFlagChanges(LastContext.EFlags, Context->EFlags);
 
 	if (g_config.trace_times)
 	{
