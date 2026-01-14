@@ -1,5 +1,4 @@
-#define UNPACKER_MIN_SIZE 0x1001
-#define ENTROPY_DELTA  1
+PTRACKEDREGION CurrentRegion;
 
 void UnpackerCallback();
 //void MapSectionViewHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect);

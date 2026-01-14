@@ -412,6 +412,19 @@ HOOKDEF(BOOL, WINAPI, GetVolumeInformationByHandleW,
 	_In_	  DWORD   nFileSystemNameSize
 );
 
+HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
+	_In_		HANDLE                    hFile,
+	_In_		FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
+	_In_		LPVOID                    lpFileInformation,
+	_In_		DWORD                     dwBufferSize
+);
+
+HOOKDEF(DWORD, WINAPI, RmStartSession,
+	__out DWORD* pSessionHandle,
+	DWORD   dwSessionFlags,
+	__out WCHAR strSessionKey[]
+);
+
 //
 // Registry Hooks
 //
@@ -895,6 +908,14 @@ HOOKDEF(LONG_PTR, WINAPI, SetWindowLongPtrW,
 	_In_ LONG_PTR dwNewLong
 );
 
+HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
+	__in HWND hwndOwner,
+	__in LPCWSTR lpszText,
+	__in LPCWSTR lpszCaption,
+	__in UINT wStyle,
+	__in WORD wLanguageId,
+	__in DWORD dwTimeout
+);
 
 //
 // Sync Hooks
@@ -1007,6 +1028,28 @@ HOOKDEF(BOOL, WINAPI, Module32FirstW,
 HOOKDEF(BOOL, WINAPI, Module32NextW,
 	__in HANDLE hSnapshot,
 	__out LPMODULEENTRY32W lpme
+);
+
+HOOKDEF(BOOL, WINAPI, K32EnumProcesses,
+	_Out_writes_bytes_(cb)	DWORD*	lpidProcess,
+	_In_					DWORD	cb,
+	_Out_					LPDWORD	lpcbNeeded
+);
+
+HOOKDEF(BOOL, WINAPI, WTSEnumerateProcessesW,
+	_In_	HANDLE				hServer,
+	_In_	DWORD				Reserved,
+	_In_	DWORD				Version,
+	_Out_	PWTS_PROCESS_INFOW* ppProcessInfo,
+	_Out_	DWORD*				pCount
+);
+
+HOOKDEF(BOOL, WINAPI, WTSEnumerateProcessesExW,
+	_In_	HANDLE	hServer,
+	_Inout_	DWORD*	pLevel,
+	_In_	DWORD	SessionId,
+	_Out_	LPWSTR*	ppProcessInfo,
+	_Out_	DWORD*	pCount
 );
 
 HOOKDEF(UINT, WINAPI, WinExec,
@@ -1232,6 +1275,81 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 	_In_	 REFIID	   riid,
 	_Out_	LPVOID	   *ppv
 );
+
+HOOKDEF(HRESULT, WINAPI, CoGetObject,
+	_In_		LPCWSTR pszName,
+	_In_opt_	BIND_OPTS *pBindOptions,
+	_In_		REFIID riid,
+	_Out_		LPVOID *ppv
+);
+
+// WMI Hooks
+HOOKDEF(HRESULT, WINAPI, WMI_Get,
+	PVOID		_this,
+	LPCWSTR		wszName,
+	LONG		lFlags,
+	VARIANT*	pVal,
+	LONG*		pType,
+	LONG*		plFlavor
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecQuery,
+	PVOID		_this,
+	const BSTR	strQueryLanguage,
+	const BSTR	strQuery,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID*		ppEnum
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecQueryAsync,
+	PVOID		_this,
+	const BSTR	strQueryLanguage,
+	const BSTR	strQuery,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID		pResponseHandler
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethod,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	const BSTR	strMethodName,
+	long		lFlags,
+	PVOID		pCtx,
+	PVOID		pInParams,
+	PVOID*		ppOutParams,
+	PVOID*		ppCallResult
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_ExecMethodAsync,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	const BSTR	strMethodName,
+	long		lFlags,
+	PVOID		pCtx,
+	PVOID		pInParams,
+	PVOID		pResponseHandler
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_GetObject,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID*		ppObject,
+	PVOID*		ppCallResult
+);
+
+HOOKDEF_NOTAIL(WINAPI, WMI_GetObjectAsync,
+	PVOID		_this,
+	const BSTR	strObjectPath,
+	LONG		lFlags,
+	PVOID		pCtx,
+	PVOID		pResultHandler
+);
+
+// End of WMI Hooks
 
 HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	__in	 HANDLE SectionHandle,
@@ -1476,19 +1594,31 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 	__inout  LPCONTEXT Context
 );
 
-HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
-	__in	 HANDLE ThreadHandle,
-	__inout  PWOW64_CONTEXT Context
-);
-
 HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 	__in  HANDLE ThreadHandle,
 	__in  CONTEXT *Context
 );
 
+#ifdef _WIN64
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
+);
+
+HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
+	__in	 HANDLE ThreadHandle,
+	__inout  PWOW64_CONTEXT Context
+);
+#endif
+
 HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	__in	   HANDLE ThreadHandle,
 	__out_opt  ULONG *PreviousSuspendCount
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
+	__in		HANDLE ThreadHandle,
+	__out_opt   ULONG *SuspendCount
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
@@ -1520,6 +1650,22 @@ HOOKDEF(HANDLE, WINAPI, CreateRemoteThread,
 	__out_opt  LPDWORD lpThreadId
 );
 
+HOOKDEF(HANDLE, WINAPI, CreateRemoteThreadEx,
+	__in		HANDLE hProcess,
+	__in		LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	__in		SIZE_T dwStackSize,
+	__in		LPTHREAD_START_ROUTINE lpStartAddress,
+	__in		LPVOID lpParameter,
+	__in		DWORD dwCreationFlags,
+	__inout		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+	__out_opt	LPDWORD lpThreadId
+);
+
+HOOKDEF_NOTAIL(WINAPI, RtlUserThreadStart,
+	__in   LPTHREAD_START_ROUTINE lpStartAddress,
+	__in   LPVOID lpParameter
+);
+
 HOOKDEF(BOOL, WINAPI, TerminateThread,
 	__inout  HANDLE hThread,
 	__in	 DWORD dwExitCode
@@ -1536,6 +1682,19 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 	IN PVOID StartParameter OPTIONAL,
 	OUT PHANDLE ThreadHandle,
 	OUT PCLIENT_ID ClientId
+);
+
+HOOKDEF(BOOL, WINAPI, NtTestAlert,
+	VOID
+);
+
+HOOKDEF(BOOL, WINAPI, SetThreadStackGuarantee,
+	_Inout_	PULONG	StackSizeInBytes
+);
+
+HOOKDEF(NTSTATUS, WINAPI, SetThreadDescription,
+	_In_	HANDLE	hThread,
+	_In_	PCWSTR	lpThreadDescription
 );
 
 //
@@ -1616,6 +1775,10 @@ HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	_In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 );
 
+HOOKDEF(LONG, WINAPI, UnhandledExceptionFilter,
+	__in PEXCEPTION_POINTERS ExceptionInfo
+);
+
 HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
 	__in	ULONG First,
 	__out   PVECTORED_EXCEPTION_HANDLER Handler
@@ -1630,6 +1793,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandle,
 	__in_opt	PVOID Unused,
 	__in		PUNICODE_STRING ModuleFileName,
 	__out	   PHANDLE pHModule
+);
+
+HOOKDEF(NTSTATUS, WINAPI, LdrGetDllHandleEx,
+    __in ULONG Flags,
+    __in_opt PWSTR DllPath,
+    __in PULONG DllCharacteristics,
+    __in PUNICODE_STRING DllName,
+    __out_opt PVOID *DllHandle
 );
 
 HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
@@ -1897,12 +2068,21 @@ HOOKDEF(HRESULT, WINAPI, CLSIDFromProgID,
 	_Out_ LPCLSID lpclsid
 );
 
+HOOKDEF(HRESULT, WINAPI, CLSIDFromProgIDEx,
+	_In_ LPCOLESTR lpszProgID,
+	_Out_ LPCLSID lpclsid
+);
+
 HOOKDEF(void, WINAPI, GlobalMemoryStatus,
 	_Out_ LPMEMORYSTATUS lpBuffer
 );
 
 HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 	_Out_ LPMEMORYSTATUSEX lpBuffer
+);
+
+HOOKDEF(BOOL, WINAPI, GetPhysicallyInstalledSystemMemory,
+	_Out_ PULONGLONG TotalMemoryInKilobytes
 );
 
 HOOKDEF(BOOL, WINAPI, SystemParametersInfoA,
@@ -1929,6 +2109,7 @@ HOOKDEF(HRESULT, WINAPI, PStoreCreateInstance,
 //
 // Network Hooks
 //
+
 HOOKDEF(DWORD, WINAPI, InternetConfirmZoneCrossingA,
 	_In_ HWND hWnd,
 	_In_ LPTSTR szUrlPrev,
@@ -2298,6 +2479,19 @@ HOOKDEF(int, WSAAPI, GetAddrInfoW,
 	_Out_	 PADDRINFOW *ppResult
 );
 
+HOOKDEF(int, WINAPI, GetAddrInfoExW,
+	_In_opt_  PCWSTR pName,
+	_In_opt_  PCWSTR pServiceName,
+	_In_      DWORD dwNameSpace,
+	_In_opt_  LPGUID lpNspId,
+	_In_opt_  const ADDRINFOEXW *hints,
+	_Out_	  PADDRINFOEXW *ppResult,
+	_In_opt_  PVOID timeout,
+	_In_opt_  LPOVERLAPPED lpOverlapped,
+	_In_opt_  PVOID lpCompletionRoutine,
+	_In_opt_  LPHANDLE lpHandle
+);
+
 HOOKDEF(DWORD, WINAPI, WNetUseConnectionW,
 	_In_	 HWND hwndOwner,
 	_In_	 LPNETRESOURCEW lpNetResource,
@@ -2499,6 +2693,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemTime,
 
 HOOKDEF(void, WINAPI, GetSystemTimeAsFileTime,
 	_Out_ LPFILETIME lpSystemTimeAsFileTime
+);
+
+HOOKDEF(DWORD, WINAPI, timeSetEvent,
+   UINT           uDelay,
+   UINT           uResolution,
+   LPTIMECALLBACK lpTimeProc,
+   DWORD_PTR      dwUser,
+   UINT           fuEvent
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtQueryPerformanceCounter,
@@ -2900,6 +3102,13 @@ HOOKDEF(BOOL, WINAPI, CryptExportKey,
 	_Inout_  DWORD *pdwDataLen
 );
 
+HOOKDEF(BOOL, WINAPI, CryptDuplicateKey,
+	_In_	HCRYPTKEY	hKey,
+	_In_	DWORD* pdwReserved,
+	_In_	DWORD		dwFlags,
+	_Out_	HCRYPTKEY* phKey
+);
+
 HOOKDEF(BOOL, WINAPI, CryptDestroyKey,
 	_In_   HCRYPTKEY hKey
 );
@@ -2948,6 +3157,15 @@ HOOKDEF(HRESULT, WINAPI, HTTPSCertificateTrust,
 
 HOOKDEF(HRESULT, WINAPI, HTTPSFinalProv,
 	PVOID data // PCRYPT_PROVIDER_DATA
+);
+
+HOOKDEF(NTSTATUS, WINAPI, WTGetSignatureInfo,
+	_In_	LPWSTR	pszFile,
+	_In_	HANDLE	hFile,
+	_In_	DWORD	sigInfoFlags,
+	_Out_	PVOID	psiginfo,
+	_Out_	PVOID	ppCertContext,
+	_Out_	PVOID	phWVTStateData
 );
 
 HOOKDEF(BOOL, WINAPI, CryptDecodeObjectEx,
@@ -3086,6 +3304,13 @@ HOOKDEF_ALT(NTSTATUS, WINAPI, LdrLoadDll,
 
 HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 	PVOID DllImageBase
+);
+
+HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
+	__in PDLL_INIT_ROUTINE InitRoutine,
+	__in PVOID DllHandle,
+	__in ULONG Reason,
+	__in_opt PCONTEXT Context
 );
 
 HOOKDEF_NOTAIL(WINAPI, JsEval,
@@ -3314,6 +3539,22 @@ HOOKDEF(HKL, WINAPI, GetKeyboardLayout,
   _In_ DWORD idThread
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtQueryDefaultUILanguage,
+	__out	LANGID *DefaultUILanguageId
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInstallUILanguage,
+	__out	LANGID *InstallUILanguageId
+);
+
+HOOKDEF(int, WINAPI, GetUserDefaultLCID,
+	void
+);
+
+HOOKDEF(int, WINAPI, GetSystemDefaultLangID,
+	void
+);
+
 HOOKDEF (void, WINAPI, OutputDebugStringA,
   LPCSTR lpOutputString
 );
@@ -3495,6 +3736,11 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 );
 
+HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
+	__in LPWSTR lpCmdLine,
+	__out int *pNumArgs
+);
+
 HOOKDEF(BOOL, WINAPI, DisableThreadLibraryCalls,
 	__in HMODULE hLibModule
 );
@@ -3554,3 +3800,41 @@ HOOKDEF(HRESULT, WINAPI, MkParseDisplayNameEx,
 	_Out_ ULONG *pchEaten,
 	_Out_ PVOID ppmk
 );
+HOOKDEF(UINT, WINAPI, MsiInstallProductA,
+	_In_	LPCSTR	szPackagePath,
+	_In_	LPCSTR	szCommandLine
+);
+
+HOOKDEF(UINT, WINAPI, MsiInstallProductW,
+	_In_	LPCWSTR	szPackagePath,
+	_In_	LPCWSTR	szCommandLine
+);
+
+HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
+	__in  PCH Prefix,
+	__in  ULONG ComponentId,
+	__in  ULONG Level,
+	__in  PCHAR Format,
+	__in  va_list arglist,
+	__in  BOOLEAN HandleBreakpoint
+); 
+
+HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
+	__in		POWER_INFORMATION_LEVEL InformationLevel,
+	__in_opt	PVOID                   InputBuffer,
+	__in		ULONG                   InputBufferLength,
+	__out_opt	PVOID                   OutputBuffer,
+	__in		ULONG                   OutputBufferLength
+);
+
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct	cmdnode	*cmdnode
+);
+
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  PCSTR Filename,
+	_Out_ PDWORD HeaderSum,
+	_Out_ PDWORD CheckSum
+);
+
+#include "hook_vbscript.h"

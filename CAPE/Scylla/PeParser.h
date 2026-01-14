@@ -46,6 +46,7 @@ public:
 
 	~PeParser();
 
+	bool isValidPeHeader();
 	bool isValidPeFile();
 	bool isPE64();
 	bool isPE32();

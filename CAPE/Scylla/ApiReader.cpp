@@ -10,8 +10,9 @@
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" SIZE_T GetAllocationSize(PVOID Address);
 
-stdext::hash_multimap<DWORD_PTR, ApiInfo *> ApiReader::apiList; //api look up table
+ApiReader::ApiList ApiReader::apiList; //api look up table
 std::map<DWORD_PTR, ImportModuleThunk> *  ApiReader::moduleThunkList; //store found apis
 
 DWORD_PTR ApiReader::minApiAddress = (DWORD_PTR)-1;
@@ -30,7 +31,6 @@ void ApiReader::readApisFromModuleList()
 		readExportTableAlwaysFromDisk = false;
 	}
 
-	DebugOutput("ApiReader: module list size: %i", moduleList.size());
 	for (unsigned int i = 0; i < moduleList.size();i++)
 	{
 		setModulePriority(&moduleList[i]);
@@ -40,7 +40,9 @@ void ApiReader::readApisFromModuleList()
 			maxValidAddress = moduleList[i].modBaseAddr + moduleList[i].modBaseSize;
 		}
 
+#ifdef DEBUG_COMMENTS
 		DebugOutput("Module parsing: %s", moduleList[i].fullPath);
+#endif
 
 		if (!moduleList[i].isAlreadyParsed)
 		{
@@ -688,7 +690,7 @@ bool ApiReader::isApiAddressValid(DWORD_PTR virtualAddress)
 
 ApiInfo * ApiReader::getApiByVirtualAddress(DWORD_PTR virtualAddress, bool * isSuspect)
 {
-	stdext::hash_multimap<DWORD_PTR, ApiInfo *>::iterator it1, it2;
+	ApiList::iterator it1;
 	size_t c = 0;
 	size_t countDuplicates = apiList.count(virtualAddress);
 	int countHighPriority = 0;
@@ -771,7 +773,7 @@ ApiInfo * ApiReader::getApiByVirtualAddress(DWORD_PTR virtualAddress, bool * isS
 	return (ApiInfo *) 1; 
 }
 
-ApiInfo * ApiReader::getScoredApi(stdext::hash_multimap<DWORD_PTR, ApiInfo *>::iterator it1,size_t countDuplicates, bool hasName, bool hasUnicodeAnsiName, bool hasNoUnderlineInName, bool hasPrioDll,bool hasPrio0Dll,bool hasPrio1Dll, bool hasPrio2Dll, bool firstWin )
+ApiInfo * ApiReader::getScoredApi(ApiList::iterator it1,size_t countDuplicates, bool hasName, bool hasUnicodeAnsiName, bool hasNoUnderlineInName, bool hasPrioDll,bool hasPrio0Dll,bool hasPrio1Dll, bool hasPrio2Dll, bool firstWin )
 {
 	ApiInfo * foundApi = 0;
 	ApiInfo * foundMatchingApi = 0;
@@ -937,6 +939,8 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 	int countApiFound = 0, countApiNotFound = 0;
 	DWORD_PTR * pIATAddress = (DWORD_PTR *)iatBuffer;
 	SIZE_T sizeIAT = size / sizeof(DWORD_PTR);
+	DWORD_PTR minExeAddress = (DWORD_PTR)GetModuleHandle(NULL);
+	DWORD_PTR maxExeAddress = minExeAddress + (DWORD_PTR)GetAllocationSize((PVOID)minExeAddress);
 
 	for (SIZE_T i = 0; i < sizeIAT; i++)
 	{
@@ -948,7 +952,11 @@ void ApiReader::parseIAT(DWORD_PTR addressIAT, BYTE * iatBuffer, SIZE_T size)
 #ifdef DEBUG_COMMENTS
 			DebugOutput("min %p max %p address %p", minApiAddress, maxApiAddress, pIATAddress[i]);
 #endif
-			if ( (pIATAddress[i] > minApiAddress) && (pIATAddress[i] < maxApiAddress) )
+			// CFG APIs (e.g. ___guard_check_icall_fptr) can appear in IAT and point into main exe
+			if (pIATAddress[i] > minExeAddress && pIATAddress[i] < maxExeAddress)
+				continue;
+
+			if (pIATAddress[i] > minApiAddress && pIATAddress[i] < maxApiAddress)
 			{
 				apiFound = getApiByVirtualAddress(pIATAddress[i], &isSuspect);
 #ifdef DEBUG_COMMENTS
@@ -1108,9 +1116,9 @@ void ApiReader::clearAll()
 	minApiAddress = (DWORD_PTR)-1;
 	maxApiAddress = 0;
 
-	for ( stdext::hash_map<DWORD_PTR, ApiInfo *>::iterator it = apiList.begin(); it != apiList.end(); ++it )
+	for (const auto& pair : apiList)
 	{
-		delete it->second;
+		delete pair.second;
 	}
 	apiList.clear();
 

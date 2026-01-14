@@ -27,10 +27,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include "CAPE\CAPE.h"
+#include "CAPE\YaraHarness.h"
+#include <psapi.h>
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern int DoProcessDump(PVOID CallerBase);
 extern ULONG_PTR base_of_dll_of_interest;
+extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase), set_hooks_dll(const wchar_t *library);
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void set_hooks();
@@ -55,14 +58,34 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 	// well, then the unicode string (which is located in the TEB) will be
 	// overwritten, therefore we make a copy of it for our own use.
 	//
+	NTSTATUS ret = 1;
 	lasterror_t lasterror;
-	NTSTATUS ret = 0;
 
 	COPY_UNICODE_STRING(library, ModuleFileName);
 
 	get_lasterrors(&lasterror);
 
-	if (!g_config.tlsdump && !called_by_hook() && wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
+	if (!wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
+		if (g_config.tlsdump) {
+			// lsass injected a second time - switch to 'normal' mode
+			g_config.tlsdump = 0;
+			read_config();
+			log_init(g_config.debug || g_config.standalone);
+			set_hooks();
+			notify_successful_load();
+			ret = 0;
+		}
+		if (g_config.interactive) {
+			// explorer injected by malware - switch to 'normal' mode
+			g_config.interactive = 2;
+			g_config.minhook = 0;
+			read_config();
+			set_hooks();
+			notify_successful_load();
+			ret = 0;
+		}
+	}
+	else if (!g_config.tlsdump && !called_by_hook()) {
 		if (g_config.file_of_interest && g_config.suspend_logging) {
 			wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
 			ensure_absolute_unicode_path(absolutename, library.Buffer);
@@ -71,33 +94,14 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 			free(absolutename);
 		}
 
-		if (library.Buffer[1] == L':' && (!wcsnicmp(library.Buffer, L"c:\\windows\\system32\\", 20) ||
-										  !wcsnicmp(library.Buffer, L"c:\\windows\\syswow64\\", 20) ||
-										  !wcsnicmp(library.Buffer, L"c:\\windows\\sysnative\\", 21))) {
-			ret = 1;
-		}
-		else if (library.Buffer[1] != L':') {
+		if (library.Buffer[1] != L':') {
 			WCHAR newlib[MAX_PATH] = { 0 };
 			DWORD concatlen = MIN((DWORD)wcslen(library.Buffer), MAX_PATH - 21);
 			wcscpy(newlib, L"c:\\windows\\system32\\");
 			wcsncat(newlib, library.Buffer, concatlen);
-			if (GetFileAttributesW(newlib) != INVALID_FILE_ATTRIBUTES)
-				ret = 1;
+			if (GetFileAttributesW(newlib) == INVALID_FILE_ATTRIBUTES)
+				ret = 0;
 		}
-
-	}
-	else if (!wcsncmp(library.Buffer, g_config.dllpath, wcslen(g_config.dllpath))) {
-		// Don't log attempts to load monitor twice
-		if (g_config.tlsdump) {
-			// lsass injected a second time - switch to 'normal' mode
-			g_config.tlsdump = 0;
-			if (read_config()) {
-				log_init(g_config.debug || g_config.standalone);
-				set_hooks();
-				notify_successful_load();
-			}
-		}
-		ret = 1;
 	}
 
 	set_lasterrors(&lasterror);
@@ -157,6 +161,59 @@ HOOKDEF_NOTAIL(WINAPI, LdrUnloadDll,
 
 	return 0;
 }
+
+static int transparency_dummy;
+
+void start_transparent_hooks(){transparency_dummy++;}
+
+HOOKDEF(BOOL, WINAPI, LdrpCallInitRoutine,
+	__in PDLL_INIT_ROUTINE InitRoutine,
+	__in PVOID DllHandle,
+	__in ULONG Reason,
+	__in_opt PCONTEXT Context
+) {
+	wchar_t ModulePath[MAX_PATH] = L"";
+	BOOL MappedModule = GetMappedFileNameW(GetCurrentProcess(), DllHandle, ModulePath, MAX_PATH);
+
+	if (Reason == 1 && g_config.yarascan && !is_in_dll_range((ULONG_PTR)DllHandle))
+		YaraScan(DllHandle, GetAccessibleSize(DllHandle));
+
+	if (Reason == 1 && MappedModule) {
+		PWCHAR dllname = get_dll_basename(ModulePath);
+		set_hooks_dll(dllname);
+		if (g_config.debugger) {
+			for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
+				if (!g_config.coverage_modules[i])
+					break;
+				if (!wcsicmp(dllname, g_config.coverage_modules[i])) {
+					SetInitialBreakpoints(DllHandle);
+					break;
+				}
+			}
+		}
+	}
+
+	BOOL ret = Old_LdrpCallInitRoutine(InitRoutine, DllHandle, Reason, Context);
+
+	if (Reason == 1 && MappedModule)
+		LOQ_bool("system", "uppi", "MappedPath", ModulePath, "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+	else if (Reason == 1)
+		LOQ_bool("system", "ppi", "BaseAddress", DllHandle, "InitRoutine", InitRoutine, "Reason", Reason);
+
+	return ret;
+}
+
+HOOKDEF(int, __fastcall, FindFixAndRun,
+	struct cmdnode* cmdnode
+) {
+	int ret = 0;
+	if (cmdnode && !our_isbadreadptr(cmdnode, sizeof(struct cmdnode)) && cmdnode->cmdline != NULL && cmdnode->type == 0) {
+		LOQ_zero("system", "uu", "Command", cmdnode->cmdline, "Arguments", cmdnode->argptr);
+	}
+	return Old_FindFixAndRun(cmdnode);
+}
+
+void end_transparent_hooks(){transparency_dummy--;}
 
 HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 	__in_opt	LPVOID lpUnknown1,
@@ -257,6 +314,8 @@ static _ProgIDFromCLSID pProgIDFromCLSID;
 /* 75DFF2B7-6936-4C06-A8BB-676A7B00B24B */ DEFINE_GUID(CLSID_SeparateMultipleProcessExplorerHost, 0x75DFF2B7, 0x6936, 0x4C06, 0xA8, 0xBB, 0x67, 0x6A, 0x7B, 0x00, 0xB2, 0x4B);
 /* C08AFD90-F2A1-11D1-8455-00A0C91F3880 */ DEFINE_GUID(CLSID_ShellBrowserWindow, 0xC08AFD90, 0xF2A1, 0x11D1, 0x84, 0x55, 0x00, 0xA0, 0xC9, 0x1F, 0x38, 0x80);
 /* 9BA05972-F6A8-11CF-A442-00A0C90A8F39 */ DEFINE_GUID(CLSID_ShellWindows, 0x9BA05972, 0xF6A8, 0x11CF, 0xA4, 0x42, 0x00, 0xA0, 0xC9, 0x0A, 0x8F, 0x39);
+/* FBF23B40-E3F0-101B-8488-00AA003E56F8 */ DEFINE_GUID(CLSID_InternetShortcut, 0xFBF23B40, 0xE3F0, 0x101B, 0x84, 0x88, 0x00, 0xAA, 0x00, 0x3E, 0x56, 0xF8);
+/* 3050F4D8-98B5-11CF-BB82-00AA00BDCE0B */ DEFINE_GUID(CLSID_HtaFile, 0x3050F4D8, 0x98B5, 0x11CF, 0xBB, 0x82, 0x00, 0xAA, 0x00, 0xBD, 0xCE, 0x0B);
 
 void inspect_clsid(REFCLSID rclsid) {
 	if (!bits_sent && IsEqualCLSID(rclsid, &CLSID_BITSControlClass_v1_0) || IsEqualCLSID(rclsid, &CLSID_BITS_Unknown) || IsEqualCLSID(rclsid, &CLSID_BITS_LegacyControlClass)) {
@@ -275,7 +334,8 @@ void inspect_clsid(REFCLSID rclsid) {
 	if (!interop_sent && IsEqualCLSID(rclsid, &CLSID_WordObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_ExcelObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_Unknown246FF)
 		|| IsEqualCLSID(rclsid, &CLSID_OutlookObjectLibrary) || IsEqualCLSID(rclsid, &CLSID_Equation2) || IsEqualCLSID(rclsid, &CLSID_InternetExplorer)
 		|| IsEqualCLSID(rclsid, &CLSID_MsiInstallServer) || IsEqualCLSID(rclsid, &CLSID_StdGlobalInterfaceTable) || IsEqualCLSID(rclsid, &CLSID_PowerPointObjectLibrary)
-		|| IsEqualCLSID(rclsid, &CLSID_SeparateMultipleProcessExplorerHost) || IsEqualCLSID(rclsid, &CLSID_ShellBrowserWindow)) {
+		|| IsEqualCLSID(rclsid, &CLSID_SeparateMultipleProcessExplorerHost) || IsEqualCLSID(rclsid, &CLSID_ShellBrowserWindow) || IsEqualCLSID(rclsid, &CLSID_InternetShortcut)
+		|| IsEqualCLSID(rclsid, &CLSID_HtaFile)) {
 		interop_sent = 1;
 		pipe("INTEROP:");
 	}
@@ -309,19 +369,16 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-			memcpy(&id1, rclsid, sizeof(id1));
-		if (is_valid_address_range((ULONG_PTR)riid, 16))
-			memcpy(&id2, riid, sizeof(id2));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
-	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
-		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
+		memcpy(&id1, rclsid, sizeof(id1));
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id2, riid, sizeof(id2));
+
+	uuid_to_string(id1, idbuf1);
+	uuid_to_string(id2, idbuf2);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
 	}
-
-	disable_sleep_skip();
 
 	set_lasterrors(&lasterror);
 
@@ -367,14 +424,11 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 			memcpy(&id1, rclsid, sizeof(id1));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+	uuid_to_string(id1, idbuf1);
 
 	if (!called_by_hook()) {
 		inspect_clsid(&id1);
 	}
-
-	disable_sleep_skip();
 
 	set_lasterrors(&lasterror);
 
@@ -421,13 +475,24 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
-			memcpy(&id1, rclsid, sizeof(id1));
-		if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id1, rclsid, sizeof(id1));
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
 		memcpy(&id2, riid, sizeof(id2));
-	sprintf(idbuf1, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
-	sprintf(idbuf2, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id2.Data1, id2.Data2, id2.Data3,
-		id2.Data4[0], id2.Data4[1], id2.Data4[2], id2.Data4[3], id2.Data4[4], id2.Data4[5], id2.Data4[6], id2.Data4[7]);
+
+	uuid_to_string(id1, idbuf1);
+	uuid_to_string(id2, idbuf2);
+
+	if (!called_by_hook()) {
+		inspect_clsid(&id1);
+	}
+
+	disable_sleep_skip();
+
+	if (!called_by_hook()) {
+		inspect_clsid(&id1);
+	}
+
+	disable_sleep_skip();
 
 	set_lasterrors(&lasterror);
 
@@ -445,6 +510,40 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 		pCoTaskMemFree(resolv);
 
 	set_lasterrors(&lasterror);
+
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, CoGetObject,
+	_In_		LPCWSTR pszName,
+	_In_opt_	BIND_OPTS *pBindOptions,
+	_In_		REFIID riid,
+	_Out_		LPVOID *ppv
+) {
+	HRESULT ret;
+	lasterror_t lasterror;
+	IID id = CLSID_NULL;
+	char idbuf[40];
+
+	get_lasterrors(&lasterror);
+
+	if (is_valid_address_range((ULONG_PTR)riid, 16))
+		memcpy(&id, riid, sizeof(id));
+
+	uuid_to_string(id, idbuf);
+
+	set_lasterrors(&lasterror);
+
+	if (!interop_sent) {
+		interop_sent = 1;
+		pipe("INTEROP:");
+	}
+
+	raw_sleep(1000);
+
+	ret = Old_CoGetObject(pszName, pBindOptions, riid, ppv);
+
+	LOQ_hresult("com", "us", "Name", pszName, "riid", idbuf);
 
 	return ret;
 }

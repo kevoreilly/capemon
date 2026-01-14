@@ -1,4 +1,3 @@
-
 /*
 Cuckoo Sandbox - Automated Malware Analysis
 Copyright (C) 2010-2015 Cuckoo Sandbox Developers, Optiv, Inc. (brad.spengler@optiv.com)
@@ -509,4 +508,20 @@ HOOKDEF_NOTAIL(WINAPI, CreateWindowExW,
 		LOQ_nonnull("windows", "uuiiiih", "ClassName", lpClassName, "WindowName", lpWindowName, "x", x, "y", y, "Width", nWidth, "Height", nHeight, "Style", dwStyle);
 	}
 	return 0;
+}
+
+HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
+	__in HWND hwndOwner,
+	__in LPCWSTR lpszText,
+	__in LPCWSTR lpszCaption,
+	__in UINT wStyle,
+	__in WORD wLanguageId,
+	__in DWORD dwTimeout
+) {
+	int ret = Old_MessageBoxTimeoutW(hwndOwner, lpszText, lpszCaption, wStyle, wLanguageId, dwTimeout);
+	if (dwTimeout == INFINITE)
+		LOQ_zero("windows", "uus", "Text", lpszText, "Caption", lpszCaption, "Timeout", "Infinite");
+	else
+		LOQ_zero("windows", "uui", "Text", lpszText, "Caption", lpszCaption, "Timeout", dwTimeout);
+	return ret;
 }

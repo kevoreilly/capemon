@@ -30,6 +30,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+#define EXCEPTION_CHAIN_END ((PEXCEPTION_REGISTRATION_RECORD)-1)
+
 #ifndef _MSC_VER
 #define __out
 #define __in
@@ -233,23 +235,42 @@ typedef struct _SYSTEM_THREAD {
 } SYSTEM_THREAD, *PSYSTEM_THREAD;
 
 typedef struct _SYSTEM_PROCESS_INFORMATION {
-	ULONG				   NextEntryOffset;
-	ULONG				   NumberOfThreads;
-	LARGE_INTEGER		   Reserved[3];
-	LARGE_INTEGER		   CreateTime;
-	LARGE_INTEGER		   UserTime;
-	LARGE_INTEGER		   KernelTime;
-	UNICODE_STRING		  ImageName;
-	KPRIORITY			   BasePriority;
-	HANDLE					UniqueProcessId;
-	HANDLE					InheritedFromProcessId;
-	ULONG					HandleCount;
-	BYTE					Reserved4[4];
-	PVOID					Reserved5[11];
-	SIZE_T					PeakPagefileUsage;
-	SIZE_T					PrivatePageCount;
-	LARGE_INTEGER			Reserved6[6];
-	SYSTEM_THREAD			Threads[0];
+    ULONG                   NextEntryOffset;
+    ULONG                   NumberOfThreads;
+    LARGE_INTEGER           WorkingSetPrivateSize;
+    ULONG                   HardFaultCount;
+    ULONG                   NumberOfThreadsHighWatermark;
+    ULONGLONG               CycleTime;
+    LARGE_INTEGER           CreateTime;
+    LARGE_INTEGER           UserTime;
+    LARGE_INTEGER           KernelTime;
+    UNICODE_STRING          ImageName;
+    KPRIORITY               BasePriority;
+    HANDLE                  UniqueProcessId;
+    HANDLE                  InheritedFromUniqueProcessId;
+    ULONG                   HandleCount;
+    ULONG                   SessionId;
+    ULONG_PTR               UniqueProcessKey;
+    SIZE_T                  PeakVirtualSize;
+    SIZE_T                  VirtualSize;
+    ULONG                   PageFaultCount;
+    SIZE_T                  PeakWorkingSetSize;
+    SIZE_T                  WorkingSetSize;
+    SIZE_T                  QuotaPeakPagedPoolUsage;
+    SIZE_T                  QuotaPagedPoolUsage;
+    SIZE_T                  QuotaPeakNonPagedPoolUsage;
+    SIZE_T                  QuotaNonPagedPoolUsage;
+    SIZE_T                  PagefileUsage;
+    SIZE_T                  PeakPagefileUsage;
+    SIZE_T                  PrivatePageCount;
+    LARGE_INTEGER           ReadOperationCount;
+    LARGE_INTEGER           WriteOperationCount;
+    LARGE_INTEGER           OtherOperationCount;
+    LARGE_INTEGER           ReadTransferCount;
+    LARGE_INTEGER           WriteTransferCount;
+    LARGE_INTEGER           OtherTransferCount;
+    LARGE_INTEGER           Reserved6[6];
+    SYSTEM_THREAD           Threads[0];
 } SYSTEM_PROCESS_INFORMATION, *PSYSTEM_PROCESS_INFORMATION;
 
 typedef struct _SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION {
@@ -505,6 +526,22 @@ typedef struct _PROC_THREAD_ATTRIBUTE_LIST
 
 typedef void *PVOID, **PPVOID;
 
+typedef struct _LDR_MODULE {
+	LIST_ENTRY InLoadOrderModuleList;
+	LIST_ENTRY InMemoryOrderModuleList;
+	LIST_ENTRY InInitializationOrderModuleList;
+	PVOID BaseAddress;
+	PVOID EntryPoint;
+	ULONG SizeOfImage;
+	UNICODE_STRING FullDllName;
+	UNICODE_STRING BaseDllName;
+	ULONG Flags;
+	SHORT LoadCount;
+	SHORT TlsIndex;
+	LIST_ENTRY HashTableEntry;
+	ULONG TimeDateStamp;
+} LDR_MODULE, * PLDR_MODULE;
+
 typedef struct _PEB_LDR_DATA {
 	ULONG Length;
 	BOOLEAN Initialized;
@@ -585,7 +622,7 @@ typedef struct _PEB {
 	PVOID PostProcessInitRoutine;
 	BYTE Reserved4[136];
 	ULONG SessionId;
-} PEB;
+} PEB, *PPEB;
 #else
 typedef struct _PEB {
 	BOOLEAN InheritedAddressSpace;
@@ -644,6 +681,18 @@ typedef struct _PEB {
 	ULONG   SessionId;
 } PEB, *PPEB;
 #endif
+
+typedef struct _TEB
+{
+	NT_TIB NtTib;
+	PVOID EnvironmentPointer;
+	CLIENT_ID ClientId;
+	PVOID ActiveRpcHandle;
+	PVOID ThreadLocalStoragePointer;
+	PPEB ProcessEnvironmentBlock;
+	ULONG LastErrorValue;
+// truncated
+} TEB, *PTEB;
 
 typedef enum _DBG_STATE
 {
@@ -984,7 +1033,20 @@ typedef struct _TIMER_SET_COALESCABLE_TIMER_INFO {
 	PBOOLEAN PreviousState;
 } TIMER_SET_COALESCABLE_TIMER_INFO, *PTIMER_SET_COALESCABLE_TIMER_INFO;
 
+typedef struct _WTS_PROCESS_INFOW {
+	DWORD  SessionId;
+	DWORD  ProcessId;
+	LPWSTR pProcessName;
+	PSID   pUserSid;
+} WTS_PROCESS_INFOW, *PWTS_PROCESS_INFOW;
+
 typedef BOOL(WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+
+typedef BOOL (WINAPI *PDLL_INIT_ROUTINE)(
+    _In_  HINSTANCE hinstDLL,
+    _In_  DWORD fdwReason,
+    _In_  LPVOID lpvReserved
+);
 
 static __inline UNICODE_STRING *unistr_from_objattr(OBJECT_ATTRIBUTES *obj)
 {

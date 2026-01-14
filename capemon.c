@@ -59,31 +59,15 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase);
-extern PCHAR ScyllaGetExportDirectory(PVOID Address);
-extern PCHAR ScyllaGetExportNameByScan(PVOID Address, PCHAR* ModuleName, SIZE_T ScanSize);
+extern PCHAR GetExportDirectory(PVOID Address);
+extern PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax);
 extern void YaraScan(PVOID Address, SIZE_T Size);
+extern BOOL IsAddressAccessible(PVOID Address);
 
 extern BOOL set_hooks_dll(const wchar_t *library);
 extern void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t *library);
 extern void revalidate_all_hooks(void);
 extern void set_hooks();
-
-int path_is_system(const wchar_t *path_w)
-{
-	if (((!wcsnicmp(path_w, L"c:\\windows\\system32\\", 20) ||
-		!wcsnicmp(path_w, L"c:\\windows\\syswow64\\", 20) ||
-		!wcsnicmp(path_w, L"c:\\windows\\sysnative\\", 21))))
-		return 1;
-	return 0;
-}
-
-int path_is_program_files(const wchar_t *path_w)
-{
-	if (((!wcsnicmp(path_w, L"c:\\program files\\", 17) ||
-		!wcsnicmp(path_w, L"c:\\program files (x86)\\", 23))))
-		return 1;
-	return 0;
-}
 
 int loader_is_allowed(const char *loader_name)
 {
@@ -172,11 +156,6 @@ VOID CALLBACK New_DllLoadNotification(
 				SetInitialBreakpoints((PVOID)base_of_dll_of_interest);
 			}
 		}
-		//else if (path_is_shared(our_process_path_w, library.Buffer)) {
-		//	DebugOutput("Local DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
-		//	if (g_config.debugger)
-		//		SetInitialBreakpoints((PVOID)NotificationData->Loaded.DllBase);
-		//}
 		else {
 			SIZE_T numconverted, size;
 			WCHAR exportdirectory_w[MAX_PATH];
@@ -185,7 +164,7 @@ VOID CALLBACK New_DllLoadNotification(
 			add_dll_range((ULONG_PTR)NotificationData->Loaded.DllBase, (ULONG_PTR)NotificationData->Loaded.DllBase + GetAllocationSize(NotificationData->Loaded.DllBase));
 
 			if (!set_hooks_dll(dllname)) {
-				exportdirectory = ScyllaGetExportDirectory(NotificationData->Loaded.DllBase);
+				exportdirectory = GetExportDirectory(NotificationData->Loaded.DllBase);
 				if (exportdirectory) {
 					size = strlen(exportdirectory);
 					mbstowcs_s(&numconverted, exportdirectory_w, MAX_PATH, exportdirectory, size+1);
@@ -198,16 +177,6 @@ VOID CALLBACK New_DllLoadNotification(
 				}
 			}
 
-			//if (g_config.debugger) {
-			//	if (g_config.break_on_apiname && g_config.break_on_modname) {
-			//		dllname = (char*)malloc(MAX_PATH);
-			//		WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, (LPCWSTR)dllname_w, (int)wcslen(dllname_w)+1, dllname, MAX_PATH, NULL, NULL);
-			//		if (!_stricmp(dllname, g_config.break_on_modname)) {
-			//			BreakpointsHit = FALSE;
-			//			SetInitialBreakpoints(NotificationData->Loaded.DllBase);
-			//		}
-			//	}
-			//}
 			DebugOutput("DLL loaded at 0x%p: %ws (0x%x bytes).\n", NotificationData->Loaded.DllBase, library.Buffer, NotificationData->Loaded.SizeOfImage);
 		}
 	}
@@ -227,12 +196,7 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 	char *buf = convert_address_to_dll_name_and_offset(addr, &offset);
 	if (buf) {
 		PCHAR funcname;
-		__try {
-			funcname = ScyllaGetExportNameByScan((PVOID)addr, NULL, 0x50);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER) {
-			;
-		}
+		funcname = ScanForExport((PVOID)addr, 0x50);
 		if (funcname)
 			snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s::%s(0x%x)\n", buf, funcname, offset);
 		else
@@ -241,6 +205,109 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 	}
 
 	return 0;
+}
+
+void Disassemble(PVOID Address)
+{
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	DecodeType = Decode64Bits;
+#else
+	DecodeType = Decode32Bits;
+#endif
+
+	if (!Address || !IsAddressAccessible(Address))
+		return;
+
+	Result = distorm_decode(Offset, (const unsigned char*)Address, 0x10, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	if (!DecodedInstruction.size)
+		return;
+
+#ifdef _WIN64
+	DebugOutput("0x%p  %-24s %-6s%-4s%-30s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
+#else
+	DebugOutput("0x%p  %-24s %-6s%-4s%-30s", (unsigned int)Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", DecodedInstruction.operands.p);
+#endif
+}
+
+LONG WINAPI mini_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo)
+{
+	char *dllname;
+	unsigned int offset;
+	ULONG_PTR eip;
+	ULONG_PTR ebp_or_rip;
+	ULONG_PTR seh = 0;
+	PUCHAR eipptr;
+	ULONG_PTR *stack;
+
+	if (ExceptionInfo->ExceptionRecord == NULL || ExceptionInfo->ContextRecord == NULL)
+		return EXCEPTION_CONTINUE_SEARCH;
+
+	eip = (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+	eipptr = (PUCHAR)eip;
+
+#ifdef _WIN64
+	stack = (ULONG_PTR *)(ULONG_PTR)(ExceptionInfo->ContextRecord->Rsp);
+	ebp_or_rip = eip;
+#else
+	stack = (ULONG_PTR *)(ULONG_PTR)(ExceptionInfo->ContextRecord->Esp);
+	ebp_or_rip = (ULONG_PTR)(ExceptionInfo->ContextRecord->Ebp);
+#endif
+
+	dllname = convert_address_to_dll_name_and_offset(eip, &offset);
+
+    DebugOutput("Exception 0x%x: Thread %d address 0x%p (%s::0x%x), flags 0x%x, %d parameters: 0x%p, 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionCode, GetCurrentThreadId(), ExceptionInfo->ExceptionRecord->ExceptionAddress, dllname, offset, ExceptionInfo->ExceptionRecord->ExceptionFlags, ExceptionInfo->ExceptionRecord->NumberParameters, ExceptionInfo->ExceptionRecord->ExceptionInformation[0], ExceptionInfo->ExceptionRecord->ExceptionInformation[1]);
+
+	Disassemble(ExceptionInfo->ExceptionRecord->ExceptionAddress);
+
+#ifdef _WIN64
+	DebugOutput(
+		"RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x R8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n",
+		ExceptionInfo->ContextRecord->Rax, ExceptionInfo->ContextRecord->Rbx, ExceptionInfo->ContextRecord->Rcx, ExceptionInfo->ContextRecord->Rdx,
+		ExceptionInfo->ContextRecord->Rsi, ExceptionInfo->ContextRecord->Rdi, ExceptionInfo->ContextRecord->R8, ExceptionInfo->ContextRecord->R9,
+		ExceptionInfo->ContextRecord->R10, ExceptionInfo->ContextRecord->R11, ExceptionInfo->ContextRecord->R12, ExceptionInfo->ContextRecord->R13,
+		ExceptionInfo->ContextRecord->R14, ExceptionInfo->ContextRecord->R15, ExceptionInfo->ContextRecord->Rsp, ExceptionInfo->ContextRecord->Rbp
+		);
+#else
+	DebugOutput(
+		"EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x ESP 0x%x EBP 0x%x\n",
+		ExceptionInfo->ContextRecord->Eax, ExceptionInfo->ContextRecord->Ebx, ExceptionInfo->ContextRecord->Ecx, ExceptionInfo->ContextRecord->Edx,
+		ExceptionInfo->ContextRecord->Esi, ExceptionInfo->ContextRecord->Edi, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp
+		);
+#endif
+
+	if (is_valid_address_range((ULONG_PTR)stack, 100 * sizeof(ULONG_PTR)))
+	{
+		ULONG_PTR frame = ebp_or_rip;
+		for (unsigned int i = 0; i < (get_stack_top() - (ULONG_PTR)stack)/sizeof(ULONG_PTR); i++) {
+			dllname = NULL;
+			if (stack[i]) {
+				dllname = convert_address_to_dll_name_and_offset(stack[i], &offset);
+				if (&stack[i] == (ULONG_PTR*)(frame + sizeof(ULONG_PTR))) {
+					frame = *(ULONG_PTR*)frame;
+					if (dllname)
+						DebugOutput("0x%p: 0x%p - %s::0x%x********\n", &stack[i], stack[i], dllname, offset);
+					else if (IsAddressAccessible((PVOID)stack[i]))
+						DebugOutput("0x%p: 0x%p********\n", &stack[i], stack[i]);
+				}
+				else if (dllname)
+					DebugOutput("0x%p: 0x%p - %s::0x%x\n", &stack[i], stack[i], dllname, offset);
+				else if (IsAddressAccessible((PVOID)stack[i]))
+					DebugOutput("0x%p: 0x%p\n", &stack[i], stack[i]);
+			}
+        }
+	}
+	else {
+        DebugOutput("Invalid stack!\n");
+	}
+
+	return EXCEPTION_CONTINUE_SEARCH;
 }
 
 LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo)
@@ -269,9 +336,12 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 	stack = (ULONG_PTR *)(ULONG_PTR)(ExceptionInfo->ContextRecord->Esp);
 	ebp_or_rip = (ULONG_PTR)(ExceptionInfo->ContextRecord->Ebp);
 	{
-		DWORD *tebtmp = (DWORD *)NtCurrentTeb();
-		if (tebtmp[0] != 0xffffffff)
-			seh = ((DWORD *)tebtmp[0])[1];
+		PTEB teb = NtCurrentTeb();
+		if (teb) {
+			PEXCEPTION_REGISTRATION_RECORD sehrecord = teb->NtTib.ExceptionList;
+			if (sehrecord && sehrecord != EXCEPTION_CHAIN_END)
+				seh = (ULONG_PTR)sehrecord->Handler;
+		}
 	}
 #endif
 
@@ -300,12 +370,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 	sprintf(msg, "Exception Caught! PID: %u EIP:", GetCurrentProcessId());
 	if (dllname) {
 		PCHAR FunctionName;
-		__try {
-			FunctionName = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x50);
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER) {
-			;
-		}
+		FunctionName = ScanForExport((PVOID)eip, 0x50);
 		if (FunctionName)
 			snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)", dllname, FunctionName, offset);
 		else
@@ -346,12 +411,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 			char *buf = convert_address_to_dll_name_and_offset(stack[i], &offset);
 			if (buf) {
 				PCHAR funcname = NULL;
-				__try {
-					funcname = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x50);
-				}
-				__except(EXCEPTION_EXECUTE_HANDLER) {
-					;
-				}
+				funcname = ScanForExport((PVOID)eip, 0x50);
 				if (funcname)
 					snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)\n", buf, funcname, offset);
 				else
@@ -383,13 +443,9 @@ next:
 #endif
 		Result = distorm_decode(Offset, (const unsigned char*)eip, 0x100, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
-		if (dllname) {
-			__try {
-				FunctionName = ScyllaGetExportNameByScan((PVOID)eip, NULL, 0x40);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER) {
-				;
-			}
+		if (dllname)
+		{
+			FunctionName = ScanForExport((PVOID)eip, 0x40);
 			if (FunctionName)
 			{
 				DebugOutput("%s::%s (`) %-20s %-6s%-4s%-30s\n", dllname, FunctionName, (DWORD_PTR)eip, (char*)DecodedInstruction.instructionHex.p, (char*)DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", (char*)DecodedInstruction.operands.p);
@@ -546,26 +602,24 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		get_our_commandline();
 
-		if (g_config.standalone) {
-			// initialise CAPE
-			CAPE_init();
-			DebugOutput("Standalone mode initialised.\n");
-			return TRUE;
-		}
-
 		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
 
 		// read the config settings
-		if (!read_config())
-#if CUCKOODBG
-			;
-		else
-			DebugOutput("Config loaded.\n");
-#else
-			// if we're not debugging, then failure to read the capemon config should be a critical error
-			goto abort;
-#endif
+		read_config();
+
+		if (g_config.standalone) {
+			// initialize these because some hooks behave badly when they are empty
+			if (!g_config.w_analyzer[0]) {
+				for (i = 0; i < ARRAYSIZE(g_config.analyzer); i++)
+					g_config.w_analyzer[i] = (wchar_t)(unsigned short)g_config.analyzer[i];
+			}
+			if (!g_config.w_results[0]) {
+				for (i = 0; i < ARRAYSIZE(g_config.results); i++)
+					g_config.w_results[i] = (wchar_t)(unsigned short)g_config.results[i];
+			}
+			DebugOutput("Running in standalone mode.\n");
+		}
 
 		// don't inject into our own binaries run out of the analyzer directory unless they're the first process (intended)
 		if (wcslen(g_config.w_analyzer) && !wcsnicmp(our_process_path_w, g_config.w_analyzer, wcslen(g_config.w_analyzer)) && !g_config.first_process)
@@ -635,7 +689,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		}
 #endif
 
-		if (!g_config.tlsdump)
+		if (!g_config.tlsdump && !g_config.interactive)
 			notify_successful_load();
 	}
 	else if(dwReason == DLL_PROCESS_DETACH) {

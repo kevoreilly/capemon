@@ -46,6 +46,8 @@ extern char *our_process_name;
 extern void hook_disable();
 extern void hook_enable();
 
+void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+
 //**************************************************************************************
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId)
 //**************************************************************************************
@@ -514,8 +516,11 @@ void DumpSectionViewsForHandle(HANDLE SectionHandle)
 	return;
 }
 
-void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context)
+__declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT Context)
 {
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
 	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
 	{
 		struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
@@ -527,12 +532,73 @@ void GetThreadContextHandler(DWORD Pid, LPCONTEXT Context)
 			CurrentInjectionInfo->StackPointer = (LPVOID)Context->Esp;
 #endif
 	}
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if (ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address == Context->Dr0)
+			{
+				Context->Dr0 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address == Context->Dr1)
+			{
+				Context->Dr1 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address == Context->Dr2)
+			{
+				Context->Dr2 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address == Context->Dr3)
+			{
+				Context->Dr3 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+		}
+	}
 }
 
-void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
+__declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *Context)
 {
 	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
 		return;
+
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
+	if (Pid != GetCurrentProcessId())
+		ProcessMessage(Pid, 0);
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if
+			(
+				(ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address != Context->Dr0) ||
+				(ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address != Context->Dr1) ||
+				(ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address != Context->Dr2) ||
+				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
+			)
+			{
+				DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+				ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+			}
+		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
+#endif
+	}
 
 	MEMORY_BASIC_INFORMATION MemoryInfo;
 	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
@@ -578,6 +644,112 @@ void SetThreadContextHandler(DWORD Pid, const CONTEXT *Context)
 		DebugOutput("SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
 #endif
 }
+
+#ifdef _WIN64
+__declspec(noinline) void Wow64GetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context)
+{
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
+	if (Context && Context->ContextFlags & CONTEXT_CONTROL)
+	{
+		struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
+		if (CurrentInjectionInfo && CurrentInjectionInfo->ProcessId == Pid)
+			CurrentInjectionInfo->StackPointer = (PVOID)(DWORD_PTR)Context->Esp;
+	}
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if (ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address == Context->Dr0)
+			{
+				Context->Dr0 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address == Context->Dr1)
+			{
+				Context->Dr1 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address == Context->Dr2)
+			{
+				Context->Dr2 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+			if (ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address == Context->Dr3)
+			{
+				Context->Dr3 = 0;
+				Context->Dr6 = 0;
+				Context->Dr7 = 0;
+			}
+		}
+	}
+}
+
+__declspec(noinline) void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context)
+{
+	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
+		return;
+
+	DWORD Pid = pid_from_thread_handle(ThreadHandle);
+	DWORD Tid = tid_from_thread_handle(ThreadHandle);
+
+	if (Pid != GetCurrentProcessId())
+		ProcessMessage(Pid, 0);
+
+	if (g_config.debugger && Pid == GetCurrentProcessId())
+	{
+		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
+		if (ThreadBreakpoints)
+		{
+			if
+			(
+				(ThreadBreakpoints->BreakpointInfo[0].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[0].Address != Context->Dr0) ||
+				(ThreadBreakpoints->BreakpointInfo[1].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[1].Address != Context->Dr1) ||
+				(ThreadBreakpoints->BreakpointInfo[2].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[2].Address != Context->Dr2) ||
+				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
+			)
+			{
+				DebugOutput("Wow64SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+				//ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
+			}
+		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("Wow64SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
+#endif
+	}
+
+	MEMORY_BASIC_INFORMATION MemoryInfo;
+	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
+
+	if (!CurrentInjectionInfo)
+		return;
+
+	if (VirtualQueryEx(CurrentInjectionInfo->ProcessHandle, (PVOID)(DWORD_PTR)Context->Eax, &MemoryInfo, sizeof(MemoryInfo)))
+		CurrentInjectionInfo->ImageBase = (DWORD_PTR)MemoryInfo.AllocationBase;
+	else
+	{
+		ErrorOutput("Wow64SetThreadContextHandler: Failed to query target process memory at address 0x%x", Context->Eax);
+		return;
+	}
+
+	if (!CurrentInjectionInfo || CurrentInjectionInfo->ProcessId != Pid)
+		return;
+
+	CurrentInjectionInfo->EntryPoint = Context->Eax - CurrentInjectionInfo->ImageBase;  // eax holds ep on 32-bit
+
+	if (Context->Eip == (DWORD_PTR)GetProcAddress(GetModuleHandle("ntdll"), "NtMapViewOfSection"))
+		DebugOutput("Wow64SetThreadContextHandler: Hollow process entry point set to NtMapViewOfSection (process %d).\n", Pid);
+	else
+		DebugOutput("Wow64SetThreadContextHandler: Hollow process entry point reset via NtSetContextThread to 0x%p (process %d).\n", CurrentInjectionInfo->EntryPoint, Pid);
+}
+#endif
 
 BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 {
@@ -765,7 +937,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 		if (!CurrentSectionView)
 		{
 			CurrentSectionView = AddSectionView(SectionHandle, BaseAddress, ViewSize);
+#ifdef DEBUG_COMMENTS
 			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x and local view 0x%p to global list.\n", SectionHandle, BaseAddress);
+#endif
 		}
 		else
 		{
@@ -791,7 +965,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 		{
 			CurrentSectionView->MapDetected = TRUE;
 			CurrentSectionView->TargetProcessId = Pid;
+#ifdef DEBUG_COMMENTS
 			DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to existing target process %d.\n", SectionHandle, Pid);
+#endif
 		}
 		else
 			DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
@@ -833,7 +1009,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 			{
 				CurrentSectionView->MapDetected = TRUE;
 				CurrentSectionView->TargetProcessId = Pid;
+#ifdef DEBUG_COMMENTS
 				DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to new target process %d.\n", SectionHandle, Pid);
+#endif
 			}
 			else
 			{
@@ -842,7 +1020,9 @@ void MapSectionViewHandler(HANDLE ProcessHandle, HANDLE SectionHandle, PVOID Bas
 				if (CurrentSectionView)
 				{
 					CurrentSectionView->TargetProcessId = Pid;
+#ifdef DEBUG_COMMENTS
 					DebugOutput("MapSectionViewHandler: Added section view with handle 0x%x to target process %d.\n", SectionHandle, Pid);
+#endif
 				}
 				else
 					DebugOutput("MapSectionViewHandler: Error, failed to add section view with handle 0x%x and target process %d.\n", SectionHandle, Pid);
@@ -929,7 +1109,7 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 	if (IsDisguisedPEHeader((PVOID)Buffer))
 	{
 		CurrentInjectionInfo->ImageBase = (DWORD_PTR)BaseAddress;
-		DebugOutput("WriteMemoryHandler: Executable binary injected into process %d (ImageBase 0x%x)\n", Pid, CurrentInjectionInfo->ImageBase);
+		DebugOutput("WriteMemoryHandler: Executable binary injected from 0x%p (size 0x%x) into process %d at 0x%p.\n", Buffer, NumberOfBytesWritten, Pid, BaseAddress);
 
 		if (CurrentInjectionInfo->ImageDumped == FALSE)
 		{
@@ -967,11 +1147,12 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 		{
 			// Looks like a previously dumped PE image is being written a section at a time to the target process.
 			// We don't want to dump these writes.
-			DebugOutput("WriteMemoryHandler: injection of section of PE image which has already been dumped.\n");
+			if (NumberOfBytesWritten >= 0x1000)
+				DebugOutput("WriteMemoryHandler: injection of section of PE image which has already been dumped.\n");
 		}
 		else
 		{
-			DebugOutput("WriteMemoryHandler: shellcode at 0x%p (size 0x%x) injected into process %d.\n", Buffer, NumberOfBytesWritten, Pid);
+			DebugOutput("WriteMemoryHandler: shellcode at 0x%p (size 0x%x) injected into process %d at 0x%p.\n", Buffer, NumberOfBytesWritten, Pid, BaseAddress);
 
 			// dump injected code/data
 			CapeMetaData->DumpType = INJECTION_SHELLCODE;
@@ -1103,9 +1284,24 @@ void TerminateHandler()
 	}
 }
 
+#define ProcessMessageLimit 0x20
+DWORD PreviousPid;
+unsigned int ProcessMessageCount;
+
 void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 {
 	if (ProcessId == GetCurrentProcessId())
+		return;
+
+	if (ProcessId == PreviousPid)
+		ProcessMessageCount++;
+	else
+	{
+		PreviousPid = ProcessId;
+		ProcessMessageCount = 0;
+	}
+
+	if (ProcessMessageCount >= ProcessMessageLimit)
 		return;
 
 	PINJECTIONINFO CurrentInjectionInfo = GetInjectionInfo(ProcessId);
@@ -1199,5 +1395,5 @@ void ProcessMessage(DWORD ProcessId, DWORD ThreadId)
 		hook_enable();
 	}
 	else
-		pipe("PROCESS:0:%d,%d", ProcessId, ThreadId);
+		pipe("PROCESS:%d,%d", ProcessId, ThreadId);
 }

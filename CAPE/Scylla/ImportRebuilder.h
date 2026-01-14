@@ -42,7 +42,7 @@ public:
 		sizeOfJumpTable = 0;
 	}
 
-	bool rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList);
+	bool rebuildImportTable(const CHAR * newFilePath, std::map<DWORD_PTR, ImportModuleThunk> & moduleList, DWORD_PTR entryPoint);
 	void enableOFTSupport();
 	void enableNewIatInSection(DWORD_PTR iatAddress, DWORD iatSize);
 

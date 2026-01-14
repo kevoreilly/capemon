@@ -23,6 +23,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define BREAKPOINT_MAX	0x100
 #define SYSBP_MAX		0x400
 
+// Anti-analysis related items so we can be consistent across various APIs
+#define SPOOFED_DISK_SIZE	0x10000000000ull // 1TB
+#define RECOVERY_PARTITION_SIZE	0x1f2af000  // Taken from random Win10 install
+
+#define SPOOFED_GPU_RAM 0x100000000l  // 4GB
+#define SPOOFED_GPU_NAME L"NVIDIA GTX 1650"
+
+#define SPOOFED_RAM 0x100000000l  // 4GB
+#define SPOOFED_RAM_RESERVED 0x410000
+
+#define SPOOFED_CPU_CORE_NUM 4
+
+
 struct _g_config {
 	// name of the pipe to communicate with cuckoo
 	wchar_t pipe_name[MAX_PATH];
@@ -98,8 +111,17 @@ struct _g_config {
 	// Debugging level (1 = display exceptions, 2 = display all exceptions)
 	int debug;
 
+	// limit applied hooks (for hook testing)
+	unsigned int hook_range;
+
 	// Default hook type (may be overridden for specific functions)
 	int hook_type;
+
+	// Hook trampoline allocated in low (<2GB) memory (64-bit)
+	int hook_low;
+
+	// Attempt to restore modified hooks detected by unhook thread
+	int hook_restore;
 
 	// Disable hook content
 	int disable_hook_content;
@@ -113,11 +135,26 @@ struct _g_config {
 	//unsigned int host_ip;
 	//unsigned short host_port;
 
+	// Language override
+	int lang;
+
+	// protected processes
+	unsigned int protected_pids;
+
 	// ntdll write protection
 	unsigned int ntdll_protect;
 
+	// ntdll unhook protection (NtReadFile-based)
+	unsigned int ntdll_unhook;
+
+	// hook write protection
+	unsigned int hook_protect;
+
 	// ntdll remap protection
 	unsigned int ntdll_remap;
+
+	// Dumped payloads limit
+	unsigned int dump_limit;
 
 	// Dropped files limit
 	unsigned int dropped_limit;
@@ -133,11 +170,12 @@ struct _g_config {
 
 	// exception logging (RtlDispatchException hook)
 	int log_exceptions;
+	// vectored exception handler hook
+	int log_vexcept;
 
 	// behavioural payload extraction options
 	int unpacker;
 	int injection;
-	int caller_regions;
 
 	// should we dump each process on exit/analysis timeout?
 	int procdump;
@@ -163,6 +201,9 @@ struct _g_config {
 
 	// for monitor testing
 	int standalone;
+
+	// interactive desktop
+	int interactive;
 
 	// for dumping of crypto API buffers
 	int dump_crypto;
@@ -200,11 +241,17 @@ struct _g_config {
 	// AMSI dumps (Win10+)
 	int amsidump;
 
+	// .NET JIT cache dumps
+	unsigned int jit_dumps;
+
 	// Minimal hook set
 	int minhook;
 
 	// Zero hook set
 	int zerohook;
+
+	// Native hook set
+	int native;
 
 	// Microsoft Office hook set
 	int office;
@@ -227,18 +274,21 @@ struct _g_config {
 	// Allow scans/dumps with loader lock held
 	int loaderlock_scans;
 
+	// Specify custom trace stepping behavior
+	int stepmode;
+
+	// Enable Windows Loader snaps output
+	int snaps;
+
 	char *break_on_apiname;
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];
 	BOOLEAN break_on_return_set;
-	BOOLEAN break_on_apiname_set;
 	BOOLEAN break_on_jit;
 
 	// debugger breakpoints
 	PVOID bp0, bp1, bp2, bp3;
 	BOOLEAN zerobp0, zerobp1, zerobp2, zerobp3;
-	PVOID bp4, bp5, bp6, bp7;
-	BOOLEAN zerobp4, zerobp5, zerobp6, zerobp7;
 	// break-on-return: brX
 	PVOID br0, br1, br2, br3;
 	// count
@@ -247,12 +297,16 @@ struct _g_config {
 	unsigned int hc0, hc1, hc2, hc3;
 	// Dump type
 	int dumptype0, dumptype1, dumptype2, dumptype3;
+	// breakpoint address as VA instead of RVA
+	int bpva0, bpva1, bpva2, bpva3;
 	// Type strings
 	char typestring[MAX_PATH], typestring0[MAX_PATH], typestring1[MAX_PATH], typestring2[MAX_PATH], typestring3[MAX_PATH];
 	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
 	char *action[BREAKPOINT_MAX];
 	BOOLEAN loopskip;
 	int sysbpmode;
+	// search string
+	char *str[MAX_PATH];
 
 	int trace_all;
 	int step_out;
@@ -261,11 +315,13 @@ struct _g_config {
 	int disable_logging;
 	int base_on_alloc;
 	int base_on_caller;
+	int trace_times;
 	char *trace_into_api[EXCLUSION_MAX];
+	int hook_watch;
 };
 
 extern struct _g_config g_config;
 
-int read_config(void);
+void read_config(void);
 
 #endif

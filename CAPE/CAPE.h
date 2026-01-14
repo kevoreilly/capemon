@@ -15,6 +15,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.If not, see <http://www.gnu.org/licenses/>.
 */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern HMODULE s_hInst;
 extern WCHAR s_wzDllPath[MAX_PATH];
 extern CHAR s_szDllPath[MAX_PATH];
@@ -23,6 +27,7 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MIN_SIZE	 ((ULONG)0x800)
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
+#define ENTROPY_DELTA  0.5
 
 typedef PVOID(WINAPI *_getJit)(void);
 
@@ -34,18 +39,24 @@ PVOID GetHookCallerBase();
 BOOL InsideMonitor(PVOID* ReturnAddress, PVOID Address);
 PVOID GetPageAddress(PVOID Address);
 PVOID GetAllocationBase(PVOID Address);
+PVOID GetBaseAddress(PVOID Address);
 SIZE_T GetRegionSize(PVOID Address);
 SIZE_T GetAllocationSize(PVOID Address);
 SIZE_T GetAccessibleSize(PVOID Address);
-PVOID GetExportAddress(HMODULE ModuleBase, PCHAR FunctionName);
+PVOID GetFunctionByName(HMODULE ModuleBase, PCHAR FunctionName);
+PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 BOOL IsAddressAccessible(PVOID Address);
+BOOL IsAddressExecutable(PVOID Address);
 BOOL TestPERequirements(PIMAGE_NT_HEADERS pNtHeader);
-SIZE_T GetMinPESize(PIMAGE_NT_HEADERS pNtHeader);
-double GetPEEntropy(PUCHAR Buffer);
+SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader);
+double GetEntropy(PUCHAR Buffer);
+void SanitiseString(char *Dst, const char *Src, size_t Size);
 PCHAR TranslatePathFromDeviceToLetter(PCHAR DeviceFilePath);
+PWCHAR TranslatePathFromDeviceToLetterW(PWCHAR DeviceFilePath);
 DWORD GetEntryPoint(PVOID Address);
 BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size);
 BOOL DumpRegion(PVOID Address);
+int VerifyHeaders(PVOID ImageBase, LPCWSTR Path);
 int VerifyCodeSection(PVOID ImageBase, LPCWSTR Path);
 int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 int DumpMemory(PVOID Buffer, SIZE_T Size);
@@ -62,13 +73,16 @@ int ScanForPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
 int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
 PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax);
 PCHAR GetExportNameByAddress(PVOID Address);
+int IsDotNetImage(PVOID Buffer);
 int IsDisguisedPEHeader(PVOID Buffer);
 int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);
+BOOL DumpRange(PVOID Address, SIZE_T Size);
 BOOL DumpStackRegion(void);
+void DumpStrings(void);
 
 BOOL ProcessDumped;
-unsigned int DumpCount;
+unsigned int DumpCount, DotNetCacheDumpCount;
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
@@ -144,6 +158,7 @@ typedef struct TrackedRegion
 {
 	PVOID						AllocationBase;
 	PVOID						Address;
+	PVOID						Caller;
 	MEMORY_BASIC_INFORMATION	MemInfo;
 	BOOL						Committed;
 	BOOL						PagesDumped;
@@ -173,4 +188,9 @@ BOOL ContextClearTrackedRegion(PCONTEXT Context, PTRACKEDREGION TrackedRegion);
 void ClearTrackedRegion(PTRACKEDREGION TrackedRegion);
 void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
+void TestProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 BOOL TrackExecution(PVOID CIP);
+
+#ifdef __cplusplus
+}
+#endif

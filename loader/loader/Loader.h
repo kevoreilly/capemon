@@ -160,6 +160,8 @@ typedef ULONG(WINAPI * _RtlNtStatusToDosError)
 	__in  NTSTATUS Status
 );
 
+typedef ULONG (WINAPI *_RtlGetNtGlobalFlags)(void);
+
 typedef HRESULT (WINAPI *PDLLREGRSRV)(void);
 typedef void (cdecl *PSHELLCODE)(void);
 

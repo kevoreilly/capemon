@@ -30,7 +30,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 SYSTEM_INFO SystemInfo;
 char PipeOutput[MAX_PATH], LogPipe[MAX_PATH];
-BOOL DisableIATPatching, FirstProcess;
+BOOL DisableIATPatching, FirstProcess, LoaderSnaps;
 
 void pipe(char* Buffer, SIZE_T Length);
 
@@ -114,7 +114,7 @@ int ScanForNonZero(LPVOID Buffer, SIZE_T Size)
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ScanForNonZero: Exception occured reading memory address 0x%x\n", (char*)Buffer+p);
+		DebugOutput("ScanForNonZero: Exception occurred reading memory address 0x%x\n", (char*)Buffer+p);
 		return 0;
 	}
 
@@ -236,7 +236,7 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 				DebugOutput("Loader: Successfully loaded pipe name %s.\n", LogPipe);
 #endif
 			}
-			if (!strcmp(key, "no-iat"))
+			else if (!strcmp(key, "no-iat"))
 			{
 				DisableIATPatching = Value[0] == '1';
 				if (DisableIATPatching)
@@ -244,6 +244,8 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 				else
 					DebugOutput("Loader: IAT patching enabled.\n");
 			}
+			else if (!strcmp(key, "snaps"))
+				LoaderSnaps = Value[0] == '1';
 			else if (!strcmp(key, "first-process"))
 				FirstProcess = Value[0] == '1';
 		}
@@ -255,7 +257,18 @@ int ReadConfig(DWORD ProcessId, char *DllName)
 	return 1;
 }
 
-BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
+DWORD GetNtGlobalFlagsOffset()
+{
+	_RtlGetNtGlobalFlags pRtlGetNtGlobalFlags = (_RtlGetNtGlobalFlags)GetProcAddress(GetModuleHandle("ntdll.dll"), "RtlGetNtGlobalFlags");
+
+#ifdef _WIN64
+	return (DWORD)*((PBYTE)pRtlGetNtGlobalFlags + 11);
+#else
+	return (DWORD)*((PBYTE)pRtlGetNtGlobalFlags + 8);
+#endif
+}
+
+PVOID GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
 {
 	_NtQueryInformationProcess pNtQueryInformationProcess;
 	PROCESS_BASIC_INFORMATION ProcessBasicInformation;
@@ -267,10 +280,10 @@ BOOL GetProcessPeb(HANDLE ProcessHandle, PPEB Peb)
 	memset(&ProcessBasicInformation, 0, sizeof(ProcessBasicInformation));
 
 	if (pNtQueryInformationProcess(ProcessHandle, 0, &ProcessBasicInformation, sizeof(ProcessBasicInformation), &ulSize) >= 0 && ulSize == sizeof(ProcessBasicInformation))
-		if (ReadProcessMemory(ProcessHandle, ProcessBasicInformation.PebBaseAddress, Peb, sizeof(PEB), &dwBytesRead))
-			return TRUE;
+		if (!Peb || (Peb && ReadProcessMemory(ProcessHandle, ProcessBasicInformation.PebBaseAddress, Peb, sizeof(PEB), &dwBytesRead)))
+			return ProcessBasicInformation.PebBaseAddress;
 
-	return FALSE;
+	return NULL;
 }
 
 DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
@@ -324,6 +337,32 @@ DWORD GetProcessInitialThreadId(HANDLE ProcessHandle)
 		return ThreadId;
 
 	return 0;
+}
+
+static BOOL EnableLoaderSnaps(HANDLE ProcessHandle, PPEB Peb)
+{
+	ULONG gflags = 0;
+	SIZE_T dwBytesRead, dwBytesWritten;
+
+	PVOID pNtGlobalFlag = (PVOID)((PBYTE)Peb + GetNtGlobalFlagsOffset());
+
+	if (!ReadProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesRead))
+	{
+		ErrorOutput("Loader: ReadProcessMemory failed (NtGlobalFlag)");
+		return FALSE;
+	}
+
+	gflags |= 0x2;
+
+	if (!WriteProcessMemory(ProcessHandle, pNtGlobalFlag, &gflags, sizeof(gflags), &dwBytesWritten))
+	{
+		ErrorOutput("Loader: WriteProcessMemory failed (NtGlobalFlag)");
+		return FALSE;
+	}
+
+	DebugOutput("Loader: Snaps enabled.\n");
+
+	return TRUE;
 }
 
 static int GrantDebugPrivileges(void)
@@ -1100,7 +1139,7 @@ rebase:
 	}
 
 	// Now set the import table directory entry to point to the new table
-	NtHeader.IMPORT_DIRECTORY.Size = NewSizeOfImportDescriptors;
+	NtHeader.IMPORT_DIRECTORY.Size = NewImportDirectorySize;
 	NtHeader.IMPORT_DIRECTORY.VirtualAddress = NewImportsRVA;
 
 	// Set bound imports values to zero to prevent them overriding our new import table
@@ -1192,8 +1231,12 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 		goto out;
 	}
 
-	if (!GetProcessPeb(ProcessHandle, &Peb))
+	PPEB pPeb = GetProcessPeb(ProcessHandle, &Peb);
+	if (!pPeb)
 		DebugOutput("InjectDll: GetProcessPeb failure.\n");
+
+	if (LoaderSnaps)
+		EnableLoaderSnaps(ProcessHandle, pPeb);
 
 	// If no thread id supplied, we fetch the initial thread id from the initial TEB
 	if (!ThreadId && Peb.ImageBaseAddress && !Peb.Ldr)
@@ -1314,15 +1357,15 @@ int CreateMonitorPipe(char* Name, char* Dll)
 				char *p;
 				if ((p = strchr(buf, ','))) {
 					*p = '\0';
-					ProcessId = atoi(&buf[10]); // skipping the '0:' or '1:' suspended flag
-					ThreadId = atoi(p + 1);	 // (soon to be deprecated)
+					ProcessId = atoi(&buf[8]);
+					ThreadId = atoi(p + 1);
 				}
 				else {
 					ProcessId = atoi(&buf[10]);
 				}
 				if (ProcessId && ThreadId && ProcessId != LastPid)
 				{
-					DebugOutput("About to call InjectDll on process %d, thread 5%d.\n", ProcessId, ThreadId);
+					DebugOutput("About to call InjectDll on process %d, thread %d.\n", ProcessId, ThreadId);
 					if (InjectDll(ProcessId, ThreadId, Dll))
 						LastPid = ProcessId;
 				}
@@ -1332,6 +1375,28 @@ int CreateMonitorPipe(char* Name, char* Dll)
 		}
 	}
 
+}
+
+void HandleDebugOutputString(const DEBUG_EVENT dbgEvent, HANDLE hProcess)
+{
+    char buffer[4096];
+    SIZE_T read, size = min(sizeof(buffer) - 2, (SIZE_T)dbgEvent.u.DebugString.nDebugStringLength);
+
+    ReadProcessMemory(hProcess, dbgEvent.u.DebugString.lpDebugStringData, buffer, size, &read);
+
+    size = (int)(min(read, size));
+    buffer[size] = 0;
+    buffer[size + 1] = 0;
+
+    if (dbgEvent.u.DebugString.fUnicode)
+		DebugOutput("%ws", buffer);
+    else
+    {
+        wchar_t wbuffer[4096];
+        int ret = MultiByteToWideChar(CP_ACP, 0, (char*)buffer, (int)size, wbuffer, ARRAYSIZE(wbuffer));
+        if (ret != 0)
+            DebugOutput("%ws", wbuffer);
+    }
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -1425,7 +1490,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		return ret;
 	}
-	else if (!strcmp(__argv[1], "load"))
+	else if (!strcmp(__argv[1], "load") || !strcmp(__argv[1], "snaps"))
 	{
 		// usage: loader.exe load <monitor dll> <binary> <commandline>
 		DWORD ExplorerPid = 0, ProcessId = 0;
@@ -1490,7 +1555,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		sie.lpAttributeList = pAttributeList;
 
-		if (!CreateProcess(__argv[3], szCommand, NULL, NULL, FALSE, CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, NULL, NULL, &sie.StartupInfo, &pi))
+		DWORD CreationFlags = CREATE_DEFAULT_ERROR_MODE | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT;
+
+		if (!strcmp(__argv[1], "snaps"))
+			CreationFlags = CreationFlags | DEBUG_ONLY_THIS_PROCESS;
+
+		if (!CreateProcess(__argv[3], szCommand, NULL, NULL, FALSE, CreationFlags, NULL, NULL, &sie.StartupInfo, &pi))
 		{
 			ErrorOutput("Loader: CreateProcess error");
 			return 0;
@@ -1512,6 +1582,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		else
 			DebugOutput("Loader: Loaded config for process %d.\n", pi.dwProcessId);
 #endif
+
+		if (!strcmp(__argv[1], "snaps"))
+		{
+			PPEB Peb = GetProcessPeb(pi.hProcess, NULL);
+			if (Peb)
+				EnableLoaderSnaps(pi.hProcess, Peb);
+		}
+
 		ret = InjectDll(pi.dwProcessId, pi.dwThreadId, __argv[2]);
 
 		if (ret)
@@ -1525,6 +1603,46 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		{
 			ResumeThread(ThreadHandle);
 			CloseHandle(ThreadHandle);
+			if (!strcmp(__argv[1], "snaps"))
+			{
+				while (TRUE)
+				{
+					DEBUG_EVENT dbgEvent;
+					WaitForDebugEvent(&dbgEvent, INFINITE);
+					switch (dbgEvent.dwDebugEventCode)
+					{
+					case EXCEPTION_DEBUG_EVENT:
+						DebugOutput("Exception event");
+						break;
+					case CREATE_THREAD_DEBUG_EVENT:
+						DebugOutput("Thread created");
+						break;
+					case CREATE_PROCESS_DEBUG_EVENT:
+						DebugOutput("Process created");
+						break;
+					case EXIT_THREAD_DEBUG_EVENT:
+						DebugOutput("Thread exited");
+						break;
+					case EXIT_PROCESS_DEBUG_EVENT:
+						DebugOutput("Process exited");
+						break;
+					case LOAD_DLL_DEBUG_EVENT:
+						DebugOutput("Dll loaded");
+						break;
+					case UNLOAD_DLL_DEBUG_EVENT:
+						DebugOutput("Dll unloaded");
+						break;
+					case OUTPUT_DEBUG_STRING_EVENT:
+						HandleDebugOutputString(dbgEvent, pi.hProcess);
+						break;
+					case RIP_EVENT:
+						DebugOutput("RIP event");
+						break;
+					}
+
+					ContinueDebugEvent(dbgEvent.dwProcessId, dbgEvent.dwThreadId, DBG_EXCEPTION_NOT_HANDLED);
+				}
+			}
 		}
 		else
 			DebugOutput("There was a problem resuming the new process %s.\n", __argv[3]);

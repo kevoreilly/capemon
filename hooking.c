@@ -42,7 +42,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define HOOK_RATE_LIMIT 0x100
 
 static lookup_t g_hook_info;
-lookup_t g_caller_regions;
+static lookup_t g_force_hook_threads;
 
 extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
@@ -95,7 +95,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		return;
 	if (filter_callers(hookinfo))
 		return;
-	if (!g_config.unpacker && !g_config.caller_regions)
+	if (!g_config.unpacker)
 		return;
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
 	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
@@ -104,7 +104,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	if (g_config.unpacker)
 	{
 		TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-		if (TrackedRegion && (TrackedRegion->Address || TrackedRegion->PagesDumped))
+		if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
 			return;
 		if (!TrackedRegion) {
 			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
@@ -116,13 +116,7 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 			}
 			DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 		}
-		TrackedRegion->Address = (PVOID)addr;
-	}
-	if (g_config.caller_regions) {
-		if (lookup_get(&g_caller_regions, (ULONG_PTR)AllocationBase, 0))
-			return;
-		lookup_add(&g_caller_regions, (ULONG_PTR)AllocationBase, 0);
-		DebugOutput("caller_dispatch: Adding region at 0x%p to caller regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+		TrackedRegion->Caller = (PVOID)addr;
 	}
 	if (g_config.base_on_caller)
 		SetInitialBreakpoints((PVOID)AllocationBase);
@@ -136,12 +130,6 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 	if (g_config.unpacker)
 		ProcessTrackedRegion(TrackedRegion);
-	else if (g_config.caller_regions) {
-		if (g_config.yarascan)
-			YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
-		if (!MappedModule && AllocationBase != ImageBase && AllocationBase != (PVOID)base_of_dll_of_interest)
-			DumpRegion((PVOID)addr);
-	}
 	else if (MappedModule)
 		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
 	else
@@ -196,10 +184,14 @@ int add_hook_exclusion(const char *apiname)
 	return 0;
 }
 
+extern void start_transparent_hooks();
+extern void end_transparent_hooks();
+
 int addr_in_our_dll_range(void *unused, ULONG_PTR addr)
 {
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
-		return 1;
+		if (addr < (ULONG_PTR)&start_transparent_hooks || addr >= (ULONG_PTR)&end_transparent_hooks)
+			return 1;
 	return 0;
 }
 
@@ -220,8 +212,6 @@ int called_by_hook(void)
 
 	return __called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer);
 }
-
-BOOL ModuleDumped;
 
 void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 {
@@ -257,20 +247,17 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 	for (i = 0; i < ARRAYSIZE(g_config.dump_on_apinames); i++) {
 		if (!g_config.dump_on_apinames[i])
 			break;
-		if (!ModuleDumped && !stricmp(h->funcname, g_config.dump_on_apinames[i])) {
+		if (!stricmp(h->funcname, g_config.dump_on_apinames[i])) {
 			DebugOutput("Dump-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.dump_on_apinames[i], GetCurrentThreadId(), main_caller_retaddr);
 			if (main_caller_retaddr) {
 				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
 					if (g_config.dump_on_api_type)
 						CapeMetaData->DumpType = g_config.dump_on_api_type;
-					if (DumpRegion(AllocationBase)) {
-						ModuleDumped = TRUE;
+					if (DumpRegion(AllocationBase))
 						DebugOutput("Dump-on-API: Dumped memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-					}
-					else {
+					else
 						DebugOutput("Dump-on-API: Failed to dump memory region at 0x%p due to %s call.\n", AllocationBase, h->funcname);
-					}
 				}
 				else
 					DebugOutput("Dump-on-API: Failed to obtain current module base address.\n");
@@ -291,9 +278,32 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 		else
 			BreakpointOnReturn((PVOID)hookinfo->return_address);
 	}
+
+	if (g_config.hook_watch)
+		DebugOutput("api_dispatch: %s\n", h->funcname);
 }
 
-extern BOOLEAN is_ignored_thread(DWORD tid);
+void add_force_hook_thread_func(const char* function)
+{
+	DWORD tid = GetCurrentThreadId();
+	const char** funcname = lookup_get(&g_force_hook_threads, (unsigned int)tid, NULL);
+	if (!funcname)
+		funcname = lookup_add(&g_force_hook_threads, tid, sizeof(char*));
+	if (funcname)
+		*funcname = function;
+}
+
+BOOLEAN force_hook_thread_func(const char* hookname)
+{
+	DWORD tid = GetCurrentThreadId();
+	const char** funcname = lookup_get(&g_force_hook_threads, (unsigned int)tid, NULL);
+	if (funcname && !stricmp(hookname, *funcname)) {
+		lookup_del(&g_force_hook_threads, tid);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 static hook_info_t tmphookinfo;
 DWORD tmphookinfo_threadid;
 FILETIME ft;
@@ -326,7 +336,7 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 	if (g_config.debugger && hookinfo->disable_count > 0 && h->new_func == &New_RtlDispatchException)
 		return 1;
 
-	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
+	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || force_hook_thread_func(h->funcname) || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
 		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
 			if (h->hook_disabled)

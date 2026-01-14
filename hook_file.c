@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "ignore.h"
 #include "lookup.h"
+#include "hook_file.h"
 #include "config.h"
 
 #define DUMP_FILE_MASK ((GENERIC_ALL | GENERIC_WRITE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_APPEND_DATA | MAXIMUM_ALLOWED) & ~SYNCHRONIZE)
@@ -507,6 +508,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 		fname = calloc(32768, sizeof(wchar_t));
 		path_from_handle(FileHandle, fname, 32768);
 
+		if (!g_config.no_stealth && g_config.ntdll_unhook && InitialBufferLength)
+			prevent_module_unhooking(Buffer, fname);
+
 		if (read_count < 50)
 			LOQ_ntstatus("filesystem", "pFbl", "FileHandle", FileHandle,
 				"HandleName", fname, "Buffer", InitialBufferLength, InitialBuffer, "Length", AccumulatedLength);
@@ -522,6 +526,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 	return ret;
 }
 
+// copied from misc.c to avoid clash with libyara\include\yara\strutils.h
+static PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
+{
+	if (nlen > hlen)
+		return NULL;
+
+	ULONG i;
+	for (i = 0; i < hlen - nlen + 1; i++) {
+		if (!memcmp(haystack + i, needle, nlen))
+			return haystack + i;
+	}
+
+	return NULL;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 	__in	  HANDLE FileHandle,
 	__in_opt  HANDLE Event,
@@ -532,22 +551,31 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 	__in	  ULONG Length,
 	__in_opt  PLARGE_INTEGER ByteOffset,
 	__in_opt  PULONG Key
-	) {
-	NTSTATUS ret = Old_NtWriteFile(FileHandle, Event, ApcRoutine, ApcContext,
-		IoStatusBlock, Buffer, Length, ByteOffset, Key);
-	wchar_t *fname;
-	unsigned int write_count;
-	ULONG_PTR length;
+) {
+	NTSTATUS ret = Old_NtWriteFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, Buffer, Length, ByteOffset, Key);
+
+	ULONG_PTR length = 0;
 
 	if (NT_SUCCESS(ret))
 		length = IoStatusBlock->Information;
-	else
-		length = 0;
 
-	write_count = increment_file_log_write_count(FileHandle);
+	unsigned int write_count = increment_file_log_write_count(FileHandle);
 	if (write_count <= 50) {
-		fname = calloc(32768, sizeof(wchar_t));
+		wchar_t *fname = calloc(32768, sizeof(wchar_t));
 		path_from_handle(FileHandle, fname, 32768);
+
+		// Inject into services.exe if we detect a raw RPC request to ntsvcs (e.g. CreateSvcRpc)
+		if (length >= 32 && fname && !wcsicmp(fname, L"\\Device\\NamedPipe\\ntsvcs")) {
+			// SCM UUID: 367abb81-9844-35f1-ad32-98f038001003
+			unsigned char scm_uuid[] = {0x81, 0xbb, 0x7a, 0x36, 0x44, 0x98, 0xf1, 0x35, 0xad, 0x32, 0x98, 0xf0, 0x38, 0x00, 0x10, 0x03};
+			// NDR UUID: 8a885d04-1ceb-11c9-9fe8-08002b104860
+			unsigned char ndr_uuid[] = {0x04, 0x5d, 0x88, 0x8a, 0xeb, 0x1c, 0xc9, 0x11, 0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60};
+
+			if (memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)scm_uuid, sizeof(scm_uuid)) && memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)ndr_uuid, sizeof(ndr_uuid))) {
+                pipe("SERVICE:");
+				raw_sleep(1000);
+			}
+		}
 
 		if (write_count < 50) {
 			LOQ_ntstatus("filesystem", "pFbl", "FileHandle", FileHandle,
@@ -561,9 +589,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 		free(fname);
 	}
 
-	if (NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret))
 		file_write(FileHandle);
-	}
+
 	return ret;
 }
 
@@ -605,24 +633,292 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 	__out  PVOID OutputBuffer,
 	__in   ULONG OutputBufferLength
 ) {
+	lasterror_t lasterrors;
+	get_lasterrors(&lasterrors);
 	ULONG_PTR length;
-	NTSTATUS ret = Old_NtDeviceIoControlFile(FileHandle, Event,
-		ApcRoutine, ApcContext, IoStatusBlock, IoControlCode,
-		InputBuffer, InputBufferLength, OutputBuffer,
-		OutputBufferLength);
+	ULONG origbufferloglen = min((ULONG)buffer_log_max, InputBufferLength);
+	PCHAR origbuffer = malloc(origbufferloglen);
+	BOOLEAN hasorigbuffer = FALSE;
+	NTSTATUS ret;
+
+	// Save off a copy of the buffer before calling the hook, as it may not be the same after the call
+	if (origbuffer) {
+		__try {
+			memcpy(origbuffer, InputBuffer, origbufferloglen);
+			hasorigbuffer = TRUE;
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			hasorigbuffer = FALSE;
+		}
+	}
+
+
+	/*
+	* Check for AFD_SEND, we need to aggregate the buffer before calling the hook as calling the hook will clobber InputBuffer
+	* Simply do the logic to generate the buffer we want to log here, we'll log it later with other IOCTL logging.
+	*/
+	PCHAR aggregated_send_payload = NULL;
+	ULONG send_payload_size_to_log = 0;
+	if (IoControlCode == IOCTL_AFD_SEND) {
+		__try {
+			if (InputBuffer && InputBufferLength >= sizeof(AFD_SEND_INFO)) {
+				PAFD_SEND_INFO sendInfo = (PAFD_SEND_INFO)InputBuffer;
+				if (sendInfo->AfdBufferArray && sendInfo->AfdBufferCount > 0) {
+					ULONG total_send_size = 0;
+					for (ULONG i = 0; i < sendInfo->AfdBufferCount; i++) {
+						total_send_size += sendInfo->AfdBufferArray[i].len;
+					}
+
+					if (total_send_size > 0) {
+						send_payload_size_to_log = min((ULONG)buffer_log_max, total_send_size);
+						aggregated_send_payload = (PCHAR)malloc(send_payload_size_to_log);
+						if (aggregated_send_payload) {
+							PCHAR current_pos = aggregated_send_payload;
+							ULONG bytes_copied = 0;
+							for (ULONG i = 0; i < sendInfo->AfdBufferCount && bytes_copied < send_payload_size_to_log; i++) {
+								PAFD_WSABUF current_source_buf = &sendInfo->AfdBufferArray[i];
+								ULONG bytes_to_copy = min(current_source_buf->len, send_payload_size_to_log - bytes_copied);
+								if (bytes_to_copy > 0) {
+									memcpy(current_pos, current_source_buf->buf, bytes_to_copy);
+									current_pos += bytes_to_copy;
+									bytes_copied += bytes_to_copy;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			// On exception, null out the buffer (if needed) so we can log generically later
+			if (aggregated_send_payload) {
+				free(aggregated_send_payload);
+				aggregated_send_payload = NULL;
+			}
+		}
+	}
+	set_lasterrors(&lasterrors);
+
+	ret = Old_NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength,
+		OutputBuffer, OutputBufferLength);
 
 	if (NT_SUCCESS(ret))
 		length = IoStatusBlock->Information;
 	else
 		length = 0;
 
-	LOQ_ntstatus("device", "phbb", "FileHandle", FileHandle,
-		"IoControlCode", IoControlCode,
-		"InputBuffer", InputBufferLength, InputBuffer,
-		"OutputBuffer", length, OutputBuffer);
+
+	get_lasterrors(&lasterrors);
+
+	wchar_t* fname = NULL;
+	fname = calloc(32768, sizeof(wchar_t));
+	if (fname) {
+		path_from_handle(FileHandle, fname, 32768);
+	}
+
+	switch (IoControlCode) {
+	case IOCTL_AFD_BIND:
+		if (InputBufferLength >= sizeof(AFD_BindDataStruct) && hasorigbuffer) {
+			PAFD_BindDataStruct buf = (PAFD_BindDataStruct)origbuffer;
+			__try {
+				in_sockaddr* sockAddr = &buf->SockAddr;
+				char ipString[16];
+				our_inet_ntop(AF_INET, &sockAddr->sin_addr, ipString, sizeof(ipString));
+				unsigned short port = our_ntohs(sockAddr->sin_port);
+				LOQ_ntstatus(
+					"network", "pFhsi",
+					"FileHandle", FileHandle,
+					"HandleName", fname,
+					"IoControlCode", IoControlCode,
+					"ip", ipString,
+					"port", port
+				);
+				break;
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				// If we're here, just use generic logging for NtDeviceIoControlFile
+				goto generic_log;
+			}
+		}
+		else {
+			goto generic_log;
+		}
+
+	case IOCTL_AFD_CONNECT:
+		if (InputBufferLength >= sizeof(AFD_ConnectDataStruct) && hasorigbuffer) {
+			AFD_ConnectDataStruct* buf = (AFD_ConnectDataStruct*)origbuffer;
+			__try {
+				in_sockaddr* sockAddr = &buf->SockAddr;
+				char ipString[16];
+				our_inet_ntop(AF_INET, &sockAddr->sin_addr, ipString, sizeof(ipString));
+				unsigned short port = our_ntohs(sockAddr->sin_port);
+				LOQ_ntstatus(
+					"network", "pFhsi",
+					"FileHandle", FileHandle,
+					"HandleName", fname,
+					"IoControlCode", IoControlCode,
+					"ip", ipString,
+					"port", port
+				);
+				break;
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				// If we're here, just use generic logging for NtDeviceIoControlFile
+				goto generic_log;
+			}
+		}
+		else {
+			// Unexpected InputBufferLength for this IOCTL, goto generic log
+			goto generic_log;
+		}
+
+	case IOCTL_AFD_RECV:
+		__try {
+			DWORD wait_status = -1;  // Init to -1 as WAIT_OBJECT_0 is 0
+			if (InputBuffer && InputBufferLength >= sizeof(AFD_RECV_INFO)) {
+				if (ret == STATUS_PENDING && Event) {
+					/*
+					 * We make some assumptions here; If we have an event it is an async call so we also assume:
+					 *  1) The callee reset the event prior to calling this NtDeviceIoControlFile API
+					 *  2) The callee will use NtWaitForSingleObject or similar, after calling NtDeviceIoControlFile
+					 *
+					 * NtWaitForSingleObject will wait on a handle, and if the callee is expecting to use NtWaitForSingleObject
+					 * (as done in NTSockets) we'll end up deadlocking unless we also use SetEvent. This is why we use our own
+					 * function to check for the event being signaled as it we do not call any APIs which interfere with the
+					 * status of the event itself, so it is safe for the above assumptions as well as cases where the assumption
+					 * may be wrong.
+					*/
+					wait_status = wait_for_event_to_be_signaled(Event, 5000);  // Allow 5 seconds of time for the event to trigger
+					if (wait_status == WAIT_OBJECT_0) {
+						ret = IoStatusBlock->Status;
+						if (NT_SUCCESS(ret))
+							length = IoStatusBlock->Information;
+						else
+							length = 0;
+					}
+				}
+				if (length == 0) {
+					/*
+					* This can happen if we have a NTSTATUS of 0x00000103 (STATUS_PENDING)
+					* Unideal, likely in the background kernel has provided the recv buffer to the API
+					*/
+					if (wait_status == WAIT_TIMEOUT) {
+						LOQ_ntstatus(
+							"network", "pFhs",
+							"FileHandle", FileHandle,
+							"HandleName", fname,
+							"IoControlCode", IoControlCode,
+							"Event", "Timeout waiting for recv, buffer will likely missing from API logs"
+						);
+					}
+					else {
+						LOQ_ntstatus(
+							"network", "pFhs",
+							"FileHandle", FileHandle,
+							"HandleName", fname,
+							"IoControlCode", IoControlCode,
+							"Event", "Zero-byte receive"
+						);
+					}
+					break;
+				}
+
+				PAFD_RECV_INFO recvInfo = (PAFD_RECV_INFO)InputBuffer;
+				if (recvInfo->AfdBufferArray && recvInfo->AfdBufferCount > 0) {
+					ULONG total_payload_to_log = min((ULONG)buffer_log_max, (ULONG)length);
+					PCHAR aggregated_payload = (PCHAR)malloc(total_payload_to_log);
+					if (!aggregated_payload) {
+						// Sanity check
+						goto generic_log;
+					}
+
+					PCHAR current_pos = aggregated_payload;
+					ULONG bytes_copied = 0;
+					ULONG bytes_remaining_from_total = (ULONG)length;
+					for (ULONG i = 0; i < recvInfo->AfdBufferCount && bytes_copied < total_payload_to_log; i++) {
+						PAFD_WSABUF current_source_buf = &recvInfo->AfdBufferArray[i];
+						ULONG bytes_in_source = min(bytes_remaining_from_total, current_source_buf->len);
+						ULONG bytes_to_copy = min(bytes_in_source, total_payload_to_log - bytes_copied);
+						if (bytes_to_copy > 0) {
+							memcpy(current_pos, current_source_buf->buf, bytes_to_copy);
+							current_pos += bytes_to_copy;
+							bytes_copied += bytes_to_copy;
+						}
+						bytes_remaining_from_total -= bytes_in_source;
+					}
+
+					LOQ_ntstatus(
+						"network", "pFhbi",
+						"FileHandle", FileHandle,
+						"HandleName", fname,
+						"IoControlCode", IoControlCode,
+						"buffer", (size_t)bytes_copied, aggregated_payload,
+						"length", length
+					);
+					free(aggregated_payload);
+					break;
+				}
+			}
+			else {
+				// If the initial InputBuffer validation fails, go to the generic logger.
+				goto generic_log;
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			// On exception, log generically
+			goto generic_log;
+		}
+
+	case IOCTL_AFD_SEND:
+		// We parsed the send buffer prior to calling the hook, if the buffer is non-null, log it, otherwise log generically
+		if (aggregated_send_payload) {
+			LOQ_ntstatus(
+				"network", "pFhbi",
+				"FileHandle", FileHandle,
+				"HandleName", fname,
+				"IoControlCode", IoControlCode,
+				"buffer", (size_t)send_payload_size_to_log, aggregated_send_payload,
+				"length", (ULONG)length // Log the actual bytes sent from the result
+			);
+			free(aggregated_send_payload);
+			break;
+		}
+		else {
+			goto generic_log;
+		}
+	default:
+	generic_log:
+		if (fname) {
+			LOQ_ntstatus(
+				"device", "pFhbb",
+				"FileHandle", FileHandle,
+				"HandleName", fname,
+				"IoControlCode", IoControlCode,
+				"InputBuffer", InputBufferLength, InputBuffer,
+				"OutputBuffer", length, OutputBuffer
+			);
+		}
+		else {
+			LOQ_ntstatus(
+				"device", "phbb",
+				"FileHandle", FileHandle,
+				"IoControlCode", IoControlCode,
+				"InputBuffer", InputBufferLength, InputBuffer,
+				"OutputBuffer", length, OutputBuffer
+			);
+		}
+	}
 
 	if (!g_config.no_stealth && NT_SUCCESS(ret) && OutputBuffer)
 		perform_device_fakery(OutputBuffer, (ULONG)length, IoControlCode);
+
+	if (origbuffer)
+		free(origbuffer);
+
+	if (fname)
+		free(fname);
+
+	set_lasterrors(&lasterrors);
 
 	return ret;
 }
@@ -728,8 +1024,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryAttributesFile,
 	__out  PFILE_BASIC_INFORMATION FileInformation
 ) {
 	NTSTATUS ret = Old_NtQueryAttributesFile(ObjectAttributes, FileInformation);
-
-	LOQ_ntstatus("filesystem", "O", "FileName", ObjectAttributes);
+	if (ObjectAttributes)
+		LOQ_ntstatus("filesystem", "O", "FileName", ObjectAttributes);
+	else
+		LOQ_ntstatus("filesystem", "");
 	return ret;
 }
 
@@ -1349,10 +1647,8 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExA(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "s", "DirectoryName", lpDirectoryName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
-		lpTotalNumberOfBytes->QuadPart = 256060514304L;
+		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
 	return ret;
@@ -1366,10 +1662,8 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExW(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "u", "DirectoryName", lpDirectoryName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
-		lpTotalNumberOfBytes->QuadPart = 256060514304L;
+		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
 	return ret;
@@ -1384,12 +1678,10 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceA(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "s", "RootPathName", lpRootPathName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
-				*lpTotalNumberOfClusters = (DWORD)(256060514304L / (*lpSectorsPerCluster * *lpBytesPerSector));
+				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1409,12 +1701,10 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceW(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "u", "RootPathName", lpRootPathName);
-
-	/* Fake harddrive size to 256GB */
 	if (!g_config.no_stealth) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
-				*lpTotalNumberOfClusters = (DWORD)(256060514304L / (*lpSectorsPerCluster * *lpBytesPerSector));
+				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1494,6 +1784,34 @@ HOOKDEF(BOOL, WINAPI, GetVolumeInformationByHandleW,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
+	_In_		HANDLE                    hFile,
+	_In_		FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
+	_In_		LPVOID                    lpFileInformation,
+	_In_		DWORD                     dwBufferSize
+) {
+	if (FileInformationClass == FileDispositionInfo && dropped_count < g_config.dropped_limit) {
+		wchar_t *fname = calloc(32768, sizeof(wchar_t));
+		wchar_t *path = calloc(32768, sizeof(wchar_t));
+
+		path_from_handle(hFile, fname, 32768);
+		ensure_absolute_unicode_path(path, fname);
+#ifdef DEBUG_COMMENTS
+		DebugOutput("SetFileInformationByHandle: FILE_DEL %ws\n", path);
+#endif
+		unsigned int len = lstrlenW(path);
+		pipe("FILE_DEL:%S", len, path);
+		dropped_count++;
+
+		free(fname);
+		free(path);
+	}
+
+	BOOL ret = Old_SetFileInformationByHandle(hFile, FileInformationClass, lpFileInformation, dwBufferSize);
+
+	return ret;
+}
+
 HOOKDEF(HRESULT, WINAPI, SHGetFolderPathW,
 	_In_ HWND hwndOwner,
 	_In_ int nFolder,
@@ -1519,8 +1837,7 @@ HOOKDEF(HRESULT, WINAPI, SHGetKnownFolderPath,
 
 	get_lasterrors(&lasterrors);
 	memcpy(&id1, rfid, sizeof(id1));
-	sprintf(idbuf, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X", id1.Data1, id1.Data2, id1.Data3,
-		id1.Data4[0], id1.Data4[1], id1.Data4[2], id1.Data4[3], id1.Data4[4], id1.Data4[5], id1.Data4[6], id1.Data4[7]);
+	uuid_to_string(id1, idbuf);
 	LOQ_hresult("filesystem", "shu", "FolderID", idbuf, "Flags", dwFlags, "Path", ppszPath ? *ppszPath : NULL);
 	set_lasterrors(&lasterrors);
 	return ret;
@@ -1592,6 +1909,21 @@ HOOKDEF(HANDLE, WINAPI, FindFirstChangeNotificationW,
 	HANDLE ret = Old_FindFirstChangeNotificationW(lpPathName, bWatchSubtree, dwNotifyFilter);
 
 	LOQ_handle("filesystem", "Fhi", "PathName", lpPathName, "NotifyFilter", dwNotifyFilter, "WatchSubtree", bWatchSubtree);
+
+	return ret;
+}
+
+HOOKDEF(DWORD, WINAPI, RmStartSession,
+	__out DWORD *pSessionHandle,
+	_Reserved_ DWORD dwSessionFlags,
+	__out WCHAR strSessionKey[]
+) {
+	DWORD ret = Old_RmStartSession(pSessionHandle, dwSessionFlags, strSessionKey);
+
+	if (NT_SUCCESS(ret))
+		LOQ_ntstatus("filesystem", "u", "SessionKey", strSessionKey);
+	else
+		LOQ_ntstatus("filesystem", "");
 
 	return ret;
 }

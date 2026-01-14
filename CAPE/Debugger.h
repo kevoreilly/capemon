@@ -1,3 +1,5 @@
+#include "..\lookup.h"
+
 #pragma once
 
 #define BP_EXEC			0x00
@@ -87,11 +89,19 @@ typedef struct ThreadBreakpoints
 	struct ThreadBreakpoints	*NextThreadBreakpoints;
 } THREADBREAKPOINTS, *PTHREADBREAKPOINTS;
 
+typedef struct SoftBP
+{
+	BYTE			InstructionByte;
+	unsigned int	Length;
+} SOFTBP, *PSOFTBP;
+
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);
 typedef BOOL (cdecl *GUARD_PAGE_HANDLER)(struct _EXCEPTION_POINTERS*);
 typedef BOOL (cdecl *SAMPLE_HANDLER)(struct _EXCEPTION_POINTERS*);
 
 typedef void (WINAPI *PWIN32ENTRY)();
+
+typedef void (WINAPI *GetSystemTimePreciseAsFileTime_t)(LPFILETIME);
 
 #ifdef __cplusplus
 extern "C" {
@@ -125,8 +135,7 @@ BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, int* Register, int Size
 BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
-BOOL SetSoftwareBreakpoint(LPVOID Address);
-BOOL SetSyscallBreakpoint(LPVOID Address);
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
 
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);
@@ -162,6 +171,9 @@ BOOL ContextClearCurrentBreakpoint(PCONTEXT Context);
 BOOL ContextClearAllBreakpoints(PCONTEXT Context);
 BOOL ContextClearDebugRegisters(PCONTEXT Context);
 BOOL ClearSingleStepMode(PCONTEXT Context);
+BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
+void ClearSoftwareBreakpointsInRange(LPVOID Base, SIZE_T Size);
+void ClearSoftwareBreakpoints();
 
 // Misc
 BOOL InitNewThreadBreakpoints(DWORD ThreadId);
@@ -169,7 +181,7 @@ BOOL InitialiseDebugger(void);
 BOOL ResumeFromBreakpoint(PCONTEXT Context);
 void OutputThreadBreakpoints(DWORD ThreadId);
 void DebugOutputThreadBreakpoints();
-BOOL PatchByte(LPVOID Address, BYTE Byte);
+BOOL PatchBytes(LPVOID Address, const char* HexBytes);
 
 void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords);
 

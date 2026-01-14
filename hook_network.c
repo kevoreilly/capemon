@@ -789,6 +789,26 @@ HOOKDEF(BOOL, WINAPI, InternetSetOptionA,
 	return ret;
 }
 
+PCHAR get_ip_list(PIP4_ARRAY server_list) {
+	if (!server_list || server_list->AddrCount)
+		return NULL;
+
+	size_t ip_list_size = server_list->AddrCount * (INET_ADDRSTRLEN + strlen(CRLF));
+	char* ip_list = (char*)calloc(1, ip_list_size);
+	if (ip_list) {
+		for (unsigned int i = 0; i < server_list->AddrCount; i++) {
+			struct in_addr ipAddr;
+			ipAddr.S_un.S_addr = server_list->AddrArray[i];
+			_snprintf_s(ip_list, ip_list_size, _TRUNCATE, "%s\n", inet_ntoa(ipAddr));
+		}
+		return ip_list;
+	}
+	else
+		DebugOutput("get_ip_list: Memory allocation failed.\n");
+
+	return NULL;
+}
+
 HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_A,
 	__in		 PCSTR lpstrName,
 	__in		 WORD wType,
@@ -803,7 +823,14 @@ HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_A,
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
 
-	LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
+	char* ip_list = get_ip_list(pExtra);
+
+	if (ip_list) {
+		LOQ_zero("network", "sihs", "Name", lpstrName, "Type", wType, "Options", Options, "DNS Servers", ip_list);
+		free(ip_list);
+	}
+	else
+		LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
 	return ret;
 }
 
@@ -821,7 +848,14 @@ HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_UTF8,
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
 
-	LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
+	char* ip_list = get_ip_list(pExtra);
+
+	if (ip_list) {
+		LOQ_zero("network", "sihs", "Name", lpstrName, "Type", wType, "Options", Options, "DNS Servers", ip_list);
+		free(ip_list);
+	}
+	else
+		LOQ_zero("network", "sih", "Name", lpstrName, "Type", wType, "Options", Options);
 	return ret;
 }
 
@@ -839,7 +873,14 @@ HOOKDEF(DNS_STATUS, WINAPI, DnsQuery_W,
 	if (g_config.url_of_interest && g_config.suspend_logging)
 		g_config.suspend_logging = FALSE;
 
-	LOQ_zero("network", "uih", "Name", lpstrName, "Type", wType, "Options", Options);
+	char* ip_list = get_ip_list(pExtra);
+
+	if (ip_list) {
+		LOQ_zero("network", "uihs", "Name", lpstrName, "Type", wType, "Options", Options, "DNS Servers", ip_list);
+		free(ip_list);
+	}
+	else
+		LOQ_zero("network", "uih", "Name", lpstrName, "Type", wType, "Options", Options);
 	return ret;
 }
 
@@ -870,6 +911,27 @@ HOOKDEF(int, WINAPI, GetAddrInfoW,
 		g_config.suspend_logging = FALSE;
 
 	LOQ_zero("network", "uu", "NodeName", pNodeName, "ServiceName", pServiceName);
+	return ret;
+}
+
+HOOKDEF(int, WINAPI, GetAddrInfoExW,
+	_In_opt_  PCWSTR pName,
+	_In_opt_  PCWSTR pServiceName,
+	_In_      DWORD dwNameSpace,
+	_In_opt_  LPGUID lpNspId,
+	_In_opt_  const ADDRINFOEXW *hints,
+	_Out_	  PADDRINFOEXW *ppResult,
+	_In_opt_  PVOID timeout,
+	_In_opt_  LPOVERLAPPED lpOverlapped,
+	_In_opt_  PVOID lpCompletionRoutine,
+	_In_opt_  LPHANDLE lpHandle
+) {
+	int ret = Old_GetAddrInfoExW(pName, pServiceName, dwNameSpace, lpNspId, hints, ppResult, timeout, lpOverlapped, lpCompletionRoutine, lpHandle);
+
+	if (g_config.url_of_interest && g_config.suspend_logging)
+		g_config.suspend_logging = FALSE;
+
+	LOQ_zero("network", "uu", "Name", pName, "ServiceName", pServiceName);
 	return ret;
 }
 
@@ -990,7 +1052,10 @@ HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
 )
 {
 	HRESULT ret = Old_UrlCanonicalizeW(pszUrl, pszCanonicalized, pcchCanonicalized, dwFlags);
-	LOQ_hresult("network", "u", "Url", pszUrl);
+	if (!wcsnicmp(pszUrl, L"C:", 2))
+		LOQ_hresult("filesystem", "u", "Url", pszUrl);
+	else
+		LOQ_hresult("network", "u", "Url", pszUrl);
 	return ret;
 }
 

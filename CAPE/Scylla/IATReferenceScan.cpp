@@ -404,7 +404,9 @@ void IATReferenceScan::patchNewIat(DWORD_PTR stdImagebase, DWORD_PTR newIatBaseA
 			*((DWORD *)memory) = patchBytes;
 		}
 		
+#ifdef DEBUG_COMMENTS
 		DebugOutput("address %X old %X new %X",ref->addressVA, ref->targetPointer, newIatAddressPointer);
+#endif
 	}
 }
 

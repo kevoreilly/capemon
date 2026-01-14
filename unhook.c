@@ -24,7 +24,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include <Sddl.h>
+#include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
+#include "CAPE\Unpacker.h"
 
 #define UNHOOK_MAXCOUNT 2048
 #define UNHOOK_BUFSIZE 32
@@ -33,7 +36,6 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
 extern int DoProcessDump();
 extern BOOL ProcessDumped;
-extern void ClearAllBreakpoints();
 extern void DebuggerShutdown(), DumpStrings();
 extern HANDLE DebuggerLog, TlsLog;
 
@@ -130,6 +132,22 @@ void invalidate_regions_for_hook(const hook_t *hook)
 	}
 }
 
+void remove_hook(const char *funcname)
+{
+	for (uint32_t idx = 0; idx < g_index; idx++) {
+		if (g_addr[idx] && !stricmp(g_unhook_hooks[idx]->funcname, funcname)) {
+			DWORD old_protect;
+			if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+				return;
+			memcpy(g_addr[idx], g_orig[idx], g_length[idx]);
+			VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
+			/* get the unhook watcher to ignore this region */
+			g_hook_reported[idx] = 1;
+			g_addr[idx] = 0;
+		}
+	}
+}
+
 void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
 {
 	lasterror_t lasterror;
@@ -139,10 +157,40 @@ void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
 
 	__try {
 		for (idx = 0; idx < g_index; idx++) {
+			DWORD old_protect;
 			if ((ULONG_PTR)g_addr[idx] < start || ((ULONG_PTR)g_addr[idx] + g_length[idx]) > end)
 				continue;
 			if (!memcmp(g_orig[idx], g_addr[idx], g_length[idx])) {
+				if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+					return;
 				memcpy(g_addr[idx], g_our[idx], g_length[idx]);
+				VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
+				log_hook_restoration(g_unhook_hooks[idx]);
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		;
+	}
+
+	set_lasterrors(&lasterror);
+}
+
+
+void restore_hook(uint32_t idx)
+{
+	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+
+	__try {
+		for (uint32_t i = 0; i < g_index; i++) {
+			if (i == idx) {
+				DWORD old_protect;
+				if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+					return;
+				memcpy(g_addr[idx], g_our[idx], g_length[idx]);
+				VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
 				log_hook_restoration(g_unhook_hooks[idx]);
 			}
 		}
@@ -177,14 +225,19 @@ static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 		for (idx = 0; idx < g_index; idx++) {
 			if (g_unhook_hooks[idx]->is_hooked && g_hook_reported[idx] == 0) {
 				char *tmpbuf = NULL;
-				if (!is_valid_address_range((ULONG_PTR)g_addr[idx], g_length[idx])) {
+				if (!is_valid_address_range((ULONG_PTR)g_addr[idx], g_length[idx]))
 					continue;
-				}
 				__try {
 					int is_modification = 1;
 					// Check whether this memory region still equals what we made it.
-					if (!memcmp(g_addr[idx], g_our[idx], g_length[idx])) {
+					if (!memcmp(g_addr[idx], g_our[idx], g_length[idx]))
 						continue;
+
+					// Attempt restoration
+					if (g_config.hook_restore) {
+						restore_hook(idx);
+						if (!memcmp(g_addr[idx], g_our[idx], g_length[idx]))
+							continue;
 					}
 
 					// If the memory region matches the original contents, then it
@@ -279,6 +332,11 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	else
 		DebugOutput("Terminate Event: Skipping dump of process %d\n", ProcessId);
 
+	if (CurrentRegion) {
+		ProcessTrackedRegion(CurrentRegion);
+		CurrentRegion = NULL;
+	}
+
 	file_handle_terminate();
 
 	if (g_config.yarascan)
@@ -291,7 +349,7 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	if (g_terminate_event_handle) {
 		SetEvent(g_terminate_event_handle);
 		CloseHandle(g_terminate_event_handle);
-		DebugOutput("Terminate Event: CAPE shutdown complete for process %d\n", ProcessId);
+		DebugOutput("Terminate Event: monitor shutdown complete for process %d\n", ProcessId);
 	}
 	else
 		DebugOutput("Terminate Event: Shutdown complete for process %d but failed to inform analyzer.\n", ProcessId);
