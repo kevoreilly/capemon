@@ -211,9 +211,6 @@ struct _g_config {
 	// for dumping of crypto API ImportKey buffers
 	int dump_keys;
 
-	// for PlugX config & payload extraction
-	int plugx;
-
 	// syscall hooks
 	int syscall;
 

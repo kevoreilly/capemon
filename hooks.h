@@ -1985,12 +1985,6 @@ HOOKDEF(BOOL, WINAPI, GetUserNameW,
 	_Inout_  LPDWORD lpnSize
 );
 
-HOOKDEF(void, WINAPIV, memcpy,
-   void *dest,
-   const void *src,
-   size_t count
-);   
-
 HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 	_In_opt_ const GUID   *ClassGuid,
 	_In_opt_	   PCSTR Enumerator,

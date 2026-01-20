@@ -1365,11 +1365,6 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Scans/dumps while loader lock held disabled.\n");
 		}
-		else if (!stricmp(key, "plugx")) {
-			g_config.plugx = value[0] == '1';
-			if (g_config.plugx)
-				DebugOutput("PlugX package enabled.\n");
-		}
 		else if (!stricmp(key, "syscall")) {
 			g_config.syscall = value[0] == '1';
 			if (g_config.syscall)
