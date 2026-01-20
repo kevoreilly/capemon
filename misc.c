@@ -918,21 +918,6 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
-BOOL test_is_in_dll_range(ULONG_PTR addr)
-{
-	DWORD i;
-	DebugOutput("is_in_dll_range: addr 0x%p", addr);
-	for (i = 0; i < loaded_dlls; i++) {
-		DebugOutput("is_in_dll_range: module %d start 0x%p end 0x%p", i, dll_ranges[i].start, dll_ranges[i].end);
-		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end) {
-			DebugOutput("is_in_dll_range: found!");
-			return TRUE;
-		}
-	}
-	DebugOutput("is_in_dll_range: NOT found :-(");
-	return FALSE;
-}
-
 ULONG_PTR base_of_dll_of_interest;
 
 void set_dll_of_interest(ULONG_PTR BaseAddress)
