@@ -28,6 +28,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
+extern BOOL remove_dll_range(ULONG_PTR addr);
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 extern void parse_config_line(char* line);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
@@ -282,6 +283,13 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							if (TraceRunning)
 								DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara ", user_data);
 							DumpRegion(user_data);
+						}
+						if (!_stricmp("coverage", OptionLine))
+						{
+							if (remove_dll_range((ULONG_PTR)user_data))
+								DebugOutput("YaraScan: Region at 0x%p removed from dll range for coverage.", user_data);
+							else
+								DebugOutput("YaraScan: Failed to remove region at 0x%p from dll range for coverage.", user_data);
 						}
 						if (!_stricmp("clear", OptionLine))
 						{
