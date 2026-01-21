@@ -365,10 +365,6 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtQueryInformationAtom),
 
 	// Misc Hooks
-#ifndef _WIN64
-	HOOK(ntdll, memcpy),
-#endif
-	HOOK(msvcrt, memcpy),
 	//HOOK(ntdll, RtlMoveMemory),
 	HOOK(kernel32, GetCommandLineA),
 	HOOK(kernel32, GetCommandLineW),
@@ -544,6 +540,8 @@ hook_t full_hooks[] = {
 	HOOK(iphlpapi, GetAdaptersAddresses),
 	HOOK(iphlpapi, GetAdaptersInfo),
 	HOOK(urlmon, CoInternetSetFeatureEnabled),
+	HOOK(ole32, MkParseDisplayName),
+	HOOK(urlmon, MkParseDisplayNameEx),
 
 	// Service Hooks
 	HOOK(advapi32, OpenSCManagerA),
@@ -1294,10 +1292,6 @@ hook_t office_hooks[] = {
 	HOOK(kernel32, SwitchToThread),
 
 	// Misc Hooks
-#ifndef _WIN64
-	//HOOK(ntdll, memcpy),
-#endif
-	//HOOK(msvcrt, memcpy),
 	//HOOK(ntdll, RtlMoveMemory),
 	HOOK(kernel32, OutputDebugStringA),
 	HOOK(kernel32, OutputDebugStringW),

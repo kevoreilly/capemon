@@ -32,6 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\Debugger.h"
 #include "CAPE\Injection.h"
 #include "CAPE\Unpacker.h"
+#include "CAPE\YaraHarness.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -1211,6 +1212,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
 		if (g_config.unpacker)
 			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
+		if (g_config.yarascan && NumberOfBytesToProtect)
+			YaraScan(*BaseAddress, *NumberOfBytesToProtect);
 	}
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
@@ -1292,6 +1295,8 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 		if (g_config.unpacker)
 			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
+		if (g_config.yarascan)
+			YaraScan(lpAddress, dwSize);
 	}
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && NtCurrentProcess() == hProcess &&

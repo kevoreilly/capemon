@@ -1985,12 +1985,6 @@ HOOKDEF(BOOL, WINAPI, GetUserNameW,
 	_Inout_  LPDWORD lpnSize
 );
 
-HOOKDEF(void, WINAPIV, memcpy,
-   void *dest,
-   const void *src,
-   size_t count
-);   
-
 HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 	_In_opt_ const GUID   *ClassGuid,
 	_In_opt_	   PCSTR Enumerator,
@@ -3787,6 +3781,19 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_In_	DWORD    dwFlags
 );
 
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayName,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+);
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayNameEx,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+);
 HOOKDEF(UINT, WINAPI, MsiInstallProductA,
 	_In_	LPCSTR	szPackagePath,
 	_In_	LPCSTR	szCommandLine

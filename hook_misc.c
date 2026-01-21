@@ -43,7 +43,6 @@ extern BOOL TraceRunning;
 extern BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 
 LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
-BOOL PlugXConfigDumped, CompressedPE;
 DWORD ExportAddress;
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
@@ -741,30 +740,14 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 		*FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
 
 	if ((NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
-		if (g_config.unpacker || g_config.plugx) {
-			DebugOutput("RtlDecompressBuffer hook: scanning region 0x%x size 0x%x.\n", UncompressedBuffer, *FinalUncompressedSize);
+		if (g_config.unpacker) {
+			DebugOutput("RtlDecompressBuffer hook: scanning region 0x%p size 0x%x.\n", UncompressedBuffer, *FinalUncompressedSize);
 			if (g_config.yarascan)
 				YaraScan(UncompressedBuffer, *FinalUncompressedSize);
-			if (*(WORD*)UncompressedBuffer == PLUGX_SIGNATURE) {
-                DebugOutput("PlugX header - correcting");
-				PBYTE PEImage = (BYTE*)malloc(*FinalUncompressedSize);
-				if (PEImage) {
-					g_config.plugx = 1;
-					memcpy(PEImage, UncompressedBuffer, *FinalUncompressedSize);
-					*(WORD*)PEImage = IMAGE_DOS_SIGNATURE;
-					LONG e_lfanew = *(LONG*)(PEImage + FIELD_OFFSET(IMAGE_DOS_HEADER, e_lfanew));
-					if (*(DWORD*)(PEImage + e_lfanew) == PLUGX_SIGNATURE)
-						*(DWORD*)(PEImage + e_lfanew) = IMAGE_NT_SIGNATURE;
-					CapeMetaData->TypeString = "PlugX Payload";
-					DumpPEsInRange(PEImage, *FinalUncompressedSize);
-					free(PEImage);
-				}
-			}
-			else if (g_config.plugx)
-				CapeMetaData->TypeString = "PlugX Payload";
-			else
-				CapeMetaData->DumpType = COMPRESSION;
-			CompressedPE = DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
+			CapeMetaData->DumpType = COMPRESSION;
+			DumpPEsInRange(UncompressedBuffer, *FinalUncompressedSize);
+			CapeMetaData->DumpType = UNPACKED_SHELLCODE;
+			DumpMemory(UncompressedBuffer, *FinalUncompressedSize);
 		}
 	}
 
@@ -1264,42 +1247,6 @@ HOOKDEF(HRESULT, WINAPI, PStoreCreateInstance,
 	HRESULT ret = Old_PStoreCreateInstance(ppProvider, pProviderID, pReserved, dwFlags);
 	LOQ_hresult("misc", "");
 	return ret;
-}
-
-HOOKDEF(void, WINAPIV, memcpy,
-   void *dest,
-   const void *src,
-   size_t count
-)
-{
-	Old_memcpy(dest, src, count);
-
-	if ((g_config.plugx || CompressedPE) && !PlugXConfigDumped &&
-	(
-		count == 0xae4  ||	// 2788
-		count == 0xbe4  ||	// 3044
-		count == 0x150c ||	// 5388
-		count == 0x1510 ||	// 5392
-		count == 0x1516 ||	// 5398
-		count == 0x170c ||	// 5900
-		count == 0x1b18 ||	// 6936
-		count == 0x1d18 ||	// 7448
-		count == 0x2540 ||	// 9536
-		count == 0x254c ||	// 9668
-		count == 0x2d58 ||	// 11608
-		count == 0x36a4 ||	// 13988
-		count == 0x4ea4		// 20132
-		//count > 0xa00 &&	//fuzzy matching (2560)
-		//count < 0x5000	//fuzzy matching (20480)
-	))
-	{
-		DebugOutput("PlugX config detected (size 0x%d), dumping.\n", count);
-		CapeMetaData->TypeString = "PlugX Config";
-		DumpMemoryRaw((BYTE*)src, count);
-		PlugXConfigDumped = TRUE;
-	}
-
-	return;
 }
 
 HOOKDEF(void, WINAPIV, srand,
