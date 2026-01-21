@@ -918,6 +918,21 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
+BOOL remove_dll_range(ULONG_PTR addr)
+{
+    DWORD i;
+    for (i = 0; i < loaded_dlls; i++) {
+        if (addr < dll_ranges[i].start || addr >= dll_ranges[i].end)
+            continue;
+		dll_ranges[i] = dll_ranges[loaded_dlls - 1];
+		dll_ranges[loaded_dlls - 1].start = 0;
+		dll_ranges[loaded_dlls - 1].end = 0;
+		loaded_dlls--;
+		return TRUE;
+    }
+	return FALSE;
+}
+
 ULONG_PTR base_of_dll_of_interest;
 
 void set_dll_of_interest(ULONG_PTR BaseAddress)
