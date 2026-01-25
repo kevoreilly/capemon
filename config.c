@@ -1322,7 +1322,7 @@ void parse_config_line(char* line)
 		}
 		else if (!stricmp(key, "yara-timeout")) {
 			g_config.yara_timeout = (int)strtol(value, NULL, 10);
-			if (g_config.yara_timeout == 0)
+			if (g_config.yara_timeout <= 0)
 				DebugOutput("In-monitor YARA scan timeout set to unlimited.\n");
 			else
 				DebugOutput("In-monitor YARA scan timeout set to %d seconds.\n", g_config.yara_timeout);
