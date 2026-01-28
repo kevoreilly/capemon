@@ -34,7 +34,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `trace-times` / `tt` | Boolean | Enable timing information in traces. |
 | `buffer-max` | Integer | Maximum size for the log buffer. |
 | `large-buffer-max` | Integer | Maximum size for large log buffers. |
-| `no-logs` | Boolean | Divert debugger logs (value set to `g_config.no_logs`). |
+| `no-logs` | Integer | Divert debugger logs (1 - divert to analysis log, 2 - throw away completely) |
 | `disable-logging` | Boolean | Completely disable the analysis log. |
 
 ## Hooking Behavior
@@ -54,7 +54,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `hook-watch` | Boolean | Enable monitoring/watching of hooks integrity. |
 | `exclude-apis` | List | Colon-separated list of APIs to exclude from hooking. |
 | `exclude-dlls` | List | Colon-separated list of DLLs to exclude from hooking. |
-| `unhook-apis` | List | Colon-separated list of specific APIs to unhook at runtime. |
+| `unhook-apis` | List | Colon-separated list of already hooked APIs to unhook at runtime. |
 | `api-rate-cap` | Integer | Limit the rate of API logging. |
 | `api-cap` | Integer | Limit the total number of API logs allowed. |
 
@@ -71,7 +71,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `sys32_ctimehigh` | Hex | Spoof the high part of the creation time of the System32 directory. |
 | `fake-rdtsc` | Boolean | Enable fake RDTSC (Read Time-Stamp Counter) results. |
 | `nop-rdtscp` | Boolean | NOP (No Operation) the RDTSCP instruction. |
-| `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code. |
+| `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code (enabled by default). |
 | `ntdll-unhook` | Boolean | Enable protection against `ntdll` unhooking (via `NtReadFile`). |
 | `ntdll-remap` | Boolean | Enable `ntdll` remapping protection. |
 | `protected-pids` | Boolean | Enable protection for critical PIDs (prevent termination/injection). |
@@ -82,9 +82,9 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | :--- | :--- | :--- |
 | `dump-limit` | Integer | Limit the number of payload dumps (default: 10). |
 | `dropped-limit` | Integer | Limit the number of dropped files logged (default: 100). |
-| `procdump` | Boolean | Enable process memory dumping on exit/timeout. |
+| `procdump` | Integer | Enable process memory dumping on exit/timeout (1 - dump if changed from image (default), 2 - always dump). |
 | `procmemdump` | Boolean | Enable *full* process memory dumping. |
-| `import-reconstruction` | Boolean | Attempt import reconstruction on process dumps (slow). |
+| `import-reconstruction` | Boolean | Perform import reconstruction on process dumps. |
 | `dump-on-api` | List | Dump the calling module when specific APIs (colon-separated) are called. |
 | `dump-on-api-type` | Integer | Type of dump to perform for `dump-on-api`. |
 | `dump-config-region` | Boolean | Dump memory regions suspected to contain C2 configuration. |
@@ -94,14 +94,14 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `jit-dumps` | Integer | Limit for .NET JIT cache dumps. |
 | `tlsdump` | Boolean | Enable dumping of TLS secrets. |
 | `regdump` | Boolean | Enable dumping of Registry data. |
-| `unpacker` | Integer | `1` = Passive unpacking, `2` = Active unpacking. |
-| `injection` | Boolean | Enable capture of injected payloads between processes. |
+| `unpacker` | Integer | `1` = Passive unpacking (default), `2` = Active unpacking. |
+| `injection` | Boolean | Enable capture of injected payloads between processes (enabled by default). |
 
 ## Debugging & Tracing (Advanced)
 
 | Option | Value Type | Description |
 | :--- | :--- | :--- |
-| `debugger` | Boolean | Enable the internal debugger engine (implicitly set by bp/trace options). |
+| `debugger` | Boolean | Enable the internal debugger engine (implicitly set by bp/trace options, not used directly). |
 | `bp0`...`bp3` | Addr/String | Set hardware breakpoint. Format: `0xAddress`, `Module:Export`, `zero` (clear), or `ep` (entrypoint). |
 | `br0`, `br1` | Addr/String | Set "break-on-return" addresses. |
 | `bp` | List | Colon-separated list of addresses for software breakpoints. |
