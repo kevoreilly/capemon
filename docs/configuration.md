@@ -52,6 +52,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `native` | Boolean | Install only native (ntdll) hooks. |
 | `syscall` | Boolean | Enable syscall hooks. |
 | `hook-watch` | Boolean | Enable monitoring/watching of hooks integrity. |
+| `coverage-modules` | List | Colon-separated list of DLLs to include in monitoring (exclude from 'dll range' filtering). |
 | `exclude-apis` | List | Colon-separated list of APIs to exclude from hooking. |
 | `exclude-dlls` | List | Colon-separated list of DLLs to exclude from hooking. |
 | `unhook-apis` | List | Colon-separated list of already hooked APIs to unhook at runtime. |
