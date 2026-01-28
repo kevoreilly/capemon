@@ -45,7 +45,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `hook-range` | Integer | Limit the number of applied hooks (useful for testing). |
 | `hook-low` | Boolean | (x64) Allocate hook trampolines in low memory (<2GB). |
 | `hook-restore` | Boolean | Attempt to restore hooks if modification is detected by the unhook thread. |
-| `disable_hook_content` | Integer | `1` = Remove payload of non-critical hooks, `2` = Remove payload of all hooks. |
+| `disable-hook-content` | Integer | `1` = Remove payload of non-critical hooks, `2` = Remove payload of all hooks. |
 | `hook-protect` | Boolean | Enable write protection on hook pages. |
 | `minhook` | Boolean | Enable only a minimal set of hooks. |
 | `zerohook` | Boolean | Disable all hooks except those essential for process monitoring. |
@@ -65,8 +65,10 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `no-stealth` | Boolean | Disable anti-anti-VM/sandbox tricks. |
 | `force-sleepskip` | Boolean | `0` = Disable sleep skipping, `1` = Skip all sleeps. |
 | `serial` | Hex | Spoof the system volume serial number. |
-| `sysvol_ctimelow` / `high` | Hex | Spoof the creation time of the system volume. |
-| `sys32_ctimelow` / `high` | Hex | Spoof the creation time of the System32 directory. |
+| `sysvol_ctimelow` | Hex | Spoof the low part of the creation time of the system volume. |
+| `sysvol_ctimehigh` | Hex | Spoof the high part of the creation time of the system volume. |
+| `sys32_ctimelow` | Hex | Spoof the low part of the creation time of the System32 directory. |
+| `sys32_ctimehigh` | Hex | Spoof the high part of the creation time of the System32 directory. |
 | `fake-rdtsc` | Boolean | Enable fake RDTSC (Read Time-Stamp Counter) results. |
 | `nop-rdtscp` | Boolean | NOP (No Operation) the RDTSCP instruction. |
 | `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code. |
@@ -82,7 +84,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `dropped-limit` | Integer | Limit the number of dropped files logged (default: 100). |
 | `procdump` | Boolean | Enable process memory dumping on exit/timeout. |
 | `procmemdump` | Boolean | Enable *full* process memory dumping. |
-| `import_reconstruction` | Boolean | Attempt import reconstruction on process dumps (slow). |
+| `import-reconstruction` | Boolean | Attempt import reconstruction on process dumps (slow). |
 | `dump-on-api` | List | Dump the calling module when specific APIs (colon-separated) are called. |
 | `dump-on-api-type` | Integer | Type of dump to perform for `dump-on-api`. |
 | `dump-config-region` | Boolean | Dump memory regions suspected to contain C2 configuration. |
