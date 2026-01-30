@@ -380,6 +380,7 @@ hook_t full_hooks[] = {
 	HOOK(kernel32, SetUnhandledExceptionFilter),
 	HOOK(kernel32, UnhandledExceptionFilter),
 	HOOK(ntdll, RtlAddVectoredExceptionHandler),
+	HOOK(ntdll, RtlRemoveVectoredExceptionHandler),
 	HOOK(kernel32, SetErrorMode),
 	HOOK(ntdll, LdrGetDllHandle),
 	HOOK(ntdll, LdrGetDllHandleEx),
