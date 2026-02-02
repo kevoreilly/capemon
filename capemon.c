@@ -29,7 +29,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "config.h"
 #include "unhook.h"
-#include "bson.h"
 #include "Shlwapi.h"
 
 // Allow debug mode to be turned on at compilation time.
@@ -553,9 +552,9 @@ static void free_func(void *ptr)
 
 void init_private_heap(void)
 {
-	bson_set_malloc_func(malloc_func);
-	bson_set_realloc_func(realloc_func);
-	bson_set_free_func(free_func);
+	//bson_set_malloc_func(malloc_func);
+	//bson_set_realloc_func(realloc_func);
+	//bson_set_free_func(free_func);
 #ifdef USE_PRIVATE_HEAP
 	g_heap = HeapCreate(0, 4 * 1024 * 1024, 0);
 #endif

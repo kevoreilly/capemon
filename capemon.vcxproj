@@ -269,7 +269,12 @@
     <ClCompile Include="log.c" />
     <ClCompile Include="lookup.c" />
     <ClCompile Include="misc.c" />
+    <ClCompile Include="nanopb\pb_common.c" />
+    <ClCompile Include="nanopb\pb_decode.c" />
+    <ClCompile Include="nanopb\pb_encode.c" />
     <ClCompile Include="pipe.c" />
+    <ClCompile Include="protobuf_wrapper.c" />
+    <ClCompile Include="schema.pb.c" />
     <ClCompile Include="tests\apc-inject.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -468,8 +473,14 @@
     <ClInclude Include="log.h" />
     <ClInclude Include="lookup.h" />
     <ClInclude Include="misc.h" />
+    <ClInclude Include="nanopb\pb.h" />
+    <ClInclude Include="nanopb\pb_common.h" />
+    <ClInclude Include="nanopb\pb_decode.h" />
+    <ClInclude Include="nanopb\pb_encode.h" />
     <ClInclude Include="ntapi.h" />
     <ClInclude Include="pipe.h" />
+    <ClInclude Include="protobuf_wrapper.h" />
+    <ClInclude Include="schema.pb.h" />
     <ClInclude Include="unhook.h" />
     <ClInclude Include="utf8.h" />
   </ItemGroup>
