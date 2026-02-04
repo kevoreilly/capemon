@@ -24,6 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <ncrypt.h>
 #include <Wbemidl.h>
 
+#pragma comment(lib, "wbemuuid.lib")
+
 //
 // File Hooks
 //
@@ -1263,6 +1265,18 @@ HOOKDEF(HRESULT, WINAPI, CoGetObject,
 );
 
 // WMI Hooks
+HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
+	_In_	PVOID			_this,
+	_In_	const BSTR		strNetworkResource,
+	_In_	const BSTR		strUser,
+	_In_	const BSTR		strPassword,
+	_In_	const BSTR		strLocale,
+	_In_	long			lSecurityFlags,
+	_In_	const BSTR		strAuthority,
+	_In_	IWbemContext	*pCtx,
+	_Out_	IWbemServices	**ppNamespace
+);
+
 HOOKDEF(HRESULT, WINAPI, WMI_Get,
 	_In_		PVOID	_this,
 	_In_		LPCWSTR	wszName,
@@ -1337,7 +1351,6 @@ HOOKDEF(HRESULT, WINAPI, WMI_GetObjectAsync,
 	_In_	IWbemObjectSink	*pResultHandler
 );
 
-/*
 HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnum,
 	_In_	PVOID					_this,
 	_In_	const BSTR				strFilter,
@@ -1353,7 +1366,6 @@ HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnumAsync,
 	_In_	IWbemContext	*pCtx,
 	_In_	IWbemObjectSink	*pResponseHandler
 );
-*/
 
 // End of WMI Hooks
 

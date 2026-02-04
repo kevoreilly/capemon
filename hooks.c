@@ -71,6 +71,25 @@ void disable_tail_call_optimization(void)
 #define HOOK_EXERVA(funcname, timestamp, rva) {NULL, #funcname, NULL, NULL, \
 	&New_##funcname, (void **) &Old_##funcname, NULL, FALSE, FALSE, 0, FALSE, timestamp, rva}
 
+#define HOOK_COM(moniker) {NULL, #moniker, NULL, NULL, \
+    &New_##moniker, (void **) &Old_##moniker, NULL, FALSE, FALSE, 0, FALSE, 0, FALSE}
+
+#define HOOK_COM_WITHNAME(friendlyname, funcname) {NULL, #funcname, NULL, NULL, \
+    &New_##friendlyname, (void **) &Old_##friendlyname, NULL, FALSE, FALSE, 0, FALSE, 0, FALSE}
+
+
+com_hook_t g_com_hooks[] = {
+	{ HOOK_COM(WbemLocator_ConnectServer), &CLSID_WbemLocator, &IID_IWbemLocator },
+	{ HOOK_COM_WITHNAME(WMI_ExecQuery, IWbemServices_ExecQuery), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_ExecQueryAsync, IWbemServices_ExecQueryAsync), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_CreateInstanceEnum, IWbemServices_CreateInstanceEnum), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_CreateInstanceEnumAsync, IWbemServices_CreateInstanceEnumAsync), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_GetObject, IWbemServices_GetObjectW), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_GetObjectAsync, IWbemServices_GetObjectAsync), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_ExecMethod, IWbemServices_ExecMethod), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_ExecMethodAsync, IWbemServices_ExecMethodAsync), NULL, NULL },
+};
+
 hook_t full_hooks[] = {
 	// Process Hooks
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
@@ -187,15 +206,6 @@ hook_t full_hooks[] = {
 	HOOK_WITHNAME(fastprox, WMI_Get, "?Get@CWbemObject@@UAGJPBGJPAUtagVARIANT@@PAJ2@Z"),
 	HOOK_WITHNAME(fastprox, WMI_Next, "?Next@CWbemObject@@UAGJJPAPAGPAUtagVARIANT@@PAJ2@Z"),
 #endif
-	HOOK(fastprox, WMI_ExecQuery),
-	HOOK(fastprox, WMI_ExecQueryAsync),
-	HOOK(fastprox, WMI_ExecMethod),
-	HOOK(fastprox, WMI_ExecMethodAsync),
-	HOOK(fastprox, WMI_GetObject),
-	HOOK(fastprox, WMI_GetObjectAsync),
-	// TODO: Uncomment after adding Yara prolog detection for these non-exported hooks
-	//HOOK(fastprox, WMI_CreateInstanceEnum),
-	//HOOK(fastprox, WMI_CreateInstanceEnumAsync),
 
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
@@ -1780,6 +1790,104 @@ void revalidate_all_hooks(void)
 			invalidate_regions_for_hook(hooks+i);
 		}
 	}
+}
+
+static com_hook_t* com_hooks = NULL;
+static int num_com_hooks = 0;
+static int num_com_hooks_installed = 0;
+static int* com_hook_state = NULL;
+int com_hooks_initialized = 0;
+
+void init_com_hooks(void) {
+	com_hooks = g_com_hooks;
+	num_com_hooks = ARRAYSIZE(g_com_hooks);
+	com_hook_state = calloc(sizeof(*com_hook_state), num_com_hooks);
+	DebugOutput("DEBUG:Initialized %d com hooks", num_com_hooks);
+}
+
+int set_WbemLocator_hooks(PVOID pComObject, hook_t* hook) {
+	IWbemLocator* pIWebmLocator = (IWbemLocator*)pComObject;
+	DWORD old_protect;
+	VirtualProtect(hook, sizeof(*hook), PAGE_EXECUTE_READWRITE, &old_protect);
+	if (!strncmp(hook->funcname, "WbemLocator_ConnectServer", 25))
+		hook->addr = pIWebmLocator->lpVtbl->ConnectServer;
+	if (hook->addr) {
+		return hook_api(hook, g_config.hook_type);
+	}
+
+	return -1;
+}
+
+int set_IWbemServices_hooks(PVOID pComObject, hook_t* hook) {
+	IWbemServices* pIWbemServices = (IWbemServices*)pComObject;
+	DWORD old_protect;
+	VirtualProtect(hook, sizeof(*hook), PAGE_EXECUTE_READWRITE, &old_protect);
+	if (!strcmp(hook->funcname, "IWbemServices_ExecQuery")) {
+		hook->addr = pIWbemServices->lpVtbl->ExecQuery;
+	}
+	else if (!strncmp(hook->funcname, "IWbemServices_ExecQueryAsync", 28)) {
+		hook->addr = pIWbemServices->lpVtbl->ExecQueryAsync;
+	}
+	else if (!strncmp(hook->funcname, "IWbemServices_GetObjectW", 24)) {
+		hook->addr = pIWbemServices->lpVtbl->GetObject;
+	}
+	else if (!strncmp(hook->funcname, "IWbemServices_GetObjectAsync", 28)) {
+		hook->addr = pIWbemServices->lpVtbl->GetObjectAsync;
+	}
+	else if (!strcmp(hook->funcname, "IWbemServices_ExecMethod")) {
+		hook->addr = pIWbemServices->lpVtbl->ExecMethod;
+	}
+	else if (!strncmp(hook->funcname, "IWbemServices_ExecMethodAsync", 29)) {
+		hook->addr = pIWbemServices->lpVtbl->ExecMethodAsync;
+	}
+	else if (!strcmp(hook->funcname, "IWbemServices_CreateInstanceEnum")) {
+		hook->addr = pIWbemServices->lpVtbl->CreateInstanceEnum;
+	}
+	else if (!strncmp(hook->funcname, "IWbemServices_CreateInstanceEnumAsync", 37)) {
+		hook->addr = pIWbemServices->lpVtbl->CreateInstanceEnumAsync;
+	}
+	if (hook->addr) {
+		return hook_api(hook, g_config.hook_type);
+	}
+	return -1;
+}
+
+extern __declspec(thread) BOOL bHookViaWbemLocator;
+int set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
+	if (!com_hooks_initialized) {
+		init_com_hooks();
+		com_hooks_initialized = 1;
+	}
+	if (num_com_hooks_installed < num_com_hooks) {
+		lasterror_t lasterrors;
+		get_lasterrors(&lasterrors);
+		__try {
+			for (int hook_idx = 0; hook_idx < num_com_hooks; hook_idx++) {
+				if (!com_hook_state[hook_idx]) {
+					com_hook_t* com_hook = &com_hooks[hook_idx];
+					hook_t* hook = &(com_hook->hook);
+					if ((rclsid && com_hook->rclsid && IsEqualCLSID(rclsid, com_hook->rclsid)) || (com_hook->riid && riid && IsEqualIID(riid, com_hook->riid)) || (!rclsid && !riid)) {
+						if (rclsid && riid) {
+							if (IsEqualCLSID(rclsid, &CLSID_WbemLocator) && IsEqualIID(riid, &IID_IWbemLocator)) {
+								return set_WbemLocator_hooks(pComObject, hook);
+							}
+							else if (!rclsid && !riid && !com_hook->rclsid && !com_hook->riid) {
+								if (bHookViaWbemLocator && !strncmp(hook->funcname, "IWbemServices_", 14)) {
+									return set_IWbemServices_hooks(pComObject, hook);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			;
+		}
+		set_lasterrors(&lasterrors);
+	}
+
+	return -1;
 }
 
 PVOID g_dll_notify_cookie;

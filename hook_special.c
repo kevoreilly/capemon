@@ -385,6 +385,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_CoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
+	if (ret == S_OK)
+		set_com_hooks(rclsid, riid, *ppv);
 
 	get_lasterrors(&lasterror);
 
@@ -438,6 +440,9 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 
 	if (!called_by_hook()) {
+		if (ret == S_OK)
+			set_com_hooks(rclsid, pResults->pIID, pResults->pItf);
+
 		get_lasterrors(&lasterror);
 		pProgIDFromCLSID(&id1, &resolv);
 

@@ -274,7 +274,6 @@ HOOKDEF(HRESULT, WINAPI, WMI_GetObjectAsync,
 	return Old_WMI_GetObjectAsync(_this, strObjectPath, lFlags, pCtx, pResultHandler);
 }
 
-/*
 HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnum,
 	_In_	PVOID					_this,
 	_In_	const BSTR				strFilter,
@@ -298,4 +297,3 @@ HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnumAsync,
 	LOQ_hresult("system", "u", "QueryClass", strFilter);
 	return Old_WMI_CreateInstanceEnumAsync(_this, strFilter, lFlags, pCtx, pResponseHandler);
 }
-*/
