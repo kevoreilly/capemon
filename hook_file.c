@@ -113,7 +113,7 @@ static void new_file_path_ascii(const char *fname)
 #ifdef DEBUG_COMMENTS
 		DebugOutput("new_file_path_ascii: FILE_NEW %s\n", fname);
 #endif
-		pipe("FILE_NEW:%s", len, absolutename);
+		pipe("FILE_NEW:%d,%s", GetCurrentProcessId(), len, absolutename);
 		dropped_count++;
 	}
 }
@@ -136,7 +136,7 @@ static void new_file_path_unicode(const wchar_t *fname)
 #ifdef DEBUG_COMMENTS
 		DebugOutput("new_file_path_unicode: FILE_NEW %s\n", fname);
 #endif
-		pipe("FILE_NEW:%S", len, absolutename);
+		pipe("FILE_NEW:%d,%S", GetCurrentProcessId(), len, absolutename);
 		dropped_count++;
 	}
 }
@@ -160,7 +160,7 @@ static void new_file(const UNICODE_STRING *obj)
 #ifdef DEBUG_COMMENTS
 		//DebugOutput("new_file: FILE_NEW %ws\n", str);
 #endif
-		pipe("FILE_NEW:%S", len, str);
+		pipe("FILE_NEW:%d,%S", GetCurrentProcessId(), len, str);
 		dropped_count++;
 	}
 }
@@ -609,7 +609,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeleteFile,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("NtDeleteFile: FILE_DEL %ws\n", absolutepath);
 #endif
-		pipe("FILE_DEL:%Z", absolutepath);
+		pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), absolutepath);
 		dropped_count++;
 	}
 
@@ -1062,7 +1062,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("NtSetInformationFile: FILE_DEL %ws\n", absolutepath);
 #endif
-		pipe("FILE_DEL:%Z", absolutepath);
+		pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), absolutepath);
 		dropped_count++;
 	}
 
@@ -1080,7 +1080,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("NtSetInformationFile: FILE_MOVE %ws::%ws\n", absolutepath, renamepath);
 #endif
-			pipe("FILE_MOVE:%Z::%Z", absolutepath, renamepath);
+			pipe("FILE_MOVE:%d,%Z::%Z", GetCurrentProcessId(), absolutepath, renamepath);
 			dropped_count++;
 		}
 		LOQ_ntstatus("filesystem", "puiu", "FileHandle", FileHandle, "HandleName", absolutepath, "FileInformationClass", FileInformationClass,
@@ -1230,7 +1230,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("MoveFileWithProgressW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
 #endif
-			pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
+			pipe("FILE_MOVE:%d,%Z::%F", GetCurrentProcessId(), path, lpNewFileName);
 			dropped_count++;
 		}
 		else if (dropped_count < g_config.dropped_limit) {
@@ -1238,7 +1238,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("MoveFileWithProgressW: FILE_DEL %ws\n", path);
 #endif
-			pipe("FILE_DEL:%Z", path);
+			pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 			dropped_count++;
 		}
 	}
@@ -1298,7 +1298,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 #ifdef DEBUG_COMMENTS
 					DebugOutput("MoveFileWithProgressTransactedW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
 #endif
-					pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
+					pipe("FILE_MOVE:%d,%Z::%F", GetCurrentProcessId(), path, lpNewFileName);
 					dropped_count++;
 				}
 			else {
@@ -1307,7 +1307,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 #ifdef DEBUG_COMMENTS
 					DebugOutput("MoveFileWithProgressTransactedW: FILE_DEL %ws\n", path);
 #endif
-					pipe("FILE_DEL:%Z", path);
+					pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 					dropped_count++;
 				}
 			}
@@ -1600,7 +1600,7 @@ HOOKDEF(BOOL, WINAPI, DeleteFileA,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("DeleteFileA: FILE_DEL %ws\n", path);
 #endif
-		pipe("FILE_DEL:%z", path);
+		pipe("FILE_DEL:%d,%z", GetCurrentProcessId(), path);
 		dropped_count++;
 	}
 
@@ -1623,7 +1623,7 @@ HOOKDEF(BOOL, WINAPI, DeleteFileW,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("DeleteFileW: FILE_DEL %ws\n", path);
 #endif
-			pipe("FILE_DEL:%Z", path);
+			pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 			dropped_count++;
 		}
 	}
@@ -1800,7 +1800,7 @@ HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
 		DebugOutput("SetFileInformationByHandle: FILE_DEL %ws\n", path);
 #endif
 		unsigned int len = lstrlenW(path);
-		pipe("FILE_DEL:%S", len, path);
+		pipe("FILE_DEL:%d,%S", GetCurrentProcessId(), len, path);
 		dropped_count++;
 
 		free(fname);

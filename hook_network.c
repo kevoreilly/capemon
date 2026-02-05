@@ -274,7 +274,7 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
 	HRESULT ret = Old_URLDownloadToFileW(pCaller, szURL, szFileName, dwReserved, lpfnCB);
 	LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
-		pipe("FILE_NEW:%Z", szFileName);
+		pipe("FILE_NEW:%d,%Z", GetCurrentProcessId(), szFileName);
 		dropped_count++;
 	}
 
@@ -292,7 +292,7 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
 	HRESULT ret = Old_URLDownloadToCacheFileW(lpUnkcalled, szURL, szFilename, cchFilename, dwReserved, pBSC);
 	LOQ_hresult("network", "uFs", "URL", szURL, "Filename", ret == S_OK ? szFilename : L"", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
-		pipe("FILE_NEW:%Z", szFilename);
+		pipe("FILE_NEW:%d,%Z", GetCurrentProcessId(), szFilename);
 		dropped_count++;
 	}
 

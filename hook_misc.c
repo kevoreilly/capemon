@@ -184,6 +184,18 @@ HOOKDEF(PVOID, WINAPI, RtlAddVectoredExceptionHandler,
 	return ret;
 }
 
+HOOKDEF(ULONG, WINAPI, RtlRemoveVectoredExceptionHandler,
+	__in	PVOID Handle
+) {
+	ULONG ret = 0;
+
+	ret = Old_RtlRemoveVectoredExceptionHandler(Handle);
+
+	LOQ_bool("hooking", "p", "Handle", Handle);
+
+	return ret;
+}
+
 HOOKDEF(UINT, WINAPI, SetErrorMode,
 	_In_ UINT uMode
 ) {
