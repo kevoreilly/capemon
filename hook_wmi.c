@@ -104,7 +104,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 ) {
 	HRESULT ret;
 	WCHAR szClassName[256] = L"";
-	if (wszName && wcscmp(wszName, L"__CLASS") != 0) {
+	if (wszName && _wcsicmp(wszName, L"__CLASS") != 0) {
 		VARIANT classVariant;
 		VariantInit(&classVariant);
 		IWbemClassObject* pWmiObject = (IWbemClassObject*)_this;
@@ -121,14 +121,14 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 	// Short circuit, return early for things we don't want to log
 	if (!ret && !g_config.full_logs && wszName) {
 		if (
-			!wcscmp(wszName, L"__GENUS") ||
-			!wcscmp(wszName, L"__PATH") ||
-			!wcscmp(wszName, L"__RELPATH") ||
-			!wcscmp(wszName, L"__SUPERCLASS") ||
-			!wcscmp(wszName, L"SECURITY_DESCRIPTOR") ||
-			!wcscmp(wszName, L"__NAMESPACE") ||
-			!wcscmp(wszName, L"__CLASS") ||
-			!wcscmp(wszName, L"__DERIVATION")
+			!_wcsicmp(wszName, L"__GENUS") ||
+			!_wcsicmp(wszName, L"__PATH") ||
+			!_wcsicmp(wszName, L"__RELPATH") ||
+			!_wcsicmp(wszName, L"__SUPERCLASS") ||
+			!_wcsicmp(wszName, L"SECURITY_DESCRIPTOR") ||
+			!_wcsicmp(wszName, L"__NAMESPACE") ||
+			!_wcsicmp(wszName, L"__CLASS") ||
+			!_wcsicmp(wszName, L"__DERIVATION")
 		) {
 			return ret;
 		}
@@ -178,7 +178,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Next,
 		LOQ_hresult("system", "unu", "Name", *strName, "Value", pVal, "Class", szClassName);
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
-		LOQ_hresult("system", "un", "Name", *strName, "Value", pVal);
+		LOQ_hresult("system", "unu", "Name", *strName, "Value", pVal, "Class", szClassName);
 	}
 
 	VariantClear(&classVariant);
