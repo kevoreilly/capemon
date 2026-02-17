@@ -477,7 +477,7 @@ void YaraScan(PVOID Address, SIZE_T Size)
 	if (!YaraActivated)
 		return;
 
-	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+	int Flags = 0, Result = ERROR_SUCCESS;
 
 	if (!Size)
 		return;
@@ -511,7 +511,7 @@ void YaraScan(PVOID Address, SIZE_T Size)
 
 	__try
 	{
-		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
+		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, g_config.yara_timeout);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{

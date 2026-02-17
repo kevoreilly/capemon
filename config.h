@@ -239,6 +239,7 @@ struct _g_config {
 
 	// YARA scans
 	int yarascan;
+	int yara_timeout;
 
 	// AMSI dumps (Win10+)
 	int amsidump;
