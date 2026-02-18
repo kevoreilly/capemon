@@ -620,6 +620,19 @@ BOOL YaraInit()
 
 						if (rule_file)
 						{
+							char check_buf[4096];
+							size_t bytes_read = fread(check_buf, 1, sizeof(check_buf) - 1, rule_file);
+							check_buf[bytes_read] = '\0';
+
+							if (strstr(check_buf, "cape_options") == NULL)
+							{
+								DebugOutput("YaraInit: File %s lacks cape_options metadata - skipping \n", file_name);
+								fclose(rule_file);
+								continue; // Skip this file if it doesn't have cape metadata
+							}
+
+							fseek(rule_file, 0, SEEK_SET);
+
 							int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
 
 							if (errors == ERROR_COULD_NOT_OPEN_FILE)
