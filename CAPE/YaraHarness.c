@@ -402,10 +402,10 @@ NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZ
         AddressInfos[i].Address = NULL;
     }
 
-    int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+    int Flags = 0, Result = ERROR_SUCCESS;
     __try
     {
-        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, Timeout);
+        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, g_config.yara_timeout);
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
