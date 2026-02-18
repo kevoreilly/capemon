@@ -1465,6 +1465,53 @@ BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVO
 	return TRUE;
 }
 
+unsigned int FileOffsetFromRVA(PVOID ImageBase, DWORD RVA)
+{
+	if (!ImageBase)
+	{
+		DebugOutput("FileOffsetFromRVA: Error - no address supplied.\n");
+		return 0;
+	}
+
+	if (IsDisguisedPEHeader(ImageBase) <= 0)
+		return 0;
+
+	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+	__try
+	{
+		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DebugOutput("FileOffsetFromRVA: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
+		return 0;
+	}
+
+	if (!pNtHeader || !TestPERequirements(pNtHeader))
+		return 0;
+
+	PIMAGE_SECTION_HEADER pSectionTable = IMAGE_FIRST_SECTION(pNtHeader);
+	SIZE_T AllocationSize = GetAllocationSize(ImageBase);
+
+	if (RVA < pSectionTable[0].VirtualAddress)
+		return (unsigned int)RVA;
+
+	for (int i = 0; i < pNtHeader->FileHeader.NumberOfSections; i++)
+	{
+		if (RVA >= pSectionTable[i].VirtualAddress && RVA < (pSectionTable[i].VirtualAddress + max(pSectionTable[i].SizeOfRawData, pSectionTable[i].Misc.VirtualSize)))
+		{
+			unsigned int FileOffset = RVA - pSectionTable[i].VirtualAddress + pSectionTable[i].PointerToRawData;
+			if (FileOffset < AllocationSize)
+				return FileOffset;
+		}
+	}
+
+	return 0;
+}
+
 //**************************************************************************************
 BOOL MapFile(HANDLE hFile, unsigned char **Buffer, DWORD* FileSize)
 //**************************************************************************************
@@ -2580,7 +2627,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 		RetVal = 0;
 	}
 
-	SetFilePointer(hFile, NtHeaders.OptionalHeader.AddressOfEntryPoint, 0, FILE_BEGIN);
+	SetFilePointer(hFile, FileOffsetFromRVA(ImageBase, NtHeaders.OptionalHeader.AddressOfEntryPoint), 0, FILE_BEGIN);
 
 	unsigned int ChunkSize = 0x10;
 	EntryPointBytes = calloc(ChunkSize, sizeof(BYTE));
