@@ -1245,7 +1245,7 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Full process memory dumps disabled.\n");
 		}
-		else if (!stricmp(key, "import_reconstruction")) {
+		else if (!stricmp(key, "import-reconstruction") || !stricmp(key, "imprec")) {
 			g_config.import_reconstruction = value[0] == '1';
 			if (g_config.import_reconstruction)
 				DebugOutput("Import reconstruction of process dumps enabled.\n");
