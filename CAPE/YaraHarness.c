@@ -251,6 +251,14 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 			{
 				if (Meta->type == META_TYPE_STRING && !strcmp(Meta->identifier, "cape_options"))
 				{
+					yr_rule_strings_foreach(Rule, String)
+						yr_string_matches_foreach(context, String, Match)
+						{
+							DebugOutput("YaraScan match: %s (0x%x)", String->identifier, Match->offset);
+							if (TraceRunning)
+								DebuggerOutput("YaraScan match: %s (0x%x) ", String->identifier, Match->offset);
+						}
+
 					SIZE_T length = strlen(Meta->string);
 					char* OptionLine = (char*)Meta->string;
 					while (OptionLine && OptionLine < Meta->string + length)
@@ -265,14 +273,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							yr_rule_strings_foreach(Rule, String)
 							{
 								yr_string_matches_foreach(context, String, Match)
-								{
-#ifdef DEBUG_COMMENTS
-									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
-#endif
-									if (TraceRunning)
-										DebuggerOutput("YaraScan match: %s, %s (0x%x) ", OptionLine, String->identifier, Match->offset);
 									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
-								}
 							}
 						}
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
