@@ -274,7 +274,7 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToFileW,
 	HRESULT ret = Old_URLDownloadToFileW(pCaller, szURL, szFileName, dwReserved, lpfnCB);
 	LOQ_hresult("network", "uFs", "URL", szURL, "FileName", szFileName, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
-		pipe("FILE_NEW:%Z", szFileName);
+		pipe("FILE_NEW:%d,%Z", GetCurrentProcessId(), szFileName);
 		dropped_count++;
 	}
 
@@ -292,7 +292,7 @@ HOOKDEF(HRESULT, WINAPI, URLDownloadToCacheFileW,
 	HRESULT ret = Old_URLDownloadToCacheFileW(lpUnkcalled, szURL, szFilename, cchFilename, dwReserved, pBSC);
 	LOQ_hresult("network", "uFs", "URL", szURL, "Filename", ret == S_OK ? szFilename : L"", "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	if (ret == S_OK && dropped_count < g_config.dropped_limit) {
-		pipe("FILE_NEW:%Z", szFilename);
+		pipe("FILE_NEW:%d,%Z", GetCurrentProcessId(), szFilename);
 		dropped_count++;
 	}
 
@@ -1056,5 +1056,27 @@ HOOKDEF(HRESULT, WINAPI, UrlCanonicalizeW,
 		LOQ_hresult("filesystem", "u", "Url", pszUrl);
 	else
 		LOQ_hresult("network", "u", "Url", pszUrl);
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayName,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+) {
+	HRESULT ret = Old_MkParseDisplayName(pbc, szName, pchEaten, ppmk);
+	LOQ_hresult("network", "u", "Name", szName);
+	return ret;
+}
+
+HOOKDEF(HRESULT, WINAPI, MkParseDisplayNameEx,
+	_In_  PVOID pbc,
+	_In_  LPWSTR szName,
+	_Out_ ULONG *pchEaten,
+	_Out_ PVOID ppmk
+) {
+	HRESULT ret = Old_MkParseDisplayNameEx(pbc, szName, pchEaten, ppmk);
+	LOQ_hresult("network", "u", "Name", szName);
 	return ret;
 }

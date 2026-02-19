@@ -90,7 +90,7 @@ HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
         BYTE chunk[1024];
         ULONG readSize;
 		ULONGLONG position;
-		PBYTE streamCopy = (PBYTE)malloc(contentSize);
+		PBYTE streamCopy = (PBYTE)malloc((SIZE_T)contentSize);
 
 		if (streamCopy == NULL)
 		{
@@ -115,7 +115,7 @@ HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
 
 			DebugOutput("AmsiDumper: Dumping AMSI stream at 0x%p, size 0x%x", streamCopy, contentSize);
 			SetCapeMetaData(AMSISTREAM, NULL, NULL, NULL);
-			DumpMemoryRaw(streamCopy, contentSize);
+			DumpMemoryRaw(streamCopy, (SIZE_T)contentSize);
 			free(streamCopy);
 		}
     }

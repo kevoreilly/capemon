@@ -177,6 +177,9 @@
     <MASM>
       <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
     </MASM>
+    <PostBuildEvent>
+      <Command>if "$(ConfigurationName)"=="Release" call "%USERPROFILE%\Documents\dll_tmp\copy_dlls.bat" "$(TargetPath)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -207,6 +210,9 @@
       <Command>
       </Command>
     </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>if "$(ConfigurationName)"=="Release" call "%USERPROFILE%\Documents\dll_tmp\copy_dlls.bat" "$(TargetPath)"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="alloc.c" />
@@ -248,6 +254,7 @@
     <ClCompile Include="hooking_64.c" />
     <ClCompile Include="hooks.c" />
     <ClCompile Include="hook_clr.c" />
+    <ClCompile Include="hook_com.c" />
     <ClCompile Include="hook_crypto.c" />
     <ClCompile Include="hook_file.c" />
     <ClCompile Include="hook_lang.c" />

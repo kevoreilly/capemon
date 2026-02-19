@@ -300,6 +300,9 @@
     <ClCompile Include="hook_wmi.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_com.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">
@@ -445,9 +448,6 @@
     </ClInclude>
     <ClInclude Include="CAPE\YaraHarness.h">
       <Filter>Header Files\CAPE</Filter>
-    </ClInclude>
-    <ClInclude Include="undoc_defs.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CAPE\uthash.h">
       <Filter>Header Files\CAPE</Filter>

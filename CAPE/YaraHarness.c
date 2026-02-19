@@ -28,12 +28,13 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
+extern BOOL remove_dll_range(ULONG_PTR addr);
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 extern void parse_config_line(char* line);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
-extern BOOL BreakpointsHit;
+extern BOOL BreakpointsHit, TraceRunning;
 
 YR_RULES* Rules = NULL;
 BOOL YaraActivated, YaraLogging;
@@ -242,12 +243,22 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 				return CALLBACK_CONTINUE;
 
 			DebugOutput("YaraScan hit: %s\n", Rule->identifier);
+			if (TraceRunning)
+				DebuggerOutput("YaraScan hit: %s ", Rule->identifier);
 
 			// Process cape_options metadata
 			yr_rule_metas_foreach(Rule, Meta)
 			{
 				if (Meta->type == META_TYPE_STRING && !strcmp(Meta->identifier, "cape_options"))
 				{
+					yr_rule_strings_foreach(Rule, String)
+						yr_string_matches_foreach(context, String, Match)
+						{
+							DebugOutput("YaraScan match: %s (0x%x)", String->identifier, Match->offset);
+							if (TraceRunning)
+								DebuggerOutput("YaraScan match: %s (0x%x) ", String->identifier, Match->offset);
+						}
+
 					SIZE_T length = strlen(Meta->string);
 					char* OptionLine = (char*)Meta->string;
 					while (OptionLine && OptionLine < Meta->string + length)
@@ -262,12 +273,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							yr_rule_strings_foreach(Rule, String)
 							{
 								yr_string_matches_foreach(context, String, Match)
-								{
-#ifdef DEBUG_COMMENTS
-									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
-#endif
 									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
-								}
 							}
 						}
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
@@ -275,7 +281,16 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						if (!_stricmp("dump", OptionLine))
 						{
 							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
+							if (TraceRunning)
+								DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara ", user_data);
 							DumpRegion(user_data);
+						}
+						if (!_stricmp("coverage", OptionLine))
+						{
+							if (remove_dll_range((ULONG_PTR)user_data))
+								DebugOutput("YaraScan: Region at 0x%p removed from dll range for coverage.", user_data);
+							else
+								DebugOutput("YaraScan: Failed to remove region at 0x%p from dll range for coverage.", user_data);
 						}
 						if (!_stricmp("clear", OptionLine))
 						{
@@ -288,6 +303,10 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							g_config.br1 = NULL;
 							g_config.br2 = NULL;
 							g_config.br3 = NULL;
+							g_config.hc0 = 0;
+							g_config.hc1 = 0;
+							g_config.hc2 = 0;
+							g_config.hc3 = 0;
 							memset(Action0, 0, MAX_PATH);
 							memset(Action1, 0, MAX_PATH);
 							memset(Action2, 0, MAX_PATH);
@@ -384,10 +403,10 @@ NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZ
         AddressInfos[i].Address = NULL;
     }
 
-    int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+    int Flags = 0, Result = ERROR_SUCCESS;
     __try
     {
-        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, Timeout);
+        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, g_config.yara_timeout);
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -459,7 +478,7 @@ void YaraScan(PVOID Address, SIZE_T Size)
 	if (!YaraActivated)
 		return;
 
-	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+	int Flags = 0, Result = ERROR_SUCCESS;
 
 	if (!Size)
 		return;
@@ -493,7 +512,7 @@ void YaraScan(PVOID Address, SIZE_T Size)
 
 	__try
 	{
-		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
+		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, g_config.yara_timeout);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -602,6 +621,19 @@ BOOL YaraInit()
 
 						if (rule_file)
 						{
+							char check_buf[4096];
+							size_t bytes_read = fread(check_buf, 1, sizeof(check_buf) - 1, rule_file);
+							check_buf[bytes_read] = '\0';
+
+							if (strstr(check_buf, "cape_options") == NULL)
+							{
+								DebugOutput("YaraInit: File %s lacks cape_options metadata - skipping \n", file_name);
+								fclose(rule_file);
+								continue; // Skip this file if it doesn't have cape metadata
+							}
+
+							fseek(rule_file, 0, SEEK_SET);
+
 							int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
 
 							if (errors == ERROR_COULD_NOT_OPEN_FILE)

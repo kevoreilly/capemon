@@ -1,3 +1,4 @@
+#pragma once
 /*
 Cuckoo Sandbox - Automated Malware Analysis
 Copyright (C) 2010-2015 Cuckoo Sandbox Developers, Optiv, Inc. (brad.spengler@optiv.com)
@@ -309,3 +310,11 @@ static inline BOOLEAN disable_this_hook(hook_t *h)
 void hook_init();
 
 #endif
+
+int set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject);
+
+typedef struct _com_hook_t {
+	hook_t			hook;
+	REFCLSID		rclsid;
+	REFIID			riid;
+} com_hook_t;

@@ -50,7 +50,6 @@ extern BOOL inside_hook(LPVOID Address);
 extern void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 extern void log_flush();
-extern PVOID KiUserExceptionDispatcher;
 extern lookup_t SoftBPs, SyscallBPs;
 extern BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS *ExceptionInfo);
 
@@ -70,6 +69,7 @@ FILETIME LastTime;
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
+BOOL SimpleCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 
 BOOL DoSetSingleStepMode(int Register, PCONTEXT Context, PVOID Handler)
 {
@@ -159,13 +159,13 @@ SIZE_T StrTest(PCHAR StrCandidate, PCHAR OutputBuffer, SIZE_T BufferSize)
 		if (Count == BufferSize)
 			break;
 		// Restrict to ASCII range
-		if ((unsigned int)*Character < 0x0a || (unsigned int)*Character > 0x7E)
+		if (*Character == 0x0a || *Character == 0x0d)
+			*Character = 0x20;
+		else if ((unsigned int)*Character < 0x20 || (unsigned int)*Character > 0x7E)
 		{
 			*Character = 0;
 			break;
 		}
-		if (*Character == 0x0d)
-			*Character = 0x20;
 		Character++;
 		Count++;
 	}
@@ -192,13 +192,13 @@ SIZE_T StrTestW(PWCHAR StrCandidate, PWCHAR OutputBuffer, SIZE_T BufferSize)
 		if (Count == BufferSize)
 			break;
 		// Restrict to ASCII range
-		if ((unsigned int)*Character < 0x0a || (unsigned int)*Character > 0x7E)
+		if (*Character == 0x0a || *Character == 0x0d)
+			*Character = 0x20;
+		else if ((unsigned int)*Character < 0x20 || (unsigned int)*Character > 0x7E)
 		{
 			*Character = 0;
 			break;
 		}
-		if (*Character == 0x0d)
-			*Character = 0x20;
 		Character++;
 		Count++;
 	}
@@ -744,6 +744,8 @@ OutputRegisterChanges(PCONTEXT Context)
 			DebuggerOutput(" Xmm1.High=%#I64x", Context->Xmm1.High);
 			StringCheck((PVOID)Context->Xmm1.High);
 		}
+
+		OutputFlagChanges(LastContext.EFlags, Context->EFlags);
 	}
 #else
 	if (!FilterTrace)
@@ -797,10 +799,11 @@ OutputRegisterChanges(PCONTEXT Context)
 			DebuggerOutput(" EBP=0x%x", Context->Ebp);
 			StringCheck((PVOID)Context->Ebp);
 		}
+
+		OutputFlagChanges(LastContext.EFlags, Context->EFlags);
 	}
 #endif
 
-	OutputFlagChanges(LastContext.EFlags, Context->EFlags);
 
 	if (g_config.trace_times)
 	{
@@ -952,10 +955,18 @@ BOOL ProcessOEP(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	else if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_PE;
 
-	if (DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction))
-		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p.\n", CIP);
+	BOOL Dumped = DumpProcess(GetCurrentProcess(), AllocationBase, CIP, g_config.import_reconstruction);
+
+	if (!Dumped)
+	{
+		CapeMetaData->DumpType = 0;
+		Dumped = DumpRegion(AllocationBase);
+	}
+
+	if (Dumped)
+		DebuggerOutput("\nProcessOEP: Dumped module with OEP at 0x%p, base 0x%p\n", CIP, AllocationBase);
 	else
-		DebuggerOutput("\nProcessOEP: Failed to dump module with OEP at 0x%p.\n", CIP);
+		DebuggerOutput("\nProcessOEP: Failed to dump module with OEP at 0x%p, base 0x%p\n", CIP, AllocationBase);
 
 	YaraScan(AllocationBase, GetAccessibleSize(AllocationBase));
 
@@ -1886,6 +1897,11 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 
 		if (*StepOver == FALSE && *ForceStepOver == FALSE)
 			TraceDepthCount++;
+
+		PVOID Base = GetAllocationBase(CIP);
+		PVOID TargetBase = GetAllocationBase(CallTarget);
+		if (Base != TargetBase)
+			TrackExecution(CallTarget);
 	}
 	else if (!strcmp(DecodedInstruction.mnemonic.p, "JMP"))
 	{
@@ -1931,6 +1947,11 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 				*StepOver = FALSE;
 				*ForceStepOver = FALSE;
 			}
+
+			PVOID Base = GetAllocationBase(CIP);
+			PVOID TargetBase = GetAllocationBase(JumpTarget);
+			if (Base != TargetBase)
+				TrackExecution(JumpTarget);
 		}
 	}
 	else if (g_config.loopskip && (!strncmp(DecodedInstruction.mnemonic.p, "REP ", 3) || !strncmp(DecodedInstruction.mnemonic.p, "LOOP", 4)))
@@ -2074,10 +2095,6 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 
 BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-	PVOID CIP;
-	unsigned int DllRVA;
-	PVOID LastBranchFromIp = NULL;
-
 	StopTrace = FALSE;
 	TraceRunning = TRUE;
 	BOOL StepOver = FALSE, ForceStepOver = FALSE;
@@ -2089,10 +2106,10 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	unsigned int DecodedInstructionsCount = 0;
 
 #ifdef _WIN64
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 	DecodeType = Decode64Bits;
 #else
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 	DecodeType = Decode32Bits;
 #endif
 
@@ -2155,7 +2172,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (g_config.branch_trace && IsAddressAccessible((PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0]))
 	{
-		LastBranchFromIp = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
+		PVOID LastBranchFromIp = (PVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[0];
 		Result = distorm_decode(Offset, (const unsigned char*)LastBranchFromIp, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 #ifdef _WIN64
 		ExceptionInfo->ContextRecord->Rip = (DWORD64)LastBranchFromIp;
@@ -2169,44 +2186,55 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		DebuggerOutput("\n");
 	}
 
-	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
-	if (ModuleName)
+	PVOID Base = GetAllocationBase(CIP);
+#ifdef _WIN64
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Rip);
+#else
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Eip);
+#endif
+
+	if (Base != PreviousBase)
 	{
-		if (CIP == (PVOID)((PCHAR)KiUserExceptionDispatcher+1))
+		if (FilterTrace)
+			DebuggerOutput("\n");
+
+		unsigned int DllRVA;
+		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+		if (ModuleName)
 		{
-			DebugOutput("Trace: Stepping out of KiUserExceptionDispatcher\n");
-			ForceStepOver = TRUE;
-			FilterTrace = TRUE;
-		}
-		else if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
-		{
-			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-			if (FilterTrace)
-				DebuggerOutput("\n");
-			PCHAR FunctionName = GetExportNameByAddress(CIP);
-			if (FunctionName)
+			if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 			{
-				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-
-				ForceStepOver = DoStepOver(FunctionName);
-
-				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+				PCHAR FunctionName = GetExportNameByAddress(CIP);
+				if (FunctionName)
 				{
-					if (!g_config.trace_into_api[i])
-						break;
-					if (!stricmp(FunctionName, g_config.trace_into_api[i]))
-						StepOver = FALSE;
+					DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+
+					ForceStepOver = DoStepOver(FunctionName);
+
+					for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+					{
+						if (!g_config.trace_into_api[i])
+							break;
+						if (!stricmp(FunctionName, g_config.trace_into_api[i]))
+							StepOver = FALSE;
+					}
+					PreviousModuleName = ModuleName;
 				}
-				PreviousModuleName = ModuleName;
-			}
-			else
-			{
-				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-				PreviousModuleName = ModuleName;
-				FunctionName = NULL;
-				ModuleName = NULL;
+				else
+				{
+					DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+					PreviousModuleName = ModuleName;
+					FunctionName = NULL;
+					ModuleName = NULL;
+				}
 			}
 		}
+		else
+		{
+			DllRVA = (unsigned int)((DWORD_PTR)CIP - (DWORD_PTR)Base);
+			DebuggerOutput("Break at 0x%p (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+		}
+		TrackExecution(CIP);
 	}
 
 	// Instruction disassembly
@@ -2252,6 +2280,51 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	return TRUE;
 }
 
+BOOL SimpleTrace(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	StepCount++;
+
+	if (!StepLimit || StepCount > StepLimit)
+	{
+		if (StepLimit)
+			DebuggerOutput("\nSimpleTrace: Single-step limit reached (%d), releasing.\n", StepLimit);
+		else
+			DebuggerOutput("\n");
+		ClearSingleStepMode(ExceptionInfo->ContextRecord);
+		return TRUE;
+	}
+
+	DebuggerOutput("\n");
+
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	TraceOutput(CIP, DecodedInstruction);
+
+	if (!StopTrace)
+		SetSingleStepMode(ExceptionInfo->ContextRecord, SimpleTrace);
+	else
+		TraceRunning = FALSE;
+
+	return TRUE;
+}
+
 BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
@@ -2284,12 +2357,11 @@ BOOL StepOutCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS
 
 BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-	PVOID CIP;
 	_DecodeType DecodeType;
 	_DecodeResult Result;
 	_OffsetType Offset = 0;
 	_DecodedInst DecodedInstruction;
-	unsigned int DllRVA, bp, DecodedInstructionsCount = 0;
+	unsigned int bp, DecodedInstructionsCount = 0;
 	BOOL StepOver = FALSE, ForceStepOver = FALSE;
 
 	StopTrace = FALSE;
@@ -2351,10 +2423,10 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 
 #ifdef _WIN64
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 	DecodeType = Decode64Bits;
 #else
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 	DecodeType = Decode32Bits;
 #endif
 
@@ -2385,36 +2457,52 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	if (!FilterTrace)
 		DebuggerOutput("\n");
 
-	ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+	PVOID Base = GetAllocationBase(CIP);
+#ifdef _WIN64
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Rip);
+#else
+	PVOID PreviousBase = GetAllocationBase((PVOID)LastContext.Eip);
+#endif
 
-	if (ModuleName)
+	if (Base != PreviousBase)
 	{
-		if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
+		unsigned int DllRVA;
+		ModuleName = convert_address_to_dll_name_and_offset((ULONG_PTR)CIP, &DllRVA);
+		if (ModuleName)
 		{
-			if (FilterTrace)
-				DebuggerOutput("\n");
-			PVOID ImageBase = (PVOID)((PUCHAR)CIP - DllRVA);
-			PCHAR FunctionName = GetExportNameByAddress(CIP);
-			if (FunctionName)
+			if (!PreviousModuleName || strncmp(ModuleName, PreviousModuleName, strlen(ModuleName)))
 			{
-				DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-
-				ForceStepOver = DoStepOver(FunctionName);
-
-				for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+				PCHAR FunctionName = GetExportNameByAddress(CIP);
+				if (FunctionName)
 				{
-					if (!g_config.trace_into_api[i])
-						break;
-					if (!stricmp(FunctionName, g_config.trace_into_api[i]))
-						StepOver = FALSE;
+					DebuggerOutput("Break at 0x%p in %s::%s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, FunctionName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+
+					ForceStepOver = DoStepOver(FunctionName);
+
+					for (unsigned int i = 0; i < ARRAYSIZE(g_config.trace_into_api); i++)
+					{
+						if (!g_config.trace_into_api[i])
+							break;
+						if (!stricmp(FunctionName, g_config.trace_into_api[i]))
+							StepOver = FALSE;
+					}
+					PreviousModuleName = ModuleName;
+				}
+				else
+				{
+					DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+					PreviousModuleName = ModuleName;
+					FunctionName = NULL;
+					ModuleName = NULL;
 				}
 			}
-			else
-				DebuggerOutput("Break at 0x%p in %s (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, ModuleName, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), ImageBase);
-			if (PreviousModuleName)
-				free (PreviousModuleName);
-			PreviousModuleName = ModuleName;
 		}
+		else
+		{
+			DllRVA = (unsigned int)((DWORD_PTR)CIP - (DWORD_PTR)Base);
+			DebuggerOutput("Break at 0x%p (RVA 0x%x, thread %d, Stack 0x%p-0x%p, ImageBase 0x%p)\n", CIP, DllRVA, GetCurrentThreadId(), get_stack_bottom(), get_stack_top(), Base);
+		}
+		TrackExecution(CIP);
 	}
 
 	if (g_config.step_out)
@@ -2511,6 +2599,59 @@ BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINT
 	}
 	else
 		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, Trace);
+
+	return TRUE;
+}
+
+BOOL SimpleCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PVOID CIP;
+	_DecodeType DecodeType;
+	_DecodeResult Result;
+	_OffsetType Offset = 0;
+	_DecodedInst DecodedInstruction;
+	unsigned int DecodedInstructionsCount = 0;
+
+	if (pBreakpointInfo == NULL)
+	{
+		DebugOutput("SimpleCallback executed with pBreakpointInfo NULL.\n");
+		return FALSE;
+	}
+
+	if (pBreakpointInfo->ThreadHandle == NULL)
+	{
+		DebugOutput("SimpleCallback executed with NULL thread handle.\n");
+		return FALSE;
+	}
+
+	StepCount = 0;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+	DecodeType = Decode64Bits;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+	DecodeType = Decode32Bits;
+#endif
+
+	if (CIP)
+		Result = distorm_decode(Offset, (const unsigned char*)CIP, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+
+	TraceOutput(CIP, DecodedInstruction);
+
+	ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+
+	ContextClearBreakpoint(ExceptionInfo->ContextRecord, pBreakpointInfo->Register);
+
+	if (!StepLimit || StepCount > StepLimit)
+	{
+		if (StepLimit)
+			DebuggerOutput("\nSimpleCallback: Single-step limit reached (%d), releasing.\n", StepLimit);
+		else
+			DebuggerOutput("\n");
+	}
+	else
+		DoSetSingleStepMode(pBreakpointInfo->Register, ExceptionInfo->ContextRecord, SimpleTrace);
 
 	return TRUE;
 }

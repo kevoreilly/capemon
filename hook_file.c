@@ -113,7 +113,7 @@ static void new_file_path_ascii(const char *fname)
 #ifdef DEBUG_COMMENTS
 		DebugOutput("new_file_path_ascii: FILE_NEW %s\n", fname);
 #endif
-		pipe("FILE_NEW:%s", len, absolutename);
+		pipe("FILE_NEW:%d,%s", GetCurrentProcessId(), len, absolutename);
 		dropped_count++;
 	}
 }
@@ -136,7 +136,7 @@ static void new_file_path_unicode(const wchar_t *fname)
 #ifdef DEBUG_COMMENTS
 		DebugOutput("new_file_path_unicode: FILE_NEW %s\n", fname);
 #endif
-		pipe("FILE_NEW:%S", len, absolutename);
+		pipe("FILE_NEW:%d,%S", GetCurrentProcessId(), len, absolutename);
 		dropped_count++;
 	}
 }
@@ -160,7 +160,7 @@ static void new_file(const UNICODE_STRING *obj)
 #ifdef DEBUG_COMMENTS
 		//DebugOutput("new_file: FILE_NEW %ws\n", str);
 #endif
-		pipe("FILE_NEW:%S", len, str);
+		pipe("FILE_NEW:%d,%S", GetCurrentProcessId(), len, str);
 		dropped_count++;
 	}
 }
@@ -526,6 +526,21 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 	return ret;
 }
 
+// copied from misc.c to avoid clash with libyara\include\yara\strutils.h
+static PCHAR memmem(PCHAR haystack, ULONG hlen, PCHAR needle, ULONG nlen)
+{
+	if (nlen > hlen)
+		return NULL;
+
+	ULONG i;
+	for (i = 0; i < hlen - nlen + 1; i++) {
+		if (!memcmp(haystack + i, needle, nlen))
+			return haystack + i;
+	}
+
+	return NULL;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 	__in	  HANDLE FileHandle,
 	__in_opt  HANDLE Event,
@@ -536,22 +551,31 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 	__in	  ULONG Length,
 	__in_opt  PLARGE_INTEGER ByteOffset,
 	__in_opt  PULONG Key
-	) {
-	NTSTATUS ret = Old_NtWriteFile(FileHandle, Event, ApcRoutine, ApcContext,
-		IoStatusBlock, Buffer, Length, ByteOffset, Key);
-	wchar_t *fname;
-	unsigned int write_count;
-	ULONG_PTR length;
+) {
+	NTSTATUS ret = Old_NtWriteFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, Buffer, Length, ByteOffset, Key);
+
+	ULONG_PTR length = 0;
 
 	if (NT_SUCCESS(ret))
 		length = IoStatusBlock->Information;
-	else
-		length = 0;
 
-	write_count = increment_file_log_write_count(FileHandle);
+	unsigned int write_count = increment_file_log_write_count(FileHandle);
 	if (write_count <= 50) {
-		fname = calloc(32768, sizeof(wchar_t));
+		wchar_t *fname = calloc(32768, sizeof(wchar_t));
 		path_from_handle(FileHandle, fname, 32768);
+
+		// Inject into services.exe if we detect a raw RPC request to ntsvcs (e.g. CreateSvcRpc)
+		if (length >= 32 && fname && !wcsicmp(fname, L"\\Device\\NamedPipe\\ntsvcs")) {
+			// SCM UUID: 367abb81-9844-35f1-ad32-98f038001003
+			unsigned char scm_uuid[] = {0x81, 0xbb, 0x7a, 0x36, 0x44, 0x98, 0xf1, 0x35, 0xad, 0x32, 0x98, 0xf0, 0x38, 0x00, 0x10, 0x03};
+			// NDR UUID: 8a885d04-1ceb-11c9-9fe8-08002b104860
+			unsigned char ndr_uuid[] = {0x04, 0x5d, 0x88, 0x8a, 0xeb, 0x1c, 0xc9, 0x11, 0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60};
+
+			if (memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)scm_uuid, sizeof(scm_uuid)) && memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)ndr_uuid, sizeof(ndr_uuid))) {
+                pipe("SERVICE:");
+				raw_sleep(1000);
+			}
+		}
 
 		if (write_count < 50) {
 			LOQ_ntstatus("filesystem", "pFbl", "FileHandle", FileHandle,
@@ -565,9 +589,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 		free(fname);
 	}
 
-	if (NT_SUCCESS(ret)) {
+	if (NT_SUCCESS(ret))
 		file_write(FileHandle);
-	}
+
 	return ret;
 }
 
@@ -585,7 +609,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeleteFile,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("NtDeleteFile: FILE_DEL %ws\n", absolutepath);
 #endif
-		pipe("FILE_DEL:%Z", absolutepath);
+		pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), absolutepath);
 		dropped_count++;
 	}
 
@@ -627,7 +651,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 			hasorigbuffer = FALSE;
 		}
 	}
-		
+
 
 	/*
 	* Check for AFD_SEND, we need to aggregate the buffer before calling the hook as calling the hook will clobber InputBuffer
@@ -1038,7 +1062,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("NtSetInformationFile: FILE_DEL %ws\n", absolutepath);
 #endif
-		pipe("FILE_DEL:%Z", absolutepath);
+		pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), absolutepath);
 		dropped_count++;
 	}
 
@@ -1056,7 +1080,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("NtSetInformationFile: FILE_MOVE %ws::%ws\n", absolutepath, renamepath);
 #endif
-			pipe("FILE_MOVE:%Z::%Z", absolutepath, renamepath);
+			pipe("FILE_MOVE:%d,%Z::%Z", GetCurrentProcessId(), absolutepath, renamepath);
 			dropped_count++;
 		}
 		LOQ_ntstatus("filesystem", "puiu", "FileHandle", FileHandle, "HandleName", absolutepath, "FileInformationClass", FileInformationClass,
@@ -1206,7 +1230,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("MoveFileWithProgressW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
 #endif
-			pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
+			pipe("FILE_MOVE:%d,%Z::%F", GetCurrentProcessId(), path, lpNewFileName);
 			dropped_count++;
 		}
 		else if (dropped_count < g_config.dropped_limit) {
@@ -1214,7 +1238,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("MoveFileWithProgressW: FILE_DEL %ws\n", path);
 #endif
-			pipe("FILE_DEL:%Z", path);
+			pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 			dropped_count++;
 		}
 	}
@@ -1274,7 +1298,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 #ifdef DEBUG_COMMENTS
 					DebugOutput("MoveFileWithProgressTransactedW: FILE_MOVE %ws::%ws\n", path, lpNewFileName);
 #endif
-					pipe("FILE_MOVE:%Z::%F", path, lpNewFileName);
+					pipe("FILE_MOVE:%d,%Z::%F", GetCurrentProcessId(), path, lpNewFileName);
 					dropped_count++;
 				}
 			else {
@@ -1283,7 +1307,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 #ifdef DEBUG_COMMENTS
 					DebugOutput("MoveFileWithProgressTransactedW: FILE_DEL %ws\n", path);
 #endif
-					pipe("FILE_DEL:%Z", path);
+					pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 					dropped_count++;
 				}
 			}
@@ -1576,7 +1600,7 @@ HOOKDEF(BOOL, WINAPI, DeleteFileA,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("DeleteFileA: FILE_DEL %ws\n", path);
 #endif
-		pipe("FILE_DEL:%z", path);
+		pipe("FILE_DEL:%d,%z", GetCurrentProcessId(), path);
 		dropped_count++;
 	}
 
@@ -1599,7 +1623,7 @@ HOOKDEF(BOOL, WINAPI, DeleteFileW,
 #ifdef DEBUG_COMMENTS
 			DebugOutput("DeleteFileW: FILE_DEL %ws\n", path);
 #endif
-			pipe("FILE_DEL:%Z", path);
+			pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 			dropped_count++;
 		}
 	}
@@ -1776,7 +1800,7 @@ HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
 		DebugOutput("SetFileInformationByHandle: FILE_DEL %ws\n", path);
 #endif
 		unsigned int len = lstrlenW(path);
-		pipe("FILE_DEL:%S", len, path);
+		pipe("FILE_DEL:%d,%S", GetCurrentProcessId(), len, path);
 		dropped_count++;
 
 		free(fname);

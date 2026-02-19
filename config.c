@@ -1245,7 +1245,7 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Full process memory dumps disabled.\n");
 		}
-		else if (!stricmp(key, "import_reconstruction")) {
+		else if (!stricmp(key, "import-reconstruction") || !stricmp(key, "imprec")) {
 			g_config.import_reconstruction = value[0] == '1';
 			if (g_config.import_reconstruction)
 				DebugOutput("Import reconstruction of process dumps enabled.\n");
@@ -1320,6 +1320,13 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("In-monitor YARA scans disabled.\n");
 		}
+		else if (!stricmp(key, "yara-timeout")) {
+			g_config.yara_timeout = (int)strtol(value, NULL, 10);
+			if (g_config.yara_timeout <= 0)
+				DebugOutput("In-monitor YARA scan timeout set to unlimited.\n");
+			else
+				DebugOutput("In-monitor YARA scan timeout set to %d seconds.\n", g_config.yara_timeout);
+		}
 		else if (!stricmp(key, "amsidump")) {
 			g_config.amsidump = value[0] == '1';
 			if (g_config.amsidump)
@@ -1364,11 +1371,6 @@ void parse_config_line(char* line)
 			}
 			else
 				DebugOutput("Scans/dumps while loader lock held disabled.\n");
-		}
-		else if (!stricmp(key, "plugx")) {
-			g_config.plugx = value[0] == '1';
-			if (g_config.plugx)
-				DebugOutput("PlugX package enabled.\n");
 		}
 		else if (!stricmp(key, "syscall")) {
 			g_config.syscall = value[0] == '1';
@@ -1451,6 +1453,7 @@ void read_config(void)
 	g_config.api_cap = 5000;
 	g_config.api_rate_cap = 1;
 	g_config.yarascan = 1;
+	g_config.yara_timeout = 1;
 	g_config.loaderlock_scans = 1;
 	g_config.syscall = 1;
 

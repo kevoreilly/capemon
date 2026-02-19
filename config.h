@@ -35,6 +35,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define SPOOFED_CPU_CORE_NUM 4
 
+// Defines to string representation of above vars so we don't need to do useless converts
+#define WIDE_SPOOFED_RAM L"4294967296"
+#define WIDE_SPOOFED_RAM_IN_KB L"4194304"
+#define WIDE_DISK_LOGICAL_SIZE L"1098988720128" // SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE
+
 
 struct _g_config {
 	// name of the pipe to communicate with cuckoo
@@ -211,9 +216,6 @@ struct _g_config {
 	// for dumping of crypto API ImportKey buffers
 	int dump_keys;
 
-	// for PlugX config & payload extraction
-	int plugx;
-
 	// syscall hooks
 	int syscall;
 
@@ -240,6 +242,7 @@ struct _g_config {
 
 	// YARA scans
 	int yarascan;
+	int yara_timeout;
 
 	// AMSI dumps (Win10+)
 	int amsidump;
