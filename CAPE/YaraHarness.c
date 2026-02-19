@@ -251,6 +251,14 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 			{
 				if (Meta->type == META_TYPE_STRING && !strcmp(Meta->identifier, "cape_options"))
 				{
+					yr_rule_strings_foreach(Rule, String)
+						yr_string_matches_foreach(context, String, Match)
+						{
+							DebugOutput("YaraScan match: %s (0x%x)", String->identifier, Match->offset);
+							if (TraceRunning)
+								DebuggerOutput("YaraScan match: %s (0x%x) ", String->identifier, Match->offset);
+						}
+
 					SIZE_T length = strlen(Meta->string);
 					char* OptionLine = (char*)Meta->string;
 					while (OptionLine && OptionLine < Meta->string + length)
@@ -265,14 +273,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							yr_rule_strings_foreach(Rule, String)
 							{
 								yr_string_matches_foreach(context, String, Match)
-								{
-#ifdef DEBUG_COMMENTS
-									DebugOutput("YaraScan match: %s, %s (0x%x)", OptionLine, String->identifier, Match->offset);
-#endif
-									if (TraceRunning)
-										DebuggerOutput("YaraScan match: %s, %s (0x%x) ", OptionLine, String->identifier, Match->offset);
 									ParseOptionLine(OptionLine, (char*)String->identifier, Match, user_data);
-								}
 							}
 						}
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
@@ -402,10 +403,10 @@ NameByAddress* GetAddressesByYara(HMODULE ModuleBase, PCHAR FunctionNames[], SIZ
         AddressInfos[i].Address = NULL;
     }
 
-    int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+    int Flags = 0, Result = ERROR_SUCCESS;
     __try
     {
-        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, Timeout);
+        Result = yr_rules_scan_mem(Rules, (PVOID)ModuleBase, Size, Flags, GetAddressesByYaraCallback, AddressInfos, g_config.yara_timeout);
     }
     __except(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -477,7 +478,7 @@ void YaraScan(PVOID Address, SIZE_T Size)
 	if (!YaraActivated)
 		return;
 
-	int Flags = 0, Timeout = 1, Result = ERROR_SUCCESS;
+	int Flags = 0, Result = ERROR_SUCCESS;
 
 	if (!Size)
 		return;
@@ -511,7 +512,7 @@ void YaraScan(PVOID Address, SIZE_T Size)
 
 	__try
 	{
-		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, Timeout);
+		Result = yr_rules_scan_mem(Rules, Address, Size, Flags, YaraCallback, Address, g_config.yara_timeout);
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -620,6 +621,19 @@ BOOL YaraInit()
 
 						if (rule_file)
 						{
+							char check_buf[4096];
+							size_t bytes_read = fread(check_buf, 1, sizeof(check_buf) - 1, rule_file);
+							check_buf[bytes_read] = '\0';
+
+							if (strstr(check_buf, "cape_options") == NULL)
+							{
+								DebugOutput("YaraInit: File %s lacks cape_options metadata - skipping \n", file_name);
+								fclose(rule_file);
+								continue; // Skip this file if it doesn't have cape metadata
+							}
+
+							fseek(rule_file, 0, SEEK_SET);
+
 							int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
 
 							if (errors == ERROR_COULD_NOT_OPEN_FILE)
