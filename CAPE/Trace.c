@@ -51,6 +51,7 @@ extern void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...);
 extern void log_flush();
 extern lookup_t SoftBPs, SyscallBPs;
+extern BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS *ExceptionInfo);
 
 char *ModuleName, *PreviousModuleName;
 PVOID ModuleBase, DumpAddress, ReturnAddress, BreakOnReturnAddress, PreviousJumps[4], GuardedPages;
@@ -2972,7 +2973,12 @@ BOOL SetConfigBP(PVOID ImageBase, DWORD Register, PVOID Address)
 		HitCount = g_config.hc3;
 	}
 
-	if (SetBreakpoint(Register, 0, BreakpointVA, Type, HitCount, BreakpointCallback))
+	PVOID Callback = BreakpointCallback;
+
+	if (g_config.idbg)
+		Callback = InteractiveBreakpointCallback;
+
+	if (SetBreakpoint(Register, 0, BreakpointVA, Type, HitCount, Callback))
 	{
 		DebugOutput("SetInitialBreakpoints: Breakpoint %d set on address 0x%p (RVA 0x%x, type %d, hit count %d, thread %d)\n", Register, BreakpointVA, Address, Type, HitCount, GetCurrentThreadId());
 		BreakpointsSet = TRUE;
@@ -3028,7 +3034,12 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			// break-on-entrypoint uses bp0
 			Register = EntryPointRegister - 1;
 
-			if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, 1, BreakpointCallback))
+			PVOID Callback = BreakpointCallback;
+
+			if (g_config.idbg)
+				Callback = InteractiveBreakpointCallback;
+
+			if (SetBreakpoint(Register, 0, (BYTE*)EntryPoint, BP_EXEC, 1, Callback))
 			{
 				DebuggerOutput("Breakpoint %d set on entry point at 0x%p\n", Register, EntryPoint);
 				BreakpointsSet = TRUE;

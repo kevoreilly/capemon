@@ -1395,6 +1395,11 @@ void parse_config_line(char* line)
 			if (g_config.interactive == 1)
 				DebugOutput("Interactive desktop enabled.\n");
 		}
+		else if (!stricmp(key, "idbg")) {
+			g_config.idbg = value[0] == '1';
+			if (g_config.idbg)
+				DebugOutput("Interactive debugger enabled (CAPEsolo)\n");
+		}
 		else if (!stricmp(key, "snaps")) {
 			g_config.snaps = value[0] == '1';
 			if (g_config.snaps)
