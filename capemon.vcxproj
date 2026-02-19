@@ -177,9 +177,6 @@
     <MASM>
       <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
     </MASM>
-    <PostBuildEvent>
-      <Command></Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -210,9 +207,6 @@
       <Command>
       </Command>
     </PreBuildEvent>
-    <PostBuildEvent>
-      <Command></Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="alloc.c" />
