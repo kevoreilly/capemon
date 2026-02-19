@@ -462,7 +462,7 @@ char* RetrievePage(HANDLE hProcess, uintptr_t Address) {
 	if (!hexPage) return NULL;
 
 	for (SIZE_T i = 0; i < PAGE_SIZE; ++i)
-		sprintf(hexPage + i * 2, "%02X", page[i]);
+		sprintf_s(hexPage + i * 2, "%02X", page[i]);
 
 	hexPage[PAGE_SIZE * 2] = '\0';
 
@@ -511,7 +511,7 @@ void FreeArray(MBIEntryArray* array)
 static BOOL SetRegister(PCONTEXT Context, char* RegString, PVOID Target)
 {
 	if (!Context || !RegString)
-		return;
+		return FALSE;
 
 	__try
 	{
@@ -561,7 +561,7 @@ static BOOL SetRegister(PCONTEXT Context, char* RegString, PVOID Target)
 		else if (!strnicmp(RegString, "r11", 3))
 			(PVOID)Context->R11 = Target;
 		else if (!strnicmp(RegString, "r12", 3))
-			(PVOID)Context->R13 = Target;
+			(PVOID)Context->R12 = Target;
 		else if (!strnicmp(RegString, "r13", 3))
 			(PVOID)Context->R13 = Target;
 		else if (!strnicmp(RegString, "r14", 3))
