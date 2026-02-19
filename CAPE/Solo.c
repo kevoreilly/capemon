@@ -146,10 +146,6 @@ const char* DispatchCommand(struct _EXCEPTION_POINTERS* ExceptionInfo, const cha
 			DbgCmd[2] = '\0';
 			CmdData = Sep + 1;
 
-			if (!CmdData)
-			{
-				return InteractiveDebuggerPipe("Memory allocation failed for command data.\n");
-			}
 		}
 		else
 		{
