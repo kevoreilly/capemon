@@ -178,7 +178,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Next,
 		LOQ_hresult("system", "unu", "Name", *strName, "Value", pVal, "Class", szClassName);
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
-		LOQ_hresult("system", "unu", "Name", *strName, "Value", pVal, "Class", szClassName);
+		LOQ_hresult("system", "un", "Name", *strName, "Value", pVal);
 	}
 
 	VariantClear(&classVariant);
