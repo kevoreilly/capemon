@@ -458,7 +458,7 @@ char* RetrievePage(HANDLE hProcess, uintptr_t Address) {
 	if (!hexPage) return NULL;
 
 	for (SIZE_T i = 0; i < PAGE_SIZE; ++i)
-		sprintf_s(hexPage + i * 2, "%02X", page[i]);
+		sprintf_s(hexPage + i * 2, 3, "%02X", page[i]);
 
 	hexPage[PAGE_SIZE * 2] = '\0';
 
@@ -1399,7 +1399,7 @@ const char* HandleSetRegister(struct _EXCEPTION_POINTERS* ExceptionInfo, const c
 		return InteractiveDebuggerPipe("Failed with invalid value for register %s: %s.", RegName, ValueStr);
 
 	LastContext = *ExceptionInfo->ContextRecord;
-	BOOL result = SetRegister(&LastContext, RegName, NewValue);
+	BOOL result = SetRegister(&LastContext, RegName, (PVOID)NewValue);
 	if (!result)
 		return InteractiveDebuggerPipe("Failed to set register %s to %llu.\n", RegName, NewValue);
 
@@ -1431,11 +1431,11 @@ const char* HandleNopInstruction(struct _EXCEPTION_POINTERS* ExceptionInfo, cons
 	if (!DecodedInstruction.size)
 		return InteractiveDebuggerPipe("Failed Nop instruction at 0x%p\n", Address);
 
-	VirtualProtect(Address, DecodedInstruction.size, PAGE_EXECUTE_READWRITE, &OldProtect);
+	VirtualProtect((LPVOID)Address, DecodedInstruction.size, PAGE_EXECUTE_READWRITE, &OldProtect);
 	for (unsigned int i = 0; i < DecodedInstruction.size; i++) 
 		*((BYTE*)Address + i) = 0x90;
 
-	VirtualProtect(Address, DecodedInstruction.size, OldProtect, &OldProtect);
+	VirtualProtect((LPVOID)Address, DecodedInstruction.size, OldProtect, &OldProtect);
 	return InteractiveDebuggerPipe("%p|%u\n", Address, DecodedInstruction.size);
 }
 
@@ -1481,11 +1481,11 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 		return InteractiveDebuggerPipe("Failed with no bytes to patch.\n");
 	}
 
-	if (!Address || !IsAddressAccessible(Address))
+	if (!Address || !IsAddressAccessible((PVOID)Address))
 		return InteractiveDebuggerPipe("Failed address is not accessible: 0x%p", Address);
 
 	DWORD OldProtect;
-	if (!VirtualProtect(Address, ByteCount, PAGE_EXECUTE_READWRITE, &OldProtect))
+	if (!VirtualProtect((LPVOID)Address, ByteCount, PAGE_EXECUTE_READWRITE, &OldProtect))
 		return InteractiveDebuggerPipe("Failed unable to change memory protection at 0x%p", Address);
 
 	BYTE* dest = (BYTE*)Address;
@@ -1495,7 +1495,7 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 		*dest = *src;
 	}
 
-	VirtualProtect(Address, ByteCount, OldProtect, &OldProtect);
+	VirtualProtect((LPVOID)Address, ByteCount, OldProtect, &OldProtect);
 	free(Patch);
 
 	return InteractiveDebuggerPipe("Patched %p|%u\n", Address, ByteCount);
