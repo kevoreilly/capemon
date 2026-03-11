@@ -2242,29 +2242,56 @@ BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 void ClearSoftwareBreakpointsInRange(LPVOID Base, SIZE_T Size)
 //**************************************************************************************
 {
-	entry_t *Entry;
-	for (Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
+	entry_t *Entry = SoftBPs.root;
+	entry_t *Next = NULL;
+	PBYTE Address = NULL;
+
+	while (Entry != NULL)
 	{
-		PBYTE Address = (PBYTE)Entry->id;
+		Next = Entry->next;
+		Address = (PBYTE)Entry->id;
 		if (Address >= (PBYTE)Base && Address < (PBYTE)Base + Size)
 			ClearSoftwareBreakpoint(&SoftBPs, Address);
+		Entry = Next;
 	}
-	for (Entry = SyscallBPs.root; Entry != NULL; Entry = Entry->next)
+	SoftBPs.root = NULL;
+
+	Entry = SyscallBPs.root;
+	while (Entry != NULL)
 	{
-		PBYTE Address = (PBYTE)Entry->id;
+		Next = Entry->next;
+		Address = (PBYTE)Entry->id;
 		if (Address >= (PBYTE)Base && Address < (PBYTE)Base + Size)
 			ClearSoftwareBreakpoint(&SyscallBPs, Address);
+		ClearSoftwareBreakpoint(&SyscallBPs, (LPVOID)Entry->id);
+		Entry = Next;
 	}
+	SyscallBPs.root = NULL;
 }
 
 //**************************************************************************************
 void ClearSoftwareBreakpoints()
 //**************************************************************************************
 {
-	for (entry_t* Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
+	entry_t *Entry = SoftBPs.root;
+	entry_t *Next = NULL;
+
+	while (Entry != NULL)
+	{
+		Next = Entry->next;
 		ClearSoftwareBreakpoint(&SoftBPs, (LPVOID)Entry->id);
-	for (entry_t* Entry = SyscallBPs.root; Entry != NULL; Entry = Entry->next)
+		Entry = Next;
+	}
+	SoftBPs.root = NULL;
+
+	Entry = SyscallBPs.root;
+	while (Entry != NULL)
+	{
+		Next = Entry->next;
 		ClearSoftwareBreakpoint(&SyscallBPs, (LPVOID)Entry->id);
+		Entry = Next;
+	}
+	SyscallBPs.root = NULL;
 }
 
 //**************************************************************************************
