@@ -1729,7 +1729,7 @@ BOOL ClearDebugRegister
 
 	if (!GetThreadContext(hThread, &Context))
 	{
-		ErrorOutput("ClearDebugRegister: Initial GetThreadContext failed");
+		ErrorOutput("ClearDebugRegister: Initial GetThreadContext failed for handle 0x%p", hThread);
 		return FALSE;
 	}
 
@@ -1766,7 +1766,7 @@ BOOL ClearDebugRegister
 
 	if (!SetThreadContext(hThread, &Context))
 	{
-		ErrorOutput("ClearDebugRegister: SetThreadContext failed");
+		ErrorOutput("ClearDebugRegister: SetThreadContext failed for handle 0x%p", hThread);
 		return FALSE;
 	}
 
@@ -2547,7 +2547,7 @@ BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register)
 
 	if (!ClearDebugRegister(pBreakpointInfo->ThreadHandle, pBreakpointInfo->Register, pBreakpointInfo->Size, pBreakpointInfo->Address, pBreakpointInfo->Type))
 	{
-		DebugOutput("ClearThreadBreakpoint: Call to ClearDebugRegister failed.\n");
+		DebugOutput("ClearThreadBreakpoint: Call to ClearDebugRegister failed for thread %d, register %d\n", ThreadId, Register);
 		return FALSE;
 	}
 
@@ -2558,7 +2558,7 @@ BOOL ClearThreadBreakpoint(DWORD ThreadId, int Register)
 	pBreakpointInfo->Callback	= NULL;
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("ClearThreadBreakpoint: Clearing thead %d, register %d\n", ThreadId, Register);
+	DebugOutput("ClearThreadBreakpoint: Clearing thread %d, register %d\n", ThreadId, Register);
 #endif
 
 	return TRUE;
@@ -2578,19 +2578,22 @@ BOOL ClearBreakpoint(int Register)
 
 	while (ThreadBreakpoints)
 	{
-		if (ThreadBreakpoints->ThreadHandle)
-			ThreadBreakpoints->BreakpointInfo[Register].ThreadHandle = ThreadBreakpoints->ThreadHandle;
+		if (ThreadBreakpoints->BreakpointInfo[Register].Address)
+		{
+#ifdef DEBUG_COMMENTS
+			DebugOutput("ClearBreakpoint: About to call ClearThreadBreakpoint for thread %d.\n", ThreadBreakpoints->ThreadId);
+#endif
+			ClearThreadBreakpoint(ThreadBreakpoints->ThreadId, Register);
+		}
+
 		ThreadBreakpoints->BreakpointInfo[Register].Size		= 0;
 		ThreadBreakpoints->BreakpointInfo[Register].Address		= NULL;
 		ThreadBreakpoints->BreakpointInfo[Register].Type		= 0;
 		ThreadBreakpoints->BreakpointInfo[Register].HitCount	= 0;
 		ThreadBreakpoints->BreakpointInfo[Register].Callback	= NULL;
 
-#ifdef DEBUG_COMMENTS
-		DebugOutput("ClearBreakpoint: About to call ClearThreadBreakpoint for thread %d.\n", ThreadBreakpoints->ThreadId);
-#endif
-
-		ClearThreadBreakpoint(ThreadBreakpoints->ThreadId, Register);
+		if (ThreadBreakpoints->ThreadHandle)
+			ThreadBreakpoints->BreakpointInfo[Register].ThreadHandle = ThreadBreakpoints->ThreadHandle;
 
 		ThreadBreakpoints = ThreadBreakpoints->NextThreadBreakpoints;
 	}
