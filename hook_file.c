@@ -1799,8 +1799,7 @@ HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
 #ifdef DEBUG_COMMENTS
 		DebugOutput("SetFileInformationByHandle: FILE_DEL %ws\n", path);
 #endif
-		unsigned int len = lstrlenW(path);
-		pipe("FILE_DEL:%d,%S", GetCurrentProcessId(), len, path);
+		pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 		dropped_count++;
 
 		free(fname);
