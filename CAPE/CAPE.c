@@ -978,7 +978,7 @@ PTRACKEDREGION GetTrackedRegion(PVOID Address)
 
 	while (CurrentTrackedRegion)
 	{
-		if (GetAllocationBase(Address) == CurrentTrackedRegion->AllocationBase)
+		if (CurrentTrackedRegion->AllocationBase && GetAllocationBase(Address) == CurrentTrackedRegion->AllocationBase)
 			return CurrentTrackedRegion;
 
 		CurrentTrackedRegion = CurrentTrackedRegion->NextTrackedRegion;
