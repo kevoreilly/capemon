@@ -3129,7 +3129,6 @@ BOOL DumpRegion(PVOID Address)
 				DebugOutput("DumpRegion: Dumped stack region from 0x%p, size %d bytes.\n", BaseAddress, RegionSize);
 			else
 				DebugOutput("DumpRegion: Dumped region at 0x%p, size %d bytes.\n", BaseAddress, RegionSize);
-			DumpCount++;
 			return TRUE;
 		}
 		else
@@ -3325,9 +3324,6 @@ int DumpImageInCurrentProcess(PVOID Address)
 end:
 	if (RegionCopy)
 		free(RegionCopy);
-
-	if (RetVal)
-		DumpCount++;
 
 	return RetVal;
 }
