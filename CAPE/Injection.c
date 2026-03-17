@@ -29,6 +29,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE.h"
 #include "Injection.h"
 #include "Shlwapi.h"
+#include <shlobj.h>
 
 #pragma comment(lib, "shlwapi.lib")
 #pragma warning(push )
@@ -758,17 +759,39 @@ BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 		L"c:\\windows\\splwow64.exe",
 	};
 
-	if (g_config.firefox && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe"))
-		return TRUE;
+	WCHAR programFiles32[MAX_PATH];
+	WCHAR programFiles64[MAX_PATH];
 
-	if (g_config.chrome && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"))
-		return TRUE;
+	SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILES, NULL, 0, programFiles64);
+	SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILESX86, NULL, 0, programFiles32);
 
-	if (g_config.edge && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"))
-		return TRUE;
+	struct BrowserEntry
+	{
+		BOOL config_flag;
+		const wchar_t* relative_path;
+	}
+	browsers[] =
+	{
+		{g_config.firefox, L"Mozilla Firefox\\firefox.exe"},
+		{g_config.chrome, L"Google\\Chrome\\Application\\chrome.exe"},
+		{g_config.edge, L"Microsoft\\Edge\\Application\\msedge.exe"},
+		{g_config.iexplore, L"Internet Explorer\\iexplore.exe"},
+	};
 
-	if (g_config.iexplore && !wcsicmp(TargetProcess, L"C:\\Program Files (x86)\\Internet Explorer\\iexplore.exe"))
-		return TRUE;
+	for (int i = 0; i < ARRAYSIZE(browsers); i++)
+	{
+		if (browsers[i].config_flag)
+		{
+			WCHAR fullPath32[MAX_PATH];
+			WCHAR fullPath64[MAX_PATH];
+
+			PathCombineW(fullPath32, programFiles32, browsers[i].relative_path);
+			PathCombineW(fullPath64, programFiles64, browsers[i].relative_path);
+
+			if (!wcsicmp(TargetProcess, fullPath32) || !wcsicmp(TargetProcess, fullPath64))
+				return TRUE;
+		}
+	}
 
 	if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k WerSvcGroup"))
 		return TRUE;
