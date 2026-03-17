@@ -156,12 +156,27 @@ int hook_is_excluded(hook_t *h)
 {
 	unsigned int i;
 
+	if (g_config.included_apinames[0] != NULL) {
+		int found = 0;
+		for (i = 0; i < ARRAYSIZE(g_config.included_apinames); i++) {
+			if (!g_config.included_apinames[i])
+				break;
+			if (!stricmp(h->funcname, g_config.included_apinames[i])) {
+				found = 1;
+				break;
+			}
+		}
+		if (!found)
+			return 1;
+	}
+
 	for (i = 0; i < ARRAYSIZE(g_config.excluded_apinames); i++) {
 		if (!g_config.excluded_apinames[i])
 			break;
 		if (!stricmp(h->funcname, g_config.excluded_apinames[i]))
 			return 1;
 	}
+
 	for (i = 0; i < ARRAYSIZE(g_config.excluded_dllnames); i++) {
 		if (!g_config.excluded_dllnames[i])
 			break;

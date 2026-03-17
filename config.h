@@ -167,6 +167,7 @@ struct _g_config {
 	BOOLEAN suspend_logging;
 
 	char *excluded_apinames[EXCLUSION_MAX];
+	char *included_apinames[EXCLUSION_MAX];
 	wchar_t *excluded_dllnames[EXCLUSION_MAX];
 	char *base_on_apiname[EXCLUSION_MAX];
  	char *dump_on_apinames[EXCLUSION_MAX];

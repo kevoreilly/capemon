@@ -312,6 +312,21 @@ void parse_config_line(char* line)
 				p = p2 + 1;
 			}
 		}
+		else if (!strcmp(key, "include-apis")) { // Only include the colon-separated list of APIs
+			unsigned int x = 0;
+			char *p2;
+			p = value;
+			while (p && x < EXCLUSION_MAX) {
+				p2 = strchr(p, ':');
+				if (p2) {
+					*p2 = '\0';
+				}
+				g_config.included_apinames[x++] = strdup(p);
+				if (p2 == NULL)
+					break;
+				p = p2 + 1;
+			}
+		}
 		else if (!strcmp(key, "exclude-dlls")) { //Exclude the colon-separated list of DLLs from being hooked
 			unsigned int x = 0;
 			char *p2;
