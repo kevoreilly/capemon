@@ -1085,9 +1085,6 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 
 	TrackedRegion->Entropy = GetEntropy((PUCHAR)TrackedRegion->AllocationBase);
 
-	if (!TrackedRegion->Entropy)
-		DebugOutput("AddTrackedRegion: GetEntropy failed.");
-
 	// If the region is a PE image
 	TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
 	if (TrackedRegion->EntryPoint)
