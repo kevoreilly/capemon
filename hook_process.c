@@ -1440,7 +1440,7 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 		if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
 			ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
 			UNICODE_STRING *module_name = get_module_name((ULONG_PTR)ExceptionRecord->ExceptionInformation[1]);
-			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
+			if ((g_config.ntdll_protect && module_name && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
 				(g_config.hook_protect && module_name && dll_is_hooked(module_name->Buffer))) {
 				// if trying to write to protected module, skip the instruction
 				if (!ntdll_protect_logged) {
