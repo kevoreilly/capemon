@@ -3322,6 +3322,22 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptEncrypt,
 	ULONG				dwFlags
 );
 
+HOOKDEF(NTSTATUS, WINAPI, BCryptHashData,
+	PVOID				hHash,
+	PUCHAR				pbInput,
+	ULONG				cbInput,
+	ULONG				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, BCryptKeyDerivation,
+	PVOID				hKey,
+	PNCryptBufferDesc	pParameterList,
+	PUCHAR				pbDerivedKey,
+	ULONG				cbDerivedKey,
+	ULONG				*pcbResult,
+	ULONG				dwFlags
+);
+
 //
 // Special Hooks
 //
@@ -3718,6 +3734,16 @@ HOOKDEF(NTSTATUS, WINAPI, SslExpandExporterMasterKey,
 	_Out_		NCRYPT_KEY_HANDLE	*phExporterMasterKey,
 	_In_opt_	PNCryptBufferDesc	pParameterList,
 	_In_		DWORD				dwFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, BCryptDeriveKey,
+	_In_		PVOID				hSharedSecret,
+	_In_		LPCWSTR				pwszKDF,
+	_In_opt_	PNCryptBufferDesc	pParameterList,
+	_Out_opt_	PUCHAR				pbDerivedKey,
+	_In_		ULONG				cbDerivedKey,
+	_Out_		ULONG				*pcbResult,
+	_In_		ULONG				dwFlags
 );
 
 HOOKDEF(NTSTATUS, WINAPI, SslGenerateSessionKeys,
