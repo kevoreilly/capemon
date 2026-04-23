@@ -994,9 +994,20 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 	_Out_ DWORD *				BufferType
 ) {
 	ULONG ret = Old_NetGetJoinInformation(lpServer, lpNameBuffer, BufferType);
-
-	LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
-
+	if (g_config.no_stealth) 
+	{
+		LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
+	}
+	else 
+	{
+		//Faking to be part of a domain in order to bypass some detections
+		LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
+		if (*BufferType !=3) {
+			*BufferType = 3; 
+			LPWSTR fake_domain_name = L"myDomain";
+			lpNameBuffer = &fake_domain_name;
+		}
+	}
 	return ret;
 }
 
