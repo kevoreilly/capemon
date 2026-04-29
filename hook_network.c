@@ -1010,7 +1010,7 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 		if (*BufferType !=3) {
 			*BufferType = 3; 
 			LPWSTR fake_domain_name = L"myDomain";
-			DWORD net = NetApiBufferAllocate(sizeof(wcslen((LPCWSTR)fake_domain_name)), (LPVOID *)&fake_domain_name);
+			DWORD net = NetApiBufferAllocate(sizeof(WCHAR) * wcslen((LPCWSTR)fake_domain_name), (LPVOID *)&fake_domain_name);
 			if(net == NERR_Success)
 				lpNameBuffer = &fake_domain_name;
 			else
