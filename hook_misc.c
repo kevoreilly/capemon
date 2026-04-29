@@ -2013,22 +2013,32 @@ HOOKDEF(HANDLE, WINAPI, GetClipboardData,
 	_In_ UINT uFormat
 ){
 	HANDLE ret = Old_GetClipboardData(uFormat);
-	if (uFormat == CF_TEXT) {
-		LOQ_handle("misc", "is", "Format", uFormat, "Data", ret);
-	}
-	else if (uFormat == CF_OEMTEXT) {
-		LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
-		OemToCharBuffA(ret, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
-		LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
-	}
-	else if (uFormat == CF_UNICODETEXT) {
-		LOQ_handle("misc", "iu", "Format", uFormat, "Data", ret);
-	}
+	if (ret == NULL)
+		return ret; 
+	char* clip_buff = (char*)GlobalLock(ret);
+	if (clip_buff == NULL)
+		return ret;
 	else {
-		LOQ_handle("misc", "i", "Format", uFormat);
+		size_t textLen = strlen(clip_buff) + 1;  
+    	char* local_buff = malloc(textLen * sizeof(char*));  
+    	strcpy_s(local_buff, textLen, clip_buff);
+		GlobalUnlock(ret);
+		if (uFormat == CF_TEXT) {
+			LOQ_handle("misc", "is", "Format", uFormat, "Data", (char*)local_buff);
+		}
+		else if (uFormat == CF_OEMTEXT) {
+			LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
+			OemToCharBuffA(local_buff, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
+			LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
+		}
+		else if (uFormat == CF_UNICODETEXT) {
+			LOQ_handle("misc", "iu", "Format", uFormat, "Data", (char*)local_buff);
+		}
+		else {
+			LOQ_handle("misc", "i", "Format", uFormat);
+		}
+		return ret;
 	}
-	
-	return ret;
 }
 
 HOOKDEF(BOOL, WINAPI, OpenClipboard,
@@ -2044,21 +2054,31 @@ HOOKDEF(HANDLE, WINAPI, SetClipboardData,
 	_In_opt_ HANDLE hMem
 ){
 	HANDLE ret = Old_SetClipboardData(uFormat,hMem);
-	if (uFormat == CF_TEXT) {
-		LOQ_handle("misc", "is", "Format", uFormat, "Data", ret);
-	}
-	else if (uFormat == CF_OEMTEXT) {
-		LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
-		OemToCharBuffA(ret, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
-		LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
-	}
-	else if (uFormat == CF_UNICODETEXT) {
-		LOQ_handle("misc", "iu", "Format", uFormat, "Data", ret);
-	}
+	if (ret == NULL)
+		return ret; 
+	char* clip_buff = (char*)GlobalLock(ret);
+	if (clip_buff == NULL)
+		return ret;
 	else {
-		LOQ_handle("misc", "i", "Format", uFormat);
+		size_t textLen = strlen(clip_buff) + 1;  
+    	char* local_buff = malloc(textLen * sizeof(char*));  
+    	strcpy_s(local_buff, textLen, clip_buff);
+		GlobalUnlock(ret);
+		if (uFormat == CF_TEXT) {
+			LOQ_handle("misc", "is", "Format", uFormat, "Data", (char*)local_buff);
+		}
+		else if (uFormat == CF_OEMTEXT) {
+			LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
+			OemToCharBuffA(local_buff, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
+			LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
+		}
+		else if (uFormat == CF_UNICODETEXT) {
+			LOQ_handle("misc", "iu", "Format", uFormat, "Data", (char*)local_buff);
+		}
+		else {
+			LOQ_handle("misc", "i", "Format", uFormat);
+		}
+		return ret;
 	}
-
-	return ret;
 }
 
