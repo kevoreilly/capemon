@@ -469,6 +469,9 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtPowerInformation),
 
 	HOOK(cmd, FindFixAndRun),
+	HOOK(User32.dll, GetClipboardData),
+	HOOK(User32.dll, OpenClipboard),
+	HOOK(User32.dll, SetClipboardData),
 
 	// Language related hooks
 	HOOK(ntdll, NtQueryDefaultUILanguage),
@@ -1388,6 +1391,9 @@ hook_t office_hooks[] = {
 	HOOK(shlwapi, UrlCanonicalizeW),
 	HOOK_NOTAIL(vbe7, rtcCreateObject2, 3),
 #endif
+	HOOK(User32.dll, GetClipboardData),
+	HOOK(User32.dll, OpenClipboard),
+	HOOK(User32.dll, SetClipboardData),	
 
 	// PE resource related functions
 	HOOK(kernel32, FindResourceExA),

@@ -33,7 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\YaraHarness.h"
 
 #define STATUS_BAD_COMPRESSION_BUFFER ((NTSTATUS)0xC0000242L)
-
+#define MAX_CLIPBOARD_BUFFER_OF_INTEREST 256
 extern char *our_process_name;
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern const char* GetLanguageName(LANGID langID);
@@ -44,6 +44,7 @@ extern BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 
 LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 DWORD ExportAddress;
+
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	__in  int idHook,
@@ -2007,3 +2008,57 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 		"OutputBuffer", OutputBufferLength, OutputBuffer);
 	return ret;
 }
+
+HOOKDEF(HANDLE, WINAPI, GetClipboardData,
+	_In_ UINT uFormat
+){
+	HANDLE ret = Old_GetClipboardData(uFormat);
+	if (uFormat == CF_TEXT) {
+		LOQ_handle("misc", "is", "Format", uFormat, "Data", ret);
+	}
+	else if (uFormat == CF_OEMTEXT) {
+		LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
+		OemToCharBuffA(ret, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
+		LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
+	}
+	else if (uFormat == CF_UNICODETEXT) {
+		LOQ_handle("misc", "iu", "Format", uFormat, "Data", ret);
+	}
+	else {
+		LOQ_handle("misc", "i", "Format", uFormat);
+	}
+	
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, OpenClipboard,
+	_In_opt_ HWND hWndNewOwner
+){
+	BOOL ret = Old_OpenClipboard(hWndNewOwner);
+	LOQ_bool("misc", ""); 
+	return ret;
+}
+
+HOOKDEF(HANDLE, WINAPI, SetClipboardData,
+	_In_ UINT uFormat,
+	_In_opt_ HANDLE hMem
+){
+	HANDLE ret = Old_SetClipboardData(uFormat,hMem);
+	if (uFormat == CF_TEXT) {
+		LOQ_handle("misc", "is", "Format", uFormat, "Data", ret);
+	}
+	else if (uFormat == CF_OEMTEXT) {
+		LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
+		OemToCharBuffA(ret, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
+		LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
+	}
+	else if (uFormat == CF_UNICODETEXT) {
+		LOQ_handle("misc", "iu", "Format", uFormat, "Data", ret);
+	}
+	else {
+		LOQ_handle("misc", "i", "Format", uFormat);
+	}
+
+	return ret;
+}
+
