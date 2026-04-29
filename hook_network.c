@@ -26,6 +26,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 
+#define NERR_Success 0
+
 extern unsigned int dropped_count;
 extern BOOL DumpRegion(PVOID Address);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -994,6 +996,9 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 	_Out_ DWORD *				BufferType
 ) {
 	ULONG ret = Old_NetGetJoinInformation(lpServer, lpNameBuffer, BufferType);
+	if (ret != 0 || ret == NULL)
+		LOQ_zero("network", "u", "Server", lpServer, "NetBIOSName");
+		return ret;
 	if (g_config.no_stealth) 
 	{
 		LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
@@ -1005,7 +1010,11 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 		if (*BufferType !=3) {
 			*BufferType = 3; 
 			LPWSTR fake_domain_name = L"myDomain";
-			lpNameBuffer = &fake_domain_name;
+			DWORD net = NetApiBufferAllocate(sizeof(wcslen((LPCWSTR)fake_domain_name)), (LPVOID *)&fake_domain_name);
+			if(net == NERR_Success)
+				lpNameBuffer = &fake_domain_name;
+			else
+				*lpNameBuffer = *fake_domain_name;
 		}
 	}
 	return ret;

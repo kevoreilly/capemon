@@ -84,8 +84,8 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 		}
 	}
 	else if (pVal->vt == VT_BOOL) {
-		if ((!_wcsicmp(szClassName, L"Win32_ComputerSystem") && (!_wcsicmp(wszName, L"PartOfDomain"))
-			pVal->boolVal = True;
+		if ((!_wcsicmp(szClassName, L"Win32_ComputerSystem") && (!_wcsicmp(wszName, L"PartOfDomain"))))
+			pVal->boolVal = VARIANT_TRUE;
 	}
 	//
 	// Spoofery logic for NULL
