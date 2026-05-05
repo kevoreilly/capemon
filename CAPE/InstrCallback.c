@@ -14,9 +14,11 @@
 #define SE_DEBUG_PRIVILEGE 0x14
 
 #pragma pack(1)
-typedef struct _IMAGE_CFG_ENTRY {
+typedef struct _IMAGE_CFG_ENTRY
+{
 	DWORD Rva;
-    struct {
+    struct
+	{
         BOOLEAN SuppressedCall : 1;
         BOOLEAN ExportSuppressed : 1;
         BOOLEAN LangExcptHandler : 1;
@@ -32,7 +34,7 @@ extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval);
 extern int __called_by_hook(ULONG_PTR stack_pointer, ULONG_PTR frame_pointer);
 extern _NtSetInformationProcess pNtSetInformationProcess;
-extern ULONG_PTR ntdll_base, win32u_base, user32_base;
+extern ULONG_PTR ntdll_base;
 extern ULONG_PTR base_of_dll_of_interest;
 extern PVOID ImageBase;
 
@@ -115,6 +117,57 @@ PCHAR GetNameBySsn(unsigned int Number)
     return NULL;
 }
 
+typedef struct _DLL_MAPPING
+{
+    LPCSTR Name;
+    ULONG_PTR Base;
+    DWORD Size;
+} DLL_MAPPING;
+
+static DLL_MAPPING g_DllsToFilter[] =
+{
+	{"ntdll",      0, 0},
+	{"win32u",      0, 0},
+	{"user32",      0, 0},
+	{"kernelbase",  0, 0},
+};
+
+
+static const DWORD g_DllCount = sizeof(g_DllsToFilter) / sizeof(g_DllsToFilter[0]);
+static BOOLEAN g_Initialized;
+
+VOID InitializeFilteredDlls(VOID)
+{
+	if (!g_Initialized)
+	{
+		for (DWORD i = 0; i < g_DllCount; i++)
+		{
+			g_DllsToFilter[i].Base = (ULONG_PTR)GetModuleHandle(g_DllsToFilter[i].Name);
+			if (g_DllsToFilter[i].Base)
+				g_DllsToFilter[i].Size = get_image_size(g_DllsToFilter[i].Base);
+		}
+		g_Initialized = TRUE;
+	}
+}
+
+BOOLEAN IsAddressInFilteredDlls(ULONG_PTR Address)
+{
+	if (!g_Initialized)
+		return FALSE;
+
+	for (DWORD i = 0; i < g_DllCount; i++)
+	{
+		if (g_DllsToFilter[i].Base && g_DllsToFilter[i].Size)
+		{
+			ULONG_PTR End = g_DllsToFilter[i].Base + g_DllsToFilter[i].Size;
+			if (Address >= g_DllsToFilter[i].Base && Address < End)
+				return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
 // https://www.geoffchappell.com/studies/windows/win32/ntdll/structs/teb/index.htm
 #ifdef _WIN64
 #define InstrumentationCallbackPreviousPc	0x2d8
@@ -147,12 +200,12 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 	{
 		*((BOOLEAN*)pTEB + InstrumentationCallbackDisabled) = TRUE;
 
-		if (g_config.syscall > 1 && is_address_in_win32u((ULONG_PTR)CIP))
+		if (g_config.syscall > 1 && IsAddressInFilteredDlls((ULONG_PTR)CIP))
 		{
-			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)win32u_base);
+			PUNICODE_STRING ModuleName = get_basename_of_module(GetAllocationBase(CIP));
 			log_syscall(ModuleName, ScanForExport((PVOID)CIP, SCANMAX), (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
 		}
-		else if (!inside_hook(CIP) && !is_address_in_ntdll((ULONG_PTR)CIP) && !is_address_in_win32u((ULONG_PTR)CIP) && !is_address_in_user32((ULONG_PTR)CIP))
+		else if (!inside_hook(CIP) && !IsAddressInFilteredDlls((ULONG_PTR)CIP))
 		{
 			PVOID AllocationBase = GetAllocationBase((PVOID)CIP);
 			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)AllocationBase);
@@ -165,11 +218,13 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 			{
 				PTRACKEDREGION TrackedRegion = NULL;
 				TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-				if (!TrackedRegion) {
+				if (!TrackedRegion)
+				{
 					TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 					if (!TrackedRegion)
 						DebugOutput("InstrumentationCallback: Failed to add region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
-					else {
+					else
+					{
 						DebugOutput("InstrumentationCallback: Added region at 0x%p (base 0x%p) to tracked regions list (thread %d).\n", CIP, AllocationBase, GetCurrentThreadId());
 						TrackedRegion->Caller = (PVOID)CIP;
 						TrackedRegion->Address = AllocationBase;
@@ -204,8 +259,7 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 void NirvanaInit()
 {
 	NTSTATUS ret = 0;
-	win32u_base = (ULONG_PTR)GetModuleHandle("win32u");
-	user32_base = (ULONG_PTR)GetModuleHandle("user32");
+	InitializeFilteredDlls();
 	PROCESS_INSTRUMENTATION_CALLBACK_INFORMATION Nirvana;
 	Nirvana.Callback = (PVOID)InstrHook;
 	Nirvana.Reserved = 0;

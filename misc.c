@@ -2352,40 +2352,6 @@ BOOLEAN is_image_base_remapped(HMODULE BaseAddress)
 	return remapped;
 }
 
-ULONG_PTR win32u_base;
-DWORD win32u_size;
-
-BOOLEAN is_address_in_win32u(ULONG_PTR address)
-{
-	if (!win32u_base)
-		return FALSE;
-
-	if (!win32u_size)
-		win32u_size = get_image_size(win32u_base);
-
-	if (address >= win32u_base && address < (win32u_base + win32u_size))
-		return TRUE;
-
-	return FALSE;
-}
-
-ULONG_PTR user32_base;
-DWORD user32_size;
-
-BOOLEAN is_address_in_user32(ULONG_PTR address)
-{
-	if (!user32_base)
-		return FALSE;
-
-	if (!user32_size)
-		user32_size = get_image_size(user32_base);
-
-	if (address >= user32_base && address < (user32_base + user32_size))
-		return TRUE;
-
-	return FALSE;
-}
-
 BOOLEAN prevent_module_unloading(PVOID BaseAddress) {
 	// Some code may attempt to unmap a previously mapped view of, say, ntdll
 	// e.g. Xenos dll injector (https://github.com/DarthTon/Xenos - def1c2f12307d598e42506a55f1a06ed5e652af0d260aac9572469429f10d04d)
