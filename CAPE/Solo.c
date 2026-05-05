@@ -1314,7 +1314,7 @@ const char* HandleExports(struct _EXCEPTION_POINTERS* ExceptionInfo, const char*
 			char* entry = (char*)malloc(MaxEntryLen);
 			if (!entry) continue;
 
-			int written = snprintf(entry, MaxEntryLen, "%llu,%s", (unsigned long long)AbsAddr, name);
+			unsigned int written = snprintf(entry, MaxEntryLen, "%llu,%s", (unsigned long long)AbsAddr, name);
 			if (written <= 0 || written >= MaxEntryLen)
 			{
 				free(entry);
@@ -1337,7 +1337,7 @@ const char* HandleExports(struct _EXCEPTION_POINTERS* ExceptionInfo, const char*
 	{
 		for (int i = 0; i < EntryCount; i++) free(entries[i]);
 		free(entries);
-		return InteractiveDebuggerPipe("Failed memory allocation failed.\n");
+		return InteractiveDebuggerPipe("Memory allocation failed.\n");
 	}
 
 	for (int i = start; i < EntryCount && i < end; i++)
