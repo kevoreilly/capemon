@@ -27,7 +27,7 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MIN_SIZE	 ((ULONG)0x800)
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
-#define ENTROPY_DELTA  0.5
+#define ENTROPY_DELTA  0.005
 
 typedef PVOID(WINAPI *_getJit)(void);
 

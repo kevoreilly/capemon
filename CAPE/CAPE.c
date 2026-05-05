@@ -1308,19 +1308,34 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	DebugOutput("ProcessTrackedRegion: Address 0x%p Base 0x%p Size %d sub-allocation %d dump count %d\n", TrackedRegion->Caller, Address, Size, TrackedRegion->SubAllocation, DumpCount);
 #endif
 
-	if (TrackedRegion->PagesDumped)
+	// Allow a big enough change in entropy to trigger another dump
+	double Entropy = GetEntropy(Address);
+	double Delta = 0;
+	if (Entropy)
 	{
-		// Allow a big enough change in entropy to trigger another dump
-		double Entropy = GetEntropy(Address);
-		if (Entropy && Entropy == TrackedRegion->Entropy)
+		if (TrackedRegion->PagesDumped && Entropy == TrackedRegion->Entropy)
 			return;
 
-		if (Entropy && (fabs(TrackedRegion->Entropy - Entropy) < (double)ENTROPY_DELTA))
+		Delta = fabs(TrackedRegion->Entropy - Entropy);
+		if (TrackedRegion->PagesDumped && (Delta < (double)ENTROPY_DELTA))
 			return;
 
-		DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
-		TrackedRegion->Entropy = Entropy;
+		if (Entropy != TrackedRegion->Entropy)
+		{
+			if (TrackedRegion->Entropy)
+				DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
+			else
+				DebugOutput("ProcessTrackedRegion: Entropy for tracked region at 0x%p: %e", Address, Entropy);
+		}
+#ifdef DEBUG_COMMENTS
+		else
+			DebugOutput("ProcessTrackedRegion: No change in entropy for tracked region at 0x%p: %e", Address, Entropy);
 	}
+	else
+		DebugOutput("ProcessTrackedRegion: Unable to obtain entropy for tracked region at 0x%p", Address);
+#else
+	}
+#endif
 
 	// Suppress exceptions from scans/dumps in debugger log
 	BOOL TraceIsRunning = TraceRunning;
@@ -1336,7 +1351,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 			DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws is in known range, skipping", Address, ModulePath);
 			return;
 		}
-		else if (VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
+		else if (Entropy && Delta < (double)ENTROPY_DELTA && VerifyHeaders((PVOID)Address, TranslatePathFromDeviceToLetterW(ModulePath)) == 1)
 		{
 			if (!path_is_system(ModulePath))
 				DebugOutput("ProcessTrackedRegion: Region at 0x%p mapped as %ws appears unmodified, skipping", Address, ModulePath);
@@ -1345,6 +1360,9 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		else
 			DebugOutput("ProcessTrackedRegion: Interesting region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 	}
+
+	if (Entropy)
+		TrackedRegion->Entropy = Entropy;
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
