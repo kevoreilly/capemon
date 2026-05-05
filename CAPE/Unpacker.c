@@ -329,8 +329,6 @@ void FreeHandler(PVOID BaseAddress)
 
 	ClearTrackedRegion(TrackedRegion);
 
-	DropTrackedRegion(TrackedRegion);
-
 	hook_enable();
 
 	return;
