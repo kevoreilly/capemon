@@ -1867,7 +1867,7 @@ void set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
 		__try {
 			for (int hook_idx = 0; hook_idx < num_com_hooks; hook_idx++) {
 				if (!com_hook_state[hook_idx]) {
-					int ret = -1;
+					int ret = 1;
 					com_hook_t* com_hook = &com_hooks[hook_idx];
 					hook_t* hook = &(com_hook->hook);
 					if (
@@ -1891,7 +1891,7 @@ void set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
 						num_com_hooks_installed++;
 						com_hook_state[hook_idx] = 1;
 					}
-					else if (ret != -1) {
+					else if (ret < 0) {
 						DebugOutput("WARNING: Unable to hook COM Object function %s", hook->funcname);
 					}
 				}
