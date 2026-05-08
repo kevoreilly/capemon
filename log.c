@@ -292,6 +292,11 @@ static void log_wstring(const wchar_t *str, int length)
 
 static void log_variant(VARIANT* var) {
 	char log_msg[32];
+	if (!var) {
+		// Objects that we recurse into may be null, bail here
+		return;
+	}
+
 	__try {
 		switch (var->vt) {
 			case VT_NULL:
