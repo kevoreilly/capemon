@@ -1867,19 +1867,28 @@ int set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
 		__try {
 			for (int hook_idx = 0; hook_idx < num_com_hooks; hook_idx++) {
 				if (!com_hook_state[hook_idx]) {
+					int ret2 = -1;
 					com_hook_t* com_hook = &com_hooks[hook_idx];
 					hook_t* hook = &(com_hook->hook);
 					if ((rclsid && com_hook->rclsid && IsEqualCLSID(rclsid, com_hook->rclsid)) || (com_hook->riid && riid && IsEqualIID(riid, com_hook->riid)) || (!rclsid && !riid)) {
 						if (rclsid && riid) {
 							if (IsEqualCLSID(rclsid, &CLSID_WbemLocator) && IsEqualIID(riid, &IID_IWbemLocator)) {
-								return set_WbemLocator_hooks(pComObject, hook);
-							}
-							else if (!rclsid && !riid && !com_hook->rclsid && !com_hook->riid) {
-								if (bHookViaWbemLocator && !strncmp(hook->funcname, "IWbemServices_", 14)) {
-									return set_IWbemServices_hooks(pComObject, hook);
-								}
+								ret2 = set_WbemLocator_hooks(pComObject, hook);
 							}
 						}
+						else if (!rclsid && !riid && !com_hook->rclsid && !com_hook->riid) {
+							if (bHookViaWbemLocator && !strncmp(hook->funcname, "IWbemServices_", 14)) {
+								ret2 = set_IWbemServices_hooks(pComObject, hook);
+							}
+						}
+					}
+					if (ret2 == 0) {
+						DebugOutput("Successfully installed hook on COM Object function %s", hook->funcname);
+						num_com_hooks_installed++;
+						com_hook_state[hook_idx] = 1;
+					}
+					else if (ret2 != -1) {
+						DebugOutput("WARNING: Unable to hook COM Object function %s", hook->funcname);
 					}
 				}
 			}
