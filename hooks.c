@@ -1805,7 +1805,6 @@ void init_com_hooks(void) {
 	com_hooks = g_com_hooks;
 	num_com_hooks = ARRAYSIZE(g_com_hooks);
 	com_hook_state = calloc(sizeof(*com_hook_state), num_com_hooks);
-	DebugOutput("DEBUG:Initialized %d com hooks", num_com_hooks);
 }
 
 int set_WbemLocator_hooks(PVOID pComObject, hook_t* hook) {
