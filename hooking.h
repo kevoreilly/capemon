@@ -311,7 +311,7 @@ void hook_init();
 
 #endif
 
-int set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject);
+void set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject);
 
 typedef struct _com_hook_t {
 	hook_t			hook;

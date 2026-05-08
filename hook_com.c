@@ -58,13 +58,13 @@ HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
 	if (ret == S_OK && (
 		ContainsNamespace(strNetworkResource, L"ROOT\\CIMV2") ||
 		ContainsNamespace(strNetworkResource, L"ROOT\\SecurityCenter2") ||
-		ContainsNamespace(strNetworkResource, L"ROOT\\Microsoft\\Windows\\Defender")
-		))
+		ContainsNamespace(strNetworkResource, L"ROOT\\Microsoft\\Windows\\Defender") ||
+		ContainsNamespace(strNetworkResource, L"ROOT\\subscription") ||
+		ContainsNamespace(strNetworkResource, L"ROOT\\Microsoft\\Windows\\TaskScheduler")
+	)) 
 	{
 		bHookViaWbemLocator = TRUE;
-		if (set_com_hooks(NULL, NULL, *ppNamespace) == -1) {
-			DebugOutput("Unable to set COM hook on WbemLocator_ConnectServer");
-		}
+		set_com_hooks(NULL, NULL, *ppNamespace);
 		bHookViaWbemLocator = FALSE;
 	}
 
