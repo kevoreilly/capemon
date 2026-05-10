@@ -1779,7 +1779,6 @@ void set_hooks_by_export_directory(const wchar_t *exportdirectory, const wchar_t
 			}
 		}
 	}
-	DebugOutput("set_hooks_by_export_directory: Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
 }
 
 extern void invalidate_regions_for_hook(const hook_t *hook);
