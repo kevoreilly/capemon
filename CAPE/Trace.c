@@ -816,6 +816,96 @@ OutputRegisterChanges(PCONTEXT Context)
 	}
 }
 
+void OutputFirstString(PCONTEXT Context)
+{
+#ifdef _WIN64
+    #define REGISTER_COUNT 16
+    const DWORD64 Registers[REGISTER_COUNT] =
+	{
+        Context->Rax, Context->Rbx, Context->Rcx, Context->Rdx,
+        Context->Rsp, Context->Rbp, Context->Rsi, Context->Rdi,
+        Context->R8,  Context->R9,  Context->R10, Context->R11,
+        Context->R12, Context->R13, Context->R14, Context->R15
+    };
+
+    char OutputBuffer[MAX_PATH] = "";
+    WCHAR OutputBufferW[MAX_PATH] = L"";
+
+    for (size_t i = 0; i < REGISTER_COUNT; i++)
+    {
+        DWORD64 Register = Registers[i];
+        if (Register < 0x10000 || Register > 0x7FFFFFFF0000)
+            continue;
+
+        SIZE_T size = StrTest((PCHAR)Register, OutputBuffer, MAX_PATH);
+        if (size > 1)
+        {
+			DebuggerOutput("String captured at 0x%p: \"", Register);
+            if (size >= MAX_PATH)
+                StringsOutput("%.256s...", OutputBuffer);
+            else
+                StringsOutput("%.256s", OutputBuffer);
+            DebuggerOutput("\"\n", Register);
+			return;
+        }
+
+        size = StrTestW((PWCHAR)Register, OutputBufferW, MAX_PATH * sizeof(WCHAR));
+        if (size > 1)
+        {
+			DebuggerOutput("String captured at 0x%p: \"", Register);
+            if (size >= MAX_PATH)
+                StringsOutput("%.256ws...", OutputBufferW);
+            else
+                StringsOutput("%.256ws", OutputBufferW);
+			DebuggerOutput("\"\n", Register);
+            return;
+        }
+    }
+#else
+    #define REGISTER_COUNT 8
+    const DWORD Registers[REGISTER_COUNT] =
+	{
+        Context->Eax, Context->Ebx, Context->Ecx, Context->Edx,
+        Context->Esp, Context->Ebp, Context->Esi, Context->Edi
+    };
+
+    char OutputBuffer[MAX_PATH] = "";
+    WCHAR OutputBufferW[MAX_PATH] = L"";
+
+    for (size_t i = 0; i < REGISTER_COUNT; i++)
+    {
+        DWORD Register = Registers[i];
+        if (Register < 0x10000 || Register > 0x7FFFFFFF)
+            continue;
+
+        SIZE_T size = StrTest((PCHAR)Register, OutputBuffer, MAX_PATH);
+        if (size > 1)
+        {
+			DebuggerOutput("String captured at 0x%p: \"", Register);
+            if (size >= MAX_PATH)
+                StringsOutput("%.256s...", OutputBuffer);
+            else
+                StringsOutput("%.256s", OutputBuffer);
+			DebuggerOutput("\"\n", Register);
+            return;
+        }
+
+        size = StrTestW((PWCHAR)Register, OutputBufferW, MAX_PATH * sizeof(WCHAR));
+        if (size > 1)
+        {
+			DebuggerOutput("String captured at 0x%p: \"", Register);
+            if (size >= MAX_PATH)
+                StringsOutput("%.256ws...", OutputBufferW);
+            else
+                StringsOutput("%.256ws", OutputBufferW);
+			DebuggerOutput("\"\n", Register);
+            return;
+        }
+    }
+#endif
+	DebuggerOutput("OutputFirstString: Failed to find a string from any register.\n");
+}
+
 void SetOperand(PCONTEXT Context, PCHAR Operand, PVOID Target)
 {
 	if (*Operand == '[')
@@ -1780,7 +1870,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			DebuggerOutput("\"\n", Target);
 		}
 		else
-			DebuggerOutput("String: Failed to obtain string address.\n");
+			OutputFirstString(ExceptionInfo->ContextRecord);
 	}
 	else if (!strnicmp(Action, "Sleep", 5))
 	{
