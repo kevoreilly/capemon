@@ -356,7 +356,7 @@ void DumpSectionViewsForPid(DWORD Pid)
 
 			while (AccessibleSize && ScanForDisguisedPE(PEPointer, AccessibleSize - ((DWORD_PTR)PEPointer - (DWORD_PTR)CurrentSectionView->LocalView), &PEPointer))
 			{
-				DebugOutput("DumpSectionViewsForPid: Dumping PE image from shared section view, local address 0x%p.\n", PEPointer);
+				DebugOutput("DumpSectionViewsForPid: Dumping PE image from section view shared with process %d, local address 0x%p.\n", Pid, PEPointer);
 
 				CapeMetaData->DumpType = INJECTION_PE;
 				CapeMetaData->TargetPid = Pid;
