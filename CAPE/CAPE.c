@@ -539,55 +539,44 @@ void GetMemoryInfo(PVOID Address)
 	return;
 }
 
-//**************************************************************************************
-SIZE_T GetAccessibleSize(PVOID Address)
-//**************************************************************************************
+BOOL IsRegionReadable(PMEMORY_BASIC_INFORMATION pMemInfo)
 {
-	MEMORY_BASIC_INFORMATION MemInfo;
-	PVOID OriginalAllocationBase, AddressOfPage;
+    if (pMemInfo->State != MEM_COMMIT)
+        return FALSE;
 
-	if (!Address)
-		return 0;
+    if (pMemInfo->Protect & (PAGE_GUARD | PAGE_NOACCESS))
+        return FALSE;
 
-	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
-	{
-		ErrorOutput("GetAccessibleSize: unable to query memory address 0x%p", Address);
-		return 0;
-	}
+    DWORD ReadableMask = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
 
-	if (!(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
-		return 0;
+    return (pMemInfo->Protect & ReadableMask) != 0;
+}
 
-	if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
-		return 0;
+SIZE_T GetAccessibleSize(PVOID Address)
+{
+    MEMORY_BASIC_INFORMATION MemInfo;
+    PUCHAR CurrentAddress = (PUCHAR)Address;
+    SIZE_T TotalSize = 0;
 
-	if (!MemInfo.Protect)
-		return 0;
+    if (!Address || (DWORD_PTR)Address > 0x7fffffffffff)
+        return 0;
 
-	OriginalAllocationBase = MemInfo.AllocationBase;
-	AddressOfPage = OriginalAllocationBase;
+    while (VirtualQuery(CurrentAddress, &MemInfo, sizeof(MemInfo)))
+    {
+        if (!IsRegionReadable(&MemInfo))
+            break;
 
-	while (MemInfo.AllocationBase == OriginalAllocationBase)
-	{
-		(PUCHAR)AddressOfPage += MemInfo.RegionSize;
+        SIZE_T RegionEnd = (SIZE_T)MemInfo.BaseAddress + MemInfo.RegionSize;
+        SIZE_T BytesAvailable = RegionEnd - (SIZE_T)CurrentAddress;
 
-		if (!VirtualQuery((PUCHAR)AddressOfPage, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
-		{
-			ErrorOutput("GetAccessibleSize: unable to query memory page 0x%p", (PUCHAR)AddressOfPage + MemInfo.RegionSize);
-			return 0;
-		}
+        TotalSize += BytesAvailable;
+        CurrentAddress = (PUCHAR)RegionEnd;
 
-		if (!(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
-			break;
+        if ((DWORD_PTR)CurrentAddress >= 0x7fffffffffff)
+            break;
+    }
 
-		if (MemInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS))
-			break;
-
-		if (!MemInfo.Protect)
-			break;
-	}
-
-	return (SIZE_T)((DWORD_PTR)AddressOfPage - (DWORD_PTR)Address);
+    return TotalSize;
 }
 
 //**************************************************************************************
