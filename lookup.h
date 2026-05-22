@@ -21,7 +21,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 typedef struct _lookup_internal_t {
 	void *root;
-	SRWLOCK lock;
 } lookup_t;
 
 typedef struct _entry_t {
@@ -31,7 +30,6 @@ typedef struct _entry_t {
 	unsigned char data[0];
 } entry_t;
 
-void lookup_init(lookup_t *d);
 void *lookup_add(lookup_t *d, ULONG_PTR id, unsigned int size);
 void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size);
 void lookup_del(lookup_t *d, ULONG_PTR id);

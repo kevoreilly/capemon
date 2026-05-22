@@ -39,73 +39,226 @@ static lookup_t ThreadTLS13Stage;
 static BOOL Logged;
 static BOOL LoggedTLS13;
 HANDLE TlsLog;
- 
- void HexEncode(char *Dest, const uint8_t *Source, uint32_t Length)
- {
- 	static const char charset[] = "0123456789abcdef";
- 	for (; Length != 0; Source++, Length--) {
- 		*Dest++ = charset[*Source >> 4];
- 		*Dest++ = charset[*Source & 15];
- 	}
- 	*Dest = 0;
- }
- 
- void LogTls(char* ClientRandomRepr, char* ServerRandomRepr, char* MasterSecretRepr)
- {
- 	SIZE_T LastWriteLength = 0;
- 	char *FullPathName = GetResultsPath("tlsdump");
- 	PathAppend(FullPathName, "tlsdump.log");
- 	if (!Logged) {
- 		Logged = TRUE;
- 		DebugOutput("TLS 1.2 secrets logged to: %s", FullPathName);
- 	}
- 	HANDLE hLog = TlsLog;
- 	if (hLog == NULL) {
- 		HANDLE hFile = CreateFile(FullPathName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
- 		if (hFile != INVALID_HANDLE_VALUE) {
- 			if (InterlockedCompareExchangePointer(&TlsLog, hFile, NULL) != NULL) {
- 				CloseHandle(hFile);
- 			}
- 		} else {
- 			InterlockedCompareExchangePointer(&TlsLog, INVALID_HANDLE_VALUE, NULL);
- 		}
- 		hLog = TlsLog;
- 	}
- 	if (hLog != INVALID_HANDLE_VALUE && hLog != NULL) {
- 		CHAR SecretsLine[BUFFER_SIZE];
- 		_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", ClientRandomRepr, ServerRandomRepr, MasterSecretRepr);
- 		WriteFile(hLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
- 	}
- }
- 
- // Log TLS 1.3 traffic secrets in NSS SSLKEYLOGFILE format
- void LogTls13(const char* Label, const char* ClientRandomRepr, const char* SecretRepr)
- {
- 	SIZE_T LastWriteLength = 0;
- 	char *FullPathName = GetResultsPath("tlsdump");
- 	PathAppend(FullPathName, "tlsdump.log");
- 	if (!LoggedTLS13) {
- 		LoggedTLS13 = TRUE;
- 		DebugOutput("TLS 1.3 secrets logged to: %s", FullPathName);
- 	}
- 	HANDLE hLog = TlsLog;
- 	if (hLog == NULL) {
- 		HANDLE hFile = CreateFile(FullPathName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
- 		if (hFile != INVALID_HANDLE_VALUE) {
- 			if (InterlockedCompareExchangePointer(&TlsLog, hFile, NULL) != NULL) {
- 				CloseHandle(hFile);
- 			}
- 		} else {
- 			InterlockedCompareExchangePointer(&TlsLog, INVALID_HANDLE_VALUE, NULL);
- 		}
- 		hLog = TlsLog;
- 	}
- 	if (hLog != INVALID_HANDLE_VALUE && hLog != NULL) {
- 		CHAR SecretsLine[BUFFER_SIZE];
- 		_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "%s %s %s\n", Label, ClientRandomRepr, SecretRepr);
- 		WriteFile(hLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
- 	}
- }
+
+typedef struct _TLS13ClientRandom {
+	char ClientRandomRepr[32*2+1];
+} TLS13ClientRandom;
+
+typedef struct _tls_thread_entry_t {
+	struct _tls_thread_entry_t *next;
+	DWORD thread_id;
+} tls_thread_entry_t;
+
+typedef struct {
+	tls_thread_entry_t hdr;
+	TLS13ClientRandom random;
+} tls13_client_random_entry_t;
+
+typedef struct {
+	tls_thread_entry_t hdr;
+	int stage;
+} tls_stage_entry_t;
+
+static tls_stage_entry_t *g_stage_root = NULL;
+static SRWLOCK g_stage_lock = SRWLOCK_INIT;
+
+static int *tls_stage_get(DWORD tid)
+{
+	tls_stage_entry_t *p;
+	AcquireSRWLockShared(&g_stage_lock);
+	for (p = g_stage_root; p != NULL; p = (tls_stage_entry_t *)p->hdr.next)
+		if (p->hdr.thread_id == tid) {
+			ReleaseSRWLockShared(&g_stage_lock);
+			return &p->stage;
+		}
+	ReleaseSRWLockShared(&g_stage_lock);
+	return NULL;
+}
+
+static int *tls_stage_add(DWORD tid)
+{
+	tls_stage_entry_t *t = (tls_stage_entry_t *)calloc(1, sizeof(*t));
+	if (!t) return NULL;
+	t->hdr.thread_id = tid;
+	AcquireSRWLockExclusive(&g_stage_lock);
+	t->hdr.next = (tls_thread_entry_t *)g_stage_root;
+	g_stage_root = t;
+	ReleaseSRWLockExclusive(&g_stage_lock);
+	return &t->stage;
+}
+
+static void tls_stage_del(DWORD tid)
+{
+	tls_stage_entry_t *p, *last = NULL, *to_free = NULL;
+	AcquireSRWLockExclusive(&g_stage_lock);
+	for (p = g_stage_root; p != NULL; last = p, p = (tls_stage_entry_t *)p->hdr.next)
+		if (p->hdr.thread_id == tid) {
+			if (last) last->hdr.next = p->hdr.next;
+			else g_stage_root = (tls_stage_entry_t *)p->hdr.next;
+			to_free = p;
+			break;
+		}
+	ReleaseSRWLockExclusive(&g_stage_lock);
+	free(to_free);
+}
+
+typedef struct {
+	tls_thread_entry_t hdr;
+	ThreadRandom random;
+} tls_client_random_entry_t;
+
+static tls_client_random_entry_t *g_client_random_root = NULL;
+static SRWLOCK g_client_random_lock = SRWLOCK_INIT;
+
+static ThreadRandom *tls_client_random_get(DWORD tid)
+{
+	tls_client_random_entry_t *p;
+	AcquireSRWLockShared(&g_client_random_lock);
+	for (p = g_client_random_root; p != NULL; p = (tls_client_random_entry_t *)p->hdr.next)
+		if (p->hdr.thread_id == tid) {
+			ReleaseSRWLockShared(&g_client_random_lock);
+			return &p->random;
+		}
+	ReleaseSRWLockShared(&g_client_random_lock);
+	return NULL;
+}
+
+static ThreadRandom *tls_client_random_add(DWORD tid)
+{
+	tls_client_random_entry_t *t = (tls_client_random_entry_t *)calloc(1, sizeof(*t));
+	if (!t) return NULL;
+	t->hdr.thread_id = tid;
+	AcquireSRWLockExclusive(&g_client_random_lock);
+	t->hdr.next = (tls_thread_entry_t *)g_client_random_root;
+	g_client_random_root = t;
+	ReleaseSRWLockExclusive(&g_client_random_lock);
+	return &t->random;
+}
+
+static void tls_client_random_del(DWORD tid)
+{
+	tls_client_random_entry_t *p, *last = NULL, *to_free = NULL;
+	AcquireSRWLockExclusive(&g_client_random_lock);
+	for (p = g_client_random_root; p != NULL; last = p, p = (tls_client_random_entry_t *)p->hdr.next)
+		if (p->hdr.thread_id == tid) {
+			if (last) last->hdr.next = p->hdr.next;
+			else g_client_random_root = (tls_client_random_entry_t *)p->hdr.next;
+			to_free = p;
+			break;
+		}
+	ReleaseSRWLockExclusive(&g_client_random_lock);
+	free(to_free);
+}
+
+static tls13_client_random_entry_t *g_tls13_client_random_root = NULL;
+static SRWLOCK g_tls13_client_random_lock = SRWLOCK_INIT;
+
+static TLS13ClientRandom *tls13_client_random_get(DWORD tid)
+{
+	tls13_client_random_entry_t *p;
+	AcquireSRWLockShared(&g_tls13_client_random_lock);
+	for (p = g_tls13_client_random_root; p != NULL; p = (tls13_client_random_entry_t *)p->hdr.next)
+		if (p->hdr.thread_id == tid) {
+			ReleaseSRWLockShared(&g_tls13_client_random_lock);
+			return &p->random;
+		}
+	ReleaseSRWLockShared(&g_tls13_client_random_lock);
+	return NULL;
+}
+
+static TLS13ClientRandom *tls13_client_random_add(DWORD tid)
+{
+	tls13_client_random_entry_t *t = (tls13_client_random_entry_t *)calloc(1, sizeof(*t));
+	if (!t) return NULL;
+	t->hdr.thread_id = tid;
+	AcquireSRWLockExclusive(&g_tls13_client_random_lock);
+	t->hdr.next = (tls_thread_entry_t *)g_tls13_client_random_root;
+	g_tls13_client_random_root = t;
+	ReleaseSRWLockExclusive(&g_tls13_client_random_lock);
+	return &t->random;
+}
+
+static void tls13_client_random_del(DWORD tid)
+{
+	tls13_client_random_entry_t *p, *last = NULL, *to_free = NULL;
+	AcquireSRWLockExclusive(&g_tls13_client_random_lock);
+	for (p = g_tls13_client_random_root; p != NULL; last = p, p = (tls13_client_random_entry_t *)p->hdr.next)
+		if (p->hdr.thread_id == tid) {
+			if (last) last->hdr.next = p->hdr.next;
+			else g_tls13_client_random_root = (tls13_client_random_entry_t *)p->hdr.next;
+			to_free = p;
+			break;
+		}
+	ReleaseSRWLockExclusive(&g_tls13_client_random_lock);
+	free(to_free);
+}
+
+void HexEncode(char *Dest, const uint8_t *Source, uint32_t Length)
+{
+	static const char charset[] = "0123456789abcdef";
+	for (; Length != 0; Source++, Length--) {
+		*Dest++ = charset[*Source >> 4];
+		*Dest++ = charset[*Source & 15];
+	}
+	*Dest = 0;
+}
+
+void LogTls(char* ClientRandomRepr, char* ServerRandomRepr, char* MasterSecretRepr)
+{
+	SIZE_T LastWriteLength = 0;
+	char *FullPathName = GetResultsPath("tlsdump");
+	PathAppend(FullPathName, "tlsdump.log");
+	if (!Logged) {
+		Logged = TRUE;
+		DebugOutput("TLS 1.2 secrets logged to: %s", FullPathName);
+	}
+	HANDLE hLog = TlsLog;
+	if (hLog == NULL) {
+		HANDLE hFile = CreateFile(FullPathName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != INVALID_HANDLE_VALUE) {
+			if (InterlockedCompareExchangePointer(&TlsLog, hFile, NULL) != NULL) {
+				CloseHandle(hFile);
+			}
+		} else {
+			InterlockedCompareExchangePointer(&TlsLog, INVALID_HANDLE_VALUE, NULL);
+		}
+		hLog = TlsLog;
+	}
+	if (hLog != INVALID_HANDLE_VALUE && hLog != NULL) {
+		CHAR SecretsLine[BUFFER_SIZE];
+		_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", ClientRandomRepr, ServerRandomRepr, MasterSecretRepr);
+		WriteFile(hLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
+	}
+}
+
+// Log TLS 1.3 traffic secrets in NSS SSLKEYLOGFILE format
+void LogTls13(const char* Label, const char* ClientRandomRepr, const char* SecretRepr)
+{
+	SIZE_T LastWriteLength = 0;
+	char *FullPathName = GetResultsPath("tlsdump");
+	PathAppend(FullPathName, "tlsdump.log");
+	if (!LoggedTLS13) {
+		LoggedTLS13 = TRUE;
+		DebugOutput("TLS 1.3 secrets logged to: %s", FullPathName);
+	}
+	HANDLE hLog = TlsLog;
+	if (hLog == NULL) {
+		HANDLE hFile = CreateFile(FullPathName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != INVALID_HANDLE_VALUE) {
+			if (InterlockedCompareExchangePointer(&TlsLog, hFile, NULL) != NULL) {
+				CloseHandle(hFile);
+			}
+		} else {
+			InterlockedCompareExchangePointer(&TlsLog, INVALID_HANDLE_VALUE, NULL);
+		}
+		hLog = TlsLog;
+	}
+	if (hLog != INVALID_HANDLE_VALUE && hLog != NULL) {
+		CHAR SecretsLine[BUFFER_SIZE];
+		_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "%s %s %s\n", Label, ClientRandomRepr, SecretRepr);
+		WriteFile(hLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
+	}
+}
 
 BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* ServerRandomRepr)
 {
@@ -129,7 +282,7 @@ BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* 
 		}
 	}
 	if (ret == FALSE) {
-		ThreadRandom *R = lookup_get(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
+		ThreadRandom *R = tls_client_random_get(GetCurrentThreadId());
 		if (R) {
 			memcpy(ClientRandomRepr, R->ClientRandomRepr, 32*2+1);
 #ifdef DEBUG_COMMENTS
@@ -295,16 +448,19 @@ HOOKDEF(NTSTATUS, WINAPI, SslHashHandshake,
 	NTSTATUS ret = Old_SslHashHandshake(hSslProvider, hHandshakeHash, pbInput, cbInput, dwFlags);
 	PWORD pwVersion = (PWORD)(pbInput+4);
 	if (pbInput && *pbInput == 1 && *pwVersion == 0x0303) {
-		int *pStage = (int*)lookup_get(&ThreadTLS13Stage, (ULONG_PTR)GetCurrentThreadId(), NULL);
+		DWORD tid = GetCurrentThreadId();
+		int *pStage = tls_stage_get(tid);
 		if (pStage) *pStage = 0;
-		ThreadRandom *R = lookup_get(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
+		ThreadRandom *R = tls_client_random_get(tid);
 		if (R == NULL) {
-			R = lookup_add(&ThreadClientRandom, (ULONG_PTR)GetCurrentThreadId(), sizeof(ThreadRandom));
-			memset(R, 0, sizeof(*R));
-			HexEncode(R->ClientRandomRepr, (uint8_t*)(pbInput+6), 32);
+			R = tls_client_random_add(tid);
+			if (R) {
+				memset(R, 0, sizeof(*R));
+				HexEncode(R->ClientRandomRepr, (uint8_t*)(pbInput+6), 32);
 #ifdef DEBUG_COMMENTS
-			DebugOutput("SslHashHandshake: ClientRandom %s", R->ClientRandomRepr);
+				DebugOutput("SslHashHandshake: ClientRandom %s", R->ClientRandomRepr);
 #endif
+			}
 		}
 	}
 	return ret;
@@ -333,14 +489,14 @@ HOOKDEF(NTSTATUS, WINAPI, SslExpandTrafficKeys,
 
 	// Determine stage: first call = handshake secrets, second call = application secrets
 	// Track per-thread using the lookup table
-	ULONG_PTR tid = (ULONG_PTR)GetCurrentThreadId();
-	int *pStage = (int*)lookup_get(&ThreadTLS13Stage, tid, NULL);
+	DWORD tid = GetCurrentThreadId();
+	int *pStage = tls_stage_get(tid);
 	int stage = 0;
 	if (pStage) {
 		stage = *pStage;
 		*pStage = stage + 1;
 	} else {
-		pStage = (int*)lookup_add(&ThreadTLS13Stage, tid, sizeof(int));
+		pStage = tls_stage_add(tid);
 		*pStage = 1;  // Next call will be stage 1
 		stage = 0;     // This call is stage 0
 	}
@@ -440,10 +596,6 @@ typedef PVOID BCRYPT_HASH_HANDLE;
 
 static lookup_t ThreadTLS13ClientRandom;  // per-thread client_random for TLS 1.3 in-process
 
-typedef struct _TLS13ClientRandom {
-	char ClientRandomRepr[32*2+1];
-} TLS13ClientRandom;
-
 static BOOL LooksLikeClientHello(const UCHAR *p, ULONG cb)
 {
 	if (!p || cb < 40)
@@ -469,12 +621,12 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptHashData,
 	// Heuristic read-only inspection. We don't modify the buffer.
 	__try {
 		if (LooksLikeClientHello(pbInput, cbInput)) {
-			ULONG_PTR tid = (ULONG_PTR)GetCurrentThreadId();
-			int *pStage = (int*)lookup_get(&ThreadTLS13Stage, tid, NULL);
+			DWORD tid = GetCurrentThreadId();
+			int *pStage = tls_stage_get(tid);
 			if (pStage) *pStage = 0;
-			TLS13ClientRandom *R = lookup_get(&ThreadTLS13ClientRandom, tid, NULL);
+			TLS13ClientRandom *R = tls13_client_random_get(tid);
 			if (!R)
-				R = lookup_add(&ThreadTLS13ClientRandom, tid, sizeof(TLS13ClientRandom));
+				R = tls13_client_random_add(tid);
 			if (R) {
 				HexEncode(R->ClientRandomRepr, pbInput + 6, 32);
 #ifdef DEBUG_COMMENTS
@@ -484,9 +636,8 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptHashData,
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER) {
-		// Ignore ΓÇö just a heuristic sniff.
+		// Ignore - just a heuristic sniff.
 	}
-
 	return Old_BCryptHashData(hHash, pbInput, cbInput, dwFlags);
 }
 
@@ -575,7 +726,7 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptKeyDerivation,
 		if (!nssLabel)
 			return ret;
 
-		TLS13ClientRandom *R = lookup_get(&ThreadTLS13ClientRandom, (ULONG_PTR)GetCurrentThreadId(), NULL);
+		TLS13ClientRandom *R = tls13_client_random_get(GetCurrentThreadId());
 		if (!R || !R->ClientRandomRepr[0]) {
 #ifdef DEBUG_COMMENTS
 			DebugOutput("BCryptKeyDerivation: TLS 1.3 %s derived but client_random not stashed", nssLabel);
