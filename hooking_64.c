@@ -1126,51 +1126,43 @@ int hook_api(hook_t *h, int type)
 		return 0;
 
 	// make the address writable
-	if (VirtualProtect(addr, hook_types[type].len, PAGE_EXECUTE_READWRITE, &old_protect)) {
-
-		if (g_config.hook_low)
-			h->hookdata = alloc_hookdata_low();
-		else
-			h->hookdata = alloc_hookdata_near(addr);
-
-		if (h->hookdata && hook_create_trampoline(addr, hook_types[type].len, h->hookdata->tramp)) {
-			//hook_store_exception_info(h);
-			uint8_t orig[16];
-			memcpy(orig, addr, 16);
-
-			if (h->notail)
-				hook_create_pre_tramp_notail(h);
-			else
-				hook_create_pre_tramp(h);
-
-			// insert the hook (jump from the api to the
-			// pre-trampoline)
-			ret = hook_types[type].hook(h, addr, h->hookdata->pre_tramp);
-
-			// Add unhook detection for our newly created hook.
-			unhook_detect_add_region(h, addr, orig, addr, hook_types[type].len);
-
-			// if successful, assign the trampoline address to *old_func
-			if (ret == 0) {
-				// This will be NULL in cases where we don't care to call the original function from our hook (NOTAIL)
-				if (h->old_func)
-					*h->old_func = h->hookdata->tramp;
-
-				// hook is successful
-				h->is_hooked = 1;
-				h->hook_addr = addr;
-				add_dll_range((ULONG_PTR)hmod, (ULONG_PTR)hmod + GetAllocationSize(hmod));
-			}
-		}
-		else
-			pipe("WARNING:Unable to place hook on %z", h->funcname);
-
-		// restore the old protection
-		VirtualProtect(addr, hook_types[type].len, old_protect,
-			&old_protect);
-	}
-	else
+	if (!VirtualProtect(addr, hook_types[type].len, PAGE_EXECUTE_READWRITE, &old_protect)) {
 		pipe("WARNING:Unable to change protection for hook on %z", h->funcname);
+		return 0;
+	}
+
+	h->hookdata = alloc_hookdata_near(addr);
+	if (!h->hookdata) {
+		pipe("WARNING:Unable to allocate hook data for %z, type %d", h->funcname, type);
+		goto restore_protect;
+	}
+
+	if (!hook_create_trampoline(addr, hook_types[type].len, h->hookdata->tramp)) {
+		pipe("WARNING:Unable to create trampoline for %z, hook type %d", h->funcname, type);
+		goto restore_protect;
+	}
+
+	uint8_t orig[16];
+	memcpy(orig, addr, 16);
+
+	if (h->notail)
+		hook_create_pre_tramp_notail(h);
+	else
+		hook_create_pre_tramp(h);
+
+	ret = hook_types[type].hook(h, addr, h->hookdata->pre_tramp);
+	unhook_detect_add_region(h, addr, orig, addr, hook_types[type].len);
+
+	if (ret == 0) {
+		if (h->old_func)
+			*h->old_func = h->hookdata->tramp;
+		h->is_hooked = 1;
+		h->hook_addr = addr;
+		add_dll_range((ULONG_PTR)hmod, (ULONG_PTR)hmod + GetAllocationSize(hmod));
+	}
+
+restore_protect:
+	VirtualProtect(addr, hook_types[type].len, old_protect, &old_protect);
 
 	return ret;
 }

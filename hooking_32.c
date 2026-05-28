@@ -839,51 +839,48 @@ int hook_api(hook_t *h, int type)
 		type = HOOK_JMP_DIRECT;
 
 	// make the address writable
-	if (VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, PAGE_EXECUTE_READWRITE, &old_protect)) {
-
-		h->hookdata = alloc_hookdata_near(addr);
-
-		if (h->hookdata && hook_create_trampoline(addr, hook_types[type].len, h->hookdata->tramp)) {
-			//hook_store_exception_info(h);
-			uint8_t orig[16];
-			memcpy(orig, addr, 16);
-
-			if (h->notail)
-				hook_create_pre_tramp_notail(h);
-			else
-				hook_create_pre_tramp(h);
-
-			// insert the hook (jump from the api to the
-			// pre-trampoline)
-			ret = hook_types[type].hook(h, addr, h->hookdata->pre_tramp);
-
-			// Add unhook detection for our newly created hook.
-			// Ensure any changes behind our hook are also caught by
-			// making the buffersize 16.
-			unhook_detect_add_region(h, addr - hook_types[type].offset, orig, addr - hook_types[type].offset, 16);
-
-			// if successful, assign the trampoline address to *old_func
-			if (ret == 0) {
-				// This will be NULL in cases where we don't care to call the original function from our hook (NOTAIL)
-				if (h->old_func)
-					*h->old_func = h->hookdata->tramp;
-
-				// hook is successful
-				h->is_hooked = 1;
-				h->hook_addr = addr;
-				add_dll_range((ULONG_PTR)hmod, (ULONG_PTR)hmod + GetAllocationSize(hmod));
-			}
-		}
-		else {
-			pipe("WARNING:Unable to place hook on %z", h->funcname);
-		}
-
-		// restore the old protection
-		VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
-	}
-	else {
+	if (!VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, PAGE_EXECUTE_READWRITE, &old_protect)) {
 		pipe("WARNING:Unable to change protection for hook on %z", h->funcname);
+		return 0;
 	}
+
+	h->hookdata = alloc_hookdata_near(addr);
+	if (!h->hookdata) {
+		pipe("WARNING:Unable to allocate hook data for %z, type %d", h->funcname, type);
+		goto restore_protect;
+	}
+
+	if (!hook_create_trampoline(addr, hook_types[type].len, h->hookdata->tramp)) {
+		if (type != HOOK_SAFEST) {
+			VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
+			DebugOutput("hook_api: Trampoline creation failed for %s, retrying with HOOK_SAFEST\n", h->funcname);
+			return hook_api(h, HOOK_SAFEST);
+		}
+		pipe("WARNING:Unable to create trampoline for %z, hook type %d", h->funcname, type);
+		goto restore_protect;
+	}
+
+	uint8_t orig[16];
+	memcpy(orig, addr, 16);
+
+	if (h->notail)
+		hook_create_pre_tramp_notail(h);
+	else
+		hook_create_pre_tramp(h);
+
+	ret = hook_types[type].hook(h, addr, h->hookdata->pre_tramp);
+	unhook_detect_add_region(h, addr - hook_types[type].offset, orig, addr - hook_types[type].offset, 16);
+
+	if (ret == 0) {
+		if (h->old_func)
+			*h->old_func = h->hookdata->tramp;
+		h->is_hooked = 1;
+		h->hook_addr = addr;
+		add_dll_range((ULONG_PTR)hmod, (ULONG_PTR)hmod + GetAllocationSize(hmod));
+	}
+
+restore_protect:
+	VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
 
 	return ret;
 }
