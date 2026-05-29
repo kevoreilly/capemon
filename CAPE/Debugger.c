@@ -615,6 +615,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		{
 			if (pBreakpointInfo->Address)
 				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp0 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr0, pBreakpointInfo->Address);
+			else
+				DebugOutput("CAPEExceptionFilter: breakpoint %d not internal, ignoring: 0x%p\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
@@ -622,6 +624,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		{
 			if (pBreakpointInfo->Address)
 				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp1 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr1, pBreakpointInfo->Address);
+			else
+				DebugOutput("CAPEExceptionFilter: breakpoint %d not internal, ignoring: 0x%p\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
@@ -629,6 +633,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		{
 			if (pBreakpointInfo->Address)
 				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp2 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr2, pBreakpointInfo->Address);
+			else
+				DebugOutput("CAPEExceptionFilter: breakpoint %d not internal, ignoring: 0x%p\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
@@ -636,6 +642,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		{
 			if (pBreakpointInfo->Address)
 				DebugOutput("CAPEExceptionFilter: Anomaly detected! bp3 address 0x%p different to internal breakpoint 0x%p\n", ExceptionInfo->ContextRecord->Dr3, pBreakpointInfo->Address);
+			else
+				DebugOutput("CAPEExceptionFilter: breakpoint %d not internal, ignoring: 0x%p\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
