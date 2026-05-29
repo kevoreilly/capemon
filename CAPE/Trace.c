@@ -906,21 +906,60 @@ void OutputFirstString(PCONTEXT Context)
 	DebuggerOutput("OutputFirstString: Failed to find a string from any register.\n");
 }
 
+PVOID GetOperand(PCONTEXT Context, PCHAR Operand)
+{
+	PCHAR p = strstr(Operand, "[0x");
+
+	if (p)
+	{
+		PVOID Value = GetPointer(p);
+		DebuggerOutput("ActionDispatcher: Getting %s -> 0x%p\n", p, Value);
+		return Value;
+	}
+
+	p = strchr(Operand, '[');
+
+	if (p)
+	{
+		PVOID *Pointer = GetRegister(Context, p+1);
+		if (Pointer)
+		{
+			DebuggerOutput("ActionDispatcher: Getting %s -> [0x%p] = 0x%p\n", Operand, Pointer, *Pointer);
+			return *Pointer;
+		}
+		else
+			DebuggerOutput("GetOperand: Unable to get %s\n", Operand);
+	}
+	else
+	{
+		PVOID Value = GetRegister(Context, Operand);
+		DebuggerOutput("ActionDispatcher: Getting %.3s -> 0x%p\n", Operand, Value);
+		return Value;
+	}
+
+	return NULL;
+}
+
 void SetOperand(PCONTEXT Context, PCHAR Operand, PVOID Target)
 {
-	if (*Operand == '[')
+	PCHAR p = strchr(Operand, '[');
+
+	if (p)
 	{
-		PVOID *Pointer = GetRegister(Context, Operand+1);
+		PVOID *Pointer = GetRegister(Context, p+1);
 		if (Pointer)
 		{
 			*Pointer = (PVOID)Target;
-			DebuggerOutput("ActionDispatcher: Setting %s -> [0x%p] to 0x%x.\n", Operand, Pointer, Target);
+			DebuggerOutput("ActionDispatcher: Setting %s -> [0x%p] to 0x%p\n", Operand, Pointer, Target);
 		}
 		else
-			DebuggerOutput("ActionDispatcher: Unable to set %s.\n", Operand);
+			DebuggerOutput("ActionDispatcher: Unable to set %s\n", Operand);
 	}
 	else
+	{
+		DebuggerOutput("ActionDispatcher: Setting %.3s to 0x%p\n", Operand, Target);
 		SetRegister(Context, Operand, Target);
+	}
 }
 
 void SkipInstruction(PCONTEXT Context)
@@ -1160,11 +1199,63 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 			//	DebuggerOutput("ActionDispatcher: Failed to get base for target module (%s).\n", p+1);
 		}
 		else {
-			HANDLE Module = GetModuleHandle(p+1);
-			if (Module)
-				Target = (PVOID)(DWORD_PTR)Module;
+			// Action:...
+			if (!stricmp(p+1, "Src"))
+			{
+				PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+				if (Dst)
+				{
+					*Dst = 0;
+					Target = GetOperand(ExceptionInfo->ContextRecord, DecodedInstruction.operands.p);
+					*Dst = ',';
+				}
+				else
+					DebuggerOutput("ActionDispatcher: Unable to get target from src operand\n");
+			}
+			if (!stricmp(p+1, "&Src"))
+			{
+				PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+				if (Dst)
+				{
+					*Dst = 0;
+					PCHAR p = strchr(DecodedInstruction.operands.p, '[');
+					if (p)
+						Target = GetOperand(ExceptionInfo->ContextRecord, p + 1);
+					*Dst = ',';
+				}
+				else
+					DebuggerOutput("ActionDispatcher: Unable to get address src operand\n");
+			}
+			else if (!stricmp(p+1, "Dst"))
+			{
+				PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+				if (Dst)
+				{
+					Dst += 2;
+					Target = GetOperand(ExceptionInfo->ContextRecord, Dst);
+				}
+				else
+					DebuggerOutput("ActionDispatcher: Unable to get target from dst operand\n");
+			}
+			else if (!stricmp(p+1, "&Dst"))
+			{
+				PCHAR Dst = strchr(DecodedInstruction.operands.p, ',');
+				if (Dst)
+				{
+					Dst += 2;
+					PCHAR p = strchr(Dst, '[');
+					if (p)
+						Target = GetOperand(ExceptionInfo->ContextRecord, p + 1);
+				}
+				else
+					DebuggerOutput("ActionDispatcher: Unable to get address of dst operand\n");
+			}
 			else
+				Target = (PVOID)(DWORD_PTR)GetModuleHandle(p+1);
+
+			if (!Target)
 				Target = (GetRegister(ExceptionInfo->ContextRecord, p+1));
+
 			if (!Target)
 			{
 				char *endptr;
