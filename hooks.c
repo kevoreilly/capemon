@@ -672,6 +672,9 @@ hook_t full_hooks[] = {
 	HOOK(bcrypt, BCryptImportKeyPair),
 	HOOK(bcrypt, BCryptDecrypt),
 	HOOK(bcrypt, BCryptEncrypt),
+	HOOK(bcrypt, BCryptDeriveKey),
+	HOOK(bcrypt, BCryptKeyDerivation),
+	HOOK(bcrypt, BCryptHashData),
 	// needed due to the DLL being delay-loaded in some cases
 	HOOK(cryptsp, CryptAcquireContextA),
 	HOOK(cryptsp, CryptAcquireContextW),
@@ -1059,6 +1062,8 @@ hook_t tls_hooks[] = {
 	HOOK(ncrypt, SslImportMasterKey),
 	HOOK(ncrypt, SslGenerateSessionKeys),
 	HOOK(ncrypt, SslHashHandshake),
+	HOOK(ncrypt, SslExpandTrafficKeys),
+	HOOK(ncrypt, SslExpandExporterMasterKey),
 };
 
 hook_t office_hooks[] = {
