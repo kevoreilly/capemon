@@ -311,6 +311,7 @@ struct _g_config {
 	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
 	char *action[BREAKPOINT_MAX];
 	BOOLEAN loopskip;
+	int softbpmode;
 	int sysbpmode;
 	// search string
 	char *str[MAX_PATH];

@@ -437,10 +437,52 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
-#ifdef DEBUG_COMMENTS
-	DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
+	PVOID CIP;
+
+#ifdef _WIN64
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 #endif
-	return SetSoftwareBreakpoint(&SoftBPs, ExceptionInfo->ExceptionRecord->ExceptionAddress);
+
+	PBYTE Address = NULL;
+	entry_t *Next = NULL;
+	entry_t *Entry = SoftBPs.root;
+
+	while (Entry != NULL)
+	{
+		Next = Entry->next;
+		Address = (PBYTE)Entry->id;
+		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
+
+		if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress - (ULONG_PTR)Address <= 0x10 && SoftBP->InstructionByte == *Address)
+		{
+			DWORD OldProtect;
+			if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+			{
+				DebugOutput("RestoreSoftwareBreakpoint: Unable to change memory protection at 0x%p\n", Address);
+				return FALSE;
+			}
+
+#ifdef DEBUG_COMMENTS
+			DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p\n", Address);
+#endif
+			*(PBYTE)Address = 0xCC;
+
+			VirtualProtect(Address, 1, OldProtect, &OldProtect);
+
+			break;
+		}
+		Entry = Next;
+	}
+
+	if (SoftBPSingleStepHandler)
+	{
+		SoftBPSingleStepHandler(ExceptionInfo);
+		SoftBPSingleStepHandler = NULL;
+	}
+
+	return TRUE;
 }
 
 //**************************************************************************************
@@ -479,6 +521,13 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
 	SoftwareBreakpointCallback(ExceptionInfo);
+
+	if (g_config.softbpmode)
+	{
+		if (SingleStepHandler)
+			SoftBPSingleStepHandler = SingleStepHandler;
+		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
+	}
 
 	return TRUE;
 }

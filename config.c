@@ -965,6 +965,15 @@ void parse_config_line(char* line)
 			g_config.sysbpmode = (unsigned int)strtoul(value, NULL, 10);
 			DebugOutput("Syscall breakpoint mode set to %d.\n", g_config.sysbpmode);
 		}
+		else if (!stricmp(key, "softbpmode")) {
+			g_config.softbpmode = (unsigned int)strtoul(value, NULL, 10);
+			if (!g_config.softbpmode)
+				DebugOutput("Software breakpoints set to one-shot (default, mode 0).\n");
+			else if (g_config.softbpmode == 1)
+				DebugOutput("Software breakpoint mode set to persistent (mode 1)\n");
+			else
+				DebugOutput("Software breakpoint mode set to unknown mode %d.\n", g_config.softbpmode);
+		}
 		else if (!stricmp(key, "count0")) {
 			g_config.count0 = (unsigned int)(DWORD_PTR)strtoul(value, NULL, 0);
 			DebugOutput("Config: Count for breakpoint 0 set to %d\n", g_config.count0);
