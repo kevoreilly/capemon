@@ -3372,6 +3372,8 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 			SyscallBreakpointSet = SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA);
 			if (SyscallBreakpointSet)
 				DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
+			else
+				DebugOutput("SetInitialBreakpoints: Failed to set syscall breakpoint %d set at 0x%p", i, BreakpointVA);
 			g_config.sysbp[i] = 0;
 		}
 	}
