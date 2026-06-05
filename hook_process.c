@@ -349,6 +349,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 	if (ProcessParameters == NULL)
 		ProcessParameters = &_ProcessParameters;
 
+	// Anti-ping delay
+	if (ProcessParameters && ProcessParameters->CommandLine.Buffer) {
+		int n_val;
+		PWSTR cmd = ProcessParameters->CommandLine.Buffer;
+		if (swscanf(cmd, L"ping 127.0.0.1 -n %d", &n_val) == 1 && n_val > 1)
+			wsprintfW(cmd, L"ping 127.0.0.1 -n 1");
+	}
+
 	ret = Old_NtCreateUserProcess(ProcessHandle, ThreadHandle,
 		ProcessDesiredAccess, ThreadDesiredAccess,
 		ProcessObjectAttributes, ThreadObjectAttributes,
