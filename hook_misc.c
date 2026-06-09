@@ -571,6 +571,13 @@ HOOKDEF(int, WINAPI, GetSystemMetrics,
 ) {
 	int ret = Old_GetSystemMetrics(nIndex);
 
+	if (!g_config.no_stealth) {
+		if (nIndex == SM_CXSCREEN || nIndex == SM_CXVIRTUALSCREEN)
+			return 1920;
+		if (nIndex == SM_CYSCREEN || nIndex == SM_CYVIRTUALSCREEN)
+			return 1080;
+	}
+
 	if (nIndex == SM_CXSCREEN || nIndex == SM_CXVIRTUALSCREEN || nIndex == SM_CYSCREEN ||
 		nIndex == SM_CYVIRTUALSCREEN || nIndex == SM_REMOTECONTROL || nIndex == SM_REMOTESESSION ||
 		nIndex == SM_SHUTTINGDOWN || nIndex == SM_SWAPBUTTON)
@@ -793,8 +800,8 @@ HOOKDEF(void, WINAPI, GetSystemInfo,
 
 	Old_GetSystemInfo(lpSystemInfo);
 
-	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < SPOOFED_CPU_CORE_NUM)
-		lpSystemInfo->dwNumberOfProcessors = SPOOFED_CPU_CORE_NUM;
+	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < g_config.spoofed_cpu_count)
+		lpSystemInfo->dwNumberOfProcessors = g_config.spoofed_cpu_count;
 
 	LOQ_void("misc", "");
 
@@ -845,9 +852,13 @@ normal_call:
 		ret = Old_NtQuerySystemInformation(SystemInformationClass, SystemInformation, SystemInformationLength, ReturnLength);
 		LOQ_ntstatus("misc", "i", "SystemInformationClass", SystemInformationClass);
 
+		if (!g_config.no_stealth && SystemInformationClass == 164) {
+			return 0xC0000003L; // STATUS_INVALID_INFO_CLASS
+		}
+
 		if (!g_config.no_stealth && SystemInformationClass == SystemBasicInformation && SystemInformationLength >= sizeof(SYSTEM_BASIC_INFORMATION) && NT_SUCCESS(ret)) {
 			PSYSTEM_BASIC_INFORMATION p = (PSYSTEM_BASIC_INFORMATION)SystemInformation;
-			p->NumberOfProcessors = SPOOFED_CPU_CORE_NUM;
+			p->NumberOfProcessors = g_config.spoofed_cpu_count;
 		}
 
 		/* This is nearly arbitrary and simply designed to test whether the Upatre author(s) or others

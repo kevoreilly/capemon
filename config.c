@@ -210,6 +210,10 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "no-stealth")) { // Set to 1 to disable anti-anti-VM/sandbox code enabled by default.
 			g_config.no_stealth = value[0] == '1';
 		}
+		else if (!strcmp(key, "cpu-count")) {
+			g_config.spoofed_cpu_count = (unsigned int)strtoul(value, NULL, 10);
+			DebugOutput("Config: Spoofed CPU core count set to %u", g_config.spoofed_cpu_count);
+		}
 		else if (!strcmp(key, "buffer-max")) {
 			buffer_log_max = (unsigned int)strtoul(value, NULL, 10);
 		}
@@ -1295,7 +1299,7 @@ void parse_config_line(char* line)
 			else if (g_config.unpacker == 2)
 				DebugOutput("Active unpacking of payloads enabled\n");
 		}
-		else if (!stricmp(key, "injection")) { //When set to 1 this will enable CAPE’s capture of injected payloads between processes
+		else if (!stricmp(key, "injection")) { //When set to 1 this will enable CAPEï¿½s capture of injected payloads between processes
 			g_config.injection = value[0] == '1';
 			if (g_config.injection)
 				DebugOutput("Capture of injected payloads enabled.\n");
@@ -1479,6 +1483,7 @@ void read_config(void)
 	g_config.yarascan = 1;
 	g_config.yara_timeout = 1;
 	g_config.loaderlock_scans = 1;
+	g_config.spoofed_cpu_count = SPOOFED_CPU_CORE_NUM;
 	g_config.syscall = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
