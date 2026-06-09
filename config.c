@@ -1299,7 +1299,7 @@ void parse_config_line(char* line)
 			else if (g_config.unpacker == 2)
 				DebugOutput("Active unpacking of payloads enabled\n");
 		}
-		else if (!stricmp(key, "injection")) { //When set to 1 this will enable CAPE�s capture of injected payloads between processes
+		else if (!stricmp(key, "injection")) { //When set to 1 this will enable CAPE's capture of injected payloads between processes
 			g_config.injection = value[0] == '1';
 			if (g_config.injection)
 				DebugOutput("Capture of injected payloads enabled.\n");
