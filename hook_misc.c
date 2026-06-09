@@ -573,9 +573,9 @@ HOOKDEF(int, WINAPI, GetSystemMetrics,
 
 	if (!g_config.no_stealth) {
 		if (nIndex == SM_CXSCREEN || nIndex == SM_CXVIRTUALSCREEN)
-			return 1920;
-		if (nIndex == SM_CYSCREEN || nIndex == SM_CYVIRTUALSCREEN)
-			return 1080;
+			ret = 1920;
+		else if (nIndex == SM_CYSCREEN || nIndex == SM_CYVIRTUALSCREEN)
+			ret = 1080;
 	}
 
 	if (nIndex == SM_CXSCREEN || nIndex == SM_CXVIRTUALSCREEN || nIndex == SM_CYSCREEN ||
@@ -853,6 +853,12 @@ normal_call:
 		LOQ_ntstatus("misc", "i", "SystemInformationClass", SystemInformationClass);
 
 		if (!g_config.no_stealth && SystemInformationClass == 164) {
+			if (SystemInformation && SystemInformationLength > 0) {
+				memset(SystemInformation, 0, SystemInformationLength);
+			}
+			if (ReturnLength) {
+				*ReturnLength = 0;
+			}
 			return 0xC0000003L; // STATUS_INVALID_INFO_CLASS
 		}
 

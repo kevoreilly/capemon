@@ -211,8 +211,11 @@ void parse_config_line(char* line)
 			g_config.no_stealth = value[0] == '1';
 		}
 		else if (!strcmp(key, "cpu-count")) {
-			g_config.spoofed_cpu_count = (unsigned int)strtoul(value, NULL, 10);
-			DebugOutput("Config: Spoofed CPU core count set to %u", g_config.spoofed_cpu_count);
+			unsigned int val = (unsigned int)strtoul(value, NULL, 10);
+			if (val > 0) {
+				g_config.spoofed_cpu_count = val;
+				DebugOutput("Config: Spoofed CPU core count set to %u", g_config.spoofed_cpu_count);
+			}
 		}
 		else if (!strcmp(key, "buffer-max")) {
 			buffer_log_max = (unsigned int)strtoul(value, NULL, 10);
