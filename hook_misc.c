@@ -852,7 +852,7 @@ normal_call:
 		ret = Old_NtQuerySystemInformation(SystemInformationClass, SystemInformation, SystemInformationLength, ReturnLength);
 		LOQ_ntstatus("misc", "i", "SystemInformationClass", SystemInformationClass);
 
-		if (!g_config.no_stealth && SystemInformationClass == 164) {
+		if (!g_config.no_stealth && SystemInformationClass == SystemHypervisorDetailInformation) {
 			if (SystemInformation && SystemInformationLength > 0) {
 				memset(SystemInformation, 0, SystemInformationLength);
 			}
