@@ -143,6 +143,9 @@ struct _g_config {
 	// Language override
 	int lang;
 
+	// Spoofed CPU core count
+	unsigned int spoofed_cpu_count;
+
 	// protected processes
 	unsigned int protected_pids;
 

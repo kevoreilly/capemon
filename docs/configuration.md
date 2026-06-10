@@ -72,6 +72,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `sys32_ctimehigh` | Hex | Spoof the high part of the creation time of the System32 directory. |
 | `fake-rdtsc` | Boolean | Enable fake RDTSC (Read Time-Stamp Counter) results. |
 | `nop-rdtscp` | Boolean | NOP (No Operation) the RDTSCP instruction. |
+| `cpu-count` | Integer | Spoof the number of CPU cores (default: 4). |
 | `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code (enabled by default). |
 | `ntdll-unhook` | Boolean | Enable protection against `ntdll` unhooking (via `NtReadFile`). |
 | `ntdll-remap` | Boolean | Enable `ntdll` remapping protection. |

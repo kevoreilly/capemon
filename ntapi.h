@@ -314,7 +314,9 @@ typedef enum _SYSTEM_INFORMATION_CLASS {
 	SystemVdmBopInformation,
 	SystemFileCacheInformation,
 	SystemInterruptInformation = 23,
-	SystemExceptionInformation = 33
+	SystemExceptionInformation = 33,
+	SystemHypervisorDetailInformation = 159,
+	SystemCodeIntegrityPolicyInformation = 164
 } SYSTEM_INFORMATION_CLASS, *PSYSTEM_INFORMATION_CLASS;
 
 typedef struct _SYSTEM_BASIC_INFORMATION {

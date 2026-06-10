@@ -55,20 +55,20 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 	//
 	else if (pVal->vt == VT_I4) {
 		if (!_wcsicmp(szClassName, L"Win32_Processor") && !_wcsicmp(wszName, L"ThreadCount")) {
-			if (pVal->lVal < SPOOFED_CPU_CORE_NUM)
-				pVal->lVal = SPOOFED_CPU_CORE_NUM;
+			if (pVal->lVal < g_config.spoofed_cpu_count)
+				pVal->lVal = g_config.spoofed_cpu_count;
 		}
 		else if (!_wcsicmp(wszName, L"NumberOfCores")) {
-			if (pVal->lVal < SPOOFED_CPU_CORE_NUM)
-				pVal->lVal = SPOOFED_CPU_CORE_NUM;
+			if (pVal->lVal < g_config.spoofed_cpu_count)
+				pVal->lVal = g_config.spoofed_cpu_count;
 		}
 		else if (!_wcsicmp(wszName, L"NumberOfLogicalProcessors")) {
-			if (pVal->lVal < SPOOFED_CPU_CORE_NUM)
-				pVal->lVal = SPOOFED_CPU_CORE_NUM;
+			if (pVal->lVal < g_config.spoofed_cpu_count)
+				pVal->lVal = g_config.spoofed_cpu_count;
 		}
 		else if (!_wcsicmp(wszName, L"NumberOfEnabledCore")) {
-			if (pVal->lVal < SPOOFED_CPU_CORE_NUM)
-				pVal->lVal = SPOOFED_CPU_CORE_NUM;
+			if (pVal->lVal < g_config.spoofed_cpu_count)
+				pVal->lVal = g_config.spoofed_cpu_count;
 		}
 		else if (!_wcsicmp(wszName, L"AdapterRAM")) {
 			if (SPOOFED_GPU_RAM > 0x7FFFFFFFULL) {
