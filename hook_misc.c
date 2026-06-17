@@ -691,7 +691,7 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
 	if (nSize && *nSize)
 		bufsize = *nSize;
 	BOOL ret = Old_GetComputerNameExW(NameType, lpBuffer, nSize);
-	if (ret && nSize && !*nSize && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
+	if (!g_config.no_stealth && ret && nSize && !*nSize && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
 		bufsize = (DWORD)wcslen(ComputerNames[NameType]);
 		wcsncpy(lpBuffer, ComputerNames[NameType], bufsize + 1);
 		*nSize = bufsize;
@@ -1826,7 +1826,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
 ) {
 	WCHAR VMDetection[] = L"Kernel-VMDetection-Private";
 	NTSTATUS ret = Old_NtQueryLicenseValue(Name, Type, Buffer, Length, DataLength);
-	if (NT_SUCCESS(ret) && Buffer && !wcsncmp(Name->Buffer, VMDetection, Name->Length))
+	if (!g_config.no_stealth && NT_SUCCESS(ret) && Buffer && !wcsncmp(Name->Buffer, VMDetection, Name->Length))
 		*(PBOOL)Buffer = FALSE;
 	LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
 	return ret;
@@ -1905,10 +1905,12 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	const char replacement[] = "NVIDIA GeForce RTX 3060";
 
 	BOOL ret = Old_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	for (int i = 0; i < keywords_size; i++) {
-		if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
-			snprintf(lpDisplayDevice->DeviceString, strlen(replacement) + 1, replacement);
-			break;
+	if (!g_config.no_stealth) {
+		for (int i = 0; i < keywords_size; i++) {
+			if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
+				snprintf(lpDisplayDevice->DeviceString, strlen(replacement) + 1, replacement);
+				break;
+			}
 		}
 	}
 	LOQ_bool("misc", "s", "DeviceString", lpDisplayDevice->DeviceString);
@@ -1931,12 +1933,14 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
 
 	const wchar_t replacement[] = L"NVIDIA GeForce RTX 3060";
-
+	
 	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	for (int i = 0; i < keywords_size; i++) {
-		if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
-			swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
-			break;
+	if (!g_config.no_stealth) {
+		for (int i = 0; i < keywords_size; i++) {
+			if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
+				swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
+				break;
+			}
 		}
 	}
 	LOQ_bool("misc", "u", "DeviceString", lpDisplayDevice->DeviceString);
@@ -2010,7 +2014,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		ULONG                   OutputBufferLength
 ) {
 	NTSTATUS ret = Old_NtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-	if (ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
+	if (!g_config.no_stealth && ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
 		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
 		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
 		SYSTEM_POWER_CAPABILITIES* ptr = (SYSTEM_POWER_CAPABILITIES *)OutputBuffer;
