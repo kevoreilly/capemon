@@ -27,8 +27,19 @@
     }
 
 void variant_to_string(VARIANT* var, char* buffer, size_t bufferSize) {
+    if (!var) {
+        if (bufferSize > 0) {
+            buffer[0] = '\0';
+        }
+        return;
+    }
     if (var->vt & VT_BYREF) {
         switch (var->vt & ~VT_BYREF) {
+            case VT_EMPTY:
+                if (bufferSize > 0) {
+                    buffer[0] = '\0';
+                }
+                break;
             case 74:
                 variant_to_string(var->pvRecord, buffer, bufferSize);
                 break;
@@ -80,6 +91,11 @@ void variant_to_string(VARIANT* var, char* buffer, size_t bufferSize) {
         }
     } else {
         switch (var->vt) {
+            case VT_EMPTY:
+                if (bufferSize > 0) {
+                    buffer[0] = '\0';
+                }
+                break;
             case 74:
                 variant_to_string(var->pvRecord, buffer, bufferSize);
                 break;
