@@ -644,10 +644,24 @@ hook_t full_hooks[] = {
 	// Crypto Functions
 	HOOK(advapi32, CryptAcquireContextA),
 	HOOK(advapi32, CryptAcquireContextW),
+
+	// DPAPI
+	HOOK(crypt32, CryptProtectData),
+	HOOK(crypt32, CryptUnprotectData),
+	HOOK(crypt32, CryptProtectMemory),
+	HOOK(crypt32, CryptUnprotectMemory),
+
+	// Legacy DPAPI
 	HOOK(advapi32, CryptProtectData),
 	HOOK(advapi32, CryptUnprotectData),
 	HOOK(advapi32, CryptProtectMemory),
 	HOOK(advapi32, CryptUnprotectMemory),
+	HOOK(cryptsp, CryptProtectData),
+	HOOK(cryptsp, CryptUnprotectData),
+	HOOK(cryptsp, CryptProtectMemory),
+	HOOK(cryptsp, CryptUnprotectMemory),
+
+	// General CryptoAPI
 	HOOK(advapi32, CryptDecrypt),
 	HOOK(advapi32, CryptEncrypt),
 	HOOK(advapi32, CryptHashData),
@@ -658,6 +672,7 @@ hook_t full_hooks[] = {
 	HOOK(advapi32, CryptDeriveKey),
 	HOOK(advapi32, CryptExportKey),
 	HOOK(advapi32, CryptDestroyKey),
+	HOOK(advapi32, CryptDuplicateKey),
 	HOOK(advapi32, CryptGenKey),
 	HOOK(advapi32, CryptCreateHash),
 	HOOK(advapi32, CryptDestroyHash),
@@ -666,14 +681,18 @@ hook_t full_hooks[] = {
 	HOOK(advapi32, QueryUsersOnEncryptedFile),
 	HOOK(advapi32, CryptGenRandom),
 	HOOK(advapi32, CryptImportKey),
-	HOOK(wintrust, HTTPSCertificateTrust),
-	HOOK(wintrust, HTTPSFinalProv),
-	HOOK(wintrust, WTGetSignatureInfo),
+	HOOK(advapi32, CryptHashSessionKey),
+
+	// crypt32 additional
 	HOOK(crypt32, CryptDecodeObjectEx),
 	HOOK(crypt32, CryptImportPublicKeyInfo),
-	HOOK(ncrypt, NCryptImportKey),
-	HOOK(ncrypt, NCryptDecrypt),
-	HOOK(ncrypt, NCryptEncrypt),
+	HOOK(crypt32, CryptEncryptMessage),
+	HOOK(crypt32, CryptDecryptMessage),
+	HOOK(crypt32, CryptHashMessage),
+	HOOK(crypt32, CryptSignMessage),
+	HOOK(crypt32, CryptVerifyMessageSignature),
+
+	// CNG
 	HOOK(bcrypt, BCryptImportKey),
 	HOOK(bcrypt, BCryptImportKeyPair),
 	HOOK(bcrypt, BCryptDecrypt),
@@ -681,13 +700,27 @@ hook_t full_hooks[] = {
 	HOOK(bcrypt, BCryptDeriveKey),
 	HOOK(bcrypt, BCryptKeyDerivation),
 	HOOK(bcrypt, BCryptHashData),
-	// needed due to the DLL being delay-loaded in some cases
+	HOOK(bcrypt, BCryptCreateHash),
+	HOOK(bcrypt, BCryptDestroyHash),
+	HOOK(bcrypt, BCryptGenRandom),
+	HOOK(bcrypt, BCryptOpenAlgorithmProvider),
+	HOOK(bcrypt, BCryptCloseAlgorithmProvider),
+
+	HOOK(ncrypt, NCryptImportKey),
+	HOOK(ncrypt, NCryptDecrypt),
+	HOOK(ncrypt, NCryptEncrypt),
+	HOOK(ncrypt, NCryptCreatePersistedKey),
+	HOOK(ncrypt, NCryptFinalizeKey),
+	HOOK(ncrypt, NCryptOpenKey),
+
+	// wintrust
+	HOOK(wintrust, HTTPSCertificateTrust),
+	HOOK(wintrust, HTTPSFinalProv),
+	HOOK(wintrust, WTGetSignatureInfo),
+
+	// Delay-loaded
 	HOOK(cryptsp, CryptAcquireContextA),
 	HOOK(cryptsp, CryptAcquireContextW),
-	HOOK(cryptsp, CryptProtectData),
-	HOOK(cryptsp, CryptUnprotectData),
-	HOOK(cryptsp, CryptProtectMemory),
-	HOOK(cryptsp, CryptUnprotectMemory),
 	HOOK(cryptsp, CryptDecrypt),
 	HOOK(cryptsp, CryptEncrypt),
 	HOOK(cryptsp, CryptHashData),
@@ -695,9 +728,13 @@ hook_t full_hooks[] = {
 	HOOK(cryptsp, CryptDecryptMessage),
 	HOOK(cryptsp, CryptEncryptMessage),
 	HOOK(cryptsp, CryptHashMessage),
+	HOOK(cryptsp, CryptDeriveKey),
 	HOOK(cryptsp, CryptExportKey),
+	HOOK(cryptsp, CryptDestroyKey),
+	HOOK(cryptsp, CryptDuplicateKey),
 	HOOK(cryptsp, CryptGenKey),
 	HOOK(cryptsp, CryptCreateHash),
+	HOOK(cryptsp, CryptDestroyHash),
 	HOOK(cryptsp, CryptEnumProvidersA),
 	HOOK(cryptsp, CryptEnumProvidersW),
 	HOOK(cryptsp, CryptHashSessionKey),
@@ -1401,7 +1438,7 @@ hook_t office_hooks[] = {
 #endif
 	HOOK(User32, GetClipboardData),
 	HOOK(User32, OpenClipboard),
-	HOOK(User32, SetClipboardData),	
+	HOOK(User32, SetClipboardData),
 
 	// PE resource related functions
 	HOOK(kernel32, FindResourceExA),
