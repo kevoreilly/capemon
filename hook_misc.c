@@ -2009,38 +2009,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	return ret;
 }
 
-HOOKDEF(HANDLE, WINAPI, GetClipboardData,
-	_In_ UINT uFormat
-){
-	HANDLE ret = Old_GetClipboardData(uFormat);
-	if (ret == NULL)
-		return ret; 
-	char* clip_buff = (char*)GlobalLock(ret);
-	if (clip_buff == NULL)
-		return ret;
-	else {
-		size_t textLen = strlen(clip_buff) + 1;  
-    	char* local_buff = malloc(textLen * sizeof(char*));  
-    	strcpy_s(local_buff, textLen, clip_buff);
-		GlobalUnlock(ret);
-		if (uFormat == CF_TEXT) {
-			LOQ_handle("misc", "is", "Format", uFormat, "Data", (char*)local_buff);
-		}
-		else if (uFormat == CF_OEMTEXT) {
-			LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
-			OemToCharBuffA(local_buff, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
-			LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
-		}
-		else if (uFormat == CF_UNICODETEXT) {
-			LOQ_handle("misc", "iu", "Format", uFormat, "Data", (char*)local_buff);
-		}
-		else {
-			LOQ_handle("misc", "i", "Format", uFormat);
-		}
-		return ret;
-	}
-}
-
 HOOKDEF(BOOL, WINAPI, OpenClipboard,
 	_In_opt_ HWND hWndNewOwner
 ){
@@ -2049,36 +2017,102 @@ HOOKDEF(BOOL, WINAPI, OpenClipboard,
 	return ret;
 }
 
-HOOKDEF(HANDLE, WINAPI, SetClipboardData,
-	_In_ UINT uFormat,
-	_In_opt_ HANDLE hMem
+HOOKDEF(HANDLE, WINAPI, GetClipboardData,
+    _In_ UINT uFormat
 ){
-	HANDLE ret = Old_SetClipboardData(uFormat,hMem);
-	if (ret == NULL)
-		return ret; 
-	char* clip_buff = (char*)GlobalLock(ret);
-	if (clip_buff == NULL)
-		return ret;
-	else {
-		size_t textLen = strlen(clip_buff) + 1;  
-    	char* local_buff = malloc(textLen * sizeof(char*));  
-    	strcpy_s(local_buff, textLen, clip_buff);
-		GlobalUnlock(ret);
-		if (uFormat == CF_TEXT) {
-			LOQ_handle("misc", "is", "Format", uFormat, "Data", (char*)local_buff);
-		}
-		else if (uFormat == CF_OEMTEXT) {
-			LPTSTR buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
-			OemToCharBuffA(local_buff, buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
-			LOQ_handle("misc", "is", "Format", uFormat, "Data", buff);
-		}
-		else if (uFormat == CF_UNICODETEXT) {
-			LOQ_handle("misc", "iu", "Format", uFormat, "Data", (char*)local_buff);
-		}
-		else {
-			LOQ_handle("misc", "i", "Format", uFormat);
-		}
-		return ret;
-	}
+    HANDLE ret = Old_GetClipboardData(uFormat);
+    if (ret == NULL)
+        return ret;
+
+    if (uFormat == CF_UNICODETEXT) {
+        LPWSTR clip_buff = (LPWSTR)GlobalLock(ret);
+        if (clip_buff == NULL)
+            return ret;
+        size_t textLen = wcsnlen(clip_buff, MAX_CLIPBOARD_BUFFER_OF_INTEREST) + 1;
+        LPWSTR local_buff = (LPWSTR)malloc(textLen * sizeof(WCHAR));
+        if (local_buff) {
+            wcsncpy_s(local_buff, textLen, clip_buff, _TRUNCATE);
+            GlobalUnlock(ret);
+            LOQ_handle("misc", "iu", "Format", uFormat, "Data", local_buff);
+            free(local_buff);
+        } else {
+            GlobalUnlock(ret);
+        }
+    } else if (uFormat == CF_TEXT || uFormat == CF_OEMTEXT) {
+        char* clip_buff = (char*)GlobalLock(ret);
+        if (clip_buff == NULL)
+            return ret;
+        size_t textLen = strnlen(clip_buff, MAX_CLIPBOARD_BUFFER_OF_INTEREST) + 1;
+        char* local_buff = (char*)malloc(textLen * sizeof(char));
+        if (local_buff) {
+            strncpy_s(local_buff, textLen, clip_buff, _TRUNCATE);
+            GlobalUnlock(ret);
+            if (uFormat == CF_TEXT) {
+                LOQ_handle("misc", "is", "Format", uFormat, "Data", local_buff);
+            } else {
+                char conv_buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
+                OemToCharBuffA(local_buff, conv_buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
+                LOQ_handle("misc", "is", "Format", uFormat, "Data", conv_buff);
+            }
+            free(local_buff);
+        } else {
+            GlobalUnlock(ret);
+        }
+    } else {
+        LOQ_handle("misc", "i", "Format", uFormat);
+    }
+    return ret;
 }
 
+HOOKDEF(HANDLE, WINAPI, SetClipboardData,
+    _In_     UINT   uFormat,
+    _In_opt_ HANDLE hMem
+){
+    // Log what the malware is writing before the call, since the system
+    // takes ownership of hMem after SetClipboardData succeeds.
+    if (hMem != NULL) {
+        if (uFormat == CF_UNICODETEXT) {
+            LPWSTR clip_buff = (LPWSTR)GlobalLock(hMem);
+            if (clip_buff != NULL) {
+                size_t textLen = wcsnlen(clip_buff, MAX_CLIPBOARD_BUFFER_OF_INTEREST) + 1;
+                LPWSTR local_buff = (LPWSTR)malloc(textLen * sizeof(WCHAR));
+                if (local_buff) {
+                    wcsncpy_s(local_buff, textLen, clip_buff, _TRUNCATE);
+                    GlobalUnlock(hMem);
+                    HANDLE ret = Old_SetClipboardData(uFormat, hMem);
+                    LOQ_handle("misc", "iu", "Format", uFormat, "Data", local_buff);
+                    free(local_buff);
+                    return ret;
+                }
+                GlobalUnlock(hMem);
+            }
+        } else if (uFormat == CF_TEXT || uFormat == CF_OEMTEXT) {
+            char* clip_buff = (char*)GlobalLock(hMem);
+            if (clip_buff != NULL) {
+                size_t textLen = strnlen(clip_buff, MAX_CLIPBOARD_BUFFER_OF_INTEREST) + 1;
+                char* local_buff = (char*)malloc(textLen * sizeof(char));
+                if (local_buff) {
+                    strncpy_s(local_buff, textLen, clip_buff, _TRUNCATE);
+                    GlobalUnlock(hMem);
+                    HANDLE ret = Old_SetClipboardData(uFormat, hMem);
+                    if (uFormat == CF_TEXT) {
+                        LOQ_handle("misc", "is", "Format", uFormat, "Data", local_buff);
+                    } else {
+                        char conv_buff[MAX_CLIPBOARD_BUFFER_OF_INTEREST];
+                        OemToCharBuffA(local_buff, conv_buff, (DWORD)MAX_CLIPBOARD_BUFFER_OF_INTEREST);
+                        LOQ_handle("misc", "is", "Format", uFormat, "Data", conv_buff);
+                    }
+                    free(local_buff);
+                    return ret;
+                }
+                GlobalUnlock(hMem);
+            }
+        }
+    }
+
+    HANDLE ret = Old_SetClipboardData(uFormat, hMem);
+    if (ret == NULL)
+        return ret;
+    LOQ_handle("misc", "i", "Format", uFormat);
+    return ret;
+}
