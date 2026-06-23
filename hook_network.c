@@ -26,11 +26,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 
+#define NERR_Success 0
+
+#pragma comment(lib, "Netapi32.lib")
+
 extern unsigned int dropped_count;
 extern BOOL DumpRegion(PVOID Address);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 
 static int did_initial_request;
+
+WINAPI NetApiBufferAllocate(DWORD ByteCount, LPVOID *Buffer);
 
 HOOKDEF(DWORD, WINAPI, InternetConfirmZoneCrossingA,
 	_In_ HWND hWnd,
@@ -989,14 +995,32 @@ HOOKDEF(DWORD, WINAPI, GetAdaptersInfo,
 }
 
 HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
-	_In_  LPCWSTR			   lpServer,
-	_Out_ LPWSTR				*lpNameBuffer,
-	_Out_ DWORD *				BufferType
+    _In_  LPCWSTR   lpServer,
+    _Out_ LPWSTR   *lpNameBuffer,
+    _Out_ DWORD    *BufferType
 ) {
 	ULONG ret = Old_NetGetJoinInformation(lpServer, lpNameBuffer, BufferType);
-
-	LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
-
+	if (ret != 0) {
+		LOQ_zero("network", "u", "Server", lpServer, "NetBIOSName");
+		return ret;
+	}
+	if (g_config.no_stealth)
+		LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
+	else {
+		// Spoof domain membership to bypass sandbox detections
+		if (*BufferType != 3) {
+			*BufferType = 3;
+			LPCWSTR fake_domain_name = L"myDomain";
+			DWORD len = (DWORD)((wcslen(fake_domain_name) + 1) * sizeof(WCHAR));
+			LPWSTR buf = NULL;
+			// caller frees via NetApiBufferFree per API contract
+			if (NetApiBufferAllocate(len, (LPVOID *)&buf) == NERR_Success) {
+				memcpy(buf, fake_domain_name, len);
+				*lpNameBuffer = buf;
+			}
+		}
+		LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
+	}
 	return ret;
 }
 
