@@ -2144,6 +2144,19 @@ HOOKDEF(HRESULT, WINAPI, PStoreCreateInstance,
 	_In_  DWORD dwFlags
 );
 
+HOOKDEF(HANDLE, WINAPI, GetClipboardData,
+	_In_ UINT uFormat
+);
+
+HOOKDEF(BOOL, WINAPI, OpenClipboard,
+	_In_opt_ HWND hWndNewOwner
+);
+
+HOOKDEF(HANDLE, WINAPI, SetClipboardData,
+	_In_ UINT uFormat,
+	_In_opt_ HANDLE hMem
+);
+
 //
 // Network Hooks
 //
