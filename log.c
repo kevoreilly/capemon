@@ -293,12 +293,16 @@ static void log_wstring(const wchar_t *str, int length)
 static void log_variant(VARIANT* var) {
 	char log_msg[32];
 	if (!var) {
-		// Objects that we recurse into may be null, bail here
+		// Log an empty string instead of bailing to avoid gaps in the BSON array
+		log_string("", 0);
 		return;
 	}
 
 	__try {
 		switch (var->vt) {
+			case VT_EMPTY:
+				log_string("", 0);
+				break;
 			case VT_NULL:
 				log_string("NULL", -1);
 				break;
