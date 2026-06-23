@@ -478,8 +478,9 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (SoftBPSingleStepHandler)
 	{
-		SoftBPSingleStepHandler(ExceptionInfo);
+		SINGLE_STEP_HANDLER Handler = SoftBPSingleStepHandler;
 		SoftBPSingleStepHandler = NULL;
+		Handler(ExceptionInfo);
 	}
 
 	return TRUE;
