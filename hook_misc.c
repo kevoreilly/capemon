@@ -691,7 +691,7 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
 	if (nSize && *nSize)
 		bufsize = *nSize;
 	BOOL ret = Old_GetComputerNameExW(NameType, lpBuffer, nSize);
-	if (!g_config.no_stealth && ret && nSize && !*nSize && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
+	if (!g_config.no_stealth && ret && nSize && !*nSize && NameType >= 0 && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
 		bufsize = (DWORD)wcslen(ComputerNames[NameType]);
 		wcsncpy(lpBuffer, ComputerNames[NameType], bufsize + 1);
 		*nSize = bufsize;
@@ -1826,7 +1826,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
 ) {
 	WCHAR VMDetection[] = L"Kernel-VMDetection-Private";
 	NTSTATUS ret = Old_NtQueryLicenseValue(Name, Type, Buffer, Length, DataLength);
-	if (!g_config.no_stealth && NT_SUCCESS(ret) && Buffer && !wcsncmp(Name->Buffer, VMDetection, Name->Length))
+	if (!g_config.no_stealth && NT_SUCCESS(ret) && Buffer && Name && Name->Buffer && Name->Length == sizeof(VMDetection) - sizeof(WCHAR) && !wcsncmp(Name->Buffer, VMDetection, Name->Length / sizeof(WCHAR)))
 		*(PBOOL)Buffer = FALSE;
 	LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
 	return ret;
@@ -1905,7 +1905,7 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	const char replacement[] = "NVIDIA GeForce RTX 3060";
 
 	BOOL ret = Old_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	if (!g_config.no_stealth) {
+	if (!g_config.no_stealth && ret && lpDisplayDevice) {
 		for (int i = 0; i < keywords_size; i++) {
 			if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
 				snprintf(lpDisplayDevice->DeviceString, strlen(replacement) + 1, replacement);
@@ -1933,9 +1933,9 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
 
 	const wchar_t replacement[] = L"NVIDIA GeForce RTX 3060";
-	
+
 	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	if (!g_config.no_stealth) {
+	if (!g_config.no_stealth && ret && lpDisplayDevice) {
 		for (int i = 0; i < keywords_size; i++) {
 			if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
 				swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
