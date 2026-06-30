@@ -616,6 +616,10 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	// Hardware breakpoints generate EXCEPTION_SINGLE_STEP rather than EXCEPTION_BREAKPOINT
 	if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP)
 	{
+		// Save thread's LastErrorValue
+		PTEB teb = (PTEB)NtCurrentTeb();
+		DWORD saved_error = teb->LastErrorValue;
+
 		// Test Dr6 to see if this is a breakpoint
 		for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
@@ -642,6 +646,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
 
+			teb->LastErrorValue = saved_error;
+
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 
@@ -658,6 +664,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (pBreakpointInfo == NULL)
 		{
 			DebugOutput("CAPEExceptionFilter: Can't get BreakpointInfo for thread %d\n", CurrentThreadId);
+			teb->LastErrorValue = saved_error;
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 
@@ -731,6 +738,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ContextSetThreadBreakpointsEx(ExceptionInfo->ContextRecord, CurrentThreadBreakpoints, TRUE);
 			}
 		}
+
+		teb->LastErrorValue = saved_error;
 
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
