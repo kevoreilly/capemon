@@ -1410,6 +1410,11 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Syscall hooks disabled.\n");
 		}
+		else if (!stricmp(key, "modulenames")) {
+			g_config.modulenames = value[0] == '1';
+			if (g_config.modulenames)
+				DebugOutput("Module names enabled in trace output\n");
+		}
 		else if (!stricmp(key, "loopskip")) {
 			g_config.loopskip = value[0] == '1';
 			if (g_config.loopskip)

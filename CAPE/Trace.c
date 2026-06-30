@@ -92,6 +92,13 @@ VOID TraceOutputFuncName(PVOID Address, _DecodedInst DecodedInstruction, char* F
 	DebuggerOutput("0x%p  %-24s %-6s%-4s%-30s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncName);
 }
 
+VOID TraceOutputFullName(PVOID Address, _DecodedInst DecodedInstruction, LPCWSTR ModuleName, char* FuncName)
+{
+	PCWSTR Ext = wcsrchr(ModuleName, L'.');
+	int len = Ext ? (int)(Ext - ModuleName) : (int)wcslen(ModuleName);
+	DebuggerOutput("0x%p  %-24s %-6s%-4s%.*ws::%-20s", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", len, ModuleName, FuncName);
+}
+
 VOID TraceOutputFuncAddress(PVOID Address, _DecodedInst DecodedInstruction, PVOID FuncAddress)
 {
 	DebuggerOutput("0x%p  %-24s %-6s%-4s0x%-28p", Address, (char*)_strupr(DecodedInstruction.instructionHex.p), DecodedInstruction.mnemonic.p, DecodedInstruction.operands.length != 0 ? " " : "", FuncAddress);
@@ -2045,7 +2052,14 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 		if (ExportName)
 		{
 			if (!FilterTrace || g_config.trace_all)
-				TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+			{
+				PUNICODE_STRING ModuleName = g_config.modulenames ? get_basename_of_module(GetAllocationBase(CallTarget)) : NULL;
+
+				if (ModuleName)
+					TraceOutputFullName(CIP, DecodedInstruction, ModuleName->Buffer, ExportName);
+				else
+					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+			}
 
 			if (is_in_dll_range((ULONG_PTR)CallTarget) && !g_config.trace_all)
 				*StepOver = TRUE;
@@ -2106,8 +2120,13 @@ void InstructionHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst 
 
 			if (ExportName)
 			{
-				if (!FilterTrace || g_config.trace_all)
+				PUNICODE_STRING ModuleName = g_config.modulenames ? get_basename_of_module(GetAllocationBase(JumpTarget)) : NULL;
+
+				if (ModuleName && (!FilterTrace || g_config.trace_all))
+					TraceOutputFullName(CIP, DecodedInstruction, ModuleName->Buffer, ExportName);
+				else if (!FilterTrace || g_config.trace_all)
 					TraceOutputFuncName(CIP, DecodedInstruction, ExportName);
+
 				if (!g_config.trace_all)
 					*ForceStepOver = TRUE;
 			}
