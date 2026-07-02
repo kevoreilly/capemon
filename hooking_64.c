@@ -1034,9 +1034,9 @@ int hook_api(hook_t *h, int type)
 				addr = (unsigned char *)get_vbscript_addr(hmod, (PCHAR)h->funcname);
 		}
 		else {
+			addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
 			PVOID exportaddr = GetFunctionAddress(hmod, (PCHAR)h->funcname);
-			if (exportaddr)
-				addr = (unsigned char *)GetProcAddress(hmod, h->funcname);
+			DebugOutput("hook_api: %s export address 0x%p GetProcAddress 0x%p\n", h->funcname, exportaddr, addr);
 			if (exportaddr && addr && (PVOID)addr != exportaddr) {
 				unsigned int offset = (unsigned int)((ULONG_PTR)addr - (ULONG_PTR)hmod);
 				UNICODE_STRING *module_name = get_module_name((ULONG_PTR)addr);
