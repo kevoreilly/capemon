@@ -1832,36 +1832,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
 	return ret;
 }
 
-HOOKDEF(int, WINAPI, MultiByteToWideChar,
-	__in		UINT	CodePage,
-	__in		DWORD	dwFlags,
-	__in		LPCCH	lpMultiByteStr,
-	__in		int		cbMultiByte,
-	__out_opt	LPWSTR	lpWideCharStr,
-	__in		int		cchWideChar
-) {
-	DWORD ret = 0;
-	if (CodePage == CP_ACP || CodePage == CP_UTF8)
-		LOQ_zero("misc", "s", "String", lpMultiByteStr);
-	return Old_MultiByteToWideChar(CodePage, dwFlags, lpMultiByteStr, cbMultiByte, lpWideCharStr, cchWideChar);
-}
-
-HOOKDEF(int, WINAPI, WideCharToMultiByte,
-	__in		UINT	CodePage,
-	__in		DWORD	dwFlags,
-	__in		LPCWCH	lpWideCharStr,
-	__in		int		cchWideChar,
-	__out_opt	LPSTR	lpMultiByteStr,
-	__in		int		cbMultiByte,
-	__in_opt	LPCCH	lpDefaultChar,
-	__out_opt	LPBOOL	lpUsedDefaultChar
-) {
-	DWORD ret = 0;
-	if (CodePage == CP_ACP || CodePage == CP_UTF8)
-		LOQ_zero("misc", "u", "String", lpWideCharStr);
-	return Old_WideCharToMultiByte(CodePage, dwFlags, lpWideCharStr, cchWideChar, lpMultiByteStr, cbMultiByte, lpDefaultChar, lpUsedDefaultChar);
-}
-
 HOOKDEF(LPSTR, WINAPI, GetCommandLineA,
 	void
 ) {

@@ -3882,26 +3882,6 @@ HOOKDEF(HRESULT, WINAPI, IsValidURL,
 	_Reserved_ DWORD   dwReserved
 );
 
-HOOKDEF(int, WINAPI, MultiByteToWideChar,
-	__in		UINT	CodePage,
-	__in		DWORD	dwFlags,
-	__in		LPCCH	lpMultiByteStr,
-	__in		int		cbMultiByte,
-	__out_opt	LPWSTR	lpWideCharStr,
-	__in		int		cchWideChar
-);
-
-HOOKDEF(int, WINAPI, WideCharToMultiByte,
-	__in		UINT	CodePage,
-	__in		DWORD	dwFlags,
-	__in		LPCWCH	lpWideCharStr,
-	__in		int		cchWideChar,
-	__out_opt	LPSTR	lpMultiByteStr,
-	__in		int		cbMultiByte,
-	__in_opt	LPCCH	lpDefaultChar,
-	__out_opt	LPBOOL	lpUsedDefaultChar
-);
-
 HOOKDEF(LPSTR, WINAPI, GetCommandLineA,
 	void
 );
