@@ -99,6 +99,20 @@ HOOKDEF(BOOL, WINAPI, Process32FirstW,
 	return ret;
 }
 
+HOOKDEF(BOOL, WINAPI, Module32FirstW,
+	__in HANDLE hSnapshot,
+	__out LPMODULEENTRY32W lpme
+	) {
+	BOOL ret = Old_Module32FirstW(hSnapshot, lpme);
+
+	if (ret)
+		LOQ_bool("process", "uii", "ModuleName", lpme->szModule, "ModuleID", lpme->th32ModuleID, "ProcessId", lpme->th32ProcessID);
+	else
+		LOQ_bool("process", "");
+
+	return ret;
+}
+
 HOOKDEF(BOOL, WINAPI, Module32NextW,
 	__in HANDLE hSnapshot,
 	__out LPMODULEENTRY32W lpme
@@ -113,14 +127,28 @@ HOOKDEF(BOOL, WINAPI, Module32NextW,
 	return ret;
 }
 
-HOOKDEF(BOOL, WINAPI, Module32FirstW,
+HOOKDEF(BOOL, WINAPI, Thread32First,
 	__in HANDLE hSnapshot,
-	__out LPMODULEENTRY32W lpme
-	) {
-	BOOL ret = Old_Module32FirstW(hSnapshot, lpme);
+	__out LPTHREADENTRY32 lpme
+) {
+	BOOL ret = Old_Thread32First(hSnapshot, lpme);
 
 	if (ret)
-		LOQ_bool("process", "uii", "ModuleName", lpme->szModule, "ModuleID", lpme->th32ModuleID, "ProcessId", lpme->th32ProcessID);
+		LOQ_bool("process", "ii", "ThreadID", lpme->th32ThreadID, "ProcessId", lpme->th32OwnerProcessID);
+	else
+		LOQ_bool("process", "");
+
+	return ret;
+}
+
+HOOKDEF(BOOL, WINAPI, Thread32Next,
+	__in HANDLE hSnapshot,
+	__out LPTHREADENTRY32 lpme
+) {
+	BOOL ret = Old_Thread32Next(hSnapshot, lpme);
+
+	if (ret)
+		LOQ_bool("process", "ii", "ThreadID", lpme->th32ThreadID, "ProcessId", lpme->th32OwnerProcessID);
 	else
 		LOQ_bool("process", "");
 

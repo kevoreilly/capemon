@@ -1033,6 +1033,16 @@ HOOKDEF(BOOL, WINAPI, Module32NextW,
 	__out LPMODULEENTRY32W lpme
 );
 
+HOOKDEF(BOOL, WINAPI, Thread32First,
+	__in HANDLE hSnapshot,
+	__out LPTHREADENTRY32 lpme
+);
+
+HOOKDEF(BOOL, WINAPI, Thread32Next,
+	__in HANDLE hSnapshot,
+	__out LPTHREADENTRY32 lpme
+);
+
 HOOKDEF(BOOL, WINAPI, K32EnumProcesses,
 	_Out_writes_bytes_(cb)	DWORD*	lpidProcess,
 	_In_					DWORD	cb,

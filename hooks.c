@@ -139,6 +139,8 @@ hook_t full_hooks[] = {
 	HOOK(kernel32, Process32NextW),
 	HOOK(kernel32, Module32FirstW),
 	HOOK(kernel32, Module32NextW),
+	HOOK(kernel32, Thread32First),
+	HOOK(kernel32, Thread32Next),
 	HOOK(kernelbase, K32EnumProcesses),
 	HOOK(wtsapi32, WTSEnumerateProcessesW),
 	HOOK(wtsapi32, WTSEnumerateProcessesExW),
