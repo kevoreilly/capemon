@@ -733,3 +733,36 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptOpenKey,
 	LOQ_ntstatus("crypto", "up", "KeyName", pszKeyName, "KeyHandle", *phKey);
 	return ret;
 }
+
+HOOKDEF(NTSTATUS, WINAPI, RtlEncryptMemory,
+	_Inout_ PVOID  Memory,
+	_In_    ULONG  MemorySize,
+	_In_    ULONG  OptionFlags
+) {
+	PVOID pre_copy = NULL;
+
+	if (Memory && MemorySize) {
+		pre_copy = malloc(MemorySize);
+		if (pre_copy)
+			memcpy(pre_copy, Memory, MemorySize);
+	}
+
+	NTSTATUS ret = Old_RtlEncryptMemory(Memory, MemorySize, OptionFlags);
+
+	LOQ_ntstatus("crypto", "pbI", "Memory", pre_copy ? MemorySize : 0, pre_copy, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
+
+	free(pre_copy);
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, RtlDecryptMemory,
+    _Inout_ PVOID  Memory,
+    _In_    ULONG  MemorySize,
+    _In_    ULONG  OptionFlags
+) {
+    NTSTATUS ret = Old_RtlDecryptMemory(Memory, MemorySize, OptionFlags);
+
+	LOQ_ntstatus("crypto", "pbI", "Memory", NT_SUCCESS(ret) ? MemorySize : 0, Memory, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
+
+    return ret;
+}

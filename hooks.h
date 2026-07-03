@@ -3436,6 +3436,18 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptOpenKey,
 	DWORD dwFlags
 );
 
+HOOKDEF(NTSTATUS, WINAPI, RtlEncryptMemory,
+	_Inout_ PVOID  Memory,
+	_In_    ULONG  MemorySize,
+	_In_    ULONG  OptionFlags
+);
+
+HOOKDEF(NTSTATUS, WINAPI, RtlDecryptMemory,
+    _Inout_ PVOID  Memory,
+    _In_    ULONG  MemorySize,
+    _In_    ULONG  OptionFlags
+);
+
 //
 // Special Hooks
 //
