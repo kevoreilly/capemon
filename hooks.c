@@ -2064,9 +2064,9 @@ void set_hooks()
 			break;
 
 		if (g_config.hook_range)
-			DebugOutput("set_hooks: Hooking %s", (hooks+i)->funcname);
+			DebugOutput("set_hooks: Hooking %ws::%s", (hooks+i)->library, (hooks+i)->funcname);
 		if (hook_api(hooks+i, g_config.hook_type) < 0)
-			DebugOutput("set_hooks: Unable to hook %s", (hooks+i)->funcname);
+			DebugOutput("set_hooks: Unable to hook %ws::%s", (hooks+i)->library, (hooks+i)->funcname);
 		else
 			Hooked++;
 	}
