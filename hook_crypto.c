@@ -734,6 +734,18 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptOpenKey,
 	return ret;
 }
 
+HOOKDEF(BOOLEAN, WINAPI, SystemFunction036,
+	_Out_ PVOID RandomBuffer,
+	_In_  ULONG RandomBufferLength
+)
+{
+	BOOLEAN ret = Old_SystemFunction036(RandomBuffer, RandomBufferLength);
+
+	LOQ_bool("crypto", "pb", "RandomBuffer", RandomBuffer, "Buffer", ret ? RandomBufferLength : 0, RandomBuffer);
+
+	return ret;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, SystemFunction040,
 	_Inout_ PVOID  Memory,
 	_In_    ULONG  MemorySize,

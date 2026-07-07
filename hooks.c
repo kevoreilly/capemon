@@ -715,6 +715,7 @@ hook_t full_hooks[] = {
 	HOOK(ncrypt, NCryptCreatePersistedKey),
 	HOOK(ncrypt, NCryptFinalizeKey),
 	HOOK(ncrypt, NCryptOpenKey),
+	HOOK(cryptbase, SystemFunction036),
 	HOOK(cryptbase, SystemFunction040),
 	HOOK(cryptbase, SystemFunction041),
 

@@ -3436,6 +3436,11 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptOpenKey,
 	DWORD dwFlags
 );
 
+HOOKDEF(BOOLEAN, WINAPI, SystemFunction036,
+	_Out_ PVOID RandomBuffer,
+	_In_  ULONG RandomBufferLength
+);
+
 HOOKDEF(NTSTATUS, WINAPI, SystemFunction040,
 	_Inout_ PVOID  Memory,
 	_In_    ULONG  MemorySize,
