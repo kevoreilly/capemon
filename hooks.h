@@ -1155,6 +1155,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	__in  HANDLE ProcessHandle
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtAdjustPrivilegesToken,
+    IN HANDLE               TokenHandle,
+    IN BOOLEAN              DisableAllPrivileges,
+    IN PTOKEN_PRIVILEGES    NewState OPTIONAL,
+    IN ULONG                BufferLength,
+    OUT PTOKEN_PRIVILEGES   PreviousState OPTIONAL,
+    OUT PULONG              ReturnLength OPTIONAL
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtCreateSection,
 	__out	 PHANDLE SectionHandle,
 	__in	  ACCESS_MASK DesiredAccess,

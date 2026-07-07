@@ -651,6 +651,34 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	return ret;
 }
 
+HOOKDEF(NTSTATUS, WINAPI, NtAdjustPrivilegesToken,
+    IN HANDLE               TokenHandle,
+    IN BOOLEAN              DisableAllPrivileges,
+    IN PTOKEN_PRIVILEGES    NewState OPTIONAL,
+    IN ULONG                BufferLength,
+    OUT PTOKEN_PRIVILEGES   PreviousState OPTIONAL,
+    OUT PULONG              ReturnLength OPTIONAL
+) {
+    char privnames[512] = "";
+    if (NewState && NewState->PrivilegeCount) {
+        for (DWORD i = 0; i < NewState->PrivilegeCount; i++) {
+            char name[64] = "";
+            DWORD nameLen = sizeof(name);
+            if (LookupPrivilegeNameA(NULL, &NewState->Privileges[i].Luid, name, &nameLen)) {
+                if (i > 0)
+                    strncat(privnames, ",", sizeof(privnames) - strlen(privnames) - 1);
+                strncat(privnames, name, sizeof(privnames) - strlen(privnames) - 1);
+            }
+        }
+    }
+
+    NTSTATUS ret = Old_NtAdjustPrivilegesToken(TokenHandle, DisableAllPrivileges, NewState, BufferLength, PreviousState, ReturnLength);
+
+    LOQ_ntstatus("process", "hiis", "TokenHandle", TokenHandle, "DisableAllPrivileges", DisableAllPrivileges, "PrivilegeCount", NewState ? NewState->PrivilegeCount : 0, "Privileges", privnames);
+
+    return ret;
+}
+
 int process_shutting_down;
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,

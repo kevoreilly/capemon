@@ -129,6 +129,7 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtUnmapViewOfSection),
 	HOOK(ntdll, NtUnmapViewOfSectionEx),
 	HOOK(ntdll, NtOpenProcessToken),
+	HOOK(ntdll, NtAdjustPrivilegesToken),
 	HOOK(ntdll, NtQueryInformationToken),
 	HOOK(kernel32, WaitForDebugEvent),
 	HOOK(ntdll, DbgUiWaitStateChange),
