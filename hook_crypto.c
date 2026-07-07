@@ -641,9 +641,9 @@ HOOKDEF(BOOL, WINAPI, CryptVerifyMessageSignature,
 	_Inout_opt_ DWORD *pcbDecodedMsg,
 	_Out_opt_ PCCERT_CONTEXT *ppSignerCert
 ) {
-    BOOL ret = Old_CryptVerifyMessageSignature(pVerifyPara, dwSignerIndex, pbDecoded, cbDecoded, pbDecodedMsg, pcbDecodedMsg, ppSignerCert);
-    LOQ_bool("crypto", "b", "DecodedMsg", pcbDecodedMsg ? *pcbDecodedMsg : 0, pbDecodedMsg);
-    return ret;
+	BOOL ret = Old_CryptVerifyMessageSignature(pVerifyPara, dwSignerIndex, pbDecoded, cbDecoded, pbDecodedMsg, pcbDecodedMsg, ppSignerCert);
+	LOQ_bool("crypto", "b", "DecodedMsg", pcbDecodedMsg ? *pcbDecodedMsg : 0, pbDecodedMsg);
+	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, BCryptCreateHash,
@@ -734,7 +734,7 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptOpenKey,
 	return ret;
 }
 
-HOOKDEF(NTSTATUS, WINAPI, RtlEncryptMemory,
+HOOKDEF(NTSTATUS, WINAPI, SystemFunction040,
 	_Inout_ PVOID  Memory,
 	_In_    ULONG  MemorySize,
 	_In_    ULONG  OptionFlags
@@ -747,22 +747,22 @@ HOOKDEF(NTSTATUS, WINAPI, RtlEncryptMemory,
 			memcpy(pre_copy, Memory, MemorySize);
 	}
 
-	NTSTATUS ret = Old_RtlEncryptMemory(Memory, MemorySize, OptionFlags);
+	NTSTATUS ret = Old_SystemFunction040(Memory, MemorySize, OptionFlags);
 
-	LOQ_ntstatus("crypto", "pbI", "Memory", pre_copy ? MemorySize : 0, pre_copy, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
+	LOQ_ntstatus("crypto", "pbII", "Address", Memory, "Buffer", pre_copy ? MemorySize : 0, pre_copy, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
 
 	free(pre_copy);
 	return ret;
 }
 
-HOOKDEF(NTSTATUS, WINAPI, RtlDecryptMemory,
-    _Inout_ PVOID  Memory,
-    _In_    ULONG  MemorySize,
-    _In_    ULONG  OptionFlags
+HOOKDEF(NTSTATUS, WINAPI, SystemFunction041,
+	_Inout_ PVOID  Memory,
+	_In_    ULONG  MemorySize,
+	_In_    ULONG  OptionFlags
 ) {
-    NTSTATUS ret = Old_RtlDecryptMemory(Memory, MemorySize, OptionFlags);
+	NTSTATUS ret = Old_SystemFunction041(Memory, MemorySize, OptionFlags);
 
-	LOQ_ntstatus("crypto", "pbI", "Memory", NT_SUCCESS(ret) ? MemorySize : 0, Memory, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
+	LOQ_ntstatus("crypto", "pbII", "Address", Memory, "Buffer", NT_SUCCESS(ret) ? MemorySize : 0, Memory, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
 
-    return ret;
+	return ret;
 }

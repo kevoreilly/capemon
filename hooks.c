@@ -715,8 +715,8 @@ hook_t full_hooks[] = {
 	HOOK(ncrypt, NCryptCreatePersistedKey),
 	HOOK(ncrypt, NCryptFinalizeKey),
 	HOOK(ncrypt, NCryptOpenKey),
-	HOOK(ntdll, RtlEncryptMemory),
-	HOOK(ntdll, RtlDecryptMemory),
+	HOOK(cryptbase, SystemFunction040),
+	HOOK(cryptbase, SystemFunction041),
 
 	// wintrust
 	HOOK(wintrust, HTTPSCertificateTrust),

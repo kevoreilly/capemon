@@ -3436,13 +3436,13 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptOpenKey,
 	DWORD dwFlags
 );
 
-HOOKDEF(NTSTATUS, WINAPI, RtlEncryptMemory,
+HOOKDEF(NTSTATUS, WINAPI, SystemFunction040,
 	_Inout_ PVOID  Memory,
 	_In_    ULONG  MemorySize,
 	_In_    ULONG  OptionFlags
 );
 
-HOOKDEF(NTSTATUS, WINAPI, RtlDecryptMemory,
+HOOKDEF(NTSTATUS, WINAPI, SystemFunction041,
     _Inout_ PVOID  Memory,
     _In_    ULONG  MemorySize,
     _In_    ULONG  OptionFlags
