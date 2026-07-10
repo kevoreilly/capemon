@@ -286,23 +286,19 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenThread,
 	__in   POBJECT_ATTRIBUTES ObjectAttributes,
 	__in   PCLIENT_ID ClientId
 ) {
-	NTSTATUS ret = Old_NtOpenThread(ThreadHandle, DesiredAccess,
-		ObjectAttributes, ClientId);
+	NTSTATUS ret = Old_NtOpenThread(ThreadHandle, DesiredAccess, ObjectAttributes, ClientId);
+
 	DWORD pid = 0;
 	DWORD tid = 0;
-
 	if (NT_SUCCESS(ret) && ThreadHandle) {
 		pid = pid_from_thread_handle(*ThreadHandle);
 		tid = tid_from_thread_handle(*ThreadHandle);
 	}
 
-	if (ClientId) {
-		LOQ_ntstatus("threading", "Phii", "ThreadHandle", ThreadHandle, "DesiredAccess", DesiredAccess,
-			"ProcessId", pid, "ThreadId");
-	} else {
-		LOQ_ntstatus("threading", "PhOi", "ThreadHandle", ThreadHandle, "DesiredAccess", DesiredAccess,
-			"ObjectAttributes", ObjectAttributes, "ProcessId", pid);
-	}
+	if (ClientId)
+		LOQ_ntstatus("threading", "Phii", "ThreadHandle", ThreadHandle, "DesiredAccess", DesiredAccess, "ProcessId", pid, "ThreadId", tid);
+	else
+		LOQ_ntstatus("threading", "PhOi", "ThreadHandle", ThreadHandle, "DesiredAccess", DesiredAccess, "ObjectAttributes", ObjectAttributes, "ProcessId", pid);
 
 	return ret;
 }
