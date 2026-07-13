@@ -301,9 +301,14 @@ char* OutputRegisters(PCONTEXT Context)
 		size_t remaining = sizeof(OutputBuffer) > len ? sizeof(OutputBuffer) - len : 0;
 		if (remaining)
 		{
-			len += _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
+			int written = _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
 				"XMM%02d.Low : %016I64X   XMM%02d.High: %016I64X\n",
 				i, (unsigned __int64)xmm[i].Low, i, (unsigned __int64)xmm[i].High);
+			if (written < 0)
+			{
+				break;
+			}
+			len += written;
 		}
 	}
 #else
@@ -332,15 +337,24 @@ char* OutputRegisters(PCONTEXT Context)
 	);
 
 	// XMM registers begin at offset 160 within the x86 FXSAVE area (ExtendedRegisters)
-	const M128A* xmm = (const M128A*)(Context->ExtendedRegisters + 160);
+	const BYTE* xmm_base = Context->ExtendedRegisters + 160;
 	for (int i = 0; i < 8; ++i)
 	{
 		size_t remaining = sizeof(OutputBuffer) > len ? sizeof(OutputBuffer) - len : 0;
 		if (remaining)
 		{
-			len += _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
+			unsigned __int64 low, high;
+			memcpy(&low, xmm_base + i * 16, sizeof(low));
+			memcpy(&high, xmm_base + i * 16 + 8, sizeof(high));
+
+			int written = _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
 				"XMM%02d.Low : %016I64X   XMM%02d.High: %016I64X\n",
-				i, (unsigned __int64)xmm[i].Low, i, (unsigned __int64)xmm[i].High);
+				i, low, i, high);
+			if (written < 0)
+			{
+				break;
+			}
+			len += written;
 		}
 	}
 #endif
