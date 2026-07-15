@@ -661,7 +661,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// initialize misc critical sections
 		InitializeCriticalSection(&readfile_critsec);
-		InitializeCriticalSection(&g_interactive_debugger_lock);
+		if (g_config.idgb)
+			InitializeCriticalSection(&g_interactive_debugger_lock);
 
 		// initialise CAPE
 		CAPE_init();
