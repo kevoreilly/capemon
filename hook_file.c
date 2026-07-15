@@ -560,33 +560,39 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 		length = IoStatusBlock->Information;
 
 	unsigned int write_count = increment_file_log_write_count(FileHandle);
+
 	if (write_count <= 50) {
-		wchar_t *fname = calloc(32768, sizeof(wchar_t));
-		path_from_handle(FileHandle, fname, 32768);
+		if (FileHandle && FileHandle != INVALID_HANDLE_VALUE) {
+			wchar_t *fname = calloc(32768, sizeof(wchar_t));
+			path_from_handle(FileHandle, fname, 32768);
 
-		// Inject into services.exe if we detect a raw RPC request to ntsvcs (e.g. CreateSvcRpc)
-		if (length >= 32 && fname && !wcsicmp(fname, L"\\Device\\NamedPipe\\ntsvcs")) {
-			// SCM UUID: 367abb81-9844-35f1-ad32-98f038001003
-			unsigned char scm_uuid[] = {0x81, 0xbb, 0x7a, 0x36, 0x44, 0x98, 0xf1, 0x35, 0xad, 0x32, 0x98, 0xf0, 0x38, 0x00, 0x10, 0x03};
-			// NDR UUID: 8a885d04-1ceb-11c9-9fe8-08002b104860
-			unsigned char ndr_uuid[] = {0x04, 0x5d, 0x88, 0x8a, 0xeb, 0x1c, 0xc9, 0x11, 0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60};
+			// Inject into services.exe if we detect a raw RPC request to ntsvcs (e.g. CreateSvcRpc)
+			if (length >= 32 && fname && !wcsicmp(fname, L"\\Device\\NamedPipe\\ntsvcs")) {
+				// SCM UUID: 367abb81-9844-35f1-ad32-98f038001003
+				unsigned char scm_uuid[] = {0x81, 0xbb, 0x7a, 0x36, 0x44, 0x98, 0xf1, 0x35, 0xad, 0x32, 0x98, 0xf0, 0x38, 0x00, 0x10, 0x03};
+				// NDR UUID: 8a885d04-1ceb-11c9-9fe8-08002b104860
+				unsigned char ndr_uuid[] = {0x04, 0x5d, 0x88, 0x8a, 0xeb, 0x1c, 0xc9, 0x11, 0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60};
 
-			if (memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)scm_uuid, sizeof(scm_uuid)) && memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)ndr_uuid, sizeof(ndr_uuid))) {
-                pipe("SERVICE:");
-				raw_sleep(1000);
+				if (memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)scm_uuid, sizeof(scm_uuid)) && memmem((PCHAR)Buffer, (ULONG)length, (PCHAR)ndr_uuid, sizeof(ndr_uuid))) {
+					pipe("SERVICE:");
+					raw_sleep(1000);
+				}
 			}
-		}
 
-		if (write_count < 50) {
-			LOQ_ntstatus("filesystem", "pFbl", "FileHandle", FileHandle,
-				"HandleName", fname, "Buffer", length, Buffer, "Length", length);
-		}
-		else if (write_count == 50) {
-			LOQ_ntstatus("filesystem", "pFbls", "FileHandle", FileHandle,
-				"HandleName", fname, "Buffer", length, Buffer, "Length", length, "Status", "Maximum logged writes reached for this file");
-		}
+			if (write_count < 50) {
+				LOQ_ntstatus("filesystem", "pFbl", "FileHandle", FileHandle,
+					"HandleName", fname, "Buffer", length, Buffer, "Length", length);
+			}
+			else if (write_count == 50) {
+				LOQ_ntstatus("filesystem", "pFbls", "FileHandle", FileHandle,
+					"HandleName", fname, "Buffer", length, Buffer, "Length", length, "Status", "Maximum logged writes reached for this file");
+			}
 
-		free(fname);
+			free(fname);
+		}
+		else {
+			LOQ_ntstatus("filesystem", "pl", "FileHandle", FileHandle, "Length", length);
+		}
 	}
 
 	if (NT_SUCCESS(ret))
