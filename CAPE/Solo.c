@@ -85,6 +85,11 @@ void RegisterCommand(const char* name, CmdHandler func);
 
 static CONTEXT LastContext;
 
+// Serialises interactive debugger sessions. The frontend tracks a single break
+// at a time (one shared command/response slot and register view), so only one
+// target thread may drive the session at once. Initialised in DllMain.
+CRITICAL_SECTION g_interactive_debugger_lock;
+
 static const uint32_t crc32Table[256] = {
 	0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA,  0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
 	0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988,  0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -222,9 +227,24 @@ char* InteractiveDebuggerPipe(_In_ LPCTSTR lpOutputString, ...)
 
 	int Length = (int)strlen(DebuggerLine);
 
-	CallNamedPipe(SOLO_PIPE, DebuggerLine, Length, DebuggerCommand, BUFFER_SIZE, (unsigned long*)&BytesRead, NMPWAIT_WAIT_FOREVER);
+	BOOL Success = CallNamedPipe(SOLO_PIPE, DebuggerLine, Length, DebuggerCommand, BUFFER_SIZE, (unsigned long*)&BytesRead, NMPWAIT_WAIT_FOREVER);
+	DWORD Error = GetLastError();
 
 	va_end(args);
+
+	// A failed transaction means there is no working frontend (not attached, or the
+	// pipe broke mid-session). Return the continue sentinel so the debugged thread
+	// resumes, rather than silently treating a dead pipe as an empty command.
+	if (!Success || BytesRead == 0)
+	{
+		DebugOutput("InteractiveDebuggerPipe: pipe transaction failed (error %u) - continuing.\n", Error);
+		return "__DONE__";
+	}
+
+	// Defensively terminate the reply within the bytes actually read
+	if ((unsigned int)BytesRead >= BUFFER_SIZE)
+		BytesRead = BUFFER_SIZE - 1;
+	DebuggerCommand[BytesRead] = '\0';
 
 	return DebuggerCommand;
 }
@@ -281,9 +301,14 @@ char* OutputRegisters(PCONTEXT Context)
 		size_t remaining = sizeof(OutputBuffer) > len ? sizeof(OutputBuffer) - len : 0;
 		if (remaining)
 		{
-			len += _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
+			int written = _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
 				"XMM%02d.Low : %016I64X   XMM%02d.High: %016I64X\n",
 				i, (unsigned __int64)xmm[i].Low, i, (unsigned __int64)xmm[i].High);
+			if (written < 0)
+			{
+				break;
+			}
+			len += written;
 		}
 	}
 #else
@@ -311,11 +336,26 @@ char* OutputRegisters(PCONTEXT Context)
 		teb
 	);
 
-	const M128A* xmm = (const M128A*)Context->ExtendedRegisters;
+	// XMM registers begin at offset 160 within the x86 FXSAVE area (ExtendedRegisters)
+	const BYTE* xmm_base = Context->ExtendedRegisters + 160;
 	for (int i = 0; i < 8; ++i)
 	{
-		len += _snprintf_s(OutputBuffer + len, sizeof(OutputBuffer) - len, _TRUNCATE, 
-			"XMM%02d.Low : %016I64X   XMM%02d.High: %016I64X\n", i, xmm[i].Low, i, xmm[i].High);
+		size_t remaining = sizeof(OutputBuffer) > len ? sizeof(OutputBuffer) - len : 0;
+		if (remaining)
+		{
+			unsigned __int64 low, high;
+			memcpy(&low, xmm_base + i * 16, sizeof(low));
+			memcpy(&high, xmm_base + i * 16 + 8, sizeof(high));
+
+			int written = _snprintf_s(OutputBuffer + len, remaining, _TRUNCATE,
+				"XMM%02d.Low : %016I64X   XMM%02d.High: %016I64X\n",
+				i, low, i, high);
+			if (written < 0)
+			{
+				break;
+			}
+			len += written;
+		}
 	}
 #endif
 
@@ -447,20 +487,34 @@ char* DumpMemoryView(HANDLE hProcess, PCONTEXT ctx, ULONG_PTR RequestedAddr, int
 	return out;
 }
 
-char* RetrievePage(HANDLE hProcess, uintptr_t Address) {
-	uintptr_t base = Address & ~(PAGE_SIZE - 1);
+char* RetrievePage(HANDLE hProcess, uintptr_t Address, uintptr_t* OutBase) {
+	uintptr_t base = Address & ~((uintptr_t)PAGE_SIZE - 1);
+	if (OutBase) *OutBase = base;
+
+	// Bound the read to the accessible portion of the region so a page at the
+	// end of a committed region (with the next page unmapped) still returns data
+	MEMORY_BASIC_INFORMATION mbi;
+	if (VirtualQueryEx(hProcess, (LPCVOID)base, &mbi, sizeof(mbi)) != sizeof(mbi))
+		return NULL;
+
+	if (mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)))
+		return NULL;
+
+	SIZE_T RegionAvail = (SIZE_T)(((uintptr_t)mbi.BaseAddress + mbi.RegionSize) - base);
+	SIZE_T ToRead = RegionAvail < PAGE_SIZE ? RegionAvail : PAGE_SIZE;
+
 	unsigned char page[PAGE_SIZE];
 	SIZE_T BytesRead = 0;
 
-	if (!ReadProcessMemory(hProcess, (LPCVOID)base, page, PAGE_SIZE, &BytesRead) || BytesRead != PAGE_SIZE) return NULL;
+	if (!ReadProcessMemory(hProcess, (LPCVOID)base, page, ToRead, &BytesRead) || BytesRead == 0) return NULL;
 
-	char* hexPage = malloc(PAGE_SIZE * 2 + 1);
+	char* hexPage = malloc(BytesRead * 2 + 1);
 	if (!hexPage) return NULL;
 
-	for (SIZE_T i = 0; i < PAGE_SIZE; ++i)
+	for (SIZE_T i = 0; i < BytesRead; ++i)
 		sprintf_s(hexPage + i * 2, 3, "%02X", page[i]);
 
-	hexPage[PAGE_SIZE * 2] = '\0';
+	hexPage[BytesRead * 2] = '\0';
 
 	return hexPage;
 }
@@ -509,80 +563,68 @@ static BOOL SetRegister(PCONTEXT Context, char* RegString, PVOID Target)
 	if (!Context || !RegString)
 		return FALSE;
 
+	DWORD_PTR Value = (DWORD_PTR)Target;
+
 	__try
 	{
 #ifdef _WIN64
-		if (!stricmp(RegString, "eax"))
-			(PVOID)Context->Rax = Target;
-		else if (!stricmp(RegString, "ebx"))
-			(PVOID)Context->Rbx = Target;
-		else if (!stricmp(RegString, "ecx"))
-			(PVOID)Context->Rcx = Target;
-		else if (!stricmp(RegString, "edx"))
-			(PVOID)Context->Rdx = Target;
-		else if (!stricmp(RegString, "esi"))
-			(PVOID)Context->Rsi = Target;
-		else if (!stricmp(RegString, "edi"))
-			(PVOID)Context->Rdi = Target;
-		else if (!stricmp(RegString, "esp"))
-			(PVOID)Context->Rsp = Target;
-		else if (!stricmp(RegString, "ebp"))
-			(PVOID)Context->Rbp = Target;
-		else if (!stricmp(RegString, "eip"))
-			(PVOID)Context->Rip = Target;
-		else if (!stricmp(RegString, "rax"))
-			(PVOID)Context->Rax = Target;
-		else if (!stricmp(RegString, "rbx"))
-			(PVOID)Context->Rbx = Target;
-		else if (!stricmp(RegString, "rcx"))
-			(PVOID)Context->Rcx = Target;
-		else if (!stricmp(RegString, "rdx"))
-			(PVOID)Context->Rdx = Target;
-		else if (!stricmp(RegString, "rsi"))
-			(PVOID)Context->Rsi = Target;
-		else if (!stricmp(RegString, "rdi"))
-			(PVOID)Context->Rdi = Target;
-		else if (!stricmp(RegString, "rsp"))
-			(PVOID)Context->Rsp = Target;
-		else if (!stricmp(RegString, "rbp"))
-			(PVOID)Context->Rbp = Target;
-		else if (!stricmp(RegString, "rip"))
-			(PVOID)Context->Rip = Target;
-		else if (!strnicmp(RegString, "r8", 2))
-			(PVOID)Context->R8 = Target;
-		else if (!strnicmp(RegString, "r9", 2))
-			(PVOID)Context->R9 = Target;
-		else if (!strnicmp(RegString, "r10", 3))
-			(PVOID)Context->R10 = Target;
-		else if (!strnicmp(RegString, "r11", 3))
-			(PVOID)Context->R11 = Target;
-		else if (!strnicmp(RegString, "r12", 3))
-			(PVOID)Context->R12 = Target;
-		else if (!strnicmp(RegString, "r13", 3))
-			(PVOID)Context->R13 = Target;
-		else if (!strnicmp(RegString, "r14", 3))
-			(PVOID)Context->R14 = Target;
-		else if (!strnicmp(RegString, "r15", 3))
-			(PVOID)Context->R15 = Target;
+		if (!stricmp(RegString, "eax") || !stricmp(RegString, "rax"))
+			Context->Rax = Value;
+		else if (!stricmp(RegString, "ebx") || !stricmp(RegString, "rbx"))
+			Context->Rbx = Value;
+		else if (!stricmp(RegString, "ecx") || !stricmp(RegString, "rcx"))
+			Context->Rcx = Value;
+		else if (!stricmp(RegString, "edx") || !stricmp(RegString, "rdx"))
+			Context->Rdx = Value;
+		else if (!stricmp(RegString, "esi") || !stricmp(RegString, "rsi"))
+			Context->Rsi = Value;
+		else if (!stricmp(RegString, "edi") || !stricmp(RegString, "rdi"))
+			Context->Rdi = Value;
+		else if (!stricmp(RegString, "esp") || !stricmp(RegString, "rsp"))
+			Context->Rsp = Value;
+		else if (!stricmp(RegString, "ebp") || !stricmp(RegString, "rbp"))
+			Context->Rbp = Value;
+		else if (!stricmp(RegString, "eip") || !stricmp(RegString, "rip"))
+			Context->Rip = Value;
+		else if (!stricmp(RegString, "r8"))
+			Context->R8 = Value;
+		else if (!stricmp(RegString, "r9"))
+			Context->R9 = Value;
+		else if (!stricmp(RegString, "r10"))
+			Context->R10 = Value;
+		else if (!stricmp(RegString, "r11"))
+			Context->R11 = Value;
+		else if (!stricmp(RegString, "r12"))
+			Context->R12 = Value;
+		else if (!stricmp(RegString, "r13"))
+			Context->R13 = Value;
+		else if (!stricmp(RegString, "r14"))
+			Context->R14 = Value;
+		else if (!stricmp(RegString, "r15"))
+			Context->R15 = Value;
+		else
+			return FALSE;
 #else
 		if (!stricmp(RegString, "eax"))
-			(PVOID)Context->Eax = Target;
+			Context->Eax = Value;
 		else if (!stricmp(RegString, "ebx"))
-			(PVOID)Context->Ebx = Target;
+			Context->Ebx = Value;
 		else if (!stricmp(RegString, "ecx"))
-			(PVOID)Context->Ecx = Target;
+			Context->Ecx = Value;
 		else if (!stricmp(RegString, "edx"))
-			(PVOID)Context->Edx = Target;
+			Context->Edx = Value;
 		else if (!stricmp(RegString, "esi"))
-			(PVOID)Context->Esi = Target;
+			Context->Esi = Value;
 		else if (!stricmp(RegString, "edi"))
-			(PVOID)Context->Edi = Target;
+			Context->Edi = Value;
 		else if (!stricmp(RegString, "esp"))
-			(PVOID)Context->Esp = Target;
+			Context->Esp = Value;
 		else if (!stricmp(RegString, "ebp"))
-			(PVOID)Context->Ebp = Target;
+			Context->Ebp = Value;
 		else if (!stricmp(RegString, "eip"))
-			(PVOID)Context->Eip = Target;
+			Context->Eip = Value;
+		else
+			return FALSE;
 #endif
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
@@ -598,7 +640,7 @@ void InteractiveCommandHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, char* 
 {
 	LastContext = *ExceptionInfo->ContextRecord;
 	const char* Command = InitialCommand;
-	while (Command && *Command)
+	while (Command && *Command && strcmp(Command, "__DONE__") != 0)
 	{
 		const char* NextCommand = DispatchCommand(ExceptionInfo, Command);
 		if (strcmp(NextCommand, "__DONE__") == 0)
@@ -622,22 +664,23 @@ const char* HandleInstructionPage(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 			return InteractiveDebuggerPipe("Failed with invalid instruction address: %s", data);
 		}
 
-		if (!ReadProcessMemory(DebuggerProcessHandle, (LPCVOID)RequestedAddr, &probe, 1, &rd) || rd != 1) 
+		if (!ReadProcessMemory(DebuggerProcessHandle, (LPCVOID)RequestedAddr, &probe, 1, &rd) || rd != 1)
 		{
-			return InteractiveDebuggerPipe("%p|UNREADABLE", RequestedAddr);
+			return InteractiveDebuggerPipe("%p|UNREADABLE", (PVOID)(RequestedAddr & ~((ULONG_PTR)PAGE_SIZE - 1)));
 		}
 	}
 
-	char* InstructionPage = RetrievePage(DebuggerProcessHandle, RequestedAddr);
-	if (InstructionPage) 
+	uintptr_t PageBase = RequestedAddr & ~((uintptr_t)PAGE_SIZE - 1);
+	char* InstructionPage = RetrievePage(DebuggerProcessHandle, RequestedAddr, &PageBase);
+	if (InstructionPage)
 	{
-		const char* Command = InteractiveDebuggerPipe("%p|%s", RequestedAddr, InstructionPage);
+		const char* Command = InteractiveDebuggerPipe("%p|%s", (PVOID)PageBase, InstructionPage);
 		free(InstructionPage);
 		return Command;
 	}
-	else 
+	else
 	{
-		return InteractiveDebuggerPipe("%p|NODATA", RequestedAddr);
+		return InteractiveDebuggerPipe("%p|NODATA", (PVOID)PageBase);
 	}
 }
 
@@ -691,18 +734,9 @@ const char* HandleRegisters(struct _EXCEPTION_POINTERS* ExceptionInfo, const cha
 
 const char* HandleContinue(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
 {
+	// The command map is process-lived and reused on the next break, so it is
+	// left intact here rather than torn down and rebuilt on every continue.
 	ClearSingleStepMode(ExceptionInfo->ContextRecord);
-	CommandEntry* entry;
-	CommandEntry* tmp;
-
-	HASH_ITER(hh, CommandMap, entry, tmp)
-	{
-		HASH_DEL(CommandMap, entry);
-		free(entry);
-	}
-
-	CommandMap = NULL;
-	CommandMapInitialized = FALSE;
 	return "__DONE__";
 }
 
@@ -1017,6 +1051,8 @@ const char* HandleListThreads(struct _EXCEPTION_POINTERS* ExceptionInfo, const c
 			if (!NT_SUCCESS(status)) StartAddr = NULL;
 		}
 
+		if (hThread) CloseHandle(hThread);
+
 		int needed = snprintf(NULL, 0, "%s|%lu|%p\n", mark, te.th32ThreadID, StartAddr);
 		if ((size_t)(len + needed + 1) >= capacity)
 		{
@@ -1127,7 +1163,7 @@ const char* HandleListModules(struct _EXCEPTION_POINTERS* ExceptionInfo, const c
 
 const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
 {
-	if (!data && !*data) 
+	if (!data || !*data)
 		return InteractiveDebuggerPipe("Invalid breakpoint command: missing input.\n");
 
 	char Input[MAX_PATH];
@@ -1264,10 +1300,7 @@ const char* HandleExports(struct _EXCEPTION_POINTERS* ExceptionInfo, const char*
 		return InteractiveDebuggerPipe("Failed to get exports: module not loaded.\n");
 	}
 
-	const int MaxSymbols = BUFFER_SIZE;
 	const size_t MaxEntryLen = 256;
-	char** entries = (char**)malloc(MaxSymbols * sizeof(char*));
-	int EntryCount = 0;
 
 	BYTE* base = (BYTE*)hMod;
 	PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)base;
@@ -1276,14 +1309,37 @@ const char* HandleExports(struct _EXCEPTION_POINTERS* ExceptionInfo, const char*
 	DWORD rva = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
 	DWORD RvaSize = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
 
-	if (rva && RvaSize && !IsBadReadPtr(base + rva, RvaSize))
+	BOOL HasExports = (rva && RvaSize && !IsBadReadPtr(base + rva, RvaSize));
+
+	// Size the entry table to the actual export count, capped as a sanity bound
+	size_t MaxSymbols = 0;
+	if (HasExports)
+	{
+		MaxSymbols = ((PIMAGE_EXPORT_DIRECTORY)(base + rva))->NumberOfFunctions;
+		if (MaxSymbols > (size_t)BUFFER_SIZE)
+			MaxSymbols = (size_t)BUFFER_SIZE;
+	}
+
+	char** entries = NULL;
+	int EntryCount = 0;
+	if (MaxSymbols)
+	{
+		entries = (char**)malloc(MaxSymbols * sizeof(char*));
+		if (!entries)
+		{
+			FreeLibrary(hMod);
+			return InteractiveDebuggerPipe("Memory allocation failed.\n");
+		}
+	}
+
+	if (HasExports && entries)
 	{
 		PIMAGE_EXPORT_DIRECTORY ed = (PIMAGE_EXPORT_DIRECTORY)(base + rva);
 		DWORD* FuncRvas = (DWORD*)(base + ed->AddressOfFunctions);
 		DWORD* NameRvas = (DWORD*)(base + ed->AddressOfNames);
 		WORD* ordinals = (WORD*)(base + ed->AddressOfNameOrdinals);
 
-		for (DWORD i = 0; i < ed->NumberOfFunctions && EntryCount < MaxSymbols; ++i)
+		for (DWORD i = 0; i < ed->NumberOfFunctions && (size_t)EntryCount < MaxSymbols; ++i)
 		{
 			DWORD FuncRva = FuncRvas[i];
 			if (!FuncRva) continue;
@@ -1391,18 +1447,18 @@ const char* HandleSetRegister(struct _EXCEPTION_POINTERS* ExceptionInfo, const c
 	char RegName[16];
 	char ValueStr[32];
 
-	strcpy_s(RegName, sizeof(RegName), InputBuffer);
-	strcpy_s(ValueStr, sizeof(ValueStr), Sep + 1);
+	strncpy_s(RegName, sizeof(RegName), InputBuffer, _TRUNCATE);
+	strncpy_s(ValueStr, sizeof(ValueStr), Sep + 1, _TRUNCATE);
 
 	ULONG_PTR NewValue = 0;
 	if (!ParseHex(ValueStr, &NewValue))
 		return InteractiveDebuggerPipe("Failed with invalid value for register %s: %s.", RegName, ValueStr);
 
-	LastContext = *ExceptionInfo->ContextRecord;
-	BOOL result = SetRegister(&LastContext, RegName, (PVOID)NewValue);
+	BOOL result = SetRegister(ExceptionInfo->ContextRecord, RegName, (PVOID)NewValue);
 	if (!result)
 		return InteractiveDebuggerPipe("Failed to set register %s to %llu.\n", RegName, NewValue);
 
+	LastContext = *ExceptionInfo->ContextRecord;
 	return OutputRegisters(&LastContext);
 }
 
@@ -1441,9 +1497,9 @@ const char* HandleNopInstruction(struct _EXCEPTION_POINTERS* ExceptionInfo, cons
 
 const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
 {
-	if (!data && !*data)
+	if (!data || !*data)
 		return InteractiveDebuggerPipe("Failed with invalid input data.\n");
-	
+
 	char* Sep = strchr(data, '|');
 	if (!Sep)
 		return InteractiveDebuggerPipe("Failed with bad data format\n");
@@ -1454,6 +1510,9 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 	if (!ParseHex(data, &Address))
 		return InteractiveDebuggerPipe("Failed with invalid patch address: %s\n", data);
 
+	if (!Address || !IsAddressAccessible((PVOID)Address))
+		return InteractiveDebuggerPipe("Failed address is not accessible: 0x%p", Address);
+
 	size_t HexLen = strlen(Sep);
 	size_t MaxBytes = HexLen / 2 + 1;
 	BYTE* Patch = (BYTE*)malloc(MaxBytes);
@@ -1462,11 +1521,11 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 
 	size_t ByteCount = 0;
 	char* HexPtr = Sep;
-	while (HexPtr)
+	while (*HexPtr)
 	{
 		while (*HexPtr && isspace((unsigned char)*HexPtr)) HexPtr++;
 
-		if (!HexPtr) break;
+		if (!*HexPtr) break;
 
 		if (!isxdigit((unsigned char)*HexPtr) || !isxdigit((unsigned char)*(HexPtr + 1))) break;
 
@@ -1481,12 +1540,12 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 		return InteractiveDebuggerPipe("Failed with no bytes to patch.\n");
 	}
 
-	if (!Address || !IsAddressAccessible((PVOID)Address))
-		return InteractiveDebuggerPipe("Failed address is not accessible: 0x%p", Address);
-
 	DWORD OldProtect;
 	if (!VirtualProtect((LPVOID)Address, ByteCount, PAGE_EXECUTE_READWRITE, &OldProtect))
+	{
+		free(Patch);
 		return InteractiveDebuggerPipe("Failed unable to change memory protection at 0x%p", Address);
+	}
 
 	BYTE* dest = (BYTE*)Address;
 	BYTE* src = Patch;
@@ -1535,6 +1594,11 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 	PVOID CIP;
 	char* Command = NULL;
 
+	// Hold the session lock for the whole break so a second thread that breaks
+	// concurrently waits here until this session continues. The lock is recursive
+	// (CRITICAL_SECTION), so a nested break on this same thread will not deadlock.
+	EnterCriticalSection(&g_interactive_debugger_lock);
+
 #ifdef _WIN64
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
 #else
@@ -1557,5 +1621,6 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 	VerifyCommandMapInitialized();
 	InteractiveCommandHandler(ExceptionInfo, Command);
 
+	LeaveCriticalSection(&g_interactive_debugger_lock);
 	return TRUE;
 }
