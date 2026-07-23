@@ -284,6 +284,9 @@ struct _g_config {
 	// Allow scans/dumps with loader lock held
 	int loaderlock_scans;
 
+	// Yield in loader hooks while loader lock held (timing fix for trojanized sideload DLLs)
+	int loaderlock_settle;
+
 	// Specify custom trace stepping behavior
 	int stepmode;
 
