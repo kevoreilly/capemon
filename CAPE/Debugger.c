@@ -781,8 +781,10 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_PRIVILEGED_INSTRUCTION || ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION)
 	{
-#ifdef _WIN64
+#if defined(_WIN64) || defined(DEBUG_COMMENTS)
 		_DecodedInst instruction;
+#endif
+#ifdef _WIN64
 		if (ide(&instruction, (void*)ExceptionInfo->ContextRecord->Rip) && !stricmp("rdtscp", instruction.mnemonic.p)) {
 			if (g_config.nop_rdtscp)
 			{
