@@ -196,6 +196,9 @@ struct _g_config {
 	// should we terminate processes after dumping on terminate_event?
 	int terminate_processes;
 
+	// should we unhook (restore hooks) instead of leaving them installed on terminate_event?
+	int unhook_on_terminate;
+
 	// dump regions containing c2
 	int dump_config_region;
 

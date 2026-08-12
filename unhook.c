@@ -148,6 +148,22 @@ void remove_hook(const char *funcname)
 	}
 }
 
+void remove_all_hooks(void)
+{
+	for (uint32_t idx = 0; idx < g_index; idx++) {
+		DWORD old_protect;
+		if (!g_addr[idx])
+			continue;
+		if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
+			continue;				/* skip one bad region, keep restoring the rest */
+		memcpy(g_addr[idx], g_orig[idx], g_length[idx]);	/* restore original (pre-hook) bytes */
+		VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
+		/* get the unhook watcher to ignore this region */
+		g_hook_reported[idx] = 1;
+		g_addr[idx] = 0;
+	}
+}
+
 void restore_hooks_on_range(ULONG_PTR start, ULONG_PTR end)
 {
 	lasterror_t lasterror;
@@ -315,6 +331,12 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 	WaitForSingleObject(g_terminate_event_handle, INFINITE);
 
 	CloseHandle(g_terminate_event_handle);
+
+	if (g_config.unhook_on_terminate) {
+		DebugOutput("Terminate Event: unhooking monitor from process %d\n", ProcessId);
+		g_config.hook_restore = 0;	/* stop the unhook detect thread re-applying our hooks */
+		remove_all_hooks();
+	}
 
 	if (g_config.debugger)
 		DebuggerShutdown();
