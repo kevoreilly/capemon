@@ -1231,7 +1231,12 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		return -1;
+		// If unwinding fails/raises an exception (common with Golang binaries due to their 
+		// custom runtime stack and non-standard 'asmstdcall' assembly gate), we must return the 
+		// count of successfully resolved frames. This ensures the first frame (which points 
+		// to the Go binary calling the API, not Capemon) is kept, so operate_on_backtrace correctly 
+		// detects it as an application call rather than a recursive hook call, allowing logging.
+		return (int)frame + 1;
 	}
 }
 
@@ -1246,6 +1251,10 @@ int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(v
 	hook_disable();
 
 	frames = our_stackwalk(_rip, sp, backtrace, HOOK_BACKTRACE_DEPTH);
+	if (frames > HOOK_BACKTRACE_DEPTH)
+		frames = HOOK_BACKTRACE_DEPTH;
+	else if (frames < 0)
+		frames = 0;
 
 	for (i = 0; i < frames; i++) {
 		if (!addr_in_our_dll_range(NULL, (ULONG_PTR)backtrace[i]))
