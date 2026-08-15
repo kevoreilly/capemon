@@ -56,6 +56,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `exclude-apis` | List | Colon-separated list of APIs to exclude from hooking. |
 | `exclude-dlls` | List | Colon-separated list of DLLs to exclude from hooking. |
 | `unhook-apis` | List | Colon-separated list of already hooked APIs to unhook at runtime. |
+| `unhook-on-terminate` | Boolean | If `true`, restore all hooked API original bytes to memory when the process terminates. |
 | `api-rate-cap` | Integer | Limit the rate of API logging. |
 | `api-cap` | Integer | Limit the total number of API logs allowed. |
 
@@ -84,7 +85,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | :--- | :--- | :--- |
 | `dump-limit` | Integer | Limit the number of payload dumps (default: 10). |
 | `dropped-limit` | Integer | Limit the number of dropped files logged (default: 100). |
-| `procdump` | Integer | Enable process memory dumping on exit/timeout (1 - dump if changed from image (default), 2 - always dump). |
+| `procdump` | Integer | Enable process memory dumping on exit/timeout (1 - dump if changed from image (default), 2 - always dump). Also enables automatic dumping of decrypted .NET JIT MSIL bytecode payloads. |
 | `procmemdump` | Boolean | Enable *full* process memory dumping. |
 | `import-reconstruction` | Boolean | Perform import reconstruction on process dumps. |
 | `dump-on-api` | List | Dump the calling module when specific APIs (colon-separated) are called. |
@@ -93,6 +94,9 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `dump-crypto` | Boolean | Dump buffers from Crypto APIs. |
 | `dump-keys` | Boolean | Dump keys from `CryptImportKey`. |
 | `amsidump` | Boolean | Enable AMSI buffer dumping (Windows 10+). |
+| `yarascan` | Boolean | Enable in-memory YARA scanning of process memory, including JIT-compiled native code and decrypted MSIL bytecode payloads. |
+| `yara-timeout` | Integer | Timeout limit in milliseconds for in-memory YARA scanning (default: 60000). |
+| `dumpsize` | Integer | Maximum size in bytes allowed for a single raw memory dump. |
 | `jit-dumps` | Integer | Limit for .NET JIT cache dumps. |
 | `tlsdump` | Boolean | Enable dumping of TLS secrets. |
 | `regdump` | Boolean | Enable dumping of Registry data. |
@@ -106,11 +110,12 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `debugger` | Boolean | Enable the internal debugger engine (implicitly set by bp/trace options, not used directly). |
 | `bp0`...`bp3` | Addr/String | Set hardware breakpoint. Format: `0xAddress`, `Module:Export`, `zero` (clear), or `ep` (entrypoint). |
 | `br0`, `br1` | Addr/String | Set "break-on-return" addresses. |
-| `bp` | List | Colon-separated list of addresses for software breakpoints. |
 | `sysbp` | List | Colon-separated list of addresses for syscall breakpoints. |
 | `sysbpmode` | Integer | Mode for syscall breakpoints. |
+| `softbpmode` | Integer | Execution mode behavior for software breakpoints. |
 | `break-on-return` | List | Colon-separated list of APIs to break on return. |
 | `break-on-jit` | Boolean | Break on .NET JIT compiled native code. |
+| `idbg` | Boolean | Enable interactive remote debugger interface / locks. |
 | `trace-all` | Boolean | Enable full execution tracing. |
 | `trace-into-api` | List | Colon-separated list of APIs to trace into. |
 | `branch-trace` | Boolean | Enable branch tracing. |
