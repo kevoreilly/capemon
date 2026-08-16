@@ -3,8 +3,8 @@
 #include "misc.h"
 #include "config.h"
 
-static int g_last_seen_disk_query = 0;
-static int g_last_seen_physicalmemory = 0;
+__declspec(thread) static int g_last_seen_disk_query = 0;
+__declspec(thread) static int g_last_seen_physicalmemory = 0;
 
 
 HOOKDEF(HRESULT, WINAPI, WMI_Get,
@@ -23,13 +23,13 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 	get_lasterrors(&lasterror);
 	__try {
 		if (!ret && !g_config.no_stealth && pVal && wszName) {
-			if (pVal->vt == VT_BSTR) {
+			if (pVal->vt == VT_BSTR && pVal->bstrVal != NULL) {
 				if (!wcsicmp(wszName, L"TotalPhysicalMemory")) {
 					unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
 					if (actualMemory < SPOOFED_RAM) {
 						wchar_t wszMemory[16];
 						memset(wszMemory, 0x0, sizeof(wszMemory));
-						swprintf_s(wszMemory, sizeof(wszMemory), L"%llu", SPOOFED_RAM);
+						swprintf_s(wszMemory, _countof(wszMemory), L"%llu", SPOOFED_RAM);
 						SysFreeString(pVal->bstrVal);
 						pVal->bstrVal = SysAllocString(wszMemory);
 					}
@@ -40,7 +40,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 					if (actualMemory < (SPOOFED_RAM / 1024)) {
 						wchar_t wszMemory[16];
 						memset(wszMemory, 0x0, sizeof(wszMemory));
-						swprintf_s(wszMemory, sizeof(wszMemory), L"%llu", (SPOOFED_RAM / 1024));
+						swprintf_s(wszMemory, _countof(wszMemory), L"%llu", (SPOOFED_RAM / 1024));
 						SysFreeString(pVal->bstrVal);
 						pVal->bstrVal = SysAllocString(wszMemory);
 					}
@@ -50,7 +50,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 					if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
 						wchar_t newSize[16];
 						memset(newSize, 0x0, sizeof(newSize));
-						swprintf_s(newSize, sizeof(newSize), L"%llu", SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE);
+						swprintf_s(newSize, _countof(newSize), L"%llu", SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE);
 						SysFreeString(pVal->bstrVal);
 						pVal->bstrVal = SysAllocString(newSize);
 					}
@@ -60,7 +60,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 					if (actualMemory < SPOOFED_RAM) {
 						wchar_t wszMemory[16];
 						memset(wszMemory, 0x0, sizeof(wszMemory));
-						swprintf_s(wszMemory, sizeof(wszMemory), L"%llu", SPOOFED_RAM);
+						swprintf_s(wszMemory, _countof(wszMemory), L"%llu", SPOOFED_RAM);
 						SysFreeString(pVal->bstrVal);
 						pVal->bstrVal = SysAllocString(wszMemory);
 					}
@@ -131,7 +131,22 @@ HOOKDEF_NOTAIL(WINAPI, WMI_ExecQueryAsync,
 	PVOID		pResponseHandler
 ) {
 	HRESULT ret = 0;
-	LOQ_hresult("system", "u", "Query", strQuery);
+
+	// Reset these on new query
+	g_last_seen_disk_query = 0;
+	g_last_seen_physicalmemory = 0;
+
+	if (!ret && !g_config.no_stealth && strQuery) {
+		if (!_wcsnicmp(strQuery, L"SELECT ", 7)) {
+			if (wcsistr(strQuery, L" FROM Win32_LogicalDisk")) {
+				g_last_seen_disk_query = 1;
+			}
+			else if (wcsistr(strQuery, L" FROM Win32_PhysicalMemory")) {
+				g_last_seen_physicalmemory = 1;
+			}
+		}
+	}
+	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
 	return 0;
 }
 
