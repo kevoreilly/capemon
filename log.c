@@ -52,8 +52,8 @@ static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
 // current to-be-logged API call
-static bson g_bson[1];
-static char g_istr[4];
+__declspec(thread) static bson g_bson[1];
+__declspec(thread) static char g_istr[4];
 
 static char logtbl_explained[256] = {0};
 
@@ -507,162 +507,155 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	if (!TryEnterCriticalSection(&g_mutex))
-		goto exit;
-
-	if (!special_api_triggered)
-		last_api_logged = API_OTHER;
-	else {
-		special_api_triggered = FALSE;
-		if (delete_last_log) {
-			free(lastlog.buf);
-			lastlog.buf = NULL;
-		}
-	}
-
 	if (logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
-		logtbl_explained[index] = 1;
+		if (!TryEnterCriticalSection(&g_mutex))
+			goto exit;
 
-		va_start(args, fmt);
+		if (logtbl_explained[index] == 0) {
+			logtbl_explained[index] = 1;
 
-		bson_init( b );
-		bson_append_int( b, "I", index );
-		bson_append_string( b, "name", name );
-		bson_append_string( b, "type", "info" );
-		bson_append_string( b, "category", category );
+			va_start(args, fmt);
 
-		bson_append_start_array( b, "args" );
-		bson_append_string( b, "0", "is_success" );
-		bson_append_string( b, "1", "retval" );
+			bson_init( b );
+			bson_append_int( b, "I", index );
+			bson_append_string( b, "name", name );
+			bson_append_string( b, "type", "info" );
+			bson_append_string( b, "category", category );
 
-		while (--count != 0 || *fmt != 0) {
-			// we have to find the next format specifier
-			if (count == 0) {
-				// end of format
-				if (*fmt == 0) break;
+			bson_append_start_array( b, "args" );
+			bson_append_string( b, "0", "is_success" );
+			bson_append_string( b, "1", "retval" );
 
-				// set the count, possibly with a repeated format specifier
-				count = *fmt >= '2' && *fmt <= '9' ? *fmt++ - '0' : 1;
+			while (--count != 0 || *fmt != 0) {
+				// we have to find the next format specifier
+				if (count == 0) {
+					// end of format
+					if (*fmt == 0) break;
 
-				// the next format specifier
-				key = *fmt++;
-			}
+					// set the count, possibly with a repeated format specifier
+					count = *fmt >= '2' && *fmt <= '9' ? *fmt++ - '0' : 1;
 
-			pname = va_arg(args, const char *);
-			num_to_string(g_istr, 4, argnum);
-			argnum++;
+					// the next format specifier
+					key = *fmt++;
+				}
 
-			//on certain formats, we need to tell cuckoo about them for nicer display / matching
-			if (key == 'p' || key == 'P' || key == 'h' || key == 'H') {
-				const char *typestr;
-				if (key == 'h' || key == 'H' || sizeof(ULONG_PTR) != 8)
-					typestr = "h";
-				else
-					typestr = "p";
+				pname = va_arg(args, const char *);
+				num_to_string(g_istr, 4, argnum);
+				argnum++;
 
-				bson_append_start_array( b, g_istr );
-				bson_append_string( b, "0", pname );
-				bson_append_string( b, "1", typestr );
-				bson_append_finish_array( b );
-			}
-			else if (key == 'x' || key == 'X') {
-				bson_append_start_array(b, g_istr);
-				bson_append_string(b, "0", pname);
-				bson_append_string(b, "1", "p");
-				bson_append_finish_array(b);
-			} else {
-				bson_append_string( b, g_istr, pname );
-			}
+				//on certain formats, we need to tell cuckoo about them for nicer display / matching
+				if (key == 'p' || key == 'P' || key == 'h' || key == 'H') {
+					const char *typestr;
+					if (key == 'h' || key == 'H' || sizeof(ULONG_PTR) != 8)
+						typestr = "h";
+					else
+						typestr = "p";
 
-			//now ignore the values
-			if (key == 's' || key == 'f') {
-				(void) va_arg(args, const char *);
-			}
-			else if (key == 'S') {
-				(void) va_arg(args, int);
-				(void) va_arg(args, const char *);
-			}
-			else if (key == 'u' || key == 'F') {
-				(void) va_arg(args, const wchar_t *);
-			}
-			else if (key == 'U') {
-				(void) va_arg(args, int);
-				(void) va_arg(args, const wchar_t *);
-			}
-			else if (key == 'e' || key == 'v') {
-				(void)va_arg(args, HKEY);
-				(void)va_arg(args, const char *);
-			}
-			else if (key == 'E' || key == 'V') {
-				(void)va_arg(args, HKEY);
-				(void)va_arg(args, const wchar_t *);
-			}
-			else if (key == 'k') {
-				(void)va_arg(args, HKEY);
-				(void)va_arg(args, const PUNICODE_STRING);
-			}
-			else if (key == 'b' || key == 'c') {
-				(void) va_arg(args, size_t);
-				(void) va_arg(args, const char *);
-			}
-			else if (key == 'B' || key == 'C') {
-				(void) va_arg(args, size_t *);
-				(void) va_arg(args, const char *);
-			}
-			else if (key == 'i' || key == 'h') {
-				(void) va_arg(args, int);
-			}
-			else if (key == 'I' || key == 'H') {
-				(void) va_arg(args, int *);
-			}
-			else if (key == 'l' || key == 'L') {
-				(void)va_arg(args, ULONG_PTR);
-			}
-			else if (key == 'n') {
-				(void)va_arg(args, VARIANT *);
-			}
-			else if (key == 'p' || key == 'P') {
-				(void)va_arg(args, void *);
-			}
-			else if (key == 'x') {
-				(void)va_arg(args, LARGE_INTEGER);
-			}
-			else if (key == 'X') {
-				(void)va_arg(args, PLARGE_INTEGER);
-			}
-			else if (key == 'o') {
-				(void) va_arg(args, UNICODE_STRING *);
-			}
-			else if (key == 'O' || key == 'K') {
-				(void) va_arg(args, OBJECT_ATTRIBUTES *);
-			}
-			else if (key == 'a') {
-				(void) va_arg(args, int);
-				(void) va_arg(args, const char **);
-			}
-			else if (key == 'A') {
-				(void) va_arg(args, int);
-				(void) va_arg(args, const wchar_t **);
-			}
-			else if (key == 'r' || key == 'R') {
-				(void) va_arg(args, unsigned long);
-				(void) va_arg(args, unsigned long);
-				(void) va_arg(args, unsigned char *);
-			}
-			else {
-				pipe("CRITICAL:Unknown format string character %c", key);
-			}
+					bson_append_start_array( b, g_istr );
+					bson_append_string( b, "0", pname );
+					bson_append_string( b, "1", typestr );
+					bson_append_finish_array( b );
+				}
+				else if (key == 'x' || key == 'X') {
+					bson_append_start_array(b, g_istr);
+					bson_append_string(b, "0", pname);
+					bson_append_string(b, "1", "p");
+					bson_append_finish_array(b);
+				} else {
+					bson_append_string( b, g_istr, pname );
+				}
 
+				//now ignore the values
+				if (key == 's' || key == 'f') {
+					(void) va_arg(args, const char *);
+				}
+				else if (key == 'S') {
+					(void) va_arg(args, int);
+					(void) va_arg(args, const char *);
+				}
+				else if (key == 'u' || key == 'F') {
+					(void) va_arg(args, const wchar_t *);
+				}
+				else if (key == 'U') {
+					(void) va_arg(args, int);
+					(void) va_arg(args, const wchar_t *);
+				}
+				else if (key == 'e' || key == 'v') {
+					(void)va_arg(args, HKEY);
+					(void)va_arg(args, const char *);
+				}
+				else if (key == 'E' || key == 'V') {
+					(void)va_arg(args, HKEY);
+					(void)va_arg(args, const wchar_t *);
+				}
+				else if (key == 'k') {
+					(void)va_arg(args, HKEY);
+					(void)va_arg(args, const PUNICODE_STRING);
+				}
+				else if (key == 'b' || key == 'c') {
+					(void) va_arg(args, size_t);
+					(void) va_arg(args, const char *);
+				}
+				else if (key == 'B' || key == 'C') {
+					(void) va_arg(args, size_t *);
+					(void) va_arg(args, const char *);
+				}
+				else if (key == 'i' || key == 'h') {
+					(void) va_arg(args, int);
+				}
+				else if (key == 'I' || key == 'H') {
+					(void) va_arg(args, int *);
+				}
+				else if (key == 'l' || key == 'L') {
+					(void)va_arg(args, ULONG_PTR);
+				}
+				else if (key == 'n') {
+					(void)va_arg(args, VARIANT *);
+				}
+				else if (key == 'p' || key == 'P') {
+					(void)va_arg(args, void *);
+				}
+				else if (key == 'x') {
+					(void)va_arg(args, LARGE_INTEGER);
+				}
+				else if (key == 'X') {
+					(void)va_arg(args, PLARGE_INTEGER);
+				}
+				else if (key == 'o') {
+					(void) va_arg(args, UNICODE_STRING *);
+				}
+				else if (key == 'O' || key == 'K') {
+					(void) va_arg(args, OBJECT_ATTRIBUTES *);
+				}
+				else if (key == 'a') {
+					(void) va_arg(args, int);
+					(void) va_arg(args, const char **);
+				}
+				else if (key == 'A') {
+					(void) va_arg(args, int);
+					(void) va_arg(args, const wchar_t **);
+				}
+				else if (key == 'r' || key == 'R') {
+					(void) va_arg(args, unsigned long);
+					(void) va_arg(args, unsigned long);
+					(void) va_arg(args, unsigned char *);
+				}
+				else {
+					pipe("CRITICAL:Unknown format string character %c", key);
+				}
+
+			}
+			bson_append_finish_array( b );
+			bson_finish( b );
+			log_raw_direct(bson_data( b ), bson_size( b ));
+			bson_destroy( b );
+			// log_flush();
+			va_end(args);
 		}
-		bson_append_finish_array( b );
-		bson_finish( b );
-		log_raw_direct(bson_data( b ), bson_size( b ));
-		bson_destroy( b );
-		// log_flush();
-		va_end(args);
+		LeaveCriticalSection(&g_mutex);
 	}
 
 	fmt = fmtbak;
@@ -1066,6 +1059,34 @@ buffer_log:
 
 	bson_append_finish_array( g_bson );
 	bson_finish( g_bson );
+
+	{
+		int retries = 100;
+		BOOL acquired = FALSE;
+
+		while (retries-- > 0) {
+			if (TryEnterCriticalSection(&g_mutex)) {
+				acquired = TRUE;
+				break;
+			}
+			SwitchToThread();
+		}
+
+		if (!acquired) {
+			bson_destroy( g_bson );
+			goto exit;
+		}
+	}
+
+	if (!special_api_triggered)
+		last_api_logged = API_OTHER;
+	else {
+		special_api_triggered = FALSE;
+		if (delete_last_log) {
+			free(lastlog.buf);
+			lastlog.buf = NULL;
+		}
+	}
 
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
