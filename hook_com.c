@@ -55,7 +55,7 @@ HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
 	HRESULT ret;
 	ret = Old_WbemLocator_ConnectServer(_this, strNetworkResource, strUser, strPassword, strLocale, lSecurityFlags, strAuthority, pCtx, ppNamespace);
 
-	if (ret == S_OK && (
+	if (ret == S_OK && ppNamespace && *ppNamespace && (
 		ContainsNamespace(strNetworkResource, L"ROOT\\CIMV2") ||
 		ContainsNamespace(strNetworkResource, L"ROOT\\SecurityCenter2") ||
 		ContainsNamespace(strNetworkResource, L"ROOT\\Microsoft\\Windows\\Defender") ||
