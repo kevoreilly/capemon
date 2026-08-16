@@ -507,8 +507,22 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	if (!TryEnterCriticalSection(&g_mutex))
-		goto exit;
+	{
+		int retries = 100;
+		BOOL acquired = FALSE;
+
+		while (retries-- > 0) {
+			if (TryEnterCriticalSection(&g_mutex)) {
+				acquired = TRUE;
+				break;
+			}
+			SwitchToThread();
+		}
+
+		if (!acquired) {
+			goto exit;
+		}
+	}
 
 	if (!special_api_triggered)
 		last_api_logged = API_OTHER;
