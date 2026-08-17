@@ -52,8 +52,8 @@ static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
 // current to-be-logged API call
-static bson g_bson[1];
-static char g_istr[4];
+__declspec(thread) static bson g_bson[1];
+__declspec(thread) static char g_istr[4];
 
 static char logtbl_explained[256] = {0};
 
@@ -559,40 +559,31 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	{
-		int retries = 100;
-		BOOL acquired = FALSE;
-
-		while (retries-- > 0) {
-			if (TryEnterCriticalSection(&g_mutex)) {
-				acquired = TRUE;
-				break;
-			}
-			SwitchToThread();
-		}
-
-		if (!acquired) {
-			goto exit;
-		}
-	}
-
-	if (!special_api_triggered)
-		last_api_logged = API_OTHER;
-	else {
-		special_api_triggered = FALSE;
-		if (delete_last_log) {
-			free(lastlog.buf);
-			lastlog.buf = NULL;
-		}
-	}
-
 	if (logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
-		logtbl_explained[index] = 1;
+		{
+			int retries = 100;
+			BOOL acquired = FALSE;
 
-		va_start(args, fmt);
+			while (retries-- > 0) {
+				if (TryEnterCriticalSection(&g_mutex)) {
+					acquired = TRUE;
+					break;
+				}
+				SwitchToThread();
+			}
+
+			if (!acquired) {
+				goto skip_explain;
+			}
+		}
+
+		if (logtbl_explained[index] == 0) {
+			logtbl_explained[index] = 1;
+
+			va_start(args, fmt);
 
 		bson_init( b );
 		bson_append_int( b, "I", index );
@@ -723,12 +714,16 @@ void loq(int index, const char *category, const char *name,
 			}
 
 		}
-		bson_append_finish_array( b );
-		bson_finish( b );
-		log_raw_direct(bson_data( b ), bson_size( b ));
-		bson_destroy( b );
-		// log_flush();
-		va_end(args);
+			bson_append_finish_array( b );
+			bson_finish( b );
+			log_raw_direct(bson_data( b ), bson_size( b ));
+			bson_destroy( b );
+			// log_flush();
+			va_end(args);
+		}
+		LeaveCriticalSection(&g_mutex);
+skip_explain:
+		;
 	}
 
 	fmt = fmtbak;
@@ -1132,6 +1127,34 @@ buffer_log:
 
 	bson_append_finish_array( g_bson );
 	bson_finish( g_bson );
+
+	{
+		int retries = 100;
+		BOOL acquired = FALSE;
+
+		while (retries-- > 0) {
+			if (TryEnterCriticalSection(&g_mutex)) {
+				acquired = TRUE;
+				break;
+			}
+			SwitchToThread();
+		}
+
+		if (!acquired) {
+			bson_destroy( g_bson );
+			goto exit;
+		}
+	}
+
+	if (!special_api_triggered)
+		last_api_logged = API_OTHER;
+	else {
+		special_api_triggered = FALSE;
+		if (delete_last_log) {
+			free(lastlog.buf);
+			lastlog.buf = NULL;
+		}
+	}
 
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
