@@ -1290,6 +1290,13 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Terminate processes on terminate_event disabled.\n");
 		}
+		else if (!stricmp(key, "unhook-on-terminate")) {
+			g_config.unhook_on_terminate = value[0] == '1';
+			if (g_config.unhook_on_terminate)
+				DebugOutput("Unhook monitor on terminate_event enabled.\n");
+			else
+				DebugOutput("Unhook monitor on terminate_event disabled.\n");
+		}
 		else if (!stricmp(key, "branch-trace")) {
 			g_config.branch_trace = value[0] == '1';
 			if (g_config.branch_trace)

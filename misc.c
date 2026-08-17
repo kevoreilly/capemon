@@ -884,11 +884,22 @@ BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 {
 	FILE_BASIC_INFORMATION basic_information;
 	wchar_t pipe_base_name[] = L"\\??\\pipe\\";
-	if (!wcsnicmp(obj->ObjectName->Buffer, pipe_base_name, wcslen(pipe_base_name)))
-		return FALSE;
-	NTSTATUS ret = pNtQueryAttributesFile(obj, &basic_information);
-	if (NT_SUCCESS(ret) || ret == STATUS_INVALID_DEVICE_REQUEST)
-		return TRUE;
+	NTSTATUS ret;
+
+	__try {
+		if (obj == NULL || obj->ObjectName == NULL || obj->ObjectName->Buffer == NULL)
+			return FALSE;
+
+		if (!wcsnicmp(obj->ObjectName->Buffer, pipe_base_name, wcslen(pipe_base_name)))
+			return FALSE;
+
+		ret = pNtQueryAttributesFile(obj, &basic_information);
+		if (NT_SUCCESS(ret) || ret == STATUS_INVALID_DEVICE_REQUEST)
+			return TRUE;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		;
+	}
 	return FALSE;
 }
 
@@ -1258,8 +1269,14 @@ out:
 
 wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 {
-	wchar_t *tmpout = NULL;
-	wchar_t *nonexistent = NULL;
+	unsigned int path_buf_size = 2048;
+	wchar_t stack_tmpout[2048];
+	wchar_t stack_nonexistent[2048];
+	wchar_t *tmpout = stack_tmpout;
+	wchar_t *nonexistent = stack_nonexistent;
+	BOOL allocated_tmpout = FALSE;
+	BOOL allocated_nonexistent = FALSE;
+
 	unsigned int lenchars;
 	unsigned int nonexistentidx;
 	wchar_t *pathcomponent = NULL;
@@ -1291,62 +1308,85 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		goto out;
 	}
 
-	tmpout = malloc(32768 * sizeof(wchar_t));
-	nonexistent = malloc(32768 * sizeof(wchar_t));
-
-	if (tmpout == NULL || nonexistent == NULL)
-		goto normal_copy;
+	if (inlen >= 2000) {
+		path_buf_size = 32768;
+		tmpout = malloc(path_buf_size * sizeof(wchar_t));
+		nonexistent = malloc(path_buf_size * sizeof(wchar_t));
+		if (tmpout == NULL || nonexistent == NULL) {
+			if (tmpout) free(tmpout);
+			if (nonexistent) free(nonexistent);
+			tmpout = stack_tmpout;
+			nonexistent = stack_nonexistent;
+			path_buf_size = 2048;
+		} else {
+			allocated_tmpout = TRUE;
+			allocated_nonexistent = TRUE;
+		}
+	}
 
 	if (!wcsnicmp(inadj, L"\\device\\", 8) || !wcsnicmp(inadj, L"\\systemroot", 11)) {
 		// handle \\Device\\* and \\systemroot\\*
 		unsigned int matchlen;
-		wchar_t *tmpout2;
+		wchar_t stack_tmpout2[2048];
+		wchar_t *tmpout2 = stack_tmpout2;
+		BOOL allocated_tmpout2 = FALSE;
 		wchar_t *retstr = get_matching_unicode_specialname(inadj, &matchlen);
 		if (retstr == NULL)
 			goto normal_copy;
 		// rewrite \\Device\\HarddiskVolumeX etc to the appropriate drive letter
-		tmpout2 = malloc(32768 * sizeof(wchar_t));
-		if (tmpout2 == NULL)
-			goto normal_copy;
+		if (path_buf_size > 2048) {
+			tmpout2 = malloc(path_buf_size * sizeof(wchar_t));
+			if (tmpout2 == NULL) {
+				tmpout2 = stack_tmpout2;
+			} else {
+				allocated_tmpout2 = TRUE;
+			}
+		}
 
 		wcscpy(tmpout2, L"\\\\?\\");
 		wcscat(tmpout2, retstr);
-		wcsncat(tmpout2, inadj + matchlen, 32768 - 4 - 3);
-		if (!GetFullPathNameW(tmpout2, 32768, tmpout, NULL)) {
-			free(tmpout2);
+		wcsncat(tmpout2, inadj + matchlen, path_buf_size - 4 - 3);
+		if (!GetFullPathNameW(tmpout2, path_buf_size, tmpout, NULL)) {
+			if (allocated_tmpout2) free(tmpout2);
 			goto normal_copy;
 		}
-		free(tmpout2);
+		if (allocated_tmpout2) free(tmpout2);
 	}
 	else if (inlen > 1 && inadj[1] == L':') {
-		wchar_t *tmpout2;
-
-		tmpout2 = malloc(32768 * sizeof(wchar_t));
-		if (tmpout2 == NULL)
-			goto normal_copy;
+		wchar_t stack_tmpout2[2048];
+		wchar_t *tmpout2 = stack_tmpout2;
+		BOOL allocated_tmpout2 = FALSE;
+		if (path_buf_size > 2048) {
+			tmpout2 = malloc(path_buf_size * sizeof(wchar_t));
+			if (tmpout2 == NULL) {
+				tmpout2 = stack_tmpout2;
+			} else {
+				allocated_tmpout2 = TRUE;
+			}
+		}
 
 		wcscpy(tmpout2, L"\\\\?\\");
-		wcsncat(tmpout2, inadj, 32768 - 4);
-		if (!GetFullPathNameW(tmpout2, 32768, tmpout, NULL)) {
-			free(tmpout2);
+		wcsncat(tmpout2, inadj, path_buf_size - 4);
+		if (!GetFullPathNameW(tmpout2, path_buf_size, tmpout, NULL)) {
+			if (allocated_tmpout2) free(tmpout2);
 			goto normal_copy;
 		}
-		free(tmpout2);
+		if (allocated_tmpout2) free(tmpout2);
 	}
 	else if (is_globalroot) {
 		// handle \\??\\*\\*
 		goto globalroot_copy;
 	}
 	else {
-		if (!GetFullPathNameW(inadj, 32768, tmpout, NULL))
+		if (!GetFullPathNameW(inadj, path_buf_size, tmpout, NULL))
 			goto normal_copy;
 	}
 
 	lenchars = 0;
-	nonexistentidx = 32767;
+	nonexistentidx = path_buf_size - 1;
 	nonexistent[nonexistentidx] = L'\0';
 	while (lenchars == 0) {
-		lenchars = GetLongPathNameW(tmpout, out, 32768);
+		lenchars = GetLongPathNameW(tmpout, out, path_buf_size);
 		if (lenchars)
 			break;
 		if (GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PATH_NOT_FOUND && GetLastError() != ERROR_INVALID_NAME)
@@ -1359,7 +1399,7 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		memcpy(nonexistent + nonexistentidx, pathcomponent, pathcomponentlen * sizeof(wchar_t));
 		*pathcomponent = L'\0';
 	}
-	wcsncat(out, nonexistent + nonexistentidx, 32768 - lstrlenW(out));
+	wcsncat(out, nonexistent + nonexistentidx, path_buf_size - lstrlenW(out));
 
 	if (!wcsncmp(out, L"\\\\?\\", 4))
 		memmove(out, out + 4, (lstrlenW(out) + 1 - 4) * sizeof(wchar_t));
@@ -1373,18 +1413,18 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 
 globalroot_copy:
 	wcscpy(out, L"\\??\\");
-	wcsncat(out, inadj, 32768 - 4);
+	wcsncat(out, inadj, path_buf_size - 4);
 	goto out;
 
 normal_copy:
-	wcsncpy(out, inadj, 32768);
+	wcsncpy(out, inadj, path_buf_size);
 	if (!wcsncmp(out, L"\\\\?\\", 4))
 		memmove(out, out + 4, (lstrlenW(out) + 1 - 4) * sizeof(wchar_t));
 out:
-	out[32767] = L'\0';
-	if (tmpout)
+	out[path_buf_size - 1] = L'\0';
+	if (allocated_tmpout && tmpout)
 		free(tmpout);
-	if (nonexistent)
+	if (allocated_nonexistent && nonexistent)
 		free(nonexistent);
 	if (out[1] == L':' && out[2] == L'\\')
 		out[0] = toupper(out[0]);
@@ -1485,15 +1525,27 @@ wchar_t *get_full_key_pathW(HKEY registry, const wchar_t *in, PKEY_NAME_INFORMAT
 	wchar_t *u;
 	wchar_t *ret;
 	unsigned short idx = 0;
+	wchar_t stack_buf[1024];
+	size_t in_len = in ? wcslen(in) : 0;
+	unsigned int max_capacity = MAX_KEY_BUFLEN;
+	BOOL allocated = FALSE;
 
 	memset(&objattr, 0, sizeof(objattr));
 
-	keystr.Buffer = calloc(1, MAX_KEY_BUFLEN);
-	keystr.MaximumLength = MAX_KEY_BUFLEN;
+	if (in_len < 1000) {
+		keystr.Buffer = stack_buf;
+		keystr.MaximumLength = sizeof(stack_buf);
+		max_capacity = sizeof(stack_buf);
+		memset(stack_buf, 0, sizeof(stack_buf));
+	} else {
+		keystr.Buffer = calloc(1, MAX_KEY_BUFLEN);
+		keystr.MaximumLength = MAX_KEY_BUFLEN;
+		allocated = TRUE;
+	}
 	objattr.ObjectName = &keystr;
 
 	if (in) {
-		for (p = in, u = keystr.Buffer; *p && idx < (MAX_KEY_BUFLEN / sizeof(wchar_t) - 1); p++, u++, idx++) {
+		for (p = in, u = keystr.Buffer; *p && idx < (max_capacity / sizeof(wchar_t) - 1); p++, u++, idx++) {
 			*u = *p;
 			// normalize duplicate backslashes in the user-provided string as the registry APIs will use them without error
 			if (*p == L'\\') {
@@ -1511,7 +1563,9 @@ wchar_t *get_full_key_pathW(HKEY registry, const wchar_t *in, PKEY_NAME_INFORMAT
 	objattr.RootDirectory = registry;
 
 	ret = get_key_path(&objattr, keybuf, len);
-	free(keystr.Buffer);
+	if (allocated && keystr.Buffer) {
+		free(keystr.Buffer);
+	}
 	return ret;
 }
 
