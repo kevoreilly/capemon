@@ -66,6 +66,9 @@
     <ClCompile Include="hook_special.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_trace.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hook_sync.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -318,6 +321,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hook_sleep.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hook_trace.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ignore.h">
