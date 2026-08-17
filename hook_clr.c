@@ -70,10 +70,13 @@ HOOKDEF(int, WINAPI, compileMethod,
 			}
 		}
 		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD) {
-			if (CapeMetaData) {
-				if (!CapeMetaData->DumpType)
-					CapeMetaData->DumpType = DATADUMP;
+			if (DotNetCacheDumpCount < g_config.jit_dumps) {
+				CapeMetaData->ModulePath = NULL;
+				CapeMetaData->DumpType = 0;
+				CapeMetaData->TypeString = ".NET JIT MSIL bytecode";
+				CapeMetaData->Address = info->ILCode;
 				DumpMemoryRaw(info->ILCode, info->ILCodeSize);
+				DotNetCacheDumpCount++;
 				DebugOutput("compileMethod: Dumped decrypted .NET JIT MSIL bytecode at 0x%p (size 0x%x).\n", info->ILCode, info->ILCodeSize);
 			}
 		}
