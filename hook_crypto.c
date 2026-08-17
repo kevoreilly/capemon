@@ -461,7 +461,7 @@ HOOKDEF(BOOL, WINAPI, CryptImportKey,
 	HCRYPTKEY  *phKey
 ) {
 	BOOL ret = Old_CryptImportKey(hProv, pbData, dwDataLen, hPubKey, dwFlags, phKey);
-	LOQ_bool("crypto", "bhpi", "KeyBlob", dwDataLen, pbData, "Flags", dwFlags,  "CryptKey", *phKey, "Length", dwDataLen);
+	LOQ_bool("crypto", "bhpi", "KeyBlob", dwDataLen, pbData, "Flags", dwFlags,  "CryptKey", phKey ? *phKey : 0, "Length", dwDataLen);
 	return ret;
 }
 
@@ -476,7 +476,7 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptImportKey,
 	DWORD			  dwFlags
 ) {
 	BOOL ret = Old_NCryptImportKey(hProvider, hImportKey, pszBlobType, pParameterList, phKey, pbData, cbData, dwFlags);
-	LOQ_bool("crypto", "bhp", "KeyBlob", cbData, pbData, "Flags", dwFlags,  "CryptKey", *phKey, "Length", cbData);
+	LOQ_bool("crypto", "bhp", "KeyBlob", cbData, pbData, "Flags", dwFlags,  "CryptKey", phKey ? *phKey : 0, "Length", cbData);
 	return ret;
 }
 
@@ -541,7 +541,7 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptImportKey,
 	ULONG				dwFlags
 ) {
 	NTSTATUS ret = Old_BCryptImportKey(hAlgorithm, hImportKey, pszBlobType, phKey, pbKeyObject, cbKeyObject, pbInput, cbInput, dwFlags);
-	LOQ_ntstatus("crypto", "bhpi", "KeyBlob", cbInput, pbInput, "Flags", dwFlags, "CryptKey", *phKey, "Length", cbInput);
+	LOQ_ntstatus("crypto", "bhpi", "KeyBlob", cbInput, pbInput, "Flags", dwFlags, "CryptKey", phKey ? *phKey : 0, "Length", cbInput);
 	return ret;
 }
 
@@ -561,7 +561,7 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptImportKeyPair,
 		DebugOutput("BCryptImportKeyPair hook: Dumped ImportKey buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
 	}
 	NTSTATUS ret = Old_BCryptImportKeyPair(hAlgorithm, hImportKey, pszBlobType, phKey, pbInput, cbInput, dwFlags);
-	LOQ_ntstatus("crypto", "bhpi", "KeyBlob", cbInput, pbInput, "Flags", dwFlags, "CryptKey", *phKey, "Length", cbInput);
+	LOQ_ntstatus("crypto", "bhpi", "KeyBlob", cbInput, pbInput, "Flags", dwFlags, "CryptKey", phKey ? *phKey : 0, "Length", cbInput);
 	return ret;
 }
 
