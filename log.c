@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "utf8.h"
 #include "log.h"
 #include "bson.h"
+#include "log_serializer.h"
 #include "pipe.h"
 #include "config.h"
 
@@ -52,12 +53,15 @@ static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
 // current to-be-logged API call
+// Thread-local context structure - includes BSON state + active serializer pointer
 typedef struct {
 	bson g_bson[1];
 	char g_istr[4];
+	log_serializer_t *active_serializer;  // Strategy pattern: BSON or Protobuf
 } thread_log_context_t;
 
 DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
+DWORD g_protobuf_tls_index = TLS_OUT_OF_INDEXES;
 
 // Thread-local storage with caching to avoid repeated TLS lookups
 static __declspec(thread) thread_log_context_t* g_tls_ctx_cache = NULL;
@@ -73,6 +77,7 @@ static thread_log_context_t* GetThreadLogContext(void) {
 		if (!pCtx) {
 			pCtx = (thread_log_context_t*)calloc(1, sizeof(thread_log_context_t));
 			if (pCtx) {
+				pCtx->active_serializer = &g_bson_serializer;  // Default to BSON
 				TlsSetValue(g_bson_tls_index, pCtx);
 				g_tls_ctx_cache = pCtx; // Cache for this thread
 			}
@@ -87,6 +92,7 @@ static thread_log_context_t* GetThreadLogContext(void) {
 // Note: These will return NULL if TLS allocation failed, callers must check
 #define g_bson (GetThreadLogContext() ? GetThreadLogContext()->g_bson : NULL)
 #define g_istr (GetThreadLogContext() ? GetThreadLogContext()->g_istr : NULL)
+#define g_active_serializer (GetThreadLogContext() ? GetThreadLogContext()->active_serializer : &g_bson_serializer)
 
 void TlsThreadCleanup(void) {
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
@@ -97,7 +103,80 @@ void TlsThreadCleanup(void) {
 			g_tls_ctx_cache = NULL; // Clear cache
 		}
 	}
+	if (g_protobuf_tls_index != TLS_OUT_OF_INDEXES) {
+		PVOID pCtx = TlsGetValue(g_protobuf_tls_index);
+		if (pCtx) {
+			free(pCtx);
+			TlsSetValue(g_protobuf_tls_index, NULL);
+		}
+	}
 }
+
+// BSON Serializer Implementation (wraps existing BSON functions)
+static void bson_serializer_init(void) {
+	bson_init(g_bson);
+}
+static void bson_serializer_append_int(const char *name, int32_t val) {
+	bson_append_int(g_bson, name, val);
+}
+static void bson_serializer_append_long(const char *name, int64_t val) {
+	bson_append_long(g_bson, name, val);
+}
+static void bson_serializer_append_string(const char *name, const char *val) {
+	if (val == NULL) {
+		bson_append_string_n(g_bson, name, "", 0);
+	} else {
+		bson_append_string(g_bson, name, val);
+	}
+}
+static void bson_serializer_append_wstring(const char *name, const wchar_t *val) {
+	if (val == NULL) {
+		bson_append_string_n(g_bson, name, "", 0);
+	} else {
+		char *utf8s = utf8_wstring(val, -1);
+		if (utf8s) {
+			int utf8len = *(int*)utf8s;
+			bson_append_binary(g_bson, name, BSON_BIN_BINARY, utf8s + 4, utf8len);
+			free(utf8s);
+		}
+	}
+}
+static void bson_serializer_append_binary(const char *name, const void *buf, size_t len) {
+	bson_append_binary(g_bson, name, BSON_BIN_BINARY, (const char *)buf, (int)len);
+}
+static void bson_serializer_finish(void) {
+	bson_finish(g_bson);
+}
+static void bson_serializer_append_start_array(const char *name) {
+	bson_append_start_array(g_bson, name);
+}
+static void bson_serializer_append_finish_array(void) {
+	bson_append_finish_array(g_bson);
+}
+static const uint8_t* bson_serializer_get_data(void) {
+	return (const uint8_t*)bson_data(g_bson);
+}
+static size_t bson_serializer_get_size(void) {
+	return (size_t)bson_size(g_bson);
+}
+static void bson_serializer_destroy(void) {
+	bson_destroy(g_bson);
+}
+
+log_serializer_t g_bson_serializer = {
+	bson_serializer_init,
+	bson_serializer_append_int,
+	bson_serializer_append_long,
+	bson_serializer_append_string,
+	bson_serializer_append_wstring,
+	bson_serializer_append_binary,
+	bson_serializer_finish,
+	bson_serializer_append_start_array,
+	bson_serializer_append_finish_array,
+	bson_serializer_get_data,
+	bson_serializer_get_size,
+	bson_serializer_destroy
+};
 
 static char logtbl_explained[256] = {0};
 
@@ -270,22 +349,14 @@ static void log_int16(short value)
 }
 */
 
-static int bson_append_ptr(bson *b, const char *name, ULONG_PTR ptr)
-{
-	if (sizeof(ULONG_PTR) == 8)
-		return bson_append_long(b, name, ptr);
-	else
-		return bson_append_int(b, name, (int)ptr);
-}
-
 static void log_int32(int value)
 {
-	bson_append_int( g_bson, g_istr, value );
+	g_active_serializer->append_int( g_istr, value );
 }
 
 static void log_int64(int64_t value)
 {
-	bson_append_long(g_bson, g_istr, value);
+	g_active_serializer->append_long(g_istr, value);
 }
 
 static void log_ptr(void *value)
@@ -298,92 +369,12 @@ static void log_ptr(void *value)
 
 static void log_string(const char *str, int length)
 {
-	int ret;
-	char stack_buf[2048];
-	char *utf8s = stack_buf;
-	int utf8len;
-	BOOL allocated = FALSE;
-
-	if (str == NULL) {
-		bson_append_string_n( g_bson, g_istr, "", 0 );
-		return;
-	}
-
-	if (length == -1)
-		length = (int)strlen(str);
-
-	utf8len = utf8_strlen_ascii(str, length);
-	if (utf8len + 4 > sizeof(stack_buf)) {
-		utf8s = malloc(utf8len + 4);
-		allocated = TRUE;
-	}
-
-	if (utf8s == NULL) {
-		bson_append_string_n(g_bson, g_istr, "", 0);
-		return;
-	}
-
-	*((int *) utf8s) = utf8len;
-	int pos = 4;
-	const char *p = str;
-	int temp_len = length;
-	while (temp_len-- != 0) {
-		pos += utf8_do_encode(*p++, (unsigned char *) &utf8s[pos]);
-	}
-
-	ret = bson_append_binary( g_bson, g_istr, BSON_BIN_BINARY, utf8s+4, utf8len );
-	if (ret == BSON_ERROR) {
-		bson_append_string_n(g_bson, g_istr, "", 0);
-	}
-
-	if (allocated) {
-		free(utf8s);
-	}
+	g_active_serializer->append_string(g_istr, str);
 }
 
 static void log_wstring(const wchar_t *str, int length)
 {
-	int ret;
-	char stack_buf[2048];
-	char *utf8s = stack_buf;
-	int utf8len;
-	BOOL allocated = FALSE;
-
-	if (str == NULL) {
-		bson_append_string_n( g_bson, g_istr, "", 0 );
-		return;
-	}
-
-	if (length == -1)
-		length = lstrlenW(str);
-
-	utf8len = utf8_strlen_unicode(str, length);
-	if (utf8len + 4 > sizeof(stack_buf)) {
-		utf8s = malloc(utf8len + 4);
-		allocated = TRUE;
-	}
-
-	if (utf8s == NULL) {
-		bson_append_string_n(g_bson, g_istr, "", 0);
-		return;
-	}
-
-	*((int *) utf8s) = utf8len;
-	int pos = 4;
-	const wchar_t *p = str;
-	int temp_len = length;
-	while (temp_len-- != 0) {
-		pos += utf8_do_encode(*p++, (unsigned char *) &utf8s[pos]);
-	}
-
-	ret = bson_append_binary( g_bson, g_istr, BSON_BIN_BINARY, utf8s+4, utf8len );
-	if (ret == BSON_ERROR) {
-		bson_append_string_n(g_bson, g_istr, "", 0);
-	}
-
-	if (allocated) {
-		free(utf8s);
-	}
+	g_active_serializer->append_wstring(g_istr, str);
 }
 
 static void log_variant(VARIANT* var) {
@@ -528,26 +519,26 @@ static void log_variant(VARIANT* var) {
 static void log_argv(int argc, const char ** argv) {
 	int i;
 
-	bson_append_start_array( g_bson, g_istr );
+	g_active_serializer->append_start_array( g_istr );
 
 	for (i = 0; i < argc; i++) {
 		num_to_string(g_istr, 4, i);
 		log_string(argv[i], -1);
 	}
-	bson_append_finish_array( g_bson );
+	g_active_serializer->append_finish_array();
 }
 
 static void log_wargv(int argc, const wchar_t ** argv) {
 	int i;
 
-	bson_append_start_array( g_bson, g_istr );
+	g_active_serializer->append_start_array( g_istr );
 
 	for (i = 0; i < argc; i++) {
 		num_to_string(g_istr, 4, i);
 		log_wstring(argv[i], -1);
 	}
 
-	bson_append_finish_array( g_bson );
+	g_active_serializer->append_finish_array();
 }
 
 static void log_buffer(const char *buf, size_t length) {
@@ -557,7 +548,7 @@ static void log_buffer(const char *buf, size_t length) {
 		trunclength = 0;
 	}
 
-	bson_append_binary( g_bson, g_istr, BSON_BIN_BINARY, buf, trunclength );
+	g_active_serializer->append_binary(g_istr, buf, trunclength);
 }
 
 static void log_large_buffer(const char *buf, size_t length) {
@@ -567,7 +558,7 @@ static void log_large_buffer(const char *buf, size_t length) {
 		trunclength = 0;
 	}
 
-	bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY, buf, trunclength);
+	g_active_serializer->append_binary(g_istr, buf, trunclength);
 }
 
 void set_special_api(DWORD API, BOOLEAN deleteLastLog)
@@ -786,26 +777,36 @@ void loq(int index, const char *category, const char *name,
 	va_start(args, fmt);
 	count = 1; key = 0; argnum = 2;
 
-	bson_init( g_bson );
-	bson_append_int( g_bson, "I", index );
+	g_active_serializer->init();
+	g_active_serializer->append_int( "I", index );
 	hookinfo = hook_info();
-	bson_append_ptr(g_bson, "C", hookinfo->return_address);
-	// return location of malware callsite
-	bson_append_ptr(g_bson, "R", hookinfo->main_caller_retaddr);
-	// return parent location of malware callsite
-	bson_append_ptr(g_bson, "P", hookinfo->parent_caller_retaddr);
-	bson_append_int(g_bson, "T", GetCurrentThreadId());
-	bson_append_int(g_bson, "t", raw_gettickcount() - g_starttick );
-	// number of times this log was repeated -- we'll modify this
-	bson_append_int(g_bson, "r", 0);
+	if (sizeof(ULONG_PTR) == 8) {
+		g_active_serializer->append_long("C", (int64_t)hookinfo->return_address);
+		g_active_serializer->append_long("R", (int64_t)hookinfo->main_caller_retaddr);
+		g_active_serializer->append_long("P", (int64_t)hookinfo->parent_caller_retaddr);
+	} else {
+		g_active_serializer->append_int("C", (int32_t)(ULONG_PTR)hookinfo->return_address);
+		g_active_serializer->append_long("R", (int64_t)(ULONG_PTR)hookinfo->main_caller_retaddr);
+		g_active_serializer->append_long("P", (int64_t)(ULONG_PTR)hookinfo->parent_caller_retaddr);
+	}
+	g_active_serializer->append_int("T", GetCurrentThreadId());
+	g_active_serializer->append_int("t", raw_gettickcount() - g_starttick );
+	g_active_serializer->append_int("r", 0);
 
-	compare_offset = (unsigned int)(g_bson->cur - bson_data(g_bson));
-	// the repeated value is encoded immediately before the stream we want to compare
-	repeat_offset = compare_offset - 4;
+	if (g_active_serializer == &g_bson_serializer) {
+		compare_offset = (unsigned int)(g_bson->cur - bson_data(g_bson));
+		repeat_offset = compare_offset - 4;
+	} else {
+		compare_offset = 0;
+		repeat_offset = 0;
+	}
 
-	bson_append_start_array(g_bson, "args");
-	bson_append_int( g_bson, "0", is_success );
-	bson_append_ptr( g_bson, "1", return_value );
+	g_active_serializer->append_start_array("args");
+	g_active_serializer->append_int( "0", is_success );
+	if (sizeof(ULONG_PTR) == 8)
+		g_active_serializer->append_long("1", (int64_t)return_value);
+	else
+		g_active_serializer->append_int("1", (int32_t)return_value);
 
 
 	while (--count != 0 || *fmt != 0) {
@@ -1181,8 +1182,23 @@ buffer_log:
 
 	va_end(args);
 
-	bson_append_finish_array( g_bson );
-	bson_finish( g_bson );
+	g_active_serializer->append_finish_array();
+	g_active_serializer->finish();
+
+	if (!TryEnterCriticalSection(&g_mutex)) {
+		g_active_serializer->destroy();
+		goto exit;
+	}
+
+	if (!special_api_triggered)
+		last_api_logged = API_OTHER;
+	else {
+		special_api_triggered = FALSE;
+		if (delete_last_log) {
+			free(lastlog.buf);
+			lastlog.buf = NULL;
+		}
+	}
 
 	{
 		int retries = 100;
@@ -1214,37 +1230,41 @@ buffer_log:
 
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
-		log_raw_direct(bson_data(g_bson), bson_size(g_bson));
+		log_raw_direct(g_active_serializer->get_data(), g_active_serializer->get_size());
 	}
 	else {
-		if (lastlog.buf) {
-			unsigned int our_len = bson_size(g_bson) - compare_offset;
-			if (lastlog.compare_len == our_len && !memcmp(lastlog.compare_ptr, bson_data(g_bson) + compare_offset, our_len)) {
-				// we're about to log a duplicate of the last log message, just increment the previous log's repeated count
-				(*lastlog.repeated_ptr)++;
-			}
-			else {
-				// flush logs once we're done seeing duplicates of a particular API
-				if (g_config.force_flush == 1)
-					log_flush();
+		// Caching and duplicate-checking are exclusive to BSON formatting (due to Protobuf's frame encapsulation)
+		if (g_active_serializer == &g_bson_serializer) {
+			if (lastlog.buf) {
+				unsigned int our_len = g_active_serializer->get_size() - compare_offset;
+				if (lastlog.compare_len == our_len && !memcmp(lastlog.compare_ptr, g_active_serializer->get_data() + compare_offset, our_len)) {
+					(*lastlog.repeated_ptr)++;
+				}
 				else {
-					log_raw_direct(lastlog.buf, lastlog.len);
-					free(lastlog.buf);
-					lastlog.buf = NULL;
+					if (g_config.force_flush == 1)
+						log_flush();
+					else {
+						log_raw_direct(lastlog.buf, lastlog.len);
+						free(lastlog.buf);
+						lastlog.buf = NULL;
+					}
 				}
 			}
-		}
-		if (lastlog.buf == NULL) {
-			lastlog.len = bson_size(g_bson);
-			lastlog.buf = malloc(lastlog.len);
-			memcpy(lastlog.buf, bson_data(g_bson), lastlog.len);
-			lastlog.compare_len = lastlog.len - compare_offset;
-			lastlog.compare_ptr = lastlog.buf + compare_offset;
-			lastlog.repeated_ptr = (int *)(lastlog.buf + repeat_offset);
+			if (lastlog.buf == NULL) {
+				lastlog.len = g_active_serializer->get_size();
+				lastlog.buf = malloc(lastlog.len);
+				memcpy(lastlog.buf, g_active_serializer->get_data(), lastlog.len);
+				lastlog.compare_len = lastlog.len - compare_offset;
+				lastlog.compare_ptr = lastlog.buf + compare_offset;
+				lastlog.repeated_ptr = (int *)(lastlog.buf + repeat_offset);
+			}
+		} else {
+			// For Protobuf, write directly to result server
+			log_raw_direct(g_active_serializer->get_data(), g_active_serializer->get_size());
 		}
 	}
 
-	bson_destroy( g_bson );
+	g_active_serializer->destroy();
 	LeaveCriticalSection(&g_mutex);
 exit:
 	if (g_config.force_flush == 2)
@@ -1531,6 +1551,12 @@ void log_init(int debug)
 	g_buffer = calloc(1, BUFFERSIZE);
 
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
+
+	if (g_config.log_format == LOG_FORMAT_PROTOBUF) {
+		g_active_serializer = &g_protobuf_serializer;
+	} else {
+		g_active_serializer = &g_bson_serializer;
+	}
 
 	if (debug != 0) {
 		g_sock = DEBUG_SOCKET;

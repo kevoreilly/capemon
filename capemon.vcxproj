@@ -236,6 +236,11 @@
     <ClCompile Include="CAPE\Unpacker.c" />
     <ClCompile Include="CAPE\YaraHarness.c" />
     <ClCompile Include="config.c" />
+    <ClCompile Include="protobuf_wrapper.c" />
+    <ClCompile Include="schema.pb.c" />
+    <ClCompile Include="nanopb\pb_common.c" />
+    <ClCompile Include="nanopb\pb_decode.c" />
+    <ClCompile Include="nanopb\pb_encode.c" />
     <ClCompile Include="capemon.c" />
     <ClCompile Include="distorm\src\decoder.c" />
     <ClCompile Include="distorm\src\distorm.c" />
@@ -473,6 +478,13 @@
     <ClInclude Include="hook_sleep.h" />
     <ClInclude Include="hook_trace.h" />
     <ClInclude Include="ignore.h" />
+    <ClInclude Include="protobuf_wrapper.h" />
+    <ClInclude Include="schema.pb.h" />
+    <ClInclude Include="log_serializer.h" />
+    <ClInclude Include="nanopb\pb.h" />
+    <ClInclude Include="nanopb\pb_common.h" />
+    <ClInclude Include="nanopb\pb_decode.h" />
+    <ClInclude Include="nanopb\pb_encode.h" />
     <ClInclude Include="log.h" />
     <ClInclude Include="lookup.h" />
     <ClInclude Include="misc.h" />
