@@ -1,6 +1,10 @@
 #include "log.h"
 #include "misc.h"
+#include "config.h"
 #include <Wbemidl.h>
+
+__declspec(thread) static int g_last_seen_disk_query = 0;
+__declspec(thread) static int g_last_seen_physicalmemory = 0;
 
 void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
 	if (g_config.no_stealth)
@@ -12,7 +16,7 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 	//
 	// Spoofery logic for BSTR (wchar_t *)
 	//
-	if (pVal->vt == VT_BSTR && pVal->bstrVal) {
+	if (pVal->vt == VT_BSTR && pVal->bstrVal != NULL) {
 		if (!_wcsicmp(pVal->bstrVal, L"Microsoft Basic Display Adapter")) {
 			SysFreeString(pVal->bstrVal);
 			pVal->bstrVal = SysAllocString(SPOOFED_GPU_NAME);
@@ -36,17 +40,21 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 		// Logic for BSTR fakery specific to an exact szClassName
 		//
 		else if (!_wcsicmp(szClassName, L"Win32_LogicalDisk") && !_wcsicmp(wszName, L"Size")) {
-			unsigned long long lSize = wcstoull(pVal->bstrVal, NULL, 10);
-			if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
-				SysFreeString(pVal->bstrVal);
-				pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
+			if (g_last_seen_disk_query) {
+				unsigned long long lSize = wcstoull(pVal->bstrVal, NULL, 10);
+				if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
+					SysFreeString(pVal->bstrVal);
+					pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
+				}
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_PhysicalMemory") && !_wcsicmp(wszName, L"Capacity")) {
-			unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
-			if (actualMemory < SPOOFED_RAM) {
-				SysFreeString(pVal->bstrVal);
-				pVal->bstrVal = SysAllocString(WIDE_SPOOFED_RAM);
+			if (g_last_seen_physicalmemory) {
+				unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
+				if (actualMemory < SPOOFED_RAM) {
+					SysFreeString(pVal->bstrVal);
+					pVal->bstrVal = SysAllocString(WIDE_SPOOFED_RAM);
+				}
 			}
 		}
 	}
@@ -71,15 +79,13 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 				pVal->lVal = (LONG)g_config.spoofed_cpu_count;
 		}
 		else if (!_wcsicmp(wszName, L"AdapterRAM")) {
-			if (SPOOFED_GPU_RAM > 0x7FFFFFFFULL) {
-				// Mimic overflowing the I4 if you have >2GB of Spoofed GPU RAM
-				pVal->lVal = 0x7FFFFFFF;
+			if (pVal->lVal < SPOOFED_GPU_RAM) {
+				pVal->lVal = SPOOFED_GPU_RAM_WMI;
 			}
-			else {
-				// Cast to LONG to avoid compiler warning if SPOOFED_GPU_RAM is >2GB
-				if (pVal->lVal < (LONG)SPOOFED_GPU_RAM) {
-					pVal->lVal = (LONG)SPOOFED_GPU_RAM;
-				}
+		}
+		else if (!_wcsicmp(wszName, L"MaxRefreshRate")) {
+			if (pVal->lVal < SPOOFED_REFRESH_RATE) {
+				pVal->lVal = SPOOFED_REFRESH_RATE;
 			}
 		}
 	}
@@ -198,9 +204,23 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
-	HRESULT ret = 0;
+	HRESULT ret;
+	g_last_seen_disk_query = 0;
+	g_last_seen_physicalmemory = 0;
+
+	if (strQuery) {
+		if (!_wcsnicmp(strQuery, L"SELECT ", 7)) {
+			if (wcsistr(strQuery, L" FROM Win32_LogicalDisk")) {
+				g_last_seen_disk_query = 1;
+			}
+			else if (wcsistr(strQuery, L" FROM Win32_PhysicalMemory")) {
+				g_last_seen_physicalmemory = 1;
+			}
+		}
+	}
+	ret = Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
 	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
-	return Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
+	return ret;
 }
 
 HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
@@ -211,9 +231,23 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
 	_In_	IWbemContext	*pCtx,
 	_In_	IWbemObjectSink	*pResponseHandler
 ) {
-	HRESULT ret = 0;
+	HRESULT ret;
+	g_last_seen_disk_query = 0;
+	g_last_seen_physicalmemory = 0;
+
+	if (strQuery) {
+		if (!_wcsnicmp(strQuery, L"SELECT ", 7)) {
+			if (wcsistr(strQuery, L" FROM Win32_LogicalDisk")) {
+				g_last_seen_disk_query = 1;
+			}
+			else if (wcsistr(strQuery, L" FROM Win32_PhysicalMemory")) {
+				g_last_seen_physicalmemory = 1;
+			}
+		}
+	}
+	ret = Old_WMI_ExecQueryAsync(_this, strQueryLanguage, strQuery, lFlags, pCtx, pResponseHandler);
 	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
-	return Old_WMI_ExecQueryAsync(_this, strQueryLanguage, strQuery, lFlags, pCtx, pResponseHandler);
+	return ret;
 }
 
 HOOKDEF(HRESULT, WINAPI, WMI_ExecMethod,
