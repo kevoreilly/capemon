@@ -42,15 +42,8 @@ HOOKDEF(int, WINAPI, compileMethod,
     int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
 		PVOID AllocationBase = GetAllocationBase(*entryAddress);
-		if (AllocationBase && !lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0)) {
-			if (g_config.procdump && g_config.yarascan)
-				DebugOutput(".NET JIT native cache at 0x%p: scans and dumps active.\n", AllocationBase);
-			else if (g_config.procdump)
-				DebugOutput(".NET JIT native cache at 0x%p: dumps active.\n", AllocationBase);
-			else if (g_config.yarascan)
-				DebugOutput(".NET JIT native cache at 0x%p: scans active.\n", AllocationBase);
+		if (AllocationBase && !lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0))
 			lookup_add(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0);
-		}
 		if (g_config.yarascan)
 		{
 			// Scan JIT compiled native assembly code
