@@ -76,21 +76,36 @@ int is_ignored_file_unicode(const wchar_t *fname, unsigned int length)
 {
 	struct _ignored_file_t *f = g_ignored_files;
 	unsigned int i;
-	for (i = 0; i < ARRAYSIZE(g_ignored_files); i++, f++) {
-		if(f->flags == FLAG_NONE && length == f->length &&
-				!wcsnicmp(fname, f->unicode, length)) {
-			return 1;
+	__try {
+		if (fname == NULL || length == 0)
+			return 0;
+		for (i = 0; i < ARRAYSIZE(g_ignored_files); i++, f++) {
+			if(f->flags == FLAG_NONE && length == f->length &&
+					!wcsnicmp(fname, f->unicode, length)) {
+				return 1;
+			}
+			else if(f->flags == FLAG_BEGINS_WITH && length >= f->length &&
+					!wcsnicmp(fname, f->unicode, f->length)) {
+				return 1;
+			}
 		}
-		else if(f->flags == FLAG_BEGINS_WITH && length >= f->length &&
-				!wcsnicmp(fname, f->unicode, f->length)) {
-			return 1;
-		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		;
 	}
 	return 0;
 }
 
 int is_ignored_file_objattr(const OBJECT_ATTRIBUTES *obj)
 {
-	return is_ignored_file_unicode(obj->ObjectName->Buffer,
-		obj->ObjectName->Length / sizeof(wchar_t));
+	__try {
+		if (obj != NULL && obj->ObjectName != NULL && obj->ObjectName->Buffer != NULL) {
+			return is_ignored_file_unicode(obj->ObjectName->Buffer,
+				obj->ObjectName->Length / sizeof(wchar_t));
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		;
+	}
+	return 0;
 }

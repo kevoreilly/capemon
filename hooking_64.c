@@ -873,11 +873,37 @@ static int hook_api_native_push_retn(hook_t *h, unsigned char *from, unsigned ch
 	return hook_api_push_retn(h, from, to);
 }
 
+typedef struct _hook_page_arena_t {
+	PVOID BaseAddress;
+	SIZE_T CommittedSize;
+	SIZE_T NextFreeOffset;
+	struct _hook_page_arena_t *next;
+} hook_page_arena_t;
+
+static hook_page_arena_t *g_hook_arenas = NULL;
+
 hook_data_t *alloc_hookdata_near(void *addr)
 {
+	hook_page_arena_t *curr = g_hook_arenas;
+	SIZE_T requested_size = sizeof(hook_data_t);
+
+	// 1. Scan current arenas for an existing chunk within 1GB of 'addr' with free slots
+	while (curr != NULL) {
+		LONG_PTR distance = (LONG_PTR)curr->BaseAddress - (LONG_PTR)addr;
+		if (distance >= -((LONG_PTR)1024*1024*1024) && distance <= ((LONG_PTR)1024*1024*1024)) {
+			if (curr->NextFreeOffset + requested_size <= curr->CommittedSize) {
+				hook_data_t *allocated = (hook_data_t *)((PBYTE)curr->BaseAddress + curr->NextFreeOffset);
+				curr->NextFreeOffset += requested_size;
+				return allocated;
+			}
+		}
+		curr = curr->next;
+	}
+
+	// 2. No matching arena block. Perform search to allocate a new 64KB arena near 'addr'
 	PVOID BaseAddress;
-	int offset = -(1024 * 1024 * 1024);
-	SIZE_T RegionSize = sizeof(hook_data_t);
+	int offset = -(512 * 1024 * 1024); // Start closer (512MB) for optimal results
+	SIZE_T RegionSize = 65536; // Allocate a standard 64KB page chunk
 	LONG status;
 
 	do {
@@ -885,10 +911,24 @@ hook_data_t *alloc_hookdata_near(void *addr)
 			offset = 0x10000;
 		BaseAddress = (PCHAR)addr + offset;
 		status = pNtAllocateVirtualMemory(GetCurrentProcess(), &BaseAddress, 0, &RegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-		if (status >= 0)
-			return (hook_data_t *)BaseAddress;
+		if (status >= 0) {
+			// Place the metadata directly at the beginning of the newly allocated page
+			hook_page_arena_t *new_arena = (hook_page_arena_t *)BaseAddress;
+			new_arena->BaseAddress = BaseAddress;
+			new_arena->CommittedSize = RegionSize;
+			
+			// NextFreeOffset starts after metadata (128-byte aligned for performance and safety)
+			new_arena->NextFreeOffset = 128;
+			
+			new_arena->next = g_hook_arenas;
+			g_hook_arenas = new_arena;
+			
+			hook_data_t *allocated = (hook_data_t *)((PBYTE)new_arena->BaseAddress + new_arena->NextFreeOffset);
+			new_arena->NextFreeOffset += requested_size;
+			return allocated;
+		}
 		offset += 0x10000;
-	} while (status < 0 && offset <= (1024 * 1024 * 1024));
+	} while (status < 0 && offset <= (512 * 1024 * 1024));
 
 	return NULL;
 }
@@ -1231,7 +1271,12 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		return -1;
+		// If unwinding fails/raises an exception (common with Golang binaries due to their 
+		// custom runtime stack and non-standard 'asmstdcall' assembly gate), we must return the 
+		// count of successfully resolved frames. This ensures the first frame (which points 
+		// to the Go binary calling the API, not Capemon) is kept, so operate_on_backtrace correctly 
+		// detects it as an application call rather than a recursive hook call, allowing logging.
+		return (int)frame + 1;
 	}
 }
 
@@ -1246,6 +1291,10 @@ int operate_on_backtrace(ULONG_PTR sp, ULONG_PTR _rip, void *extra, int(*func)(v
 	hook_disable();
 
 	frames = our_stackwalk(_rip, sp, backtrace, HOOK_BACKTRACE_DEPTH);
+	if (frames > HOOK_BACKTRACE_DEPTH)
+		frames = HOOK_BACKTRACE_DEPTH;
+	else if (frames < 0)
+		frames = 0;
 
 	for (i = 0; i < frames; i++) {
 		if (!addr_in_our_dll_range(NULL, (ULONG_PTR)backtrace[i]))
