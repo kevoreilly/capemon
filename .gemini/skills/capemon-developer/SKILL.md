@@ -61,3 +61,6 @@ Integration of YARA for in-memory scanning
     - `libyara` for pattern matching.
     - `Scylla` for PE reconstruction.
     - `bson` for data serialization.
+
+## Engineering & Documentation Mandates
+- **Always update `@docs/configuration.md`:** Whenever a new configurable option is introduced to the engine (such as `log-format`, `sleep-skip-seconds`, etc.), you must immediately append its documentation details to the appropriate table inside the configuration reference document to ensure the user and the system documentation are fully up-to-date.
