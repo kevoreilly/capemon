@@ -525,3 +525,29 @@ HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
 		LOQ_zero("windows", "uui", "Text", lpszText, "Caption", lpszCaption, "Timeout", dwTimeout);
 	return ret;
 }
+
+HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
+	_In_opt_ LPCWSTR          lpDevice,
+	_In_     DWORD            iDevNum,
+	_Inout_  PDISTHREAD       lpDisplayDevice, // Use PDISTHREAD/PVOID since capemon maps custom handle types, or PDISPLAY_DEVICEW
+	_In_     DWORD            dwFlags
+) {
+	PDISPLAY_DEVICEW pDevice = (PDISPLAY_DEVICEW)lpDisplayDevice;
+	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, pDevice, dwFlags);
+
+	if (ret && pDevice != NULL) {
+		if (wcsstr(pDevice->DeviceString, L"VMware") ||
+			wcsstr(pDevice->DeviceString, L"VirtualBox") ||
+			wcsstr(pDevice->DeviceString, L"VBox") ||
+			wcsstr(pDevice->DeviceString, L"QEMU") ||
+			wcsstr(pDevice->DeviceString, L"Citrix")) {
+			
+			wcscpy_s(pDevice->DeviceString, _countof(pDevice->DeviceString), L"Intel(R) HD Graphics 620");
+			wcscpy_s(pDevice->DeviceID, _countof(pDevice->DeviceID), L"PCI\\VEN_8086&DEV_5916&SUBSYS_118A1043&REV_02");
+			DebugOutput("EnumDisplayDevicesW: Spoofed virtual machine graphics adapter to Intel(R) HD Graphics 620.\n");
+		}
+	}
+
+	LOQ_bool("windows", "ui", "Device", lpDevice, "DevNum", iDevNum);
+	return ret;
+}

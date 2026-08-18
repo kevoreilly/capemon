@@ -371,6 +371,7 @@ hook_t full_hooks[] = {
 	// logs the hook and then every function called by that hook (modulo perhaps some blacklisted
 	// functions for this specific hook type)
 	HOOK(user32, MessageBoxTimeoutW),
+	HOOK(user32, EnumDisplayDevicesW),
 
 	// Sync Hooks
 	HOOK(ntdll, NtCreateMutant),
@@ -436,6 +437,7 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, RtlCompressBuffer),
 	HOOK(kernel32, GetSystemInfo),
 	HOOK(ntdll, NtQuerySystemInformation),
+	HOOK(ntdll, NtQueryInformationProcess),
 	HOOK(setupapi, SetupDiGetClassDevsA),
 	HOOK(setupapi, SetupDiGetClassDevsW),
 	HOOK(setupapi, SetupDiGetDeviceRegistryPropertyA),
@@ -985,6 +987,7 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, RtlDecompressBuffer),
 	HOOK(ntdll, RtlCompressBuffer),
 	HOOK(ntdll, NtQuerySystemInformation),
+	HOOK(ntdll, NtQueryInformationProcess),
 #ifndef _WIN64
 	HOOK(ntdll, RtlDosPathNameToNtPathName_U),
 	HOOK(ntdll, NtQueryLicenseValue),
@@ -1407,6 +1410,7 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, RtlCompressBuffer),
 	HOOK(kernel32, GetSystemInfo),
 	HOOK(ntdll, NtQuerySystemInformation),
+	HOOK(ntdll, NtQueryInformationProcess),
 	HOOK(setupapi, SetupDiGetClassDevsA),
 	HOOK(setupapi, SetupDiGetClassDevsW),
 	HOOK(setupapi, SetupDiGetDeviceRegistryPropertyA),

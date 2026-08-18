@@ -920,6 +920,13 @@ HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
 	__in DWORD dwTimeout
 );
 
+HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
+	_In_opt_ LPCWSTR          lpDevice,
+	_In_     DWORD            iDevNum,
+	_Inout_  PDISTHREAD       lpDisplayDevice,
+	_In_     DWORD            dwFlags
+);
+
 //
 // Sync Hooks
 //
@@ -2176,6 +2183,12 @@ HOOKDEF(HANDLE, WINAPI, SetClipboardData,
 	_In_opt_ HANDLE hMem
 );
 
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  LPCSTR  Filename,
+	_Out_ PDWORD  HeaderSum,
+	_Out_ PDWORD  CheckSum
+);
+
 //
 // Network Hooks
 //
@@ -2602,6 +2615,13 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 	_In_  LPCWSTR			   lpServer,
 	_Out_ LPWSTR				*lpNameBuffer,
 	_Out_ DWORD *				BufferType
+);
+
+HOOKDEF(DWORD, WINAPI, NetUserGetInfo,
+	_In_  LPCWSTR servername,
+	_In_  LPCWSTR username,
+	_In_  DWORD   level,
+	_Out_ LPBYTE  *bufptr
 );
 
 HOOKDEF(ULONG, WINAPI, NetUserGetLocalGroups,
@@ -3536,6 +3556,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemInformation,
 	_Inout_ PVOID SystemInformation,
 	_In_ ULONG SystemInformationLength,
 	_Out_opt_ PULONG ReturnLength
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
+	_In_      HANDLE           ProcessHandle,
+	_In_      int              ProcessInformationClass,
+	_Out_     PVOID            ProcessInformation,
+	_In_      ULONG            ProcessInformationLength,
+	_Out_opt_ PULONG           ReturnLength
 );
 
 HOOKDEF(void, WINAPIV, srand,

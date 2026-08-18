@@ -2107,3 +2107,13 @@ HOOKDEF(HANDLE, WINAPI, SetClipboardData,
 	LOQ_handle("misc", "i", "Format", uFormat);
 	return ret;
 }
+
+HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
+	_In_  LPCSTR  Filename,
+	_Out_ PDWORD  HeaderSum,
+	_Out_ PDWORD  CheckSum
+) {
+	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
+	LOQ_nonzero("system", "s", "FileName", Filename);
+	return ret;
+}
