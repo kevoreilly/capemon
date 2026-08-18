@@ -336,6 +336,9 @@ struct _g_config {
 	int trace_times;
 	char *trace_into_api[EXCLUSION_MAX];
 	int hook_watch;
+	int wmi_cache_size;
+	int wmi_voltage_reading;
+	int wmi_temperature_reading;
 };
 
 extern struct _g_config g_config;
