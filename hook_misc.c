@@ -259,7 +259,7 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
 		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
-	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
+	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && FunctionName->Buffer != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
 		!strncmp(FunctionName->Buffer, "DllMain", 7) && wcsicmp(our_process_path_w, g_config.file_of_interest)) {
 		log_flush();
 		ExitThread(0);
@@ -292,7 +292,7 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
 		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
-	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
+	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && FunctionName->Buffer != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
 		!strncmp(FunctionName->Buffer, "DllMain", 7) && wcsicmp(our_process_path_w, g_config.file_of_interest)) {
 		log_flush();
 		ExitThread(0);
