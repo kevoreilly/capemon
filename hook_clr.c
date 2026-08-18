@@ -29,6 +29,42 @@ typedef struct {
     unsigned int          ILCodeSize;  // size of the decrypted MSIL bytecode in bytes
 } CORINFO_METHOD_INFO_REDUCED;
 
+typedef const char* (__stdcall *fnGetMethodName)(PVOID _this, PVOID ftn, const char** moduleName);
+
+static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** moduleName) {
+	const char* name = NULL;
+	if (!compHnd || !ftn)
+		return NULL;
+
+	__try {
+		PVOID* vtable = *(PVOID**)compHnd;
+		if (vtable && vtable[0]) {
+			fnGetMethodName getMethodName = (fnGetMethodName)vtable[0];
+			name = getMethodName(compHnd, ftn, moduleName);
+
+			// Probe-verify the returned name pointer for absolute crash-protection
+			if (name != NULL) {
+				char c = name[0];
+				if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.' || c == '<' || c == '?')) {
+					name = NULL;
+				}
+			}
+
+			// Probe-verify the returned class/module name pointer
+			if (name != NULL && moduleName && *moduleName) {
+				char c = (*moduleName)[0];
+				if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.' || c == '<' || c == '?')) {
+					*moduleName = NULL;
+				}
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		name = NULL;
+	}
+	return name;
+}
+
 HOOKDEF(int, WINAPI, compileMethod,
 	PVOID			this,
 	PVOID			compHnd,
@@ -41,6 +77,14 @@ HOOKDEF(int, WINAPI, compileMethod,
 	CORINFO_METHOD_INFO_REDUCED *info = (CORINFO_METHOD_INFO_REDUCED *)methodInfo;
     int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
+		const char* className = NULL;
+		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className);
+
+		if (methodName != NULL) {
+			LOQ_string("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
+			DebugOutput("compileMethod: Translated .NET JIT API: %s.%s\n", className ? className : "UnknownClass", methodName);
+		}
+
 		PVOID AllocationBase = GetAllocationBase(*entryAddress);
 		if (AllocationBase && !lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0))
 			lookup_add(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0);
