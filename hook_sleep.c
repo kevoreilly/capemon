@@ -783,6 +783,7 @@ HOOKDEF(DWORD, WINAPI, IcmpSendEcho,
 	if (sleep_skip_active && Timeout >= 30000 && Timeout <= 3600000 && g_config.force_sleepskip != 0) {
 		time_skipped.QuadPart += (ULONGLONG)(Timeout - get_sleep_skip_ms()) * 10000ULL;
 		clamped_timeout = get_sleep_skip_ms();
+		DWORD ret = TRUE;
 		LOQ_bool("system", "is", "Milliseconds", Timeout, "Status", "Skipped");
 	}
 
@@ -810,6 +811,7 @@ HOOKDEF(DWORD, WINAPI, IcmpSendEcho2,
 	if (sleep_skip_active && Timeout >= 30000 && Timeout <= 3600000 && g_config.force_sleepskip != 0) {
 		time_skipped.QuadPart += (ULONGLONG)(Timeout - get_sleep_skip_ms()) * 10000ULL;
 		clamped_timeout = get_sleep_skip_ms();
+		DWORD ret = TRUE;
 		LOQ_bool("system", "is", "Milliseconds", Timeout, "Status", "Skipped");
 	}
 
