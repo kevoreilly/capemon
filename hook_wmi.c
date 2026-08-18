@@ -1,10 +1,44 @@
 #include "log.h"
 #include "misc.h"
 #include "config.h"
+#include "hooks.h"
 #include <Wbemidl.h>
 
-extern __declspec(thread) BOOL bHookViaWbemLocator;
 extern void set_com_hooks(REFCLSID rclsid, REFIID riid, PVOID pComObject);
+
+typedef struct {
+	int last_seen_disk_query;
+	int last_seen_physicalmemory;
+	int last_seen_fake_class;
+} wmi_thread_context_t;
+
+DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
+
+static wmi_thread_context_t* GetWmiThreadContext(void) {
+	wmi_thread_context_t* pCtx = NULL;
+	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
+		pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
+		if (!pCtx) {
+			pCtx = (wmi_thread_context_t*)calloc(1, sizeof(wmi_thread_context_t));
+			TlsSetValue(g_wmi_tracker_tls_index, pCtx);
+		}
+	}
+	return pCtx;
+}
+
+#define g_last_seen_disk_query (GetWmiThreadContext()->last_seen_disk_query)
+#define g_last_seen_physicalmemory (GetWmiThreadContext()->last_seen_physicalmemory)
+#define g_last_seen_fake_class (GetWmiThreadContext()->last_seen_fake_class)
+
+void TlsWmiThreadCleanup(void) {
+	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
+		wmi_thread_context_t* pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
+		if (pCtx) {
+			free(pCtx);
+			TlsSetValue(g_wmi_tracker_tls_index, NULL);
+		}
+	}
+}
 
 HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
 	_In_  IEnumWbemClassObject *This,
