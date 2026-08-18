@@ -1,13 +1,46 @@
 #include "log.h"
 #include "misc.h"
 #include "config.h"
+#include "hooks.h"
 #include <Wbemidl.h>
 
-__declspec(thread) static int g_last_seen_disk_query = 0;
-__declspec(thread) static int g_last_seen_physicalmemory = 0;
-__declspec(thread) static int g_last_seen_baseboard_query = 0;
-__declspec(thread) static int g_last_seen_diskdrive_query = 0;
-__declspec(thread) static int g_last_seen_bios_query = 0;
+typedef struct {
+	int last_seen_disk_query;
+	int last_seen_physicalmemory;
+	int last_seen_baseboard_query;
+	int last_seen_diskdrive_query;
+	int last_seen_bios_query;
+} wmi_thread_context_t;
+
+DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
+
+static wmi_thread_context_t* GetWmiThreadContext(void) {
+	wmi_thread_context_t* pCtx = NULL;
+	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
+		pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
+		if (!pCtx) {
+			pCtx = (wmi_thread_context_t*)calloc(1, sizeof(wmi_thread_context_t));
+			TlsSetValue(g_wmi_tracker_tls_index, pCtx);
+		}
+	}
+	return pCtx;
+}
+
+#define g_last_seen_disk_query (GetWmiThreadContext()->last_seen_disk_query)
+#define g_last_seen_physicalmemory (GetWmiThreadContext()->last_seen_physicalmemory)
+#define g_last_seen_baseboard_query (GetWmiThreadContext()->last_seen_baseboard_query)
+#define g_last_seen_diskdrive_query (GetWmiThreadContext()->last_seen_diskdrive_query)
+#define g_last_seen_bios_query (GetWmiThreadContext()->last_seen_bios_query)
+
+void TlsWmiThreadCleanup(void) {
+	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
+		wmi_thread_context_t* pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
+		if (pCtx) {
+			free(pCtx);
+			TlsSetValue(g_wmi_tracker_tls_index, NULL);
+		}
+	}
+}
 
 static BSTR g_wmi_board_vendor = NULL;
 static BSTR g_wmi_board_product = NULL;

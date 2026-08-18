@@ -4007,4 +4007,8 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 
 void InitWmiSpoofStrings(void);
 
+extern DWORD g_wmi_tls_index;
+#define bHookViaWbemLocator ((BOOL)(ULONG_PTR)TlsGetValue(g_wmi_tls_index))
+#define SetHookViaWbemLocator(val) TlsSetValue(g_wmi_tls_index, (PVOID)(ULONG_PTR)(val))
+
 #include "hook_vbscript.h"
