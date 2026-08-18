@@ -336,6 +336,13 @@ struct _g_config {
 	int trace_times;
 	char *trace_into_api[EXCLUSION_MAX];
 	int hook_watch;
+	char board_vendor[128];
+	char board_product[128];
+	char board_serial[128];
+	char disk_model[128];
+	char disk_serial[128];
+	char bios_vendor[128];
+	char bios_serial[128];
 };
 
 extern struct _g_config g_config;

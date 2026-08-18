@@ -4005,4 +4005,6 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD CheckSum
 );
 
+void InitWmiSpoofStrings(void);
+
 #include "hook_vbscript.h"
