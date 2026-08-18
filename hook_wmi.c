@@ -3,6 +3,31 @@
 #include "config.h"
 #include <Wbemidl.h>
 
+extern __declspec(thread) BOOL bHookViaWbemLocator;
+extern void set_com_hooks(REFCLSID rclsid, REFIID riid, PVOID pComObject);
+
+HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
+	_In_  IEnumWbemClassObject *This,
+	_In_  long                 lTimeout,
+	_In_  ULONG                uCount,
+	_Out_ IWbemClassObject     **apObjects,
+	_Out_ ULONG                *puReturned
+) {
+	HRESULT ret = Old_IEnumWbemClassObject_Next(This, lTimeout, uCount, apObjects, puReturned);
+
+	if (ret == S_OK && apObjects != NULL && puReturned != NULL) {
+		for (ULONG i = 0; i < *puReturned; i++) {
+			if (apObjects[i] != NULL) {
+				bHookViaWbemLocator = TRUE;
+				set_com_hooks(NULL, NULL, apObjects[i]);
+				bHookViaWbemLocator = FALSE;
+			}
+		}
+	}
+
+	return ret;
+}
+
 __declspec(thread) static int g_last_seen_disk_query = 0;
 __declspec(thread) static int g_last_seen_physicalmemory = 0;
 
@@ -219,6 +244,13 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 		}
 	}
 	ret = Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
+	
+	if (ret == S_OK && ppEnum && *ppEnum) {
+		bHookViaWbemLocator = TRUE;
+		set_com_hooks(NULL, NULL, *ppEnum);
+		bHookViaWbemLocator = FALSE;
+	}
+
 	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
 	return ret;
 }
@@ -319,9 +351,16 @@ HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnum,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
-	HRESULT ret = 0;
+	HRESULT ret = Old_WMI_CreateInstanceEnum(_this, strFilter, lFlags, pCtx, ppEnum);
+	
+	if (ret == S_OK && ppEnum && *ppEnum) {
+		bHookViaWbemLocator = TRUE;
+		set_com_hooks(NULL, NULL, *ppEnum);
+		bHookViaWbemLocator = FALSE;
+	}
+
 	LOQ_hresult("system", "u", "QueryClass", strFilter);
-	return Old_WMI_CreateInstanceEnum(_this, strFilter, lFlags, pCtx, ppEnum);
+	return ret;
 }
 
 HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnumAsync,
