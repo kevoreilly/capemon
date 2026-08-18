@@ -36,6 +36,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `large-buffer-max` | Integer | Maximum size for large log buffers. |
 | `no-logs` | Integer | Divert debugger logs (1 - divert to analysis log, 2 - throw away completely) |
 | `disable-logging` | Boolean | Completely disable the analysis log. |
+| `log-format` | Integer | Logging serialization format: `0` = BSON (default, highly compatible), `1` = Protocol Buffers (nanopb). |
 
 ## Hooking Behavior
 
@@ -66,6 +67,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | :--- | :--- | :--- |
 | `no-stealth` | Boolean | Disable anti-anti-VM/sandbox tricks. |
 | `force-sleepskip` | Boolean | `0` = Disable sleep skipping, `1` = Skip all sleeps. |
+| `sleep-skip-seconds` | Integer | Threshold and delay (in seconds) to replace clamped/skipped sleeps and timeouts with (default: 10). |
 | `serial` | Hex | Spoof the system volume serial number. |
 | `sysvol_ctimelow` | Hex | Spoof the low part of the creation time of the system volume. |
 | `sysvol_ctimehigh` | Hex | Spoof the high part of the creation time of the system volume. |

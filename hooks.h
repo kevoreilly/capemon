@@ -2598,6 +2598,41 @@ HOOKDEF(DWORD, WINAPI, GetAdaptersInfo,
 	_Inout_ PULONG		   pOutBufLen
 );
 
+typedef ULONG IPAddr;
+
+typedef struct ip_option_information {
+  UCHAR  Ttl;
+  UCHAR  Tos;
+  UCHAR  Flags;
+  UCHAR  OptionsSize;
+  PUCHAR OptionsData;
+} IP_OPTION_INFORMATION, *PIP_OPTION_INFORMATION;
+
+HOOKDEF(DWORD, WINAPI, IcmpSendEcho,
+    _In_     HANDLE                 IcmpHandle,
+    _In_     IPAddr                 DestinationAddress,
+    _In_     LPVOID                 RequestData,
+    _In_     WORD                   RequestSize,
+    _In_opt_ PIP_OPTION_INFORMATION RequestOptions,
+    _Out_    LPVOID                 ReplyBuffer,
+    _In_     DWORD                  ReplySize,
+    _In_     DWORD                  Timeout
+);
+
+HOOKDEF(DWORD, WINAPI, IcmpSendEcho2,
+    _In_     HANDLE                 IcmpHandle,
+    _In_opt_ HANDLE                 Event,
+    _In_opt_ PVOID                  ApcRoutine,
+    _In_opt_ PVOID                  ApcContext,
+    _In_     IPAddr                 DestinationAddress,
+    _In_     LPVOID                 RequestData,
+    _In_     WORD                   RequestSize,
+    _In_opt_ PIP_OPTION_INFORMATION RequestOptions,
+    _Out_    LPVOID                 ReplyBuffer,
+    _In_     DWORD                  ReplySize,
+    _In_     DWORD                  Timeout
+);
+
 HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 	_In_  LPCWSTR			   lpServer,
 	_Out_ LPWSTR				*lpNameBuffer,
@@ -2739,6 +2774,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 	__in HANDLE Handle,
 	__in	BOOLEAN Alertable,
 	__in_opt	PLARGE_INTEGER Timeout
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
+	_In_ ULONG Count,
+	_In_ HANDLE *Handles,
+	_In_ int WaitType,
+	_In_ BOOLEAN Alertable,
+	_In_opt_ PLARGE_INTEGER Timeout
 );
 
 HOOKDEF(void, WINAPI, GetLocalTime,
