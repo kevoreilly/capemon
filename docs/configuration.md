@@ -36,7 +36,6 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `large-buffer-max` | Integer | Maximum size for large log buffers. |
 | `no-logs` | Integer | Divert debugger logs (1 - divert to analysis log, 2 - throw away completely) |
 | `disable-logging` | Boolean | Completely disable the analysis log. |
-| `log-format` | Integer | Logging serialization format: `0` = BSON (default, highly compatible), `1` = Protocol Buffers (nanopb). |
 
 ## Hooking Behavior
 
