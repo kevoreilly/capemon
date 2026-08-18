@@ -52,8 +52,37 @@ static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
 // current to-be-logged API call
-__declspec(thread) static bson g_bson[1];
-__declspec(thread) static char g_istr[4];
+typedef struct {
+	bson g_bson[1];
+	char g_istr[4];
+} thread_log_context_t;
+
+DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
+
+static thread_log_context_t* GetThreadLogContext(void) {
+	thread_log_context_t* pCtx = NULL;
+	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
+		pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
+		if (!pCtx) {
+			pCtx = (thread_log_context_t*)calloc(1, sizeof(thread_log_context_t));
+			TlsSetValue(g_bson_tls_index, pCtx);
+		}
+	}
+	return pCtx;
+}
+
+#define g_bson (GetThreadLogContext()->g_bson)
+#define g_istr (GetThreadLogContext()->g_istr)
+
+void TlsThreadCleanup(void) {
+	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
+		thread_log_context_t* pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
+		if (pCtx) {
+			free(pCtx);
+			TlsSetValue(g_bson_tls_index, NULL);
+		}
+	}
+}
 
 static char logtbl_explained[256] = {0};
 
@@ -1470,6 +1499,8 @@ DWORD g_logwatcher_thread_id;
 
 void log_init(int debug)
 {
+	g_bson_tls_index = TlsAlloc();
+
 	g_buffer = calloc(1, BUFFERSIZE);
 
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -1512,6 +1543,11 @@ void log_init(int debug)
 void log_free()
 {
 	log_flush();
+	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
+		TlsThreadCleanup();
+		TlsFree(g_bson_tls_index);
+		g_bson_tls_index = TLS_OUT_OF_INDEXES;
+	}
 	if (g_sock == DEBUG_SOCKET) {
 		g_sock = INVALID_SOCKET;
 	}
