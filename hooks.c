@@ -189,6 +189,7 @@ hook_t full_hooks[] = {
 
 	// Script hooks
 	HOOK_SPECIAL(clrjit, compileMethod),
+	HOOK_SPECIAL(coreclr, compileMethod),
 	HOOK_SPECIAL(urlmon, IsValidURL),
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
 	HOOK_NOTAIL(jscript, JsEval, 5),
@@ -516,6 +517,8 @@ hook_t full_hooks[] = {
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
 	HOOK(urlmon, ObtainUserAgentString),
+	HOOK(amsi, AmsiScanBuffer),
+	HOOK(amsi, AmsiScanString),
 	HOOK(wininet, InternetGetConnectedState),
 	HOOK(wininet, InternetOpenA),
 	HOOK(wininet, InternetOpenW),
@@ -1046,6 +1049,7 @@ hook_t min_hooks[] = {
 	HOOK(kernel32, CreateRemoteThreadEx),
 
 	HOOK_SPECIAL(clrjit, compileMethod),
+	HOOK_SPECIAL(coreclr, compileMethod),
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),
@@ -1477,6 +1481,8 @@ hook_t office_hooks[] = {
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
 	HOOK(urlmon, ObtainUserAgentString),
+	HOOK(amsi, AmsiScanBuffer),
+	HOOK(amsi, AmsiScanString),
 	HOOK(wininet, InternetGetConnectedState),
 	HOOK(wininet, InternetOpenA),
 	HOOK(wininet, InternetOpenW),

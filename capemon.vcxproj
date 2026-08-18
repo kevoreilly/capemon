@@ -260,6 +260,7 @@
     <ClCompile Include="hook_reg_native.c" />
     <ClCompile Include="hook_services.c" />
     <ClCompile Include="hook_sleep.c" />
+    <ClCompile Include="hook_amsi.c" />
     <ClCompile Include="hook_socket.c" />
     <ClCompile Include="hook_special.c" />
     <ClCompile Include="hook_sync.c" />
