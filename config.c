@@ -1112,6 +1112,11 @@ void parse_config_line(char* line)
 			if (g_config.trace_all)
 				DebugOutput("Config: Trace all enabled.\n");
 		}
+		else if (!stricmp(key, "jit-trace-all")) {
+			g_config.jit_trace_all = value[0] == '1';
+			if (g_config.jit_trace_all)
+				DebugOutput("Config: JIT verbose tracing enabled.\n");
+		}
 		else if (!stricmp(key, "trace-into-api")) {
 			unsigned int x = 0;
 			char *p2;
