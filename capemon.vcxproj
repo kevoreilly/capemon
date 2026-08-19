@@ -151,7 +151,8 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ControlFlowGuard>false</ControlFlowGuard>
       <EnablePREfast>false</EnablePREfast>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
       <AdditionalOptions>/Qsafe_fp_loads %(AdditionalOptions)</AdditionalOptions>
@@ -186,7 +187,8 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ControlFlowGuard>false</ControlFlowGuard>
       <EnablePREfast>false</EnablePREfast>
     </ClCompile>
     <Link>
@@ -262,6 +264,7 @@
     <ClCompile Include="hook_sleep.c" />
     <ClCompile Include="hook_socket.c" />
     <ClCompile Include="hook_special.c" />
+    <ClCompile Include="hook_trace.c" />
     <ClCompile Include="hook_sync.c" />
     <ClCompile Include="hook_thread.c" />
     <ClCompile Include="hook_tls.c" />
@@ -468,6 +471,7 @@
     <ClInclude Include="hooks.h" />
     <ClInclude Include="hook_file.h" />
     <ClInclude Include="hook_sleep.h" />
+    <ClInclude Include="hook_trace.h" />
     <ClInclude Include="ignore.h" />
     <ClInclude Include="log.h" />
     <ClInclude Include="lookup.h" />

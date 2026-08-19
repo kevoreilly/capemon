@@ -1480,6 +1480,9 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "wmi-bios-serial")) {
 			strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), value, _TRUNCATE);
 			DebugOutput("Config: WMI BIOS serial set to %s.\n", g_config.bios_serial);
+		else if (!stricmp(key, "sleep-skip-seconds")) {
+			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);
 		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
@@ -1535,6 +1538,7 @@ void read_config(void)
 	strncpy_s(g_config.disk_serial, _countof(g_config.disk_serial), "S3Y1NX0K412941X", _TRUNCATE);
 	strncpy_s(g_config.bios_vendor, _countof(g_config.bios_vendor), "American Megatrends Inc.", _TRUNCATE);
 	strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), "System Serial Number", _TRUNCATE);
+	g_config.sleep_skip_seconds = 10;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 

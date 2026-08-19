@@ -343,6 +343,7 @@ struct _g_config {
 	char disk_serial[128];
 	char bios_vendor[128];
 	char bios_serial[128];
+	int sleep_skip_seconds;
 };
 
 extern struct _g_config g_config;
