@@ -1316,6 +1316,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 				DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
 			else
 				DebugOutput("ProcessTrackedRegion: Entropy for tracked region at 0x%p: %e", Address, Entropy);
+			TrackedRegion->Entropy = Entropy;
 		}
 #ifdef DEBUG_COMMENTS
 		else
@@ -1350,9 +1351,6 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		else
 			DebugOutput("ProcessTrackedRegion: Interesting region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 	}
-
-	if (Entropy)
-		TrackedRegion->Entropy = Entropy;
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
