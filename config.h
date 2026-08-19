@@ -339,6 +339,7 @@ struct _g_config {
 	int wmi_cache_size;
 	int wmi_voltage_reading;
 	int wmi_temperature_reading;
+	int sleep_skip_seconds;
 };
 
 extern struct _g_config g_config;

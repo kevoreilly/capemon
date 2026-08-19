@@ -1464,6 +1464,9 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "wmi-temperature-reading")) {
 			g_config.wmi_temperature_reading = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: WMI temperature reading set to %d.\n", g_config.wmi_temperature_reading);
+		else if (!stricmp(key, "sleep-skip-seconds")) {
+			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);
 		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
@@ -1515,6 +1518,7 @@ void read_config(void)
 	g_config.wmi_cache_size = 32768;
 	g_config.wmi_voltage_reading = 12000;
 	g_config.wmi_temperature_reading = 3000;
+	g_config.sleep_skip_seconds = 10;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
