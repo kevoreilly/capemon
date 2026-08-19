@@ -24,6 +24,48 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 
+typedef struct _KEY_BASIC_INFORMATION {
+	LARGE_INTEGER LastWriteTime;
+	ULONG TitleIndex;
+	ULONG NameLength;
+	WCHAR Name[1];
+} KEY_BASIC_INFORMATION, *PKEY_BASIC_INFORMATION;
+
+static BOOLEAN UnicodeStringContains(PUNICODE_STRING ustr, PCWSTR sub) {
+	if (!ustr || !ustr->Buffer || ustr->Length == 0 || !sub) return FALSE;
+	USHORT subLen = (USHORT)wcslen(sub);
+	USHORT uLen = ustr->Length / sizeof(wchar_t);
+	if (uLen < subLen) return FALSE;
+	for (USHORT i = 0; i <= uLen - subLen; i++) {
+		if (_wcsnicmp(&ustr->Buffer[i], sub, subLen) == 0) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOLEAN IsVirtualHardwareKey(PWSTR wszName, ULONG nameLenBytes) {
+	if (!wszName || nameLenBytes == 0) return FALSE;
+	ULONG nameLenChars = nameLenBytes / sizeof(wchar_t);
+	wchar_t localBuf[256];
+	ULONG toCopy = min(nameLenChars, 255);
+	wcsncpy_s(localBuf, 256, wszName, toCopy);
+	localBuf[toCopy] = L'\0';
+
+	if (_wcsicmp(localBuf, L"VEN_1B36") == 0 ||
+		_wcsicmp(localBuf, L"VEN_1AF4") == 0 ||
+		wcsstr(localBuf, L"VEN_1B36") != NULL ||
+		wcsstr(localBuf, L"VEN_1AF4") != NULL ||
+		wcsstr(localBuf, L"VBOX") != NULL ||
+		wcsstr(localBuf, L"VMWARE") != NULL ||
+		wcsstr(localBuf, L"QEMU") != NULL ||
+		wcsstr(localBuf, L"VIRTIO") != NULL ||
+		wcsstr(localBuf, L"XEN") != NULL) {
+		return TRUE;
+	}
+	return FALSE;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtCreateKey,
 	__out	   PHANDLE KeyHandle,
 	__in		ACCESS_MASK DesiredAccess,
@@ -50,6 +92,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenKey,
 	__in   ACCESS_MASK DesiredAccess,
 	__in   POBJECT_ATTRIBUTES ObjectAttributes
 ) {
+	if (ObjectAttributes && ObjectAttributes->ObjectName) {
+		if (UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1B36") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1AF4")) {
+			return STATUS_OBJECT_NAME_NOT_FOUND;
+		}
+	}
 	NTSTATUS ret = Old_NtOpenKey(KeyHandle, DesiredAccess, ObjectAttributes);
 	LOQ_ntstatus("registry", "PhpoK", "KeyHandle", KeyHandle, "DesiredAccess", DesiredAccess,
 		"ObjectAttributesHandle", handle_from_objattr(ObjectAttributes),
@@ -64,6 +112,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenKeyEx,
 	__in   POBJECT_ATTRIBUTES ObjectAttributes,
 	__in   ULONG OpenOptions
 ) {
+	if (ObjectAttributes && ObjectAttributes->ObjectName) {
+		if (UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1B36") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1AF4")) {
+			return STATUS_OBJECT_NAME_NOT_FOUND;
+		}
+	}
 	NTSTATUS ret = Old_NtOpenKeyEx(KeyHandle, DesiredAccess, ObjectAttributes,
 		OpenOptions);
 	LOQ_ntstatus("registry", "PhpoK", "KeyHandle", KeyHandle, "DesiredAccess", DesiredAccess,
@@ -103,9 +157,30 @@ HOOKDEF(NTSTATUS, WINAPI, NtEnumerateKey,
 	__in	   ULONG Length,
 	__out	  PULONG ResultLength
 ) {
-	NTSTATUS ret = Old_NtEnumerateKey(KeyHandle, Index, KeyInformationClass,
+	ULONG adjusted_index = Index;
+	NTSTATUS status;
+
+	while (TRUE) {
+		BYTE temp_buf[512];
+		PKEY_BASIC_INFORMATION pBasic = (PKEY_BASIC_INFORMATION)temp_buf;
+		ULONG res_len = 0;
+		status = Old_NtEnumerateKey(KeyHandle, adjusted_index, KeyBasicInformation, pBasic, sizeof(temp_buf), &res_len);
+		if (status == STATUS_NO_MORE_ENTRIES || status < 0) {
+			break;
+		}
+
+		if (status >= 0) {
+			if (IsVirtualHardwareKey(pBasic->Name, pBasic->NameLength)) {
+				adjusted_index++;
+				continue;
+			}
+		}
+		break;
+	}
+
+	NTSTATUS ret = Old_NtEnumerateKey(KeyHandle, adjusted_index, KeyInformationClass,
 		KeyInformation, Length, ResultLength);
-	LOQ_ntstatus("registry", "pi", "KeyHandle", KeyHandle, "Index", Index);
+	LOQ_ntstatus("registry", "pi", "KeyHandle", KeyHandle, "Index", adjusted_index);
 	return ret;
 }
 
