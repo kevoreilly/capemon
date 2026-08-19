@@ -946,12 +946,23 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationThread,
 	return ret;
 }
 
+#define STATUS_NO_YIELD_PERFORMED ((NTSTATUS)0x40000024)
+
 HOOKDEF(NTSTATUS, WINAPI, NtYieldExecution,
 	VOID
 ) {
-	NTSTATUS ret = 0;
+	NTSTATUS ret;
 	LOQ_void("threading", "");
+	
+	// Execute the real yield to prevent thread starvation and spinlock deadlocks
 	ret = Old_NtYieldExecution();
+	
+	// Deceive debugger-single-stepping loops (which check for STATUS_NO_YIELD_PERFORMED)
+	// by always reporting that a yield successfully occurred.
+	if (ret == STATUS_NO_YIELD_PERFORMED) {
+		ret = 0; // STATUS_SUCCESS
+	}
+	
 	return ret;
 }
 
