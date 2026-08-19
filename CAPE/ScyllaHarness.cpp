@@ -405,6 +405,37 @@ fail:
 	return 0;
 }
 
+static void HealDotNetPEHeaders(DWORD_PTR Buffer) {
+	dotnet_module_cache_t* pCache = FindCachedDotNetModule((ULONG_PTR)Buffer);
+	if (!pCache) return;
+
+	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)Buffer;
+	
+	// 1. Heal DOS Signature ("MZ" = 0x5A4D)
+	if (pDos->e_magic != IMAGE_DOS_SIGNATURE) {
+		pDos->e_magic = IMAGE_DOS_SIGNATURE;
+		pDos->e_lfanew = 0x80; // Standard NT header offset
+	}
+
+	PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((PBYTE)Buffer + pDos->e_lfanew);
+	
+	// 2. Heal NT Signature ("PE\0\0" = 0x00004550)
+	if (pNt->Signature != IMAGE_NT_SIGNATURE) {
+		pNt->Signature = IMAGE_NT_SIGNATURE;
+		pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64; // Set to standard 64-bit AMD64 machine target
+		pNt->FileHeader.NumberOfSections = 3; // Standard fallback section count
+		pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+	}
+
+	// 3. Heal CLR COM Descriptor Directory (index 14)
+	PIMAGE_DATA_DIRECTORY pClrDir = &pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR];
+	if (pClrDir->VirtualAddress == 0 || pClrDir->Size == 0) {
+		pClrDir->VirtualAddress = pCache->MetadataRVA;
+		pClrDir->Size = pCache->MetadataSize;
+		DebugOutput("HealDotNetPEHeaders: Successfully healed zeroed CLR Data Directory to RVA 0x%x (Size 0x%x).\n", pCache->MetadataRVA, pCache->MetadataSize);
+	}
+}
+
 //**************************************************************************************
 extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 //**************************************************************************************
@@ -416,6 +447,9 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 	NativeWinApi::initialize();
 
 	ProcessAccessHelp::setCurrentProcessAsTarget();
+
+	// Surgically heal zeroed/mangled PE headers and CLR directories in-memory right before Scylla is called
+	HealDotNetPEHeaders(Buffer);
 
 	DebugOutput("DumpPE: Instantiating PeParser with address: 0x%p.\n", Buffer);
 
