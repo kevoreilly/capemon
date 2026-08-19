@@ -231,6 +231,12 @@ HOOKDEF(int, WINAPI, compileMethod,
 						if (SUCCEEDED(hr)) {
 							// Log resolved metadata properties cleanly into CAPE database
 							DebugOutput("compileMethod: CLR COM Metadata resolved method '%ws' (Token 0x%x, RVA 0x%x).\n", wszMethodName, mbToken, rva);
+							// Cache the resolved module properties (ModuleBase -> Metadata RVA/Size)
+							PVOID ModuleBase = GetAllocationBase(info->ILCode);
+							if (ModuleBase != NULL) {
+								// We pass the module base along with the resolved method's original rva and sig size as fallback parameters
+								CacheDotNetModule((ULONG_PTR)ModuleBase, rva, info->ILCodeSize);
+							}
 						}
 					}
 					__except (EXCEPTION_EXECUTE_HANDLER) {

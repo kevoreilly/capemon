@@ -153,6 +153,33 @@ extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 extern lookup_t g_dotnet_jit;
+
+dotnet_module_cache_t g_dotnet_modules[128] = {0};
+int g_dotnet_modules_count = 0;
+
+void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize) {
+	if (g_dotnet_modules_count >= 128) return;
+	// Prevent duplicate caching
+	for (int i = 0; i < g_dotnet_modules_count; i++) {
+		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
+			return;
+		}
+	}
+	g_dotnet_modules[g_dotnet_modules_count].ModuleBase = ModuleBase;
+	g_dotnet_modules[g_dotnet_modules_count].MetadataRVA = MetadataRVA;
+	g_dotnet_modules[g_dotnet_modules_count].MetadataSize = MetadataSize;
+	g_dotnet_modules_count++;
+	DebugOutput("CacheDotNetModule: Cached module base 0x%p (Metadata RVA 0x%x, Size 0x%x).\n", (PVOID)ModuleBase, MetadataRVA, MetadataSize);
+}
+
+dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase) {
+	for (int i = 0; i < g_dotnet_modules_count; i++) {
+		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
+			return &g_dotnet_modules[i];
+		}
+	}
+	return NULL;
+}
 extern char* StringsFile;
 extern HANDLE Strings;
 
