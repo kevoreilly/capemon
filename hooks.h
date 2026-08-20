@@ -923,7 +923,7 @@ HOOKDEF(int, WINAPI, MessageBoxTimeoutW,
 HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	_In_opt_ LPCWSTR          lpDevice,
 	_In_     DWORD            iDevNum,
-	_Inout_  PDISTHREAD       lpDisplayDevice,
+	_Inout_  PDISPLAY_DEVICEW lpDisplayDevice,
 	_In_     DWORD            dwFlags
 );
 

@@ -48,6 +48,17 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern PVOID GetHookCallerBase();
 extern HANDLE g_terminate_event_handle;
+
+// ProcessInformationClass constants for NtQueryInformationProcess
+#ifndef ProcessDebugPort
+#define ProcessDebugPort 7
+#endif
+#ifndef ProcessDebugObjectHandle
+#define ProcessDebugObjectHandle 30
+#endif
+#ifndef ProcessDebugFlags
+#define ProcessDebugFlags 31
+#endif
 extern BOOL ProcessDumped;
 
 static BOOL ntdll_protect_logged;
@@ -1606,18 +1617,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
 
 	if (NT_SUCCESS(ret) && ProcessInformation != NULL) {
-		// ProcessDebugPort (7): If a debugger is active, the port is non-zero. Spoof to 0!
-		if (ProcessInformationClass == 7 && ProcessInformationLength >= sizeof(DWORD_PTR)) {
+		// ProcessDebugPort: If a debugger is active, the port is non-zero. Spoof to 0!
+		if (ProcessInformationClass == ProcessDebugPort && ProcessInformationLength >= sizeof(DWORD_PTR)) {
 			*(PDWORD_PTR)ProcessInformation = 0;
 			DebugOutput("NtQueryInformationProcess: Spoofed ProcessDebugPort to 0.\n");
 		}
-		// ProcessDebugFlags (31): If a debugger is active, the flag is 0. Spoof to 1 (No Debugger)!
-		else if (ProcessInformationClass == 31 && ProcessInformationLength >= sizeof(DWORD)) {
+		// ProcessDebugFlags: If a debugger is active, the flag is 0. Spoof to 1 (No Debugger)!
+		else if (ProcessInformationClass == ProcessDebugFlags && ProcessInformationLength >= sizeof(DWORD)) {
 			*(PDWORD)ProcessInformation = 1;
 			DebugOutput("NtQueryInformationProcess: Spoofed ProcessDebugFlags to 1.\n");
 		}
-		// ProcessDebugObjectHandle (30): If a debugger is active, returns a handle to the debug object. Spoof to NULL/0!
-		else if (ProcessInformationClass == 30 && ProcessInformationLength >= sizeof(HANDLE)) {
+		// ProcessDebugObjectHandle: If a debugger is active, returns a handle to the debug object. Spoof to NULL/0!
+		else if (ProcessInformationClass == ProcessDebugObjectHandle && ProcessInformationLength >= sizeof(HANDLE)) {
 			*(PHANDLE)ProcessInformation = NULL;
 			DebugOutput("NtQueryInformationProcess: Spoofed ProcessDebugObjectHandle to NULL.\n");
 		}
