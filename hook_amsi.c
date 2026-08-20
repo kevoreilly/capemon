@@ -1,4 +1,6 @@
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <objbase.h>
 #include "hooking.h"
 #include "log.h"
 #include "misc.h"
@@ -20,7 +22,7 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
 	LOQ_hresult("amsi", "up", "ContentName", contentName, "Length", length);
 
 	if (g_config.amsidump && buffer != NULL && length > 0) {
-		SetCapeMetaData(AMSIBUFFER, NULL, NULL, NULL);
+		SetCapeMetaData(AMSIBUFFER, 0, NULL, NULL);
 		DumpMemoryRaw(buffer, (SIZE_T)length);
 		DebugOutput("AmsiScanBuffer: Actively dumped AMSI buffer of size %d at 0x%p.\n", length, buffer);
 	}
@@ -41,7 +43,7 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 
 	if (g_config.amsidump && string != NULL) {
 		SIZE_T len = (wcslen(string) + 1) * sizeof(wchar_t);
-		SetCapeMetaData(AMSIBUFFER, NULL, NULL, NULL);
+		SetCapeMetaData(AMSIBUFFER, 0, NULL, NULL);
 		DumpMemoryRaw((PVOID)string, len);
 		DebugOutput("AmsiScanString: Actively dumped AMSI string at 0x%p.\n", string);
 	}
