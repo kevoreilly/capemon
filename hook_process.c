@@ -48,17 +48,6 @@ extern void file_handle_terminate();
 extern int DoProcessDump();
 extern PVOID GetHookCallerBase();
 extern HANDLE g_terminate_event_handle;
-
-// ProcessInformationClass constants for NtQueryInformationProcess
-#ifndef ProcessDebugPort
-#define ProcessDebugPort 7
-#endif
-#ifndef ProcessDebugObjectHandle
-#define ProcessDebugObjectHandle 30
-#endif
-#ifndef ProcessDebugFlags
-#define ProcessDebugFlags 31
-#endif
 extern BOOL ProcessDumped;
 
 static BOOL ntdll_protect_logged;
@@ -1604,36 +1593,5 @@ HOOKDEF(BOOL, WINAPI, UpdateProcThreadAttribute,
 	if (!(Attribute == PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY && lpValue && *(DWORD64*)lpValue == PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON))
 		ret = Old_UpdateProcThreadAttribute(lpAttributeList, dwFlags, Attribute, lpValue, cbSize, lpPreviousValue, lpReturnSize);
 	LOQ_zero("process", "lL", "Attribute", Attribute, "Value", lpValue);
-	return ret;
-}
-
-HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
-	_In_      HANDLE           ProcessHandle,
-	_In_      int              ProcessInformationClass,
-	_Out_     PVOID            ProcessInformation,
-	_In_      ULONG            ProcessInformationLength,
-	_Out_opt_ PULONG           ReturnLength
-) {
-	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
-
-	if (NT_SUCCESS(ret) && ProcessInformation != NULL) {
-		// ProcessDebugPort: If a debugger is active, the port is non-zero. Spoof to 0!
-		if (ProcessInformationClass == ProcessDebugPort && ProcessInformationLength >= sizeof(DWORD_PTR)) {
-			*(PDWORD_PTR)ProcessInformation = 0;
-			DebugOutput("NtQueryInformationProcess: Spoofed ProcessDebugPort to 0.\n");
-		}
-		// ProcessDebugFlags: If a debugger is active, the flag is 0. Spoof to 1 (No Debugger)!
-		else if (ProcessInformationClass == ProcessDebugFlags && ProcessInformationLength >= sizeof(DWORD)) {
-			*(PDWORD)ProcessInformation = 1;
-			DebugOutput("NtQueryInformationProcess: Spoofed ProcessDebugFlags to 1.\n");
-		}
-		// ProcessDebugObjectHandle: If a debugger is active, returns a handle to the debug object. Spoof to NULL/0!
-		else if (ProcessInformationClass == ProcessDebugObjectHandle && ProcessInformationLength >= sizeof(HANDLE)) {
-			*(PHANDLE)ProcessInformation = NULL;
-			DebugOutput("NtQueryInformationProcess: Spoofed ProcessDebugObjectHandle to NULL.\n");
-		}
-	}
-
-	LOQ_ntstatus("process", "piip", "ProcessHandle", ProcessHandle, "Class", ProcessInformationClass, "Length", ProcessInformationLength, "ProcessInformation", ProcessInformation);
 	return ret;
 }
