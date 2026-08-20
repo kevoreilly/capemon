@@ -81,7 +81,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className);
 
 		if (methodName != NULL) {
-			LOQ_string("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
+			LOQ_void("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
 			DebugOutput("compileMethod: Translated .NET JIT API: %s.%s\n", className ? className : "UnknownClass", methodName);
 		}
 
