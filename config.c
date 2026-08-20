@@ -1464,6 +1464,7 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "wmi-temperature-reading")) {
 			g_config.wmi_temperature_reading = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: WMI temperature reading set to %d.\n", g_config.wmi_temperature_reading);
+		}
 		else if (!stricmp(key, "sleep-skip-seconds")) {
 			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);

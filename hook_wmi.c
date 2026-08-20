@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "log.h"
 #include "misc.h"
 #include "config.h"
@@ -26,7 +27,7 @@ typedef struct {
 	int last_seen_fake_class;
 } wmi_thread_context_t;
 
-DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
+extern DWORD g_wmi_tracker_tls_index;
 
 // Fallback context if TLS allocation fails (shared across threads as last resort)
 static wmi_thread_context_t g_wmi_fallback_context = {0};
@@ -323,7 +324,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 		}
 	}
 
-	SpoofWmiData(szClassName, wszName, pVal);
+	SpoofWmiData(_this, szClassName, wszName, pVal);
 
 	// Short circuit, return early for things we don't want to log
 	if (!ret && !g_config.full_logs && wszName) {
@@ -381,7 +382,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Next,
 		if (SUCCEEDED(hr) && classVariant.vt == VT_BSTR) {
 			wcscpy_s(szClassName, _countof(szClassName), classVariant.bstrVal);
 		}
-		SpoofWmiData(szClassName, *strName, pVal);
+		SpoofWmiData(_this, szClassName, *strName, pVal);
 		LOQ_hresult("system", "unu", "Name", *strName, "Value", pVal, "Class", szClassName);
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
