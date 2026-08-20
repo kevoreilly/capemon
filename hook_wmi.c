@@ -28,18 +28,30 @@ typedef struct {
 
 DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
 
+// Fallback context if TLS allocation fails (shared across threads as last resort)
+static wmi_thread_context_t g_wmi_fallback_context = {0};
+
 static wmi_thread_context_t* GetWmiThreadContext(void) {
 	wmi_thread_context_t* pCtx = NULL;
 	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
 		pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
 		if (!pCtx) {
 			pCtx = (wmi_thread_context_t*)calloc(1, sizeof(wmi_thread_context_t));
-			TlsSetValue(g_wmi_tracker_tls_index, pCtx);
+			if (pCtx) {
+				TlsSetValue(g_wmi_tracker_tls_index, pCtx);
+			} else {
+				// calloc failed - use fallback (not thread-safe but prevents crash)
+				pCtx = &g_wmi_fallback_context;
+			}
 		}
+	} else {
+		// TLS not initialized - use fallback
+		pCtx = &g_wmi_fallback_context;
 	}
 	return pCtx;
 }
 
+// Accessor macros: GetWmiThreadContext now guaranteed to return non-NULL
 #define g_last_seen_disk_query (GetWmiThreadContext()->last_seen_disk_query)
 #define g_last_seen_physicalmemory (GetWmiThreadContext()->last_seen_physicalmemory)
 #define g_last_seen_fake_class (GetWmiThreadContext()->last_seen_fake_class)
