@@ -19,6 +19,13 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 
+// Standard CLR metadata types from corhdr.h
+typedef ULONG mdToken;
+typedef mdToken mdTypeDef;
+typedef mdToken mdMethodDef;
+typedef mdToken mdTypeRef;
+typedef const unsigned char* PCCOR_SIGNATURE;
+
 // Opaque COM interface definition for IMetaDataImport (read-only metadata queries)
 // We define a compact, opaque vtable structure to preserve offsets cleanly
 typedef struct IMetaDataImportVtbl IMetaDataImportVtbl;
@@ -161,7 +168,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 
 		if (methodName != NULL) {
 			if (g_config.jit_trace_all) {
-				LOQ_string("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
+				LOQ_void("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
 				DebugOutput("compileMethod: Translated .NET JIT API: %s.%s\n", className ? className : "UnknownClass", methodName);
 			}
 
@@ -171,19 +178,19 @@ HOOKDEF(int, WINAPI, compileMethod,
 				if (strstr(className, "System.Net.WebClient") || 
 					strstr(className, "System.Net.Http.HttpClient") ||
 					strstr(className, "System.Net.Sockets.Socket")) {
-					LOQ_string("behavior", "ss", "Event", "Initiating .NET Network Capability", "Details", className);
+					LOQ_void("behavior", "ss", "Event", "Initiating .NET Network Capability", "Details", className);
 					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Network Capability inside %s.%s\n", className, methodName);
 				}
 				else if (strstr(className, "System.Security.Cryptography") || 
 						 strstr(className, "Rijndael") ||
 						 strstr(className, "AesManaged")) {
-					LOQ_string("behavior", "ss", "Event", "Initiating .NET Cryptographic Operation", "Details", className);
+					LOQ_void("behavior", "ss", "Event", "Initiating .NET Cryptographic Operation", "Details", className);
 					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Cryptographic Operation inside %s.%s\n", className, methodName);
 				}
 				else if (strstr(className, "System.Reflection.Assembly") || 
 						 strstr(className, "System.Reflection.Emit") ||
 						 strstr(className, "System.Diagnostics.Process")) {
-					LOQ_string("behavior", "ss", "Event", "Initiating .NET Process/Payload Injection", "Details", className);
+					LOQ_void("behavior", "ss", "Event", "Initiating .NET Process/Payload Injection", "Details", className);
 					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Process/Payload Injection inside %s.%s\n", className, methodName);
 				}
 			}
