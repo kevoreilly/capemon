@@ -1480,6 +1480,7 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "wmi-bios-serial")) {
 			strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), value, _TRUNCATE);
 			DebugOutput("Config: WMI BIOS serial set to %s.\n", g_config.bios_serial);
+		}
 		else if (!stricmp(key, "sleep-skip-seconds")) {
 			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);

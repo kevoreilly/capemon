@@ -12,7 +12,7 @@ typedef struct {
 	int last_seen_bios_query;
 } wmi_thread_context_t;
 
-DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
+extern DWORD g_wmi_tracker_tls_index;
 
 // Fallback context if TLS allocation fails (shared across threads as last resort)
 static wmi_thread_context_t g_wmi_fallback_context = {0};
