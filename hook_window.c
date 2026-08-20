@@ -23,6 +23,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pipe.h"
 #include "log.h"
 
+extern void DebugOutput(LPCTSTR lpOutputString, ...);
+
 #define StringAtomSize 0x100
 
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);

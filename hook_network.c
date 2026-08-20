@@ -1024,17 +1024,6 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 	return ret;
 }
 
-HOOKDEF(DWORD, WINAPI, NetUserGetInfo,
-	_In_  LPCWSTR servername,
-	_In_  LPCWSTR username,
-	_In_  DWORD   level,
-	_Out_ LPBYTE  *bufptr
-) {
-	DWORD ret = Old_NetUserGetInfo(servername, username, level, bufptr);
-	LOQ_zero("network", "uui", "ServerName", servername, "UserName", username, "Level", level);
-	return ret;
-}
-
 HOOKDEF(ULONG, WINAPI, NetUserGetLocalGroups,
 	_In_  LPCWSTR servername,
 	_In_  LPCWSTR username,

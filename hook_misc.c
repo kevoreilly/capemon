@@ -825,17 +825,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationProcess,
 	return ret;
 }
 
-HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
-	IN HANDLE ProcessHandle,
-	IN PROCESSINFOCLASS ProcessInformationClass,
-	OUT PVOID ProcessInformation,
-	IN ULONG ProcessInformationLength,
-	OUT PULONG ReturnLength OPTIONAL
-) {
-	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
-	LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
-	return ret;
-}
+
 
 HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemInformation,
 	_In_ ULONG SystemInformationClass,
@@ -1887,35 +1877,7 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	return ret;
 }
 
-HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
-	_In_	LPCWSTR  lpDevice,
-	_In_	DWORD  iDevNum,
-	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
-	_In_	DWORD  dwFlags
-) {
-	const wchar_t* keywords[] = {
-		L"microsoft hyper-v video",
-		L"virtual",
-		L"vmware",
-		L"standard vga graphics adapter",
-		L"microsoft basic display adapter"
-	};
-	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
 
-	const wchar_t replacement[] = L"NVIDIA GeForce RTX 3060";
-
-	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	if (!g_config.no_stealth && ret && lpDisplayDevice) {
-		for (int i = 0; i < keywords_size; i++) {
-			if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
-				swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
-				break;
-			}
-		}
-	}
-	LOQ_bool("misc", "u", "DeviceString", lpDisplayDevice->DeviceString);
-	return ret;
-}
 
 HOOKDEF(UINT, WINAPI, MsiInstallProductA,
 	_In_	LPCSTR	szPackagePath,
@@ -2105,15 +2067,5 @@ HOOKDEF(HANDLE, WINAPI, SetClipboardData,
 	if (ret == NULL)
 		return ret;
 	LOQ_handle("misc", "i", "Format", uFormat);
-	return ret;
-}
-
-HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
-	_In_  LPCSTR  Filename,
-	_Out_ PDWORD  HeaderSum,
-	_Out_ PDWORD  CheckSum
-) {
-	DWORD ret = Old_MapFileAndCheckSumA(Filename, HeaderSum, CheckSum);
-	LOQ_nonzero("system", "s", "FileName", Filename);
 	return ret;
 }
