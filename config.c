@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 #include "log.h"
+#include "log_serializer.h"
 #include "hooking.h"
 #include "hook_sleep.h"
 #include "unhook.h"

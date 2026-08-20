@@ -63,6 +63,8 @@ typedef struct {
 DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
 DWORD g_protobuf_tls_index = TLS_OUT_OF_INDEXES;
 
+log_serializer_t *g_default_serializer = &g_bson_serializer;
+
 // Thread-local storage with caching to avoid repeated TLS lookups
 static __declspec(thread) thread_log_context_t* g_tls_ctx_cache = NULL;
 
@@ -77,7 +79,7 @@ static thread_log_context_t* GetThreadLogContext(void) {
 		if (!pCtx) {
 			pCtx = (thread_log_context_t*)calloc(1, sizeof(thread_log_context_t));
 			if (pCtx) {
-				pCtx->active_serializer = &g_bson_serializer;  // Default to BSON
+				pCtx->active_serializer = g_default_serializer;  // Use configured default
 				TlsSetValue(g_bson_tls_index, pCtx);
 				g_tls_ctx_cache = pCtx; // Cache for this thread
 			}
@@ -92,7 +94,7 @@ static thread_log_context_t* GetThreadLogContext(void) {
 // Note: These will return NULL if TLS allocation failed, callers must check
 #define g_bson (GetThreadLogContext() ? GetThreadLogContext()->g_bson : NULL)
 #define g_istr (GetThreadLogContext() ? GetThreadLogContext()->g_istr : NULL)
-#define g_active_serializer (GetThreadLogContext() ? GetThreadLogContext()->active_serializer : &g_bson_serializer)
+#define g_active_serializer (GetThreadLogContext() ? GetThreadLogContext()->active_serializer : g_default_serializer)
 
 void TlsThreadCleanup(void) {
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
@@ -1183,7 +1185,7 @@ buffer_log:
 	va_end(args);
 
 	g_active_serializer->append_finish_array();
-	g_active_serializer->finish();
+	g_active_serializer->append_finish();
 
 	if (!TryEnterCriticalSection(&g_mutex)) {
 		g_active_serializer->destroy();
@@ -1553,9 +1555,15 @@ void log_init(int debug)
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
 
 	if (g_config.log_format == LOG_FORMAT_PROTOBUF) {
-		g_active_serializer = &g_protobuf_serializer;
+		g_default_serializer = &g_protobuf_serializer;
 	} else {
-		g_active_serializer = &g_bson_serializer;
+		g_default_serializer = &g_bson_serializer;
+	}
+
+	// Update active serializer for the main thread context too
+	thread_log_context_t *pCtx = GetThreadLogContext();
+	if (pCtx) {
+		pCtx->active_serializer = g_default_serializer;
 	}
 
 	if (debug != 0) {
