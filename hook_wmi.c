@@ -12,7 +12,7 @@ typedef struct {
 	int last_seen_fake_class;
 } wmi_thread_context_t;
 
-DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
+extern DWORD g_wmi_tracker_tls_index;
 
 // Fallback context if TLS allocation fails (shared across threads as last resort)
 static wmi_thread_context_t g_wmi_fallback_context = {0};
@@ -64,18 +64,15 @@ HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
 	if (ret == S_OK && apObjects != NULL && puReturned != NULL) {
 		for (ULONG i = 0; i < *puReturned; i++) {
 			if (apObjects[i] != NULL) {
-				bHookViaWbemLocator = TRUE;
+				SetHookViaWbemLocator(TRUE);
 				set_com_hooks(NULL, NULL, apObjects[i]);
-				bHookViaWbemLocator = FALSE;
+				SetHookViaWbemLocator(FALSE);
 			}
 		}
 	}
 
 	return ret;
 }
-
-__declspec(thread) static int g_last_seen_disk_query = 0;
-__declspec(thread) static int g_last_seen_physicalmemory = 0;
 
 void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
 	if (g_config.no_stealth)
@@ -292,9 +289,9 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	ret = Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
 	
 	if (ret == S_OK && ppEnum && *ppEnum) {
-		bHookViaWbemLocator = TRUE;
+		SetHookViaWbemLocator(TRUE);
 		set_com_hooks(NULL, NULL, *ppEnum);
-		bHookViaWbemLocator = FALSE;
+		SetHookViaWbemLocator(FALSE);
 	}
 
 	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
@@ -400,9 +397,9 @@ HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnum,
 	HRESULT ret = Old_WMI_CreateInstanceEnum(_this, strFilter, lFlags, pCtx, ppEnum);
 	
 	if (ret == S_OK && ppEnum && *ppEnum) {
-		bHookViaWbemLocator = TRUE;
+		SetHookViaWbemLocator(TRUE);
 		set_com_hooks(NULL, NULL, *ppEnum);
-		bHookViaWbemLocator = FALSE;
+		SetHookViaWbemLocator(FALSE);
 	}
 
 	LOQ_hresult("system", "u", "QueryClass", strFilter);
