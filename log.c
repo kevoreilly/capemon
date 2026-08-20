@@ -59,20 +59,34 @@ typedef struct {
 
 DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
 
+// Thread-local storage with caching to avoid repeated TLS lookups
+static __declspec(thread) thread_log_context_t* g_tls_ctx_cache = NULL;
+
 static thread_log_context_t* GetThreadLogContext(void) {
+	// Use cached value if available to avoid TLS overhead
+	if (g_tls_ctx_cache)
+		return g_tls_ctx_cache;
+
 	thread_log_context_t* pCtx = NULL;
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
 		pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
 		if (!pCtx) {
 			pCtx = (thread_log_context_t*)calloc(1, sizeof(thread_log_context_t));
-			TlsSetValue(g_bson_tls_index, pCtx);
+			if (pCtx) {
+				TlsSetValue(g_bson_tls_index, pCtx);
+				g_tls_ctx_cache = pCtx; // Cache for this thread
+			}
+		} else {
+			g_tls_ctx_cache = pCtx; // Cache for this thread
 		}
 	}
 	return pCtx;
 }
 
-#define g_bson (GetThreadLogContext()->g_bson)
-#define g_istr (GetThreadLogContext()->g_istr)
+// Safe accessor macros with NULL check
+// Note: These will return NULL if TLS allocation failed, callers must check
+#define g_bson (GetThreadLogContext() ? GetThreadLogContext()->g_bson : NULL)
+#define g_istr (GetThreadLogContext() ? GetThreadLogContext()->g_istr : NULL)
 
 void TlsThreadCleanup(void) {
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
@@ -80,6 +94,7 @@ void TlsThreadCleanup(void) {
 		if (pCtx) {
 			free(pCtx);
 			TlsSetValue(g_bson_tls_index, NULL);
+			g_tls_ctx_cache = NULL; // Clear cache
 		}
 	}
 }
@@ -588,7 +603,17 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	if (logtbl_explained[index] == 0) {
+	// Verify TLS context is available before proceeding
+	if (!GetThreadLogContext()) {
+		// TLS allocation failed - cannot log, exit gracefully
+		hook_enable();
+		set_lasterrors(&lasterror);
+		return;
+	}
+
+	// Use volatile to ensure proper memory ordering for logtbl_explained
+	// This fixes the race condition in double-checked locking
+	if (*(volatile char*)&logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
@@ -605,10 +630,14 @@ void loq(int index, const char *category, const char *name,
 			}
 
 			if (!acquired) {
-				goto skip_explain;
+				// Failed to acquire lock - skip explanation and return
+				hook_enable();
+				set_lasterrors(&lasterror);
+				return;
 			}
 		}
 
+		// Double-check inside the lock (proper double-checked locking pattern)
 		if (logtbl_explained[index] == 0) {
 			logtbl_explained[index] = 1;
 
@@ -751,8 +780,6 @@ void loq(int index, const char *category, const char *name,
 			va_end(args);
 		}
 		LeaveCriticalSection(&g_mutex);
-skip_explain:
-		;
 	}
 
 	fmt = fmtbak;
