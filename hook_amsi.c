@@ -9,6 +9,8 @@
 #define AMSIBUFFER 0x6a
 #define AMSISTREAM 0x6b
 
+__declspec(thread) BOOL t_amsi_active = FALSE;
+
 HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
 	_In_     PVOID        amsiContext,
 	_In_     PVOID        buffer,
@@ -17,7 +19,9 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
 	_In_opt_ PVOID        amsiSession,
 	_Out_    PVOID        result
 ) {
+	t_amsi_active = TRUE;
 	HRESULT ret = Old_AmsiScanBuffer(amsiContext, buffer, length, contentName, amsiSession, result);
+	t_amsi_active = FALSE;
 
 	LOQ_hresult("amsi", "up", "ContentName", contentName, "Length", length);
 
@@ -37,7 +41,9 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 	_In_opt_ PVOID        amsiSession,
 	_Out_    PVOID        result
 ) {
+	t_amsi_active = TRUE;
 	HRESULT ret = Old_AmsiScanString(amsiContext, string, contentName, amsiSession, result);
+	t_amsi_active = FALSE;
 
 	LOQ_hresult("amsi", "uu", "ContentName", contentName, "String", string);
 
