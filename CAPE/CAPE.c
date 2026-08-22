@@ -3719,8 +3719,13 @@ void CAPE_post_init()
 #ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Debugger initialised.\n");
 #endif
-		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name))
+		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name)) {
 			SetInitialBreakpoints(GetModuleHandle(NULL));
+			
+			// Dynamic Go symbol recovery & tracing (Inspired by GoReSym/ExtremeDumper concept)
+			extern void GoRecoverSymbols();
+			GoRecoverSymbols();
+		}
 	}
 #ifdef DEBUG_COMMENTS
 	else if (g_config.debugger)
