@@ -205,6 +205,15 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                 }
             }
         }
+        else if (strstr(funcName, "time.Sleep")) {
+            // Under Go's ABI, duration is passed as the first parameter (64-bit nanoseconds in RAX)
+            ULONG_PTR nanoseconds = GO_REG_ARG1(ExceptionInfo);
+            ULONG_PTR milliseconds = nanoseconds / 1000000;
+            
+            LOQ_string("go_trace", "ss", "Event", "Go Native Sleep Intercepted",
+                       "Duration (ms)", Formatter.FormatHex(milliseconds));
+            DebugOutput("Go Trace: Intercepted Go native sleep for %u ms.\n", milliseconds);
+        }
         else if (strstr(funcName, "crypto/tls.(*Conn).Write")) {
             // Under register calling convention: RAX points to byte array, RBX has the length
             ULONG_PTR pData = GO_REG_ARG1(ExceptionInfo);
@@ -517,7 +526,13 @@ void GoRecoverSymbols() {
                 strstr(funcName, "os.Create") ||            // File Creation
                 strstr(funcName, "os.Remove") ||            // File Deletion (Self-deletion)
                 strstr(funcName, "registry.Key") ||         // Registry Persistence
-                strstr(funcName, "windows/svc")) {          // Windows Service Persistence
+                strstr(funcName, "windows/svc") ||          // Windows Service Persistence
+                strstr(funcName, "os/user") ||              // Host Reconnaissance / Current User info
+                strstr(funcName, "os.UserHomeDir") ||       // Host Reconnaissance / Home Dir
+                strstr(funcName, "os.UserConfigDir") ||     // Host Reconnaissance / APPDATA Dir
+                strstr(funcName, "net.Lookup") ||           // Domain Resolution / DNS Exfiltration
+                strstr(funcName, "time.Sleep") ||           // Sandbox Time Evasion (Native Sleep-Skip!)
+                strstr(funcName, "yusufpapurcu/wmi")) {     // WMI Anti-VM / System Queries
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
                 
