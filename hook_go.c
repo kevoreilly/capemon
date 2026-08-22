@@ -118,7 +118,6 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             // Let's print out the raw registers for deep analysis
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR r_arg2 = GO_REG_ARG2(ExceptionInfo);
-            ULONG_PTR r_arg3 = GO_REG_ARG3(ExceptionInfo);
             
             LOQ_string("go_trace", "sss", "Event", "Go Cryptographic Operation Intercepted",
                        "Key/Data Register 1", Formatter.FormatHex(r_arg1),
@@ -170,6 +169,94 @@ static void GoSetFunctionHook(PVOID funcAddress, const char* funcName) {
     }
 }
 
+// Safely parses and recovers all embedded source file paths from the file table (Inspired by GoReSym)
+static void GoRecoverFilePaths(GoPCHeader* pHeader, PBYTE pclntab, DWORD ImageSize) {
+    if (!pHeader || !pclntab) return;
+
+    __try {
+        PBYTE pFiletab = pclntab + pHeader->filetabOffset;
+        DWORD nfiles = pHeader->nfiles;
+
+        if (nfiles > 0 && nfiles < 5000) {
+            PDWORD pOffsets = (PDWORD)pFiletab;
+            for (DWORD i = 0; i < nfiles; i++) {
+                if (!IsAddressAccessible(&pOffsets[i])) break;
+                DWORD off = pOffsets[i];
+                if (off > 0 && off < ImageSize) {
+                    const char* filePath = (const char*)(pclntab + off);
+                    if (IsAddressAccessible((PVOID)filePath) && strstr(filePath, ".go")) {
+                        LOQ_string("go_filepath", "s", "Path", filePath);
+                        DebugOutput("GoRecoverFilePaths: Recovered Go Source File Path: %s\n", filePath);
+                    }
+                }
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        DebugOutput("GoRecoverFilePaths: Exception occurred recovering Go file paths.\n");
+    }
+}
+
+// Dynamic parser to extract Compiler Version and Modinfo dependency logs from memory (Inspired by GoReSym)
+static void GoParseBuildInfo(PBYTE pStart, DWORD Size) {
+    const char magic[] = "\xff Go buildinf:";
+    PBYTE p = NULL;
+    __try {
+        for (PBYTE ptr = pStart; ptr < pStart + Size - 64; ptr++) {
+            if (memcmp(ptr, magic, 14) == 0) {
+                p = ptr;
+                break;
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return;
+    }
+
+    if (!p) return;
+
+    BYTE ptrSize = p[14];
+    BYTE endianness = p[15];
+
+    __try {
+        if (ptrSize == 8 && endianness == 0) { // Standard x64 little-endian PE
+            PVOID* pVersionPtr = (PVOID*)(p + 16);
+            PVOID* pModinfoPtr = (PVOID*)(p + 24);
+
+            if (IsAddressAccessible(pVersionPtr) && IsAddressAccessible(*pVersionPtr)) {
+                PVOID* pVerData = *(PVOID**)(pVersionPtr);
+                ULONG_PTR* pVerLen = (ULONG_PTR*)((PBYTE)(*pVersionPtr) + 8);
+                if (IsAddressAccessible(pVerLen) && IsAddressAccessible(pVerData)) {
+                    char versionBuf[128] = {0};
+                    DWORD len = (*pVerLen < 127) ? (DWORD)*pVerLen : 127;
+                    memcpy(versionBuf, *pVerData, len);
+                    LOQ_string("go_buildinfo", "s", "Version", versionBuf);
+                    DebugOutput("GoParseBuildInfo: Recovered Go Compiler Version: %s\n", versionBuf);
+                }
+            }
+
+            if (IsAddressAccessible(pModinfoPtr) && IsAddressAccessible(*pModinfoPtr)) {
+                PVOID* pModData = *(PVOID**)(pModinfoPtr);
+                ULONG_PTR* pModLen = (ULONG_PTR*)((PBYTE)(*pModinfoPtr) + 8);
+                if (IsAddressAccessible(pModLen) && IsAddressAccessible(pModData)) {
+                    DWORD len = (*pModLen < 4095) ? (DWORD)*pModLen : 4095;
+                    char* modBuf = (char*)calloc(len + 1, 1);
+                    if (modBuf) {
+                        memcpy(modBuf, *pModData, len);
+                        LOQ_string("go_buildinfo", "s", "Modinfo", modBuf);
+                        // Process the Modinfo string for clean debugging output
+                        DebugOutput("GoParseBuildInfo: Recovered Go Modinfo dependency tree successfully.\n");
+                        free(modBuf);
+                    }
+                }
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        DebugOutput("GoParseBuildInfo: Exception occurred parsing Go buildinfo.\n");
+    }
+}
+
 // Core Go symbol discovery and runtime instrumentation entry point
 void GoRecoverSymbols() {
     __try {
@@ -183,6 +270,9 @@ void GoRecoverSymbols() {
 
         DWORD ImageSize = pNt->OptionalHeader.SizeOfImage;
 
+        // Parse BuildInfo and recover dependency modules
+        GoParseBuildInfo((PBYTE)ImageBase, ImageSize);
+
         PBYTE pclntab = FindGoPclntab((PBYTE)ImageBase, ImageSize);
         if (!pclntab) {
             DebugOutput("GoRecoverSymbols: Dynamic Go symbol scanner finished. Not a Go binary (pclntab not found).\n");
@@ -191,6 +281,9 @@ void GoRecoverSymbols() {
 
         GoPCHeader* pHeader = (GoPCHeader*)pclntab;
         DebugOutput("GoRecoverSymbols: Recovering Go symbols in-memory from pclntab (Magic: 0x%x, Functions: %u)\n", pHeader->magic, pHeader->nfunc);
+
+        // Recover all source file paths from the Line Table
+        GoRecoverFilePaths(pHeader, pclntab, ImageSize);
 
         PBYTE pFunctab = pclntab + pHeader->functabOffset;
         ULONG_PTR textStartBase = pHeader->textStart;
