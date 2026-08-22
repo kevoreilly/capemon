@@ -492,7 +492,7 @@ void GoRecoverSymbols() {
 
             ULONG_PTR funcAddress = absoluteTextStart + pFunc->entryOff;
 
-            // Target critical functions with high malicious utility (Stealers, Droppers, Cryptography, Websockets, and Direct Syscalls)
+            // Target critical functions with high malicious utility (Stealers, Droppers, Cryptography, Websockets, Direct Syscalls, and OS operations)
             if (strstr(funcName, "crypto/aes") || 
                 strstr(funcName, "crypto/cipher") ||
                 strstr(funcName, "net/http") ||
@@ -503,7 +503,16 @@ void GoRecoverSymbols() {
                 strstr(funcName, "net/websocket") ||
                 strstr(funcName, "syscall.Syscall") ||
                 strstr(funcName, "crypto/tls.(*Conn).Write") ||
-                strstr(funcName, "crypto/tls.(*Conn).Read")) {
+                strstr(funcName, "crypto/tls.(*Conn).Read") ||
+                strstr(funcName, "os/exec") ||              // Process Spawning / Cmd Execution
+                strstr(funcName, "path/filepath.Walk") ||   // Directory/File Sweeping (Ransomware/Stealers)
+                strstr(funcName, "os.WriteFile") ||         // File Dropping/Writing
+                strstr(funcName, "ioutil.WriteFile") ||     // File Dropping/Writing (Legacy)
+                strstr(funcName, "os.OpenFile") ||          // Low-level File opening
+                strstr(funcName, "os.Create") ||            // File Creation
+                strstr(funcName, "os.Remove") ||            // File Deletion (Self-deletion)
+                strstr(funcName, "registry.Key") ||         // Registry Persistence
+                strstr(funcName, "windows/svc")) {          // Windows Service Persistence
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
                 
