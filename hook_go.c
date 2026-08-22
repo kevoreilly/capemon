@@ -56,10 +56,16 @@ typedef struct {
 GoHookedFunc g_go_hooked_funcs[128] = {0};
 int g_go_hooked_count = 0;
 
+// Thread-local variables to handle async-safe, re-entrant TLS unencrypted response capturing on return
+static __declspec(thread) PVOID t_go_read_buf = NULL;
+static __declspec(thread) PVOID t_go_return_hook_address = NULL;
+
 extern PVOID ImageBase;
+extern lookup_t SoftBPs;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL IsAddressAccessible(PVOID Address);
-extern BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+extern BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
+extern BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
 extern BOOL addr_in_our_dll_range(PVOID Address, ULONG_PTR Addr);
 
 // Detects PE files reliably even if the "MZ" header magic has been wiped/zeroed out
@@ -214,6 +220,24 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                 }
             }
         }
+        else if (strstr(funcName, "crypto/tls.(*Conn).Read")) {
+            ULONG_PTR pData = GO_REG_ARG1(ExceptionInfo);
+            ULONG_PTR length = GO_REG_ARG2(ExceptionInfo);
+            
+            if (pData != 0 && length > 0 && IsAddressAccessible((PVOID)pData)) {
+                // Stash the destination plaintext buffer pointer thread-locally
+                t_go_read_buf = (PVOID)pData;
+                
+                // Read the return address from top of stack
+                PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Rsp;
+                if (IsAddressAccessible(pReturnAddress) && *pReturnAddress != NULL) {
+                    t_go_return_hook_address = *pReturnAddress;
+                    
+                    // Arm a temporary software return breakpoint (0xCC)
+                    SetSoftwareBreakpoint(&SoftBPs, t_go_return_hook_address);
+                }
+            }
+        }
         else if (strstr(funcName, "crypto") || strstr(funcName, "Encrypt") || strstr(funcName, "Decrypt")) {
             // Under Go 1.17+ register-based calling convention, args are in RAX, RBX, RCX...
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
@@ -247,7 +271,51 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     return TRUE;
 }
 
-// Sets an active internal breakpoint hook on a recovered Go function address
+// Global dispatcher to route software breakpoint exceptions securely to hook_go.c
+BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo) {
+    // 1. Intercept temporary thread-local TLS Read return breakpoints
+    if (t_go_return_hook_address != NULL && Address == t_go_return_hook_address) {
+        __try {
+            // Under Go's ABI, the first return value "n" (bytes successfully decrypted/read) is in RAX
+            ULONG_PTR bytesRead = ExceptionInfo->ContextRecord->Rax;
+            
+            if (t_go_read_buf != NULL && bytesRead > 0 && bytesRead < 8192 && IsAddressAccessible(t_go_read_buf)) {
+                char* pBuf = (char*)calloc(bytesRead + 1, 1);
+                if (pBuf) {
+                    memcpy(pBuf, t_go_read_buf, bytesRead);
+                    LOQ_string("go_tls", "ss", "Direction", "Inbound", "Plaintext", pBuf);
+                    DebugOutput("Go TLS Inbound Plaintext Payload (%d bytes) Intercepted on Return:\n%s\n", bytesRead, pBuf);
+                    free(pBuf);
+                }
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            DebugOutput("Go Trace: Exception occurred resolving Go tls.Read return.\n");
+        }
+        
+        // Immediately disarm and cleanup the temporary return breakpoint
+        ClearSoftwareBreakpoint(&SoftBPs, t_go_return_hook_address);
+        t_go_return_hook_address = NULL;
+        t_go_read_buf = NULL;
+        return TRUE;
+    }
+
+    // 2. Intercept persistent function entry software breakpoints
+    for (int i = 0; i < g_go_hooked_count; i++) {
+        if (g_go_hooked_funcs[i].Address == Address) {
+            BREAKPOINTINFO bpInfo;
+            bpInfo.Address = Address;
+            bpInfo.Callback = GoBreakpointCallback;
+            bpInfo.ThreadId = GetCurrentThreadId();
+            
+            GoBreakpointCallback(&bpInfo, ExceptionInfo);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+// Sets an active internal software breakpoint hook (0xCC) on a recovered Go function address
 static void GoSetFunctionHook(PVOID funcAddress, const char* funcName) {
     if (g_go_hooked_count >= 128)
         return;
@@ -258,14 +326,13 @@ static void GoSetFunctionHook(PVOID funcAddress, const char* funcName) {
             return;
     }
 
-    unsigned int Register;
-    if (SetNextAvailableBreakpoint(GetCurrentThreadId(), (int*)&Register, 0, funcAddress, BP_EXEC, 0, GoBreakpointCallback)) {
+    if (SetSoftwareBreakpoint(&SoftBPs, funcAddress)) {
         g_go_hooked_funcs[g_go_hooked_count].Address = funcAddress;
         strncpy_s(g_go_hooked_funcs[g_go_hooked_count].Name, sizeof(g_go_hooked_funcs[g_go_hooked_count].Name), funcName, _TRUNCATE);
         g_go_hooked_count++;
-        DebugOutput("GoSetFunctionHook: Successfully hooked '%s' at 0x%p via debug breakpoint.\n", funcName, funcAddress);
+        DebugOutput("GoSetFunctionHook: Successfully hooked '%s' at 0x%p via software breakpoint (0xCC).\n", funcName, funcAddress);
     } else {
-        DebugOutput("GoSetFunctionHook: Failed to set breakpoint hook on '%s' at 0x%p.\n", funcName, funcAddress);
+        DebugOutput("GoSetFunctionHook: Failed to set software breakpoint hook on '%s' at 0x%p.\n", funcName, funcAddress);
     }
 }
 
@@ -435,7 +502,8 @@ void GoRecoverSymbols() {
                 strstr(funcName, "main.execute") ||
                 strstr(funcName, "net/websocket") ||
                 strstr(funcName, "syscall.Syscall") ||
-                strstr(funcName, "crypto/tls.(*Conn).Write")) {
+                strstr(funcName, "crypto/tls.(*Conn).Write") ||
+                strstr(funcName, "crypto/tls.(*Conn).Read")) {
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
                 

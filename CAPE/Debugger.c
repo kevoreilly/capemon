@@ -521,6 +521,10 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
+	// Execute custom Go breakpoint callback if it matches our list
+	extern BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo);
+	GoBreakpointHandler(Address, ExceptionInfo);
+
 	SoftwareBreakpointCallback(ExceptionInfo);
 
 	if (g_config.softbpmode)
