@@ -199,6 +199,21 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                 }
             }
         }
+        else if (strstr(funcName, "crypto/tls.(*Conn).Write")) {
+            // Under register calling convention: RAX points to byte array, RBX has the length
+            ULONG_PTR pData = GO_REG_ARG1(ExceptionInfo);
+            ULONG_PTR length = GO_REG_ARG2(ExceptionInfo);
+            
+            if (pData != 0 && length > 0 && length < 8192 && IsAddressAccessible((PVOID)pData)) {
+                char* pBuf = (char*)calloc(length + 1, 1);
+                if (pBuf) {
+                    memcpy(pBuf, (PVOID)pData, length);
+                    LOQ_string("go_tls", "ss", "Direction", "Outbound", "Plaintext", pBuf);
+                    DebugOutput("Go TLS Outbound Plaintext Payload (%d bytes) Intercepted:\n%s\n", length, pBuf);
+                    free(pBuf);
+                }
+            }
+        }
         else if (strstr(funcName, "crypto") || strstr(funcName, "Encrypt") || strstr(funcName, "Decrypt")) {
             // Under Go 1.17+ register-based calling convention, args are in RAX, RBX, RCX...
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
@@ -419,7 +434,8 @@ void GoRecoverSymbols() {
                 strstr(funcName, "main.inject") ||
                 strstr(funcName, "main.execute") ||
                 strstr(funcName, "net/websocket") ||
-                strstr(funcName, "syscall.Syscall")) {
+                strstr(funcName, "syscall.Syscall") ||
+                strstr(funcName, "crypto/tls.(*Conn).Write")) {
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
                 
