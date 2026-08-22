@@ -563,6 +563,9 @@ void GoRecoverSymbols() {
                 strstr(funcName, "go-ldap/ldap") ||         // Active Directory / LDAP Reconnaissance
                 strstr(funcName, "jcmturner/gokrb5") ||     // Kerberos Attacks / Ticket Manipulation (Kerberoasting)
                 strstr(funcName, "masterzen/winrm") ||      // WinRM Remote Command Execution (Lateral Movement)
+                strstr(funcName, "marcsauter/single") ||    // Go single-instance lock (Mutex Evasion)
+                strstr(funcName, "singleinstance") ||       // Go single-instance lock
+                strstr(funcName, "single_instance") ||      // Go single-instance lock
                 strstr(funcName, "hirochachacha/go-smb2")) { // SMB post-exploitation and lateral file manipulation
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
