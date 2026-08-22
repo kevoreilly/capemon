@@ -523,16 +523,26 @@ void GoRecoverSymbols() {
                 strstr(funcName, "crypto/cipher") ||
                 strstr(funcName, "crypto/rc4") ||           // RC4 Encryption (Common in loaders)
                 strstr(funcName, "chacha20") ||             // ChaCha20 Encryption (Common in ransomware)
+                strstr(funcName, "crypto/des") ||           // DES / Triple DES Encryption
+                strstr(funcName, "blowfish") ||             // Blowfish Encryption (Common in old configurations)
+                strstr(funcName, "cast5") ||                // Cast5 Encryption (Common in PGP and loaders)
                 strstr(funcName, "net/http") ||
                 strstr(funcName, "go-resty/resty") ||       // Resty third-party HTTP client (Extremely popular in stealers)
                 strstr(funcName, "valyala/fasthttp") ||     // FastHTTP third-party HTTP client (Common in bots/DDoS)
                 strstr(funcName, "imroc/req") ||            // Req third-party HTTP client
-                strstr(funcName, "main.decrypt") ||
-                strstr(funcName, "main.download") ||
+                strstr(funcName, "net/websocket") ||
+                strstr(funcName, "gorilla/websocket") ||    // Gorilla third-party WebSockets (Extremely common in Go C2 channels)
+                strstr(funcName, "nhooyr.io/websocket") ||  // Nhooyr third-party WebSockets
+                strstr(funcName, "net/smtp") ||             // SMTP Mail Protocol (Exfiltration in stealers/keyloggers)
+                strstr(funcName, "net/mail") ||             // POP3 / Mail Parsing
+                strstr(funcName, "net/textproto") ||        // Raw Text-based TCP Protocols (SMTP/POP3/IMAP/FTP)
+                strstr(funcName, "net.Dial") ||             // Low-level Sockets (TCP, UDP, IP)
+                strstr(funcName, "net.Listen") ||           // Port Listening (Go backdoors/listen ports)
+                strstr(funcName, "golang.org/x/net/proxy") || // Proxy connections (SOCKS4, SOCKS5, HTTP proxies)
+                strstr(funcName, "net/ip") ||               // Low-level IP Raw sockets / ICMP pings
+                strstr(funcName, "syscall.Syscall") ||
                 strstr(funcName, "main.inject") ||
                 strstr(funcName, "main.execute") ||
-                strstr(funcName, "net/websocket") ||
-                strstr(funcName, "syscall.Syscall") ||
                 strstr(funcName, "crypto/tls.(*Conn).Write") ||
                 strstr(funcName, "crypto/tls.(*Conn).Read") ||
                 strstr(funcName, "os/exec") ||              // Process Spawning / Cmd Execution
