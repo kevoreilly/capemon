@@ -189,6 +189,9 @@ hook_t full_hooks[] = {
 
 	// Script hooks
 	HOOK_SPECIAL(clrjit, compileMethod),
+	HOOK_SPECIAL(clr, nLoadImage),
+	HOOK_SPECIAL(mscorwks, nLoadImage),
+	HOOK_SPECIAL(coreclr, nLoadImage),
 	HOOK_SPECIAL(urlmon, IsValidURL),
 	HOOK_SPECIAL(jscript, COleScript_ParseScriptText),
 	HOOK_NOTAIL(jscript, JsEval, 5),
@@ -1079,6 +1082,9 @@ hook_t min_hooks[] = {
 	HOOK(kernel32, CreateRemoteThreadEx),
 
 	HOOK_SPECIAL(clrjit, compileMethod),
+	HOOK_SPECIAL(clr, nLoadImage),
+	HOOK_SPECIAL(mscorwks, nLoadImage),
+	HOOK_SPECIAL(coreclr, nLoadImage),
 	HOOK_SPECIAL(ole32, CoCreateInstance),
 	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
 	HOOK_SPECIAL(ole32, CoGetClassObject),

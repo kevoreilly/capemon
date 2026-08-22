@@ -851,7 +851,7 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	}
 
 
-	if (!FunctionAddress && ModuleBase == GetModuleHandle("clr"))
+	if (!FunctionAddress && (ModuleBase == GetModuleHandle("clr") || ModuleBase == GetModuleHandle("mscorwks") || ModuleBase == GetModuleHandle("coreclr")))
 		return GetCLRAddress(ModuleBase, FunctionName);
 
 	if (!FunctionAddress && ModuleBase == GetModuleHandle("clrjit"))

@@ -273,3 +273,41 @@ HOOKDEF(int, WINAPI, compileMethod,
 	}
 	return ret;
 }
+
+#ifdef _WIN64
+#define ARRAY_LENGTH_OFFSET 8
+#define ARRAY_DATA_OFFSET 16
+#else
+#define ARRAY_LENGTH_OFFSET 4
+#define ARRAY_DATA_OFFSET 8
+#endif
+
+HOOKDEF(PVOID, WINAPI, nLoadImage,
+	_In_     PVOID        pArrayObject,
+	_In_opt_ PVOID        pAppDomain,
+	_Inout_  PVOID*       pAssembly
+) {
+	if (pArrayObject != NULL && g_config.procdump) {
+		__try {
+			PDWORD pLength = (PDWORD)((PBYTE)pArrayObject + ARRAY_LENGTH_OFFSET);
+			PBYTE pRawData = (PBYTE)pArrayObject + ARRAY_DATA_OFFSET;
+
+			if (pLength && *pLength > 0 && IsAddressAccessible(pRawData)) {
+				DebugOutput("nLoadImage: Intercepted in-memory assembly byte array loading of size %u at 0x%p (Inspired by ExtremeDumper)\n", *pLength, pRawData);
+				
+				// Set metadata for reflective assembly load
+				CapeMetaData->ModulePath = NULL;
+				CapeMetaData->DumpType = 0;
+				CapeMetaData->TypeString = ".NET Reflective Load PE";
+				CapeMetaData->Address = pRawData;
+				
+				DumpMemoryRaw(pRawData, (SIZE_T)*pLength);
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			DebugOutput("nLoadImage: Exception occurred parsing managed U1Array.\n");
+		}
+	}
+
+	return Old_nLoadImage(pArrayObject, pAppDomain, pAssembly);
+}
