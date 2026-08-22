@@ -60,6 +60,7 @@ extern PVOID ImageBase;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL IsAddressAccessible(PVOID Address);
 extern BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
+extern BOOL addr_in_our_dll_range(PVOID Address, ULONG_PTR Addr);
 
 // Safely scan a memory section for a specific byte pattern
 static PBYTE ScanSectionForBytes(PBYTE pStart, DWORD Size, PBYTE pPattern, DWORD PatternSize) {
@@ -130,7 +131,36 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
 
     // Dynamic high-signal argument tracing based on Go Calling Conventions
     __try {
-        if (strstr(funcName, "crypto") || strstr(funcName, "Encrypt") || strstr(funcName, "Decrypt")) {
+        if (strstr(funcName, "syscall.Syscall")) {
+            ULONG_PTR trapAddress = GO_REG_ARG1(ExceptionInfo);
+            
+            // Check if this is a direct memory address jump (indicates in-memory shellcode execution)
+            if (trapAddress != 0 && IsAddressAccessible((PVOID)trapAddress)) {
+                if (!addr_in_our_dll_range(NULL, trapAddress)) {
+                    MEMORY_BASIC_INFORMATION mbi;
+                    if (VirtualQuery((PVOID)trapAddress, &mbi, sizeof(mbi)) != 0) {
+                        // Check if memory is privately allocated with execute permissions (definitive shellcode signature)
+                        if ((mbi.State == MEM_COMMIT) && 
+                            (mbi.Type == MEM_PRIVATE) && 
+                            (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE))) {
+                            
+                            DebugOutput("Go Trace: Detected direct in-memory shellcode execution at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
+                            LOQ_string("go_trace", "ss", "Event", "Go Direct Shellcode/Payload Execution Intercepted",
+                                       "Jump Address", Formatter.FormatHex(trapAddress));
+                            
+                            // Dump the raw in-memory shellcode payload cleanly
+                            CapeMetaData->ModulePath = NULL;
+                            CapeMetaData->DumpType = 0;
+                            CapeMetaData->TypeString = "Go In-Memory Shellcode Payload";
+                            CapeMetaData->Address = (PVOID)trapAddress;
+                            
+                            DumpMemoryRaw(mbi.AllocationBase, mbi.RegionSize);
+                        }
+                    }
+                }
+            }
+        }
+        else if (strstr(funcName, "crypto") || strstr(funcName, "Encrypt") || strstr(funcName, "Decrypt")) {
             // Under Go 1.17+ register-based calling convention, args are in RAX, RBX, RCX...
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR r_arg2 = GO_REG_ARG2(ExceptionInfo);
@@ -341,7 +371,7 @@ void GoRecoverSymbols() {
 
             ULONG_PTR funcAddress = absoluteTextStart + pFunc->entryOff;
 
-            // Target critical functions with high malicious utility (Stealers, Droppers, Cryptography, Websockets)
+            // Target critical functions with high malicious utility (Stealers, Droppers, Cryptography, Websockets, and Direct Syscalls)
             if (strstr(funcName, "crypto/aes") || 
                 strstr(funcName, "crypto/cipher") ||
                 strstr(funcName, "net/http") ||
@@ -349,7 +379,8 @@ void GoRecoverSymbols() {
                 strstr(funcName, "main.download") ||
                 strstr(funcName, "main.inject") ||
                 strstr(funcName, "main.execute") ||
-                strstr(funcName, "net/websocket")) {
+                strstr(funcName, "net/websocket") ||
+                strstr(funcName, "syscall.Syscall")) {
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
                 
