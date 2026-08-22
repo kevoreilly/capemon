@@ -406,9 +406,6 @@ fail:
 }
 
 static void HealDotNetPEHeaders(DWORD_PTR Buffer) {
-	dotnet_module_cache_t* pCache = FindCachedDotNetModule((ULONG_PTR)Buffer);
-	if (!pCache) return;
-
 	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)Buffer;
 	
 	// 1. Heal DOS Signature ("MZ" = 0x5A4D)
@@ -422,17 +419,48 @@ static void HealDotNetPEHeaders(DWORD_PTR Buffer) {
 	// 2. Heal NT Signature ("PE\0\0" = 0x00004550)
 	if (pNt->Signature != IMAGE_NT_SIGNATURE) {
 		pNt->Signature = IMAGE_NT_SIGNATURE;
+#ifdef _WIN64
 		pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64; // Set to standard 64-bit AMD64 machine target
-		pNt->FileHeader.NumberOfSections = 3; // Standard fallback section count
 		pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+#else
+		pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_I386;  // Set to standard 32-bit x86 machine target
+		pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR32_MAGIC;
+#endif
+		pNt->FileHeader.NumberOfSections = 3; // Standard fallback section count
 	}
 
 	// 3. Heal CLR COM Descriptor Directory (index 14)
 	PIMAGE_DATA_DIRECTORY pClrDir = &pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR];
 	if (pClrDir->VirtualAddress == 0 || pClrDir->Size == 0) {
-		pClrDir->VirtualAddress = pCache->MetadataRVA;
-		pClrDir->Size = pCache->MetadataSize;
-		DebugOutput("HealDotNetPEHeaders: Successfully healed zeroed CLR Data Directory to RVA 0x%x (Size 0x%x).\n", pCache->MetadataRVA, pCache->MetadataSize);
+		dotnet_module_cache_t* pCache = FindCachedDotNetModule((ULONG_PTR)Buffer);
+		DWORD metadataRVA = pCache ? pCache->MetadataRVA : 0;
+		DWORD metadataSize = pCache ? pCache->MetadataSize : 0;
+
+		// Fallback: If no cached metadata RVA exists, dynamically scan the buffer for the "BSJB" magic (0x424A5342)
+		if (metadataRVA == 0) {
+			__try {
+				PBYTE pStart = (PBYTE)Buffer;
+				// Limit scan to 2MB to keep it safe and fast
+				PBYTE pEnd = pStart + 0x200000;
+				for (PBYTE p = pStart + 0x200; p < pEnd - 4; p++) {
+					if (*(DWORD*)p == 0x424A5342) { // "BSJB"
+						metadataRVA = (DWORD)(p - pStart);
+						metadataSize = 0x10000; // Safe default fallback size (64KB)
+						DebugOutput("HealDotNetPEHeaders: Successfully found BSJB metadata magic in memory at offset 0x%x without cache.\n", metadataRVA);
+						break;
+					}
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				DebugOutput("HealDotNetPEHeaders: Exception occurred scanning for BSJB magic.\n");
+			}
+		}
+
+		if (metadataRVA != 0) {
+			pClrDir->VirtualAddress = metadataRVA;
+			pClrDir->Size = metadataSize;
+			DebugOutput("HealDotNetPEHeaders: Successfully healed zeroed CLR Data Directory to RVA 0x%x (Size 0x%x).\n", metadataRVA, metadataSize);
+		}
 	}
 }
 
