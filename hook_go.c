@@ -62,6 +62,37 @@ extern BOOL IsAddressAccessible(PVOID Address);
 extern BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 extern BOOL addr_in_our_dll_range(PVOID Address, ULONG_PTR Addr);
 
+// Detects PE files reliably even if the "MZ" header magic has been wiped/zeroed out
+static BOOL IsPEFile(PVOID pBase) {
+    if (!pBase || !IsAddressAccessible(pBase))
+        return FALSE;
+
+    __try {
+        // 1. Standard DOS MZ Magic Check
+        if (*(PWORD)pBase == 0x5A4D) { // "MZ"
+            return TRUE;
+        }
+
+        // 2. Wiped-MZ Check: Scan first 1024 bytes (256 DWORDS) of the allocation base for "PE\0\0" (0x00004550)
+        // Many reflective loaders and packers only zero out the first 64 bytes (the DOS header) to bypass 
+        // simplistic memory scanners. The NT header PE signature (located at offset 0x80 - 0x200) stays fully intact.
+        PDWORD pBuf = (PDWORD)pBase;
+        for (DWORD i = 0; i < 256; i++) {
+            if (IsAddressAccessible(&pBuf[i])) {
+                if (pBuf[i] == 0x00004550) { // "PE\0\0"
+                    return TRUE;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return FALSE;
+    }
+    return FALSE;
+}
+
 // Safely scan a memory section for a specific byte pattern
 static PBYTE ScanSectionForBytes(PBYTE pStart, DWORD Size, PBYTE pPattern, DWORD PatternSize) {
     if (Size < PatternSize) return NULL;
@@ -144,9 +175,9 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                             (mbi.Type == MEM_PRIVATE) && 
                             (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE))) {
                             
-                            // Check if the allocation base contains a PE file (MZ magic = 0x5A4D)
-                            if (IsAddressAccessible(mbi.AllocationBase) && *(PWORD)mbi.AllocationBase == 0x5A4D) {
-                                DebugOutput("Go Trace: Detected direct in-memory PE execution (MZ/PE) at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
+                            // Check if the allocation base contains a PE file (MZ magic or PE signature)
+                            if (IsPEFile(mbi.AllocationBase)) {
+                                DebugOutput("Go Trace: Detected direct in-memory PE execution (MZ or PE signature found) at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
                                 LOQ_string("go_trace", "ss", "Event", "Go Reflective PE Payload Execution Intercepted",
                                            "Jump Address", Formatter.FormatHex(trapAddress));
                                 CapeMetaData->TypeString = "Go Reflective PE Payload";
