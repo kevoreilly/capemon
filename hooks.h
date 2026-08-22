@@ -1894,6 +1894,19 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__inout_opt  LPOVERLAPPED lpOverlapped
 );
 
+HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_In_  DWORD FirmwareTableID,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
+HOOKDEF(UINT, WINAPI, EnumSystemFirmwareTables,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
 	IN HANDLE			   TimerHandle,
 	IN PLARGE_INTEGER	   DueTime,
@@ -4209,6 +4222,12 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_In_  PCSTR Filename,
 	_Out_ PDWORD HeaderSum,
 	_Out_ PDWORD CheckSum
+);
+
+HOOKDEF(PVOID, WINAPI, nLoadImage,
+	_In_     PVOID        pArrayObject,
+	_In_opt_ PVOID        pAppDomain,
+	_Inout_  PVOID*       pAssembly
 );
 
 #include "hook_vbscript.h"
