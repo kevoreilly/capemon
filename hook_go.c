@@ -213,6 +213,23 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             LOQ_string("go_trace", "ss", "Event", "Go Native Sleep Intercepted",
                        "Duration (ms)", Formatter.FormatHex(milliseconds));
             DebugOutput("Go Trace: Intercepted Go native sleep for %u ms.\n", milliseconds);
+
+            // Dynamic Sleep-Skip implementation for Go binaries!
+            // If sleep skipping is active and the sleep duration is > 1000ms, clamp it down to 10ms!
+            if (g_config.force_sleepskip != 0 && milliseconds >= 1000) {
+#ifdef _WIN64
+                ExceptionInfo->ContextRecord->Rax = 10000000; // Overwrite RAX with 10ms (10,000,000 nanoseconds)
+#else
+                // For x86 stack-based ABI, overwrite stack argument
+                PULONG_PTR pStack = (PULONG_PTR)ExceptionInfo->ContextRecord->Esp;
+                if (IsAddressAccessible(&pStack[1])) {
+                    pStack[1] = 10000000; // Overwrite 64-bit lower DWORD
+                    if (IsAddressAccessible(&pStack[2])) pStack[2] = 0; // Overwrite 64-bit upper DWORD
+                }
+#endif
+                DebugOutput("Go Trace: Dynamic Sleep-Skip executed! Clamped Go native sleep to 10 ms.\n");
+                LOQ_string("go_trace", "s", "Event", "Go Native Sleep-Skip Executed (Clamped to 10ms)");
+            }
         }
         else if (strstr(funcName, "crypto/tls.(*Conn).Write")) {
             // Under register calling convention: RAX points to byte array, RBX has the length
@@ -261,7 +278,7 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                 LogGoString("Crypto Payload", (PVOID)r_arg1, r_arg2);
             }
         }
-        else if (strstr(funcName, "net/http")) {
+        else if (strstr(funcName, "net/http") || strstr(funcName, "go-resty/resty") || strstr(funcName, "imroc/req") || strstr(funcName, "valyala/fasthttp")) {
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR r_arg2 = GO_REG_ARG2(ExceptionInfo);
             
