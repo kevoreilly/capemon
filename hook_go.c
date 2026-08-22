@@ -549,7 +549,11 @@ void GoRecoverSymbols() {
                 strstr(funcName, "os.UserConfigDir") ||     // Host Reconnaissance / APPDATA Dir
                 strstr(funcName, "net.Lookup") ||           // Domain Resolution / DNS Exfiltration
                 strstr(funcName, "time.Sleep") ||           // Sandbox Time Evasion (Native Sleep-Skip!)
-                strstr(funcName, "yusufpapurcu/wmi")) {     // WMI Anti-VM / System Queries
+                strstr(funcName, "yusufpapurcu/wmi") ||     // WMI Anti-VM / System Queries
+                strstr(funcName, "go-ldap/ldap") ||         // Active Directory / LDAP Reconnaissance
+                strstr(funcName, "jcmturner/gokrb5") ||     // Kerberos Attacks / Ticket Manipulation (Kerberoasting)
+                strstr(funcName, "masterzen/winrm") ||      // WinRM Remote Command Execution (Lateral Movement)
+                strstr(funcName, "hirochachacha/go-smb2")) { // SMB post-exploitation and lateral file manipulation
                 
                 DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", funcName, (PVOID)funcAddress);
                 
