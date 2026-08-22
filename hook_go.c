@@ -495,7 +495,12 @@ void GoRecoverSymbols() {
             // Target critical functions with high malicious utility (Stealers, Droppers, Cryptography, Websockets, Direct Syscalls, and OS operations)
             if (strstr(funcName, "crypto/aes") || 
                 strstr(funcName, "crypto/cipher") ||
+                strstr(funcName, "crypto/rc4") ||           // RC4 Encryption (Common in loaders)
+                strstr(funcName, "chacha20") ||             // ChaCha20 Encryption (Common in ransomware)
                 strstr(funcName, "net/http") ||
+                strstr(funcName, "go-resty/resty") ||       // Resty third-party HTTP client (Extremely popular in stealers)
+                strstr(funcName, "valyala/fasthttp") ||     // FastHTTP third-party HTTP client (Common in bots/DDoS)
+                strstr(funcName, "imroc/req") ||            // Req third-party HTTP client
                 strstr(funcName, "main.decrypt") ||
                 strstr(funcName, "main.download") ||
                 strstr(funcName, "main.inject") ||
