@@ -1,10 +1,18 @@
-#include <windows.h>
 #include <stdio.h>
+#include "ntapi.h"
 #include "log.h"
 #include "misc.h"
 #include "config.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
+
+#define LOQ_string(cat, fmt, ...) \
+do { \
+    static volatile LONG _index; \
+    if (_index == 0) \
+        InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
+    loq(_index, cat, "GoBreakpoint", TRUE, 0, fmt, ##__VA_ARGS__); \
+} while (0)
 
 #ifdef _WIN64
 #define GO_REG_ARG1(ExceptionInfo) (ExceptionInfo->ContextRecord->Rax)
@@ -184,13 +192,13 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                             // Check if the allocation base contains a PE file (MZ magic or PE signature)
                             if (IsPEFile(mbi.AllocationBase)) {
                                 DebugOutput("Go Trace: Detected direct in-memory PE execution (MZ or PE signature found) at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
-                                LOQ_string("go_trace", "ss", "Event", "Go Reflective PE Payload Execution Intercepted",
-                                           "Jump Address", Formatter.FormatHex(trapAddress));
+                                LOQ_string("go_trace", "sp", "Event", "Go Reflective PE Payload Execution Intercepted",
+                                           "Jump Address", (PVOID)trapAddress);
                                 CapeMetaData->TypeString = "Go Reflective PE Payload";
                             } else {
                                 DebugOutput("Go Trace: Detected direct in-memory shellcode execution at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
-                                LOQ_string("go_trace", "ss", "Event", "Go Direct Shellcode/Payload Execution Intercepted",
-                                           "Jump Address", Formatter.FormatHex(trapAddress));
+                                LOQ_string("go_trace", "sp", "Event", "Go Direct Shellcode/Payload Execution Intercepted",
+                                           "Jump Address", (PVOID)trapAddress);
                                 CapeMetaData->TypeString = "Go In-Memory Shellcode Payload";
                             }
 
@@ -210,8 +218,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             ULONG_PTR nanoseconds = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR milliseconds = nanoseconds / 1000000;
             
-            LOQ_string("go_trace", "ss", "Event", "Go Native Sleep Intercepted",
-                       "Duration (ms)", Formatter.FormatHex(milliseconds));
+            LOQ_string("go_trace", "si", "Event", "Go Native Sleep Intercepted",
+                       "Duration (ms)", (int)milliseconds);
             DebugOutput("Go Trace: Intercepted Go native sleep for %u ms.\n", milliseconds);
 
             // Dynamic Sleep-Skip implementation for Go binaries!
@@ -255,7 +263,11 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                 t_go_read_buf = (PVOID)pData;
                 
                 // Read the return address from top of stack
+#ifdef _WIN64
                 PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Rsp;
+#else
+                PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Esp;
+#endif
                 if (IsAddressAccessible(pReturnAddress) && *pReturnAddress != NULL) {
                     t_go_return_hook_address = *pReturnAddress;
                     
@@ -269,9 +281,9 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR r_arg2 = GO_REG_ARG2(ExceptionInfo);
             
-            LOQ_string("go_trace", "sss", "Event", "Go Cryptographic Operation Intercepted",
-                       "Key/Data Register 1", Formatter.FormatHex(r_arg1),
-                       "Length Register 2", Formatter.FormatHex(r_arg2));
+            LOQ_string("go_trace", "spp", "Event", "Go Cryptographic Operation Intercepted",
+                       "Key/Data Register 1", (PVOID)r_arg1,
+                       "Length Register 2", (PVOID)r_arg2);
             
             // Go string heuristic: check if arg1 is a valid pointer and arg2 is a logical string length
             if (r_arg2 > 0 && r_arg2 < 512 && IsAddressAccessible((PVOID)r_arg1)) {
@@ -282,8 +294,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             ULONG_PTR r_arg1 = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR r_arg2 = GO_REG_ARG2(ExceptionInfo);
             
-            LOQ_string("go_trace", "ss", "Event", "Go HTTP Networking Intercepted",
-                       "URL String Pointer", Formatter.FormatHex(r_arg1));
+            LOQ_string("go_trace", "sp", "Event", "Go HTTP Networking Intercepted",
+                       "URL String Pointer", (PVOID)r_arg1);
             
             if (r_arg2 > 0 && r_arg2 < 512 && IsAddressAccessible((PVOID)r_arg1)) {
                 LogGoString("HTTP URL", (PVOID)r_arg1, r_arg2);
@@ -302,8 +314,12 @@ BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInf
     // 1. Intercept temporary thread-local TLS Read return breakpoints
     if (t_go_return_hook_address != NULL && Address == t_go_return_hook_address) {
         __try {
-            // Under Go's ABI, the first return value "n" (bytes successfully decrypted/read) is in RAX
+            // Under Go's ABI, the first return value "n" (bytes successfully decrypted/read) is in RAX/EAX
+#ifdef _WIN64
             ULONG_PTR bytesRead = ExceptionInfo->ContextRecord->Rax;
+#else
+            ULONG_PTR bytesRead = ExceptionInfo->ContextRecord->Eax;
+#endif
             
             if (t_go_read_buf != NULL && bytesRead > 0 && bytesRead < 8192 && IsAddressAccessible(t_go_read_buf)) {
                 char* pBuf = (char*)calloc(bytesRead + 1, 1);
@@ -332,7 +348,6 @@ BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInf
             BREAKPOINTINFO bpInfo;
             bpInfo.Address = Address;
             bpInfo.Callback = GoBreakpointCallback;
-            bpInfo.ThreadId = GetCurrentThreadId();
             
             GoBreakpointCallback(&bpInfo, ExceptionInfo);
             return TRUE;
