@@ -1458,6 +1458,10 @@ void parse_config_line(char* line)
 			if (g_config.hook_watch)
 				DebugOutput("Config: Hook watch enabled.\n");
 		}
+		else if (!stricmp(key, "sleep-skip-seconds")) {
+			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);
+		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
 			if (!pid && !stricmp(value, "explorer"))
@@ -1505,6 +1509,7 @@ void read_config(void)
 	g_config.loaderlock_scans = 1;
 	g_config.spoofed_cpu_count = SPOOFED_CPU_CORE_NUM;
 	g_config.syscall = 1;
+	g_config.sleep_skip_seconds = 10;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 

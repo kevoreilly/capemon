@@ -259,7 +259,7 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddress,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
 		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
-	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
+	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && FunctionName->Buffer != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
 		!strncmp(FunctionName->Buffer, "DllMain", 7) && wcsicmp(our_process_path_w, g_config.file_of_interest)) {
 		log_flush();
 		ExitThread(0);
@@ -300,7 +300,7 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
 		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
 
-	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
+	if (hook_info()->main_caller_retaddr && g_config.first_process && FunctionName != NULL && FunctionName->Buffer != NULL && (ret == 0xc000007a || ret == 0xc0000139) && FunctionName->Length == 7 &&
 		!strncmp(FunctionName->Buffer, "DllMain", 7) && wcsicmp(our_process_path_w, g_config.file_of_interest)) {
 		log_flush();
 		ExitThread(0);
@@ -2113,5 +2113,83 @@ HOOKDEF(HANDLE, WINAPI, SetClipboardData,
 	if (ret == NULL)
 		return ret;
 	LOQ_handle("misc", "i", "Format", uFormat);
+	return ret;
+}
+
+static void OverwriteMemoryPattern(PBYTE buf, DWORD size, const char* pPattern, const char* pReplace) {
+	if (!buf || size == 0 || !pPattern || !pReplace) return;
+	size_t patLen = strlen(pPattern);
+	size_t repLen = strlen(pReplace);
+	if (patLen != repLen || patLen == 0) return;
+
+	for (DWORD i = 0; i <= size - patLen; i++) {
+		if (memcmp(&buf[i], pPattern, patLen) == 0) {
+			memcpy(&buf[i], pReplace, patLen);
+		}
+	}
+}
+
+HOOKDEF(UINT, WINAPI, EnumSystemFirmwareTables,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+) {
+	UINT ret = Old_EnumSystemFirmwareTables(FirmwareTableProviderSignature, FirmwareTableBuffer, BufferSize);
+	LOQ_void("misc", "");
+
+	// Filter out WAET (Windows ACPI Emulated devices Table) from ACPI signatures list
+	if (ret > 0 && FirmwareTableProviderSignature == 0x41435049 && FirmwareTableBuffer && BufferSize >= ret) {
+		PDWORD pSigs = (PDWORD)FirmwareTableBuffer;
+		UINT count = ret / sizeof(DWORD);
+		UINT write_idx = 0;
+		for (UINT i = 0; i < count; i++) {
+			if (pSigs[i] == 0x54454157) { // 'WAET' in little-endian representation
+				continue; // Skip WAET signature completely
+			}
+			pSigs[write_idx++] = pSigs[i];
+		}
+		ret = write_idx * sizeof(DWORD);
+	}
+	return ret;
+}
+
+HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_In_  DWORD FirmwareTableID,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+) {
+	// If queried for WAET, return 0 (table not found)
+	if (FirmwareTableProviderSignature == 0x41435049 && FirmwareTableID == 0x54454157) {
+		return 0;
+	}
+
+	UINT ret = Old_GetSystemFirmwareTable(FirmwareTableProviderSignature, FirmwareTableID, FirmwareTableBuffer, BufferSize);
+	LOQ_void("misc", "");
+
+	if (ret > 0 && FirmwareTableBuffer && BufferSize >= ret) {
+		PBYTE buf = (PBYTE)FirmwareTableBuffer;
+		if (FirmwareTableProviderSignature == 0x41435049) { // ACPI
+			OverwriteMemoryPattern(buf, ret, "VBOX__", "INTEL_");
+			OverwriteMemoryPattern(buf, ret, "VMWARE", "INTEL_");
+			OverwriteMemoryPattern(buf, ret, "QEMU__", "INTEL_");
+			OverwriteMemoryPattern(buf, ret, "BOCHS_", "INTEL_");
+			OverwriteMemoryPattern(buf, ret, "vbox__", "intel_");
+			OverwriteMemoryPattern(buf, ret, "vmware", "intel_");
+			OverwriteMemoryPattern(buf, ret, "qemu__", "intel_");
+			OverwriteMemoryPattern(buf, ret, "bochs_", "intel_");
+		}
+		else if (FirmwareTableProviderSignature == 0x52534D42) { // RSMB (Raw SMBIOS)
+			OverwriteMemoryPattern(buf, ret, "VMware", "Intel ");
+			OverwriteMemoryPattern(buf, ret, "VirtualBox", "Intel Corp");
+			OverwriteMemoryPattern(buf, ret, "Hyper-V", "Samsung");
+			OverwriteMemoryPattern(buf, ret, "QEMU", "ASUS");
+			OverwriteMemoryPattern(buf, ret, "Bochs", "Intel");
+			OverwriteMemoryPattern(buf, ret, "vbox", "asus");
+			OverwriteMemoryPattern(buf, ret, "vmware", "intel ");
+			OverwriteMemoryPattern(buf, ret, "qemu", "asus");
+			OverwriteMemoryPattern(buf, ret, "bochs", "intel");
+		}
+	}
 	return ret;
 }
