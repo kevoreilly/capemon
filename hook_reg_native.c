@@ -54,9 +54,9 @@ static BOOLEAN IsVirtualHardwareKey(PWSTR wszName, ULONG nameLenBytes) {
 	wcsncpy_s(localBuf, 256, wszName, toCopy);
 	localBuf[toCopy] = L'\0';
 
-	if (_wcsicmp(localBuf, L"VEN_1B36") == 0 ||
-		_wcsicmp(localBuf, L"VEN_1AF4") == 0 ||
-		wcsstr(localBuf, L"VEN_1B36") != NULL ||
+	_wcsupr_s(localBuf, 256);
+
+	if (wcsstr(localBuf, L"VEN_1B36") != NULL ||
 		wcsstr(localBuf, L"VEN_1AF4") != NULL ||
 		wcsstr(localBuf, L"VBOX") != NULL ||
 		wcsstr(localBuf, L"VMWARE") != NULL ||
