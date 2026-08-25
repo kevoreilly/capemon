@@ -214,37 +214,45 @@ void protobuf_destroy(protobuf_context_t* ctx) {
 }
 
 // Strategy Pattern Implementation
-__declspec(thread) static protobuf_context_t g_pb_ctx[1];
+extern protobuf_context_t* get_thread_pb_ctx(void);
 
 static void pb_serializer_init(void) {
-    protobuf_init(g_pb_ctx, HookEvent_regular_call_tag);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_init(ctx, HookEvent_regular_call_tag);
 }
 
 static void pb_serializer_append_int(const char *name, int32_t val) {
-    protobuf_append_int(g_pb_ctx, name, val);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_append_int(ctx, name, val);
 }
 
 static void pb_serializer_append_long(const char *name, int64_t val) {
-    protobuf_append_long(g_pb_ctx, name, val);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_append_long(ctx, name, val);
 }
 
 static void pb_serializer_append_string(const char *name, const char *val) {
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (!ctx) return;
     if (strcmp(name, "type") == 0 || strcmp(name, "category") == 0) {
-        g_pb_ctx->event.which_message_type = HookEvent_str_tag;
+        ctx->event.which_message_type = HookEvent_str_tag;
     }
-    protobuf_append_string(g_pb_ctx, name, val);
+    protobuf_append_string(ctx, name, val);
 }
 
 static void pb_serializer_append_wstring(const char *name, const wchar_t *val) {
-    protobuf_append_wstring(g_pb_ctx, name, val);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_append_wstring(ctx, name, val);
 }
 
 static void pb_serializer_append_binary(const char *name, const void *buf, size_t len) {
-    protobuf_append_binary(g_pb_ctx, name, buf, len);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_append_binary(ctx, name, buf, len);
 }
 
 static void pb_serializer_finish(void) {
-    protobuf_finish(g_pb_ctx);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_finish(ctx);
 }
 
 static void pb_serializer_append_start_array(const char *name) {
@@ -256,15 +264,18 @@ static void pb_serializer_append_finish_array(void) {
 }
 
 static const uint8_t* pb_serializer_get_data(void) {
-    return protobuf_data(g_pb_ctx);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    return ctx ? protobuf_data(ctx) : NULL;
 }
 
 static size_t pb_serializer_get_size(void) {
-    return protobuf_size(g_pb_ctx);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    return ctx ? protobuf_size(ctx) : 0;
 }
 
 static void pb_serializer_destroy(void) {
-    protobuf_destroy(g_pb_ctx);
+    protobuf_context_t* ctx = get_thread_pb_ctx();
+    if (ctx) protobuf_destroy(ctx);
 }
 
 log_serializer_t g_protobuf_serializer = {

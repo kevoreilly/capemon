@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.h"
 #include "bson.h"
 #include "log_serializer.h"
+#include "protobuf_wrapper.h"
 #include "pipe.h"
 #include "config.h"
 
@@ -58,10 +59,10 @@ typedef struct {
 	bson g_bson[1];
 	char g_istr[4];
 	log_serializer_t *active_serializer;  // Strategy pattern: BSON or Protobuf
+	protobuf_context_t g_pb_ctx[1];
 } thread_log_context_t;
 
 DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
-DWORD g_protobuf_tls_index = TLS_OUT_OF_INDEXES;
 
 log_serializer_t *g_default_serializer = &g_bson_serializer;
 
@@ -90,6 +91,11 @@ static thread_log_context_t* GetThreadLogContext(void) {
 	return pCtx;
 }
 
+protobuf_context_t* get_thread_pb_ctx(void) {
+	thread_log_context_t* pCtx = GetThreadLogContext();
+	return pCtx ? pCtx->g_pb_ctx : NULL;
+}
+
 // Safe accessor macros with NULL check
 // Note: These will return NULL if TLS allocation failed, callers must check
 #define g_bson (GetThreadLogContext() ? GetThreadLogContext()->g_bson : NULL)
@@ -103,13 +109,6 @@ void TlsThreadCleanup(void) {
 			free(pCtx);
 			TlsSetValue(g_bson_tls_index, NULL);
 			g_tls_ctx_cache = NULL; // Clear cache
-		}
-	}
-	if (g_protobuf_tls_index != TLS_OUT_OF_INDEXES) {
-		PVOID pCtx = TlsGetValue(g_protobuf_tls_index);
-		if (pCtx) {
-			free(pCtx);
-			TlsSetValue(g_protobuf_tls_index, NULL);
 		}
 	}
 }
