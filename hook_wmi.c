@@ -10,7 +10,9 @@ typedef struct {
 	int last_seen_disk_query;
 	int last_seen_physicalmemory;
 	int last_seen_fake_class;
+	BOOL hook_via_wbemlocator;
 } wmi_thread_context_t;
+
 
 extern DWORD g_wmi_tracker_tls_index;
 
@@ -41,6 +43,8 @@ static wmi_thread_context_t* GetWmiThreadContext(void) {
 #define g_last_seen_disk_query (GetWmiThreadContext()->last_seen_disk_query)
 #define g_last_seen_physicalmemory (GetWmiThreadContext()->last_seen_physicalmemory)
 #define g_last_seen_fake_class (GetWmiThreadContext()->last_seen_fake_class)
+#define bHookViaWbemLocator (GetWmiThreadContext()->hook_via_wbemlocator)
+#define SetHookViaWbemLocator(val) (GetWmiThreadContext()->hook_via_wbemlocator = (val))
 
 void TlsWmiThreadCleanup(void) {
 	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
