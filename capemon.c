@@ -679,7 +679,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		//init_watchdog();
 
 #ifndef _WIN64
-		if (!g_config.no_stealth) {
+		if (!g_config.bypass_antivm) {
 			/* for people too lazy to setup VMs properly */
 			PEB *peb = get_peb();
 			if (peb->NumberOfProcessors == 1)

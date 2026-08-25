@@ -321,7 +321,7 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 		"InBuffer", nInBufferSize, lpInBuffer,
 		"OutBuffer", *lpBytesReturned, lpOutBuffer);
 
-	if (!g_config.no_stealth && ret && lpOutBuffer)
+	if (!g_config.bypass_antivm && ret && lpOutBuffer)
 		perform_device_fakery(lpOutBuffer, *lpBytesReturned, dwIoControlCode);
 
 	return ret;
@@ -572,7 +572,7 @@ HOOKDEF(int, WINAPI, GetSystemMetrics,
 ) {
 	int ret = Old_GetSystemMetrics(nIndex);
 
-	if (!g_config.no_stealth) {
+	if (!g_config.bypass_antivm) {
 		if (nIndex == SM_CXSCREEN || nIndex == SM_CXVIRTUALSCREEN)
 			ret = 1920;
 		else if (nIndex == SM_CYSCREEN || nIndex == SM_CYVIRTUALSCREEN)
@@ -691,7 +691,7 @@ HOOKDEF(BOOL, WINAPI, GetComputerNameExW,
 	if (nSize && *nSize)
 		bufsize = *nSize;
 	BOOL ret = Old_GetComputerNameExW(NameType, lpBuffer, nSize);
-	if (!g_config.no_stealth && ret && nSize && !*nSize && NameType >= 0 && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
+	if (!g_config.bypass_antivm && ret && nSize && !*nSize && NameType >= 0 && NameType < ComputerNameMax && wcslen(ComputerNames[NameType]) < bufsize) {
 		bufsize = (DWORD)wcslen(ComputerNames[NameType]);
 		wcsncpy(lpBuffer, ComputerNames[NameType], bufsize + 1);
 		*nSize = bufsize;
@@ -801,7 +801,7 @@ HOOKDEF(void, WINAPI, GetSystemInfo,
 
 	Old_GetSystemInfo(lpSystemInfo);
 
-	if (!g_config.no_stealth && lpSystemInfo->dwNumberOfProcessors < g_config.spoofed_cpu_count)
+	if (!g_config.bypass_antivm && lpSystemInfo->dwNumberOfProcessors < g_config.spoofed_cpu_count)
 		lpSystemInfo->dwNumberOfProcessors = g_config.spoofed_cpu_count;
 
 	LOQ_void("misc", "");
@@ -853,7 +853,7 @@ normal_call:
 		ret = Old_NtQuerySystemInformation(SystemInformationClass, SystemInformation, SystemInformationLength, ReturnLength);
 		LOQ_ntstatus("misc", "i", "SystemInformationClass", SystemInformationClass);
 
-		if (!g_config.no_stealth && SystemInformationClass == SystemHypervisorDetailInformation) {
+		if (!g_config.bypass_antivm && SystemInformationClass == SystemHypervisorDetailInformation) {
 			if (SystemInformation && SystemInformationLength > 0) {
 				memset(SystemInformation, 0, SystemInformationLength);
 			}
@@ -863,19 +863,19 @@ normal_call:
 			return 0xC0000003L; // STATUS_INVALID_INFO_CLASS
 		}
 
-		if (!g_config.no_stealth && SystemInformationClass == SystemBasicInformation && SystemInformationLength >= sizeof(SYSTEM_BASIC_INFORMATION) && NT_SUCCESS(ret)) {
+		if (!g_config.bypass_antivm && SystemInformationClass == SystemBasicInformation && SystemInformationLength >= sizeof(SYSTEM_BASIC_INFORMATION) && NT_SUCCESS(ret)) {
 			PSYSTEM_BASIC_INFORMATION p = (PSYSTEM_BASIC_INFORMATION)SystemInformation;
 			p->NumberOfProcessors = g_config.spoofed_cpu_count;
 		}
 
 		/* This is nearly arbitrary and simply designed to test whether the Upatre author(s) or others
 		are reading this code */
-		if (!g_config.no_stealth && SystemInformationClass == SystemProcessorPerformanceInformation &&
+		if (!g_config.bypass_antivm && SystemInformationClass == SystemProcessorPerformanceInformation &&
 			NT_SUCCESS(ret) && SystemInformationLength >= (sizeof(LARGE_INTEGER) * 3)) {
 			PSYSTEM_PROCESSOR_PERFORMANCE_INFORMATION perf_info = (PSYSTEM_PROCESSOR_PERFORMANCE_INFORMATION)SystemInformation;
 			perf_info->IdleTime.HighPart |= 2;
 		}
-		else if (!g_config.no_stealth && SystemInformationClass == SystemPerformanceInformation &&
+		else if (!g_config.bypass_antivm && SystemInformationClass == SystemPerformanceInformation &&
 			NT_SUCCESS(ret) && SystemInformationLength >= sizeof(LARGE_INTEGER)) {
 			PLARGE_INTEGER perf_info = (PLARGE_INTEGER)SystemInformation;
 			perf_info->HighPart |= 2;
@@ -1029,7 +1029,7 @@ HOOKDEF(BOOL, WINAPI, SetupDiGetDeviceRegistryPropertyA,
 
 	ret = Old_SetupDiGetDeviceRegistryPropertyA(DeviceInfoSet, DeviceInfoData, Property, PropertyRegDataType, PropertyBuffer, PropertyBufferSize, RequiredSize);
 
-	if (!g_config.no_stealth && ret && PropertyBuffer) {
+	if (!g_config.bypass_antivm && ret && PropertyBuffer) {
 		replace_ci_string_in_buf(PropertyBuffer, *RequiredSize, "VBOX", "DELL_");
 		replace_ci_string_in_buf(PropertyBuffer, *RequiredSize, "QEMU", "DELL");
 		replace_ci_string_in_buf(PropertyBuffer, *RequiredSize, "VMWARE", "DELL__");
@@ -1057,7 +1057,7 @@ HOOKDEF(BOOL, WINAPI, SetupDiGetDeviceRegistryPropertyW,
 
 	ret = Old_SetupDiGetDeviceRegistryPropertyW(DeviceInfoSet, DeviceInfoData, Property, PropertyRegDataType, PropertyBuffer, PropertyBufferSize, RequiredSize);
 
-	if (!g_config.no_stealth && ret && PropertyBuffer) {
+	if (!g_config.bypass_antivm && ret && PropertyBuffer) {
 		replace_ci_wstring_in_buf((PWCHAR)PropertyBuffer, *RequiredSize / sizeof(WCHAR), L"VBOX", L"DELL_");
 		replace_ci_wstring_in_buf((PWCHAR)PropertyBuffer, *RequiredSize / sizeof(WCHAR), L"QEMU", L"DELL");
 		replace_ci_wstring_in_buf((PWCHAR)PropertyBuffer, *RequiredSize / sizeof(WCHAR), L"VMWARE", L"DELL__");
@@ -1128,7 +1128,7 @@ HOOKDEF(DWORD, WINAPI, WNetGetProviderNameW,
 	LOQ_zero("misc", "iu", "NetType", dwNetType, "ProviderName", ret == NO_ERROR ? tmp : L"");
 
 	// WNNC_NET_RDR2SAMPLE, used for vbox detection
-	if (!g_config.no_stealth && ret && dwNetType == 0x250000) {
+	if (!g_config.bypass_antivm && ret && dwNetType == 0x250000) {
 		lasterror_t lasterrors;
 
 		ret = ERROR_NO_NETWORK;
@@ -1213,7 +1213,7 @@ HOOKDEF(void, WINAPI, GlobalMemoryStatus,
 ) {
 	BOOL ret = TRUE;
 	Old_GlobalMemoryStatus(lpBuffer);
-	if (!g_config.no_stealth && lpBuffer->dwTotalPhys < SPOOFED_RAM)
+	if (!g_config.bypass_antivm && lpBuffer->dwTotalPhys < SPOOFED_RAM)
 		lpBuffer->dwTotalPhys = (SIZE_T)SPOOFED_RAM;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->dwTotalPhys / (1024 * 1024));
 }
@@ -1222,7 +1222,7 @@ HOOKDEF(BOOL, WINAPI, GlobalMemoryStatusEx,
 	_Out_ LPMEMORYSTATUSEX lpBuffer
 ) {
 	BOOL ret = Old_GlobalMemoryStatusEx(lpBuffer);
-	if (ret && !g_config.no_stealth && lpBuffer->ullTotalPhys < SPOOFED_RAM)
+	if (ret && !g_config.bypass_antivm && lpBuffer->ullTotalPhys < SPOOFED_RAM)
 		lpBuffer->ullTotalPhys = SPOOFED_RAM;
 	LOQ_void("misc", "ii", "MemoryLoad", lpBuffer->dwMemoryLoad, "TotalPhysicalMB", lpBuffer->ullTotalPhys / (1024 * 1024));
 	return ret;
@@ -1232,7 +1232,7 @@ HOOKDEF(BOOL, WINAPI, GetPhysicallyInstalledSystemMemory,
 	_Out_ PULONGLONG TotalMemoryInKilobytes
 ) {
 	BOOL ret = Old_GetPhysicallyInstalledSystemMemory(TotalMemoryInKilobytes);
-	if (ret && !g_config.no_stealth && (*TotalMemoryInKilobytes * 1024) < SPOOFED_RAM)
+	if (ret && !g_config.bypass_antivm && (*TotalMemoryInKilobytes * 1024) < SPOOFED_RAM)
 		*TotalMemoryInKilobytes = SPOOFED_RAM / 1024;
 	LOQ_void("misc", "i", "TotalMemoryInKilobytes", *TotalMemoryInKilobytes);
 	return ret;
@@ -1826,7 +1826,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryLicenseValue,
 ) {
 	WCHAR VMDetection[] = L"Kernel-VMDetection-Private";
 	NTSTATUS ret = Old_NtQueryLicenseValue(Name, Type, Buffer, Length, DataLength);
-	if (!g_config.no_stealth && NT_SUCCESS(ret) && Buffer && Name && Name->Buffer && Name->Length == sizeof(VMDetection) - sizeof(WCHAR) && !wcsncmp(Name->Buffer, VMDetection, Name->Length / sizeof(WCHAR)))
+	if (!g_config.bypass_antivm && NT_SUCCESS(ret) && Buffer && Name && Name->Buffer && Name->Length == sizeof(VMDetection) - sizeof(WCHAR) && !wcsncmp(Name->Buffer, VMDetection, Name->Length / sizeof(WCHAR)))
 		*(PBOOL)Buffer = FALSE;
 	LOQ_ntstatus("system", "oP", "Name", Name, "Type", Type);
 	return ret;
@@ -1875,7 +1875,7 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 	const char replacement[] = "NVIDIA GeForce RTX 3060";
 
 	BOOL ret = Old_EnumDisplayDevicesA(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	if (!g_config.no_stealth && ret && lpDisplayDevice) {
+	if (!g_config.bypass_antivm && ret && lpDisplayDevice) {
 		for (int i = 0; i < keywords_size; i++) {
 			if (stristr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
 				snprintf(lpDisplayDevice->DeviceString, strlen(replacement) + 1, replacement);
@@ -1905,7 +1905,7 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 	const wchar_t replacement[] = L"NVIDIA GeForce RTX 3060";
 
 	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	if (!g_config.no_stealth && ret && lpDisplayDevice) {
+	if (!g_config.bypass_antivm && ret && lpDisplayDevice) {
 		for (int i = 0; i < keywords_size; i++) {
 			if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
 				swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
@@ -1984,7 +1984,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtPowerInformation,
 	__in		ULONG				   OutputBufferLength
 ) {
 	NTSTATUS ret = Old_NtPowerInformation(InformationLevel, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-	if (!g_config.no_stealth && ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
+	if (!g_config.bypass_antivm && ret == 0 && OutputBuffer && InformationLevel == SystemPowerCapabilities && OutputBufferLength >= sizeof(SYSTEM_POWER_CAPABILITIES)) {
 		// Most VM systems does not support either S0 or S3 sleep, which can be used to detect the presence of a VM.
 		// S0, S4 and S5 being enabled is typical for a normal Modern Standby machine. 
 		SYSTEM_POWER_CAPABILITIES* ptr = (SYSTEM_POWER_CAPABILITIES *)OutputBuffer;

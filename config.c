@@ -207,8 +207,8 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "terminate-event")) {
 			strncpy(g_config.terminate_event_name, value, ARRAYSIZE(g_config.terminate_event_name));
 		}
-		else if (!strcmp(key, "no-stealth")) { // Set to 1 to disable anti-anti-VM/sandbox code enabled by default.
-			g_config.no_stealth = value[0] == '1';
+		else if (!strcmp(key, "bypass-antivm")) { // Set to 1 to disable anti-anti-VM/sandbox code enabled by default.
+			g_config.bypass_antivm = value[0] == '1';
 		}
 		else if (!strcmp(key, "cpu-count")) {
 			unsigned int val = (unsigned int)strtoul(value, NULL, 10);

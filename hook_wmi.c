@@ -7,7 +7,7 @@ __declspec(thread) static int g_last_seen_disk_query = 0;
 __declspec(thread) static int g_last_seen_physicalmemory = 0;
 
 void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
-	if (g_config.no_stealth)
+	if (g_config.bypass_antivm)
 		return;
 
 	if (!szClassName || !wszName || !pVal)

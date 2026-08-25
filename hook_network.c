@@ -1004,7 +1004,7 @@ HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 		LOQ_zero("network", "u", "Server", lpServer, "NetBIOSName");
 		return ret;
 	}
-	if (g_config.no_stealth)
+	if (g_config.bypass_antivm)
 		LOQ_zero("network", "uuI", "Server", lpServer, "NetBIOSName", *lpNameBuffer, "JoinStatus", BufferType);
 	else {
 		// Spoof domain membership to bypass sandbox detections

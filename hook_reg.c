@@ -36,7 +36,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 		phkResult);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && (ret == ERROR_SUCCESS || ret == ERROR_ACCESS_DENIED)) {
+	if (!g_config.bypass_antivm && (ret == ERROR_SUCCESS || ret == ERROR_ACCESS_DENIED)) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathA(hKey, lpSubKey, keybuf, allocsize);
@@ -68,7 +68,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExA,
 		}
 
 		// fake some values
-		if (lpSubKey && !g_config.no_stealth)
+		if (lpSubKey && !g_config.bypass_antivm)
 			perform_ascii_registry_fakery(keypath, (LPVOID)lpSubKey, (ULONG)strlen(lpSubKey));
 		free(keybuf);
 	}
@@ -90,7 +90,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExW,
 		phkResult);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && (ret == ERROR_SUCCESS || ret == ERROR_ACCESS_DENIED)) {
+	if (!g_config.bypass_antivm && (ret == ERROR_SUCCESS || ret == ERROR_ACCESS_DENIED)) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathW(hKey, lpSubKey, keybuf, allocsize);
@@ -122,7 +122,7 @@ HOOKDEF(LONG, WINAPI, RegOpenKeyExW,
 		}
 
 		// fake some values
-		if (lpSubKey && !g_config.no_stealth)
+		if (lpSubKey && !g_config.bypass_antivm)
 			perform_unicode_registry_fakery(keypath, lpSubKey, (ULONG)wcslen(lpSubKey));
 		free(keybuf);
 	}
@@ -150,7 +150,7 @@ HOOKDEF(LONG, WINAPI, RegCreateKeyExA,
 		lpdwDisposition);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && ret == ERROR_SUCCESS && *lpdwDisposition == REG_OPENED_EXISTING_KEY) {
+	if (!g_config.bypass_antivm && ret == ERROR_SUCCESS && *lpdwDisposition == REG_OPENED_EXISTING_KEY) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathA(hKey, lpSubKey, keybuf, allocsize);
@@ -198,7 +198,7 @@ HOOKDEF(LONG, WINAPI, RegCreateKeyExW,
 		lpdwDisposition);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && ret == ERROR_SUCCESS && *lpdwDisposition == REG_OPENED_EXISTING_KEY) {
+	if (!g_config.bypass_antivm && ret == ERROR_SUCCESS && *lpdwDisposition == REG_OPENED_EXISTING_KEY) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathW(hKey, lpSubKey, keybuf, allocsize);
@@ -279,7 +279,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyW,
 	LONG ret = Old_RegEnumKeyW(hKey, dwIndex, lpName, cchName);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && ret == ERROR_SUCCESS) {
+	if (!g_config.bypass_antivm && ret == ERROR_SUCCESS) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathW(hKey, NULL, keybuf, allocsize);
@@ -327,7 +327,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 		lpClass, lpcClass, lpftLastWriteTime);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && ret == ERROR_SUCCESS) {
+	if (!g_config.bypass_antivm && ret == ERROR_SUCCESS) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathA(hKey, NULL, keybuf, allocsize);
@@ -354,7 +354,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 		}
 
 		// fake some values
-		if (lpName && !g_config.no_stealth)
+		if (lpName && !g_config.bypass_antivm)
 			perform_ascii_registry_fakery(keypath, lpName, (ULONG)strlen(lpName));
 		free(keybuf);
 	}
@@ -378,7 +378,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 		lpClass, lpcClass, lpftLastWriteTime);
 
 	// fake the absence of some keys
-	if (!g_config.no_stealth && ret == ERROR_SUCCESS) {
+	if (!g_config.bypass_antivm && ret == ERROR_SUCCESS) {
 		unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
 		PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
 		wchar_t *keypath = get_full_key_pathW(hKey, NULL, keybuf, allocsize);
@@ -404,7 +404,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 		}
 
 		// fake some values
-		if (lpName && !g_config.no_stealth)
+		if (lpName && !g_config.bypass_antivm)
 			perform_unicode_registry_fakery(keypath, lpName, (ULONG)wcslen(lpName));
 		free(keybuf);
 	}
@@ -542,7 +542,7 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExA,
 		wchar_t *keypath = get_full_keyvalue_pathA(hKey, lpValueName, keybuf, allocsize);
 
 		// fake some values
-		if (lpData && !g_config.no_stealth)
+		if (lpData && !g_config.bypass_antivm)
 			perform_ascii_registry_fakery(keypath, lpData, *lpcbData);
 
 		LOQ_zero("registry", "psru", "Handle", hKey, "ValueName", lpValueName,
@@ -581,7 +581,7 @@ HOOKDEF(LONG, WINAPI, RegQueryValueExW,
 		wchar_t *keypath = get_full_keyvalue_pathW(hKey, lpValueName, keybuf, allocsize);
 
 		// fake some values
-		if (lpData && !g_config.no_stealth)
+		if (lpData && !g_config.bypass_antivm)
 			perform_unicode_registry_fakery(keypath, lpData, *lpcbData);
 
 		LOQ_zero("registry", "puRu", "Handle", hKey, "ValueName", lpValueName,

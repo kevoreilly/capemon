@@ -508,7 +508,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 		fname = calloc(32768, sizeof(wchar_t));
 		path_from_handle(FileHandle, fname, 32768);
 
-		if (!g_config.no_stealth && g_config.ntdll_unhook && InitialBufferLength)
+		if (!g_config.bypass_antivm && g_config.ntdll_unhook && InitialBufferLength)
 			prevent_module_unhooking(Buffer, fname);
 
 		if (read_count < 50)
@@ -915,7 +915,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 		}
 	}
 
-	if (!g_config.no_stealth && NT_SUCCESS(ret) && OutputBuffer)
+	if (!g_config.bypass_antivm && NT_SUCCESS(ret) && OutputBuffer)
 		perform_device_fakery(OutputBuffer, (ULONG)length, IoControlCode);
 
 	if (origbuffer)
@@ -1376,7 +1376,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExA,
 	HANDLE ret = Old_FindFirstFileExA(lpFileName, fInfoLevelId,
 		lpFindFileData, fSearchOp, lpSearchFilter, dwAdditionalFlags);
 
-	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && lpFileName &&
+	if (!g_config.bypass_antivm && ret != INVALID_HANDLE_VALUE && lpFileName &&
 		(!_strnicmp(lpFileName, g_config.analyzer, strlen(g_config.analyzer))
 			|| !_strnicmp(lpFileName, g_config.results, strlen(g_config.results))
 			|| !_strnicmp(lpFileName, g_config.pythonpath, strlen(g_config.pythonpath)))
@@ -1390,7 +1390,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExA,
 		set_lasterrors(&lasterror);
 		ret = INVALID_HANDLE_VALUE;
 	}
-	else if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE &&
+	else if (!g_config.bypass_antivm && ret != INVALID_HANDLE_VALUE &&
 		(!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.analyzer + 3) ||
 			!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.results + 3) ||
 			!stricmp(((PWIN32_FIND_DATAA)lpFindFileData)->cFileName, g_config.pythonpath + 3)))
@@ -1409,7 +1409,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExA,
 	}
 
 
-	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && (!stricmp(lpFileName, "c:\\windows") || !stricmp(lpFileName, "c:\\pagefile.sys")))
+	if (!g_config.bypass_antivm && ret != INVALID_HANDLE_VALUE && (!stricmp(lpFileName, "c:\\windows") || !stricmp(lpFileName, "c:\\pagefile.sys")))
 		perform_create_time_fakery(&((PWIN32_FIND_DATAA)lpFindFileData)->ftCreationTime);
 
 	if (g_config.sysvol_ctime.dwLowDateTime && ret != INVALID_HANDLE_VALUE && !stricmp(lpFileName, "c:\\System Volume Information"))
@@ -1438,7 +1438,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExW,
 	HANDLE ret = Old_FindFirstFileExW(lpFileName, fInfoLevelId,
 		lpFindFileData, fSearchOp, lpSearchFilter, dwAdditionalFlags);
 
-	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && lpFileName &&
+	if (!g_config.bypass_antivm && ret != INVALID_HANDLE_VALUE && lpFileName &&
 		(!wcsnicmp(lpFileName, g_config.w_analyzer, wcslen(g_config.w_analyzer))
 			|| !wcsnicmp(lpFileName, g_config.w_results, wcslen(g_config.w_results))
 			|| !wcsnicmp(lpFileName, g_config.w_pythonpath, wcslen(g_config.w_pythonpath)))
@@ -1452,7 +1452,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExW,
 		set_lasterrors(&lasterror);
 		ret = INVALID_HANDLE_VALUE;
 	}
-	else if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE &&
+	else if (!g_config.bypass_antivm && ret != INVALID_HANDLE_VALUE &&
 		(!wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_analyzer + 3) ||
 		 !wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_results + 3) ||
 		 !wcsicmp(((PWIN32_FIND_DATAW)lpFindFileData)->cFileName, g_config.w_pythonpath + 3)))
@@ -1470,7 +1470,7 @@ HOOKDEF(HANDLE, WINAPI, FindFirstFileExW,
 		}
 	}
 
-	if (!g_config.no_stealth && ret != INVALID_HANDLE_VALUE && (!wcsicmp(lpFileName, L"c:\\windows") || !wcsicmp(lpFileName, L"c:\\pagefile.sys")))
+	if (!g_config.bypass_antivm && ret != INVALID_HANDLE_VALUE && (!wcsicmp(lpFileName, L"c:\\windows") || !wcsicmp(lpFileName, L"c:\\pagefile.sys")))
 		perform_create_time_fakery(&((PWIN32_FIND_DATAW)lpFindFileData)->ftCreationTime);
 
 	if (g_config.sysvol_ctime.dwLowDateTime && ret != INVALID_HANDLE_VALUE && !wcsicmp(lpFileName, L"c:\\System Volume Information"))
@@ -1493,7 +1493,7 @@ HOOKDEF(BOOL, WINAPI, FindNextFileW,
 ) {
 	BOOL ret = Old_FindNextFileW(hFindFile, lpFindFileData);
 
-	while (!g_config.no_stealth && ret && (
+	while (!g_config.bypass_antivm && ret && (
 		!wcsicmp(lpFindFileData->cFileName, g_config.w_analyzer + 3) ||
 		!wcsicmp(lpFindFileData->cFileName, g_config.w_results + 3) ||
 		!wcsicmp(lpFindFileData->cFileName, g_config.w_pythonpath + 3))) {
@@ -1653,7 +1653,7 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExA(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "s", "DirectoryName", lpDirectoryName);
-	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
+	if (!g_config.bypass_antivm && ret && lpTotalNumberOfBytes) {
 		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
@@ -1668,7 +1668,7 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceExW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceExW(lpDirectoryName, lpFreeBytesAvailable, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes);
 	LOQ_bool("filesystem", "u", "DirectoryName", lpDirectoryName);
-	if (!g_config.no_stealth && ret && lpTotalNumberOfBytes) {
+	if (!g_config.bypass_antivm && ret && lpTotalNumberOfBytes) {
 		lpTotalNumberOfBytes->QuadPart = SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE;
 	}
 
@@ -1684,7 +1684,7 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceA,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceA(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "s", "RootPathName", lpRootPathName);
-	if (!g_config.no_stealth) {
+	if (!g_config.bypass_antivm) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
 				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
@@ -1707,7 +1707,7 @@ HOOKDEF(BOOL, WINAPI, GetDiskFreeSpaceW,
 ) {
 	BOOL ret = Old_GetDiskFreeSpaceW(lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters, lpTotalNumberOfClusters);
 	LOQ_bool("filesystem", "u", "RootPathName", lpRootPathName);
-	if (!g_config.no_stealth) {
+	if (!g_config.bypass_antivm) {
 		__try {
 			if (lpTotalNumberOfClusters && lpSectorsPerCluster && lpBytesPerSector && *lpSectorsPerCluster && *lpBytesPerSector) {
 				*lpTotalNumberOfClusters = (DWORD)((SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) / (*lpSectorsPerCluster * *lpBytesPerSector));
@@ -1758,7 +1758,7 @@ HOOKDEF(BOOL, WINAPI, GetVolumeNameForVolumeMountPointW,
 	_In_ DWORD cchBufferLength
 ) {
 	BOOL ret = Old_GetVolumeNameForVolumeMountPointW(lpszVolumeMountPoint, lpszVolumeName, cchBufferLength);
-	if (!g_config.no_stealth && ret) {
+	if (!g_config.bypass_antivm && ret) {
 		replace_wstring_in_buf(lpszVolumeName, cchBufferLength, L"QEMU", L"DELL");
 		replace_wstring_in_buf(lpszVolumeName, cchBufferLength, L"VMware", L"DELL__");
 		replace_wstring_in_buf(lpszVolumeName, cchBufferLength, L"VMWar", L"WDRed");

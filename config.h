@@ -96,7 +96,7 @@ struct _g_config {
 	int full_logs;
 
 	// should we attempt anti-anti-sandbox/VM tricks ?
-	int no_stealth;
+	int bypass_antivm;
 
 	// how many milliseconds since startup
 	unsigned int startup_time;

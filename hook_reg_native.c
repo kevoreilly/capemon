@@ -186,7 +186,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryValueKey,
 			"Type", Type, "Information", Type, DataLength, Data,
 			"FullName", keypath);
 
-		if (!g_config.no_stealth)
+		if (!g_config.bypass_antivm)
 			perform_unicode_registry_fakery(keypath, Data, DataLength);
 
 		free(keybuf);
