@@ -198,9 +198,9 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 		PCHAR funcname;
 		funcname = ScanForExport((PVOID)addr, 0x50);
 		if (funcname)
-			snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s::%s(0x%x)\n", buf, funcname, offset);
+			snprintf((char *)msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, "%s::%s(0x%x)\n", buf, funcname, offset);
 		else
-			snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s+0x%x\n", buf, offset);
+			snprintf((char *)msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, "%s+0x%x\n", buf, offset);
 		free(buf);
 	}
 
@@ -372,20 +372,20 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 		PCHAR FunctionName;
 		FunctionName = ScanForExport((PVOID)eip, 0x50);
 		if (FunctionName)
-			snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)", dllname, FunctionName, offset);
+			snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, " %s::%s(0x%x)", dllname, FunctionName, offset);
 		else
-			snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+0x%x", dllname, offset);
+			snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, " %s+0x%x", dllname, offset);
 	}
 
 	sehname = convert_address_to_dll_name_and_offset(seh, &offset);
 	if (sehname)
-		snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " SEH: %s+0x%x", sehname, offset);
+		snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, " SEH: %s+0x%x", sehname, offset);
 
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), " %.08Ix, Fault Address: %.08Ix, Esp: %.08Ix, Exception Code: %08x\n",
+	snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg), " %.08Ix, Fault Address: %.08Ix, Esp: %.08Ix, Exception Code: %08x\n",
 		eip, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], (ULONG_PTR)stack, ExceptionInfo->ExceptionRecord->ExceptionCode);
 
 #ifdef _WIN64
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1,
+	snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1,
 		"RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x\nR8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n",
 		ExceptionInfo->ContextRecord->Rax, ExceptionInfo->ContextRecord->Rbx, ExceptionInfo->ContextRecord->Rcx, ExceptionInfo->ContextRecord->Rdx,
 		ExceptionInfo->ContextRecord->Rsi, ExceptionInfo->ContextRecord->Rdi, ExceptionInfo->ContextRecord->R8, ExceptionInfo->ContextRecord->R9,
@@ -393,7 +393,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 		ExceptionInfo->ContextRecord->R14, ExceptionInfo->ContextRecord->R15, ExceptionInfo->ContextRecord->Rsp, ExceptionInfo->ContextRecord->Rbp
 		);
 #else
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1,
+	snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1,
 		"EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x\n ESP 0x%x EBP 0x%x\n",
 		ExceptionInfo->ContextRecord->Eax, ExceptionInfo->ContextRecord->Ebx, ExceptionInfo->ContextRecord->Ecx, ExceptionInfo->ContextRecord->Edx,
 		ExceptionInfo->ContextRecord->Esi, ExceptionInfo->ContextRecord->Edi, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp
@@ -413,12 +413,12 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 				PCHAR funcname = NULL;
 				funcname = ScanForExport((PVOID)eip, 0x50);
 				if (funcname)
-					snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)\n", buf, funcname, offset);
+					snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, " %s::%s(0x%x)\n", buf, funcname, offset);
 				else
-					snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+0x%x\n", buf, offset);
+					snprintf(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg) - 1, " %s+0x%x\n", buf, offset);
 				free(buf);
 			}
-			if (sizeof(msg) - strlen(msg) < 0x200)
+			if (WIDE_STRING_LIMIT - strlen(msg) < 0x200)
 				goto next;
 		}
 		strcat(msg, ", ");
