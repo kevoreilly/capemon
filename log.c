@@ -67,13 +67,7 @@ DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
 log_serializer_t *g_default_serializer = &g_bson_serializer;
 
 // Thread-local storage with caching to avoid repeated TLS lookups
-static __declspec(thread) thread_log_context_t* g_tls_ctx_cache = NULL;
-
 static thread_log_context_t* GetThreadLogContext(void) {
-	// Use cached value if available to avoid TLS overhead
-	if (g_tls_ctx_cache)
-		return g_tls_ctx_cache;
-
 	thread_log_context_t* pCtx = NULL;
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
 		pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
@@ -82,10 +76,7 @@ static thread_log_context_t* GetThreadLogContext(void) {
 			if (pCtx) {
 				pCtx->active_serializer = g_default_serializer;  // Use configured default
 				TlsSetValue(g_bson_tls_index, pCtx);
-				g_tls_ctx_cache = pCtx; // Cache for this thread
 			}
-		} else {
-			g_tls_ctx_cache = pCtx; // Cache for this thread
 		}
 	}
 	return pCtx;
@@ -108,7 +99,6 @@ void TlsThreadCleanup(void) {
 		if (pCtx) {
 			free(pCtx);
 			TlsSetValue(g_bson_tls_index, NULL);
-			g_tls_ctx_cache = NULL; // Clear cache
 		}
 	}
 }
@@ -1186,21 +1176,6 @@ buffer_log:
 	g_active_serializer->append_finish_array();
 	g_active_serializer->append_finish();
 
-	if (!TryEnterCriticalSection(&g_mutex)) {
-		g_active_serializer->destroy();
-		goto exit;
-	}
-
-	if (!special_api_triggered)
-		last_api_logged = API_OTHER;
-	else {
-		special_api_triggered = FALSE;
-		if (delete_last_log) {
-			free(lastlog.buf);
-			lastlog.buf = NULL;
-		}
-	}
-
 	{
 		int retries = 100;
 		BOOL acquired = FALSE;
@@ -1214,7 +1189,7 @@ buffer_log:
 		}
 
 		if (!acquired) {
-			bson_destroy( g_bson );
+			g_active_serializer->destroy();
 			goto exit;
 		}
 	}
