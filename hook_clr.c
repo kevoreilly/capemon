@@ -120,19 +120,66 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** modu
     return name;
 }
 
+// In-Memory Version Fingerprinting for JIT offsets
+static void GetDotNetVTableOffsets(HMODULE hClrModule, int* out_getModuleMetadata_idx, int* out_getMethodDefFromMethod_idx) {
+    // Structural Defaults
+    *out_getModuleMetadata_idx = 40;     
+    *out_getMethodDefFromMethod_idx = 113;
+    
+    if (!hClrModule) return;
+    
+    HRSRC hResInfo = FindResourceW(hClrModule, MAKEINTRESOURCEW(1), (LPCWSTR)16); // 16 == RT_VERSION
+    if (!hResInfo) return;
+    
+    HGLOBAL hResData = LoadResource(hClrModule, hResInfo);
+    if (!hResData) return;
+    
+    PVOID pData = LockResource(hResData);
+    if (!pData) return;
+    
+    DWORD dwResSize = SizeofResource(hClrModule, hResInfo);
+    if (dwResSize == 0) return;
+    
+    PVOID pAlloc = malloc(dwResSize);
+    if (!pAlloc) return;
+    
+    memcpy(pAlloc, pData, dwResSize);
+    
+    VS_FIXEDFILEINFO* pFixedInfo = NULL;
+    UINT puLen = 0;
+    
+    // Natively query from RAM mapped array. Zero disk I/O.
+    if (VerQueryValueW(pAlloc, L"\\", (LPVOID*)&pFixedInfo, &puLen) && pFixedInfo != NULL) {
+        DWORD major = HIWORD(pFixedInfo->dwFileVersionMS);
+        DWORD minor = LOWORD(pFixedInfo->dwFileVersionMS);
+        DWORD build = HIWORD(pFixedInfo->dwFileVersionLS);
+        
+        if (major == 2) {
+            *out_getMethodDefFromMethod_idx = 86;
+        } else if (major == 4 && build < 30319) {
+            *out_getMethodDefFromMethod_idx = 86;
+        } else if (major == 4 && build >= 30319) {
+            *out_getModuleMetadata_idx = 42; 
+            *out_getMethodDefFromMethod_idx = 113;
+        } else if (major >= 5) {
+            *out_getModuleMetadata_idx = 40;
+            *out_getMethodDefFromMethod_idx = 115;
+        }
+    }
+    
+    free(pAlloc);
+}
+
 // Queries IMetaDataImport directly from the CLR compileMethod context
-static IMetaDataImport* GetIMetaDataImport(PVOID compHnd, PVOID scope) {
+static IMetaDataImport* GetIMetaDataImport(PVOID compHnd, PVOID scope, int getModuleMetadata_idx) {
     IMetaDataImport* pImport = NULL;
     if (!compHnd || !scope)
         return NULL;
 
     __try {
         PVOID* vtable = *(PVOID**)compHnd;
-        // Typically index 40-50 on ICorJitInfo depends on CLR version.
-        // For .NET Core and .NET Framework 4.5+, the runtime exposes getModuleMetadata at index 40-42.
-        // We safely probe and execute with full exception safeguards.
-        if (vtable && vtable[40]) {
-            fnGetModuleMetadata getModuleMetadata = (fnGetModuleMetadata)vtable[40];
+        if (vtable && vtable[getModuleMetadata_idx]) {
+            fnGetModuleMetadata getModuleMetadata = (fnGetModuleMetadata)vtable[getModuleMetadata_idx];
             // IID_IMetaDataImport GUID = { 0x7dac2ecc, 0xd030, 0x11d2, { 0x85, 0x9d, 0x00, 0xc0, 0x4f, 0x68, 0x32, 0x8b } }
             GUID iid_import = { 0x7dac2ecc, 0xd030, 0x11d2, { 0x85, 0x9d, 0x00, 0xc0, 0x4f, 0x68, 0x32, 0x8b } };
             HRESULT hr = getModuleMetadata(compHnd, scope, 0, &iid_import, (IUnknown**)&pImport);
@@ -218,7 +265,26 @@ HOOKDEF(int, WINAPI, compileMethod,
 		// Unified Metadata & Decrypted MSIL JIT Assembly Rebuilder Dumper
 		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD) {
 			if (DotNetCacheDumpCount < g_config.jit_dumps) {
-				IMetaDataImport* pImport = GetIMetaDataImport(compHnd, info->scope);
+				int getModuleMetadata_idx = 40;
+				int getMethodDefFromMethod_idx = 113;
+
+				// Dynamically extract the CLR module version footprint in-memory using .rsrc block
+				PVOID AllocationBase = GetAllocationBase(*entryAddress);
+				if (AllocationBase != NULL) {
+					char moduleNamePath[MAX_PATH] = {0};
+					if (GetMappedFileNameA(GetCurrentProcess(), AllocationBase, moduleNamePath, MAX_PATH)) {
+						// Translate device path or simply resolve handle via name isolate
+						HMODULE hClrModule = GetModuleHandleA("clr.dll");
+						if (!hClrModule) hClrModule = GetModuleHandleA("coreclr.dll");
+						if (!hClrModule) hClrModule = GetModuleHandleA("mscorwks.dll");
+						
+						if (hClrModule) {
+							GetDotNetVTableOffsets(hClrModule, &getModuleMetadata_idx, &getMethodDefFromMethod_idx);
+						}
+					}
+				}
+
+				IMetaDataImport* pImport = GetIMetaDataImport(compHnd, info->scope, getModuleMetadata_idx);
 				if (pImport && pImport->lpVtbl && pImport->lpVtbl->GetMethodProps) {
 					// Retrieve the clean metadata properties for this method directly from the CLR
 					mdTypeDef classToken = 0;
@@ -232,22 +298,36 @@ HOOKDEF(int, WINAPI, compileMethod,
 
 					mdMethodDef mbToken = 0;
 					
-					// Resolve the method token safely using ICorJitInfo::getMethodDefFromMethod
-					// vtable offset for getMethodDefFromMethod is roughly around index 107 in newer CLRs and index 86 in older ones.
-					// We will dynamically scan or use a known offset if available, but for now we'll implement a safe fallback.
+					// Resolve the method token safely using dynamically mapped ICorJitInfo::getMethodDefFromMethod
 					PVOID* jitVtable = *(PVOID**)compHnd;
-					if (jitVtable) {
-						// In modern CLR (Core and FW 4.5+), getMethodDefFromMethod is typically around 113. 
-						// To avoid hardcoding a fragile offset without version signatures, if we can't reliably get the token,
-						// we'll at least avoid passing a raw pointer to GetMethodProps.
-						
-						// WARNING: Direct vtable offsets are extremely fragile.
-						// A robust implementation requires dynamic version fingerprinting.
-						// For demonstration in this PR, passing the raw ftn pointer was a critical crash defect.
+					if (jitVtable && jitVtable[getMethodDefFromMethod_idx]) {
 #ifdef _WIN64
 						typedef mdMethodDef (__stdcall *fnGetMethodDefFromMethod)(PVOID _this, PVOID ftn);
-						// fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[113];
-						// mbToken = getMethodDef(compHnd, info->ftn);
+						fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[getMethodDefFromMethod_idx];
+						
+						__try {
+							mbToken = getMethodDef(compHnd, info->ftn);
+							
+							// A safely evaluated .NET Method token MUST possess the 0x06 Method identifier in its MSB
+							if ((mbToken & 0xFF000000) != 0x06000000) {
+								mbToken = 0; // Abort: The VTable index mapped an unrelated API
+							}
+						} __except (EXCEPTION_EXECUTE_HANDLER) {
+							mbToken = 0; // Abort
+						}
+#else
+						// x86 stdcall resolution
+						typedef mdMethodDef (__stdcall *fnGetMethodDefFromMethod)(PVOID _this, PVOID ftn);
+						fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[getMethodDefFromMethod_idx];
+						
+						__try {
+							mbToken = getMethodDef(compHnd, info->ftn);
+							if ((mbToken & 0xFF000000) != 0x06000000) {
+								mbToken = 0; 
+							}
+						} __except (EXCEPTION_EXECUTE_HANDLER) {
+							mbToken = 0;
+						}
 #endif
 					}
 					
