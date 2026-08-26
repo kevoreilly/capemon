@@ -84,8 +84,13 @@ typedef struct {
     unsigned int          ILCodeSize;  // size of the decrypted MSIL bytecode in bytes
 } CORINFO_METHOD_INFO_REDUCED;
 
+#ifdef _WIN64
 typedef const char* (__stdcall *fnGetMethodName)(PVOID _this, PVOID ftn, const char** moduleName);
 typedef HRESULT (__stdcall *fnGetModuleMetadata)(PVOID _this, PVOID scope, DWORD dwOpenFlags, REFIID riid, IUnknown** ppOut);
+#else
+typedef const char* (__fastcall *fnGetMethodName)(PVOID _ecx, PVOID _edx, PVOID ftn, const char** moduleName);
+typedef HRESULT (__fastcall *fnGetModuleMetadata)(PVOID _ecx, PVOID _edx, PVOID scope, DWORD dwOpenFlags, REFIID riid, IUnknown** ppOut);
+#endif
 
 // Safe helper to resolve Class and Method metadata names dynamically
 static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** moduleName) {
@@ -97,7 +102,11 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** modu
         PVOID* vtable = *(PVOID**)compHnd;
         if (vtable && vtable[0]) {
             fnGetMethodName getMethodName = (fnGetMethodName)vtable[0];
+#ifdef _WIN64
             name = getMethodName(compHnd, ftn, moduleName);
+#else
+            name = getMethodName(compHnd, NULL, ftn, moduleName);
+#endif
 
             if (name != NULL) {
                 char c = name[0];
@@ -182,7 +191,11 @@ static IMetaDataImport* GetIMetaDataImport(PVOID compHnd, PVOID scope, int getMo
             fnGetModuleMetadata getModuleMetadata = (fnGetModuleMetadata)vtable[getModuleMetadata_idx];
             // IID_IMetaDataImport GUID = { 0x7dac2ecc, 0xd030, 0x11d2, { 0x85, 0x9d, 0x00, 0xc0, 0x4f, 0x68, 0x32, 0x8b } }
             GUID iid_import = { 0x7dac2ecc, 0xd030, 0x11d2, { 0x85, 0x9d, 0x00, 0xc0, 0x4f, 0x68, 0x32, 0x8b } };
+#ifdef _WIN64
             HRESULT hr = getModuleMetadata(compHnd, scope, 0, &iid_import, (IUnknown**)&pImport);
+#else
+            HRESULT hr = getModuleMetadata(compHnd, NULL, scope, 0, &iid_import, (IUnknown**)&pImport);
+#endif
             if (FAILED(hr)) {
                 pImport = NULL;
             }
@@ -307,6 +320,14 @@ HOOKDEF(int, WINAPI, compileMethod,
 						
 						__try {
 							mbToken = getMethodDef(compHnd, info->ftn);
+#else
+						// x86 fastcall resolution
+						typedef mdMethodDef (__fastcall *fnGetMethodDefFromMethod)(PVOID _ecx, PVOID _edx, PVOID ftn);
+						fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[getMethodDefFromMethod_idx];
+						
+						__try {
+							mbToken = getMethodDef(compHnd, NULL, info->ftn);
+#endif
 							
 							// A safely evaluated .NET Method token MUST possess the 0x06 Method identifier in its MSB
 							if ((mbToken & 0xFF000000) != 0x06000000) {
@@ -315,20 +336,6 @@ HOOKDEF(int, WINAPI, compileMethod,
 						} __except (EXCEPTION_EXECUTE_HANDLER) {
 							mbToken = 0; // Abort
 						}
-#else
-						// x86 stdcall resolution
-						typedef mdMethodDef (__stdcall *fnGetMethodDefFromMethod)(PVOID _this, PVOID ftn);
-						fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[getMethodDefFromMethod_idx];
-						
-						__try {
-							mbToken = getMethodDef(compHnd, info->ftn);
-							if ((mbToken & 0xFF000000) != 0x06000000) {
-								mbToken = 0; 
-							}
-						} __except (EXCEPTION_EXECUTE_HANDLER) {
-							mbToken = 0;
-						}
-#endif
 					}
 					
 					if (mbToken != 0) {
@@ -339,12 +346,8 @@ HOOKDEF(int, WINAPI, compileMethod,
 							// Log resolved metadata properties cleanly into CAPE database
 							DebugOutput("compileMethod: CLR COM Metadata resolved method '%ws' (Token 0x%x, RVA 0x%x).\n", wszMethodName, mbToken, rva);
 
-							// Cache the resolved module properties (ModuleBase -> Metadata RVA/Size)
-							PVOID ModuleBase = GetAllocationBase(info->ILCode);
-							if (ModuleBase != NULL) {
-								// We pass the module base along with the resolved method's original rva and sig size as fallback parameters
-								CacheDotNetModule((ULONG_PTR)ModuleBase, rva, info->ILCodeSize);
-							}
+							// We do not cache Method RVA as Metadata RVA here anymore.
+							// ScyllaHarness will robustly locate the IMAGE_COR20_HEADER natively.
 						}
 					}
 					__except (EXCEPTION_EXECUTE_HANDLER) {

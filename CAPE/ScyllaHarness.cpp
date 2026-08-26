@@ -436,25 +436,33 @@ static void HealDotNetPEHeaders(DWORD_PTR Buffer) {
 		DWORD metadataRVA = pCache ? pCache->MetadataRVA : 0;
 		DWORD metadataSize = pCache ? pCache->MetadataSize : 0;
 
-		// Fallback: If no cached metadata RVA exists, dynamically scan the buffer for the "BSJB" magic (0x424A5342)
-		if (metadataRVA == 0) {
-			__try {
-				PBYTE pStart = (PBYTE)Buffer;
-				// Limit scan to 2MB to keep it safe and fast
-				PBYTE pEnd = pStart + 0x200000;
-				for (PBYTE p = pStart + 0x200; p < pEnd - 4; p++) {
-					if (*(DWORD*)p == 0x424A5342) { // "BSJB"
-						metadataRVA = (DWORD)(p - pStart);
-						metadataSize = 0x10000; // Safe default fallback size (64KB)
-						DebugOutput("HealDotNetPEHeaders: Successfully found BSJB metadata magic in memory at offset 0x%x without cache.\n", metadataRVA);
-						break;
+			// If no cached metadata RVA exists, dynamically scan the buffer for IMAGE_COR20_HEADER
+			// Standard IMAGE_COR20_HEADER has Size of 72 bytes (0x48) and MajorRuntimeVersion 2.
+			if (metadataRVA == 0) {
+				__try {
+					PBYTE pStart = (PBYTE)Buffer;
+					
+					DWORD imageSize = pNt->OptionalHeader.SizeOfImage;
+					if (imageSize == 0 || imageSize > 0x2000000) {
+						imageSize = 0x2000000; // Cap at 32MB instead of blind hardcoded 2MB segment limit
+					}
+					
+					PBYTE pEnd = pStart + imageSize;
+					for (PBYTE p = pStart + 0x200; p < pEnd - 8; p += 4) {
+						PDWORD pdw = (PDWORD)p;
+						// Match size=0x48, version=2.5 or 2.0
+						if (pdw[0] == 0x48 && (pdw[1] == 0x00050002 || pdw[1] == 0x00000002)) {
+							metadataRVA = (DWORD)(p - pStart);
+							metadataSize = 0x48; // Size of COR20 header
+							DebugOutput("HealDotNetPEHeaders: Successfully found IMAGE_COR20_HEADER natively in memory at offset 0x%x.\n", metadataRVA);
+							break;
+						}
 					}
 				}
+				__except (EXCEPTION_EXECUTE_HANDLER) {
+					DebugOutput("HealDotNetPEHeaders: Exception occurred scanning for IMAGE_COR20_HEADER magic.\n");
+				}
 			}
-			__except (EXCEPTION_EXECUTE_HANDLER) {
-				DebugOutput("HealDotNetPEHeaders: Exception occurred scanning for BSJB magic.\n");
-			}
-		}
 
 		if (metadataRVA != 0) {
 			pClrDir->VirtualAddress = metadataRVA;

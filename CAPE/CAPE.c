@@ -155,11 +155,11 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 extern lookup_t g_dotnet_jit;
 
-dotnet_module_cache_t g_dotnet_modules[128] = {0};
+dotnet_module_cache_t g_dotnet_modules[1024] = {0};
 int g_dotnet_modules_count = 0;
 
 void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize) {
-	if (g_dotnet_modules_count >= 128) return;
+	if (g_dotnet_modules_count >= 1024) return;
 	// Prevent duplicate caching
 	for (int i = 0; i < g_dotnet_modules_count; i++) {
 		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
