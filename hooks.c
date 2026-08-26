@@ -2122,6 +2122,11 @@ void set_hooks()
 	}
 
 	free(suspended_threads);
+	
+	// Close snapshot handle properly
+	if(hSnapShot != INVALID_HANDLE_VALUE && hSnapShot != NULL) {
+		CloseHandle(hSnapShot);
+	}
 
 	if (pLdrRegisterDllNotification)
 		pLdrRegisterDllNotification(0, &New_DllLoadNotification, NULL, &g_dll_notify_cookie);
@@ -2131,6 +2136,9 @@ void set_hooks()
 	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
 
 	set_hooks_exe();
+
+	// Restore execution-only bindings locally
+	VirtualProtect(hooks, hooks_size, PAGE_EXECUTE_READ, &old_protect);
 
 	hook_enable();
 }
