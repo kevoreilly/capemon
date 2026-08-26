@@ -1336,6 +1336,14 @@ HOOKDEF(HRESULT, WINAPI, WMI_Next,
 	_Out_opt_	LONG	*plFlavor
 );
 
+HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
+	_In_  PVOID                This,
+	_In_  long                 lTimeout,
+	_In_  ULONG                uCount,
+	_Out_ PVOID                *apObjects,
+	_Out_ ULONG                *puReturned
+);
+
 HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	_In_	PVOID					_this,
 	_In_	const BSTR				strQueryLanguage,

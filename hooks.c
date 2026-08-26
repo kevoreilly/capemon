@@ -89,7 +89,8 @@ com_hook_t g_com_hooks[] = {
 	{ HOOK_COM_WITHNAME(WMI_ExecMethod, IWbemServices_ExecMethod), NULL, NULL },
 	{ HOOK_COM_WITHNAME(WMI_ExecMethodAsync, IWbemServices_ExecMethodAsync), NULL, NULL },
 	{ HOOK_COM_WITHNAME(WMI_Get, IWbemClassObject_Get), NULL, NULL },
-	{ HOOK_COM_WITHNAME(WMI_Next, IEnumWbemClassObject_Next), NULL, NULL },
+	{ HOOK_COM_WITHNAME(WMI_Next, IWbemClassObject_Next), NULL, NULL },
+	{ HOOK_COM(IEnumWbemClassObject_Next), NULL, NULL },
 };
 
 hook_t full_hooks[] = {
@@ -1920,6 +1921,9 @@ int set_IWbemClassObject_hooks(PVOID pComObject, hook_t* hook) {
 	if (!strcmp(hook->funcname, "IWbemClassObject_Get") || !strcmp(hook->funcname, "WMI_Get")) {
 		hook->addr = pWmiObject->lpVtbl->Get;
 	}
+	else if (!strcmp(hook->funcname, "IWbemClassObject_Next") || !strcmp(hook->funcname, "WMI_Next")) {
+		hook->addr = pWmiObject->lpVtbl->Next;
+	}
 	if (hook->addr) {
 		return hook_api(hook, g_config.hook_type);
 	}
@@ -1930,7 +1934,7 @@ int set_IEnumWbemClassObject_hooks(PVOID pComObject, hook_t* hook) {
 	IEnumWbemClassObject* pWmiEnum = (IEnumWbemClassObject*)pComObject;
 	DWORD old_protect;
 	VirtualProtect(hook, sizeof(*hook), PAGE_EXECUTE_READWRITE, &old_protect);
-	if (!strcmp(hook->funcname, "IEnumWbemClassObject_Next") || !strcmp(hook->funcname, "WMI_Next")) {
+	if (!strcmp(hook->funcname, "IEnumWbemClassObject_Next")) {
 		hook->addr = pWmiEnum->lpVtbl->Next;
 	}
 	if (hook->addr) {
@@ -1967,10 +1971,10 @@ void set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
 							if (bHookViaWbemLocator && !strncmp(hook->funcname, "IWbemServices_", 14)) {
 								ret = set_IWbemServices_hooks(pComObject, hook);
 							}
-							else if (bHookViaWbemLocator && (!strncmp(hook->funcname, "IWbemClassObject_", 17) || !strcmp(hook->funcname, "WMI_Get"))) {
+							else if (bHookViaWbemLocator && (!strncmp(hook->funcname, "IWbemClassObject_", 17) || !strcmp(hook->funcname, "WMI_Get") || !strcmp(hook->funcname, "WMI_Next"))) {
 								ret = set_IWbemClassObject_hooks(pComObject, hook);
 							}
-							else if (bHookViaWbemLocator && (!strncmp(hook->funcname, "IEnumWbemClassObject_", 21) || !strcmp(hook->funcname, "WMI_Next"))) {
+							else if (bHookViaWbemLocator && (!strncmp(hook->funcname, "IEnumWbemClassObject_", 21))) {
 								ret = set_IEnumWbemClassObject_hooks(pComObject, hook);
 							}
 						}
