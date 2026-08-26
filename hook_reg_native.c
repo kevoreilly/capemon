@@ -90,33 +90,42 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateKey,
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtOpenKey,
-	__out  PHANDLE KeyHandle,
-	__in   ACCESS_MASK DesiredAccess,
-	__in   POBJECT_ATTRIBUTES ObjectAttributes
+	__out	   PHANDLE KeyHandle,
+	__in	   ACCESS_MASK DesiredAccess,
+	__in	   POBJECT_ATTRIBUTES ObjectAttributes
 ) {
 	if (ObjectAttributes && ObjectAttributes->ObjectName) {
 		if (UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1B36") ||
-			UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1AF4")) {
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1AF4") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VBOX") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VMWARE") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"QEMU") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VIRTIO") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"XEN")) {
 			return STATUS_OBJECT_NAME_NOT_FOUND;
 		}
 	}
 	NTSTATUS ret = Old_NtOpenKey(KeyHandle, DesiredAccess, ObjectAttributes);
 	LOQ_ntstatus("registry", "PhpoK", "KeyHandle", KeyHandle, "DesiredAccess", DesiredAccess,
 		"ObjectAttributesHandle", handle_from_objattr(ObjectAttributes),
-		"ObjectAttributesName", unistr_from_objattr(ObjectAttributes),
-		"ObjectAttributes", ObjectAttributes);
+		"ObjectAttributes", ObjectAttributes, "ret", ret);
 	return ret;
 }
 
 HOOKDEF(NTSTATUS, WINAPI, NtOpenKeyEx,
-	__out  PHANDLE KeyHandle,
-	__in   ACCESS_MASK DesiredAccess,
-	__in   POBJECT_ATTRIBUTES ObjectAttributes,
-	__in   ULONG OpenOptions
+	__out	  PHANDLE KeyHandle,
+	__in	   ACCESS_MASK DesiredAccess,
+	__in	   POBJECT_ATTRIBUTES ObjectAttributes,
+	__in	   ULONG OpenOptions
 ) {
 	if (ObjectAttributes && ObjectAttributes->ObjectName) {
 		if (UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1B36") ||
-			UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1AF4")) {
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VEN_1AF4") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VBOX") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VMWARE") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"QEMU") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"VIRTIO") ||
+			UnicodeStringContains(ObjectAttributes->ObjectName, L"XEN")) {
 			return STATUS_OBJECT_NAME_NOT_FOUND;
 		}
 	}
@@ -124,10 +133,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenKeyEx,
 		OpenOptions);
 	LOQ_ntstatus("registry", "PhpoK", "KeyHandle", KeyHandle, "DesiredAccess", DesiredAccess,
 		"ObjectAttributesHandle", handle_from_objattr(ObjectAttributes),
-		"ObjectAttributesName", unistr_from_objattr(ObjectAttributes),
-		"ObjectAttributes", ObjectAttributes);
+		"ObjectAttributes", ObjectAttributes, "ret", ret);
 	return ret;
 }
+
+static NTSTATUS Hook_NtCreateKeyTransacted_body(PHANDLE KeyHandle) { return STATUS_SUCCESS; }
+static NTSTATUS Hook_NtOpenKeyTransacted_body(PHANDLE KeyHandle) { return STATUS_SUCCESS; }
+static NTSTATUS Hook_NtOpenKeyTransactedEx_body(PHANDLE KeyHandle) { return STATUS_SUCCESS; }
 
 HOOKDEF(NTSTATUS, WINAPI, NtRenameKey,
 	__in  HANDLE KeyHandle,
@@ -155,10 +167,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtEnumerateKey,
 	__in	   HANDLE KeyHandle,
 	__in	   ULONG Index,
 	__in	   KEY_INFORMATION_CLASS KeyInformationClass,
-	__out_opt  PVOID KeyInformation,
+	__out	  PVOID KeyInformation,
 	__in	   ULONG Length,
 	__out	  PULONG ResultLength
 ) {
+	ULONG cur_physical = 0;
+	ULONG unhidden_found = 0;
 	ULONG adjusted_index = Index;
 	NTSTATUS status;
 
@@ -166,18 +180,32 @@ HOOKDEF(NTSTATUS, WINAPI, NtEnumerateKey,
 		BYTE temp_buf[512];
 		PKEY_BASIC_INFORMATION pBasic = (PKEY_BASIC_INFORMATION)temp_buf;
 		ULONG res_len = 0;
-		status = Old_NtEnumerateKey(KeyHandle, adjusted_index, KeyBasicInformation, pBasic, sizeof(temp_buf), &res_len);
-		if (status == STATUS_NO_MORE_ENTRIES || status < 0) {
+		status = Old_NtEnumerateKey(KeyHandle, cur_physical, KeyBasicInformation, pBasic, sizeof(temp_buf), &res_len);
+		
+		if (status == STATUS_NO_MORE_ENTRIES) {
+			adjusted_index = cur_physical; // Propagate EOF
+			break;
+		}
+		
+		if (status < 0 && status != STATUS_BUFFER_OVERFLOW && status != STATUS_BUFFER_TOO_SMALL) {
+			adjusted_index = cur_physical; // Abort on critical error
 			break;
 		}
 
-		if (status >= 0) {
+		if (status >= 0 || status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL) {
 			if (IsVirtualHardwareKey(pBasic->Name, pBasic->NameLength)) {
-				adjusted_index++;
+				cur_physical++;
 				continue;
 			}
+			
+			if (unhidden_found == Index) {
+				adjusted_index = cur_physical;
+				break;
+			}
+			
+			unhidden_found++;
+			cur_physical++;
 		}
-		break;
 	}
 
 	NTSTATUS ret = Old_NtEnumerateKey(KeyHandle, adjusted_index, KeyInformationClass,
