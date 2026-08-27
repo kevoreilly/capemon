@@ -1370,13 +1370,16 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	}
 	else
 	{
+		if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
+			TrackedRegion->PagesDumped = TRUE;
+
 		if (TraceIsRunning)
 			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
 
-	if (g_config.yarascan)
+	if (g_config.yarascan && (!TrackedRegion->PagesDumped || (g_config.dump_limit && DumpCount >= g_config.dump_limit)))
 		YaraScan(Address, Size);
 }
 
