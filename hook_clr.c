@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include "hooking.h"
+#include <psapi.h>
+#pragma comment(lib, "version.lib")
 #include "log.h"
 #include "pipe.h"
 #include "misc.h"
