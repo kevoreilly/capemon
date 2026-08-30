@@ -44,9 +44,6 @@ static BOOLEAN IsSafeStringA(const char* str, size_t max_len) {
 			char c = str[i];
 			if (c == '\0')
 				return TRUE;
-			// Ensure it is a standard printable ASCII character
-			if (c < 0)
-				return FALSE;
 		}
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -69,7 +66,7 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** modu
 
 	__try {
 		PVOID* vtable = *(PVOID**)compHnd;
-		if (vtable && !our_isbadreadptr(vtable, sizeof(PVOID)) && vtable[0]) {
+		if (vtable && !our_isbadreadptr(vtable, sizeof(PVOID)) && vtable[0] && !our_isbadreadptr(vtable[0], 1)) {
 			fnGetMethodName getMethodName = (fnGetMethodName)vtable[0];
 			name = getMethodName(compHnd, ftn, moduleName);
 
