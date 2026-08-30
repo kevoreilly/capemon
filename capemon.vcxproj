@@ -182,11 +182,12 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;_WIN64;_CRT_SECURE_NO_WARNINGS;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- CAPE_USE_YARA_X selects CAPE\YaraHarnessX.c (YARA-X backend) instead of CAPE\YaraHarness.c (libyara). -->
+      <PreprocessorDefinitions>CAPE_USE_YARA_X;WIN32;_WIN64;_CRT_SECURE_NO_WARNINGS;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.\libyara\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\yara-x\include;.\bson;.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
       <EnablePREfast>false</EnablePREfast>
@@ -196,8 +197,10 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>libyara64.lib;bson.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)x64\Release;$(ProjectDir)\libyara\lib</AdditionalLibraryDirectories>
+      <!-- ntdll;userenv;bcrypt;advapi32 are the transitive deps of the Rust yara_x64.lib static lib.
+           Confirm/adjust against the "native-static-libs" line printed by cargo rustc (see docs/yara-x-windows-session.md). -->
+      <AdditionalDependencies>yara_x64.lib;ntdll.lib;userenv.lib;bcrypt.lib;advapi32.lib;bson.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)x64\Release;$(ProjectDir)\yara-x\lib</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <BaseAddress>
@@ -234,7 +237,15 @@
     <ClCompile Include="CAPE\Solo.c" />
     <ClCompile Include="CAPE\Trace.c" />
     <ClCompile Include="CAPE\Unpacker.c" />
-    <ClCompile Include="CAPE\YaraHarness.c" />
+    <ClCompile Include="CAPE\YaraHarness.c">
+      <!-- libyara backend: on for every config EXCEPT the ones that build the YARA-X backend below. -->
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="CAPE\YaraHarnessX.c">
+      <!-- YARA-X backend (needs CAPE_USE_YARA_X + yara-x\lib\yara_xNN.lib): off everywhere, on only where enabled. -->
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="config.c" />
     <ClCompile Include="capemon.c" />
     <ClCompile Include="distorm\src\decoder.c" />
