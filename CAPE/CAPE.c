@@ -3426,6 +3426,11 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
 
+	// The two blocks below share CapeMetaData, DotNetCacheDumpCount and g_dotnet_jit
+	// with the compileMethod hook, which may still be running on CLR JIT worker
+	// threads while this teardown scan executes. Serialise against it.
+	EnterCriticalSection(&g_dotnet_jit_lock);
+
 	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
 	{
 		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
@@ -3458,6 +3463,8 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		else if (!g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
 	}
+
+	LeaveCriticalSection(&g_dotnet_jit_lock);
 }
 
 //**************************************************************************************

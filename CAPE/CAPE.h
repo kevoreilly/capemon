@@ -84,6 +84,11 @@ void DumpStrings(void);
 BOOL ProcessDumped;
 unsigned int DumpCount, DotNetCacheDumpCount;
 
+// Defined in hook_clr.c, initialised in DllMain. Serialises the .NET JIT dump
+// paths (this file's DumpInterestingRegions and the compileMethod hook) which
+// share DotNetCacheDumpCount, the CapeMetaData scratch struct and g_dotnet_jit.
+extern CRITICAL_SECTION g_dotnet_jit_lock;
+
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
 
