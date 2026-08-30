@@ -21,17 +21,24 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 void lookup_free(lookup_t *d)
 {
-	// TODO
+	entry_t *p = (entry_t *)d->root;
+	while (p) {
+		entry_t *next = p->next;
+		free(p);
+		p = next;
+	}
+	d->root = NULL;
 }
 
 void *lookup_add(lookup_t *d, ULONG_PTR id, unsigned int size)
 {
 	entry_t *t = (entry_t *) calloc(1, sizeof(entry_t) + size);
 	memset(t, 0, sizeof(*t));
-	t->next = d->root;
 	t->id = id;
 	t->size = size;
-	d->root = t;
+	// Insert at head atomically. Loops internally until the insert succeeds
+	do t->next = (entry_t *)d->root;
+	while (InterlockedCompareExchangePointer((PVOID volatile *)&d->root, t, t->next) != t->next);
 	return t->data;
 }
 
@@ -52,21 +59,20 @@ void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size)
 
 void lookup_del(lookup_t *d, ULONG_PTR id)
 {
-	entry_t *p;
-	entry_t *last;
-
-	p = d->root;
-	// edge case; we want to delete the first entry
-	if (p != NULL && p->id == id) {
-		entry_t *t = p->next;
-		free(d->root);
-		d->root = t;
-		return;
-	}
-	for (last = NULL; p != NULL; last = p, p = p->next)
-		if (p->id == id) {
-			last->next = p->next;
-			free(p);
+	entry_t *p, *last;
+	// Head removal races with concurrent lookup_add (both touch d->root) — needs CAS
+	for (;;) {
+		p = (entry_t *)d->root;
+		if (p == NULL || p->id != id)
 			break;
+		if (InterlockedCompareExchangePointer((PVOID volatile *)&d->root, p->next, p) == p)
+			return; // unlinked, memory intentionally not freed
+	}
+	// Interior removal never races with lookup_add, so a plain write is safe here
+	for (last = (entry_t *)d->root; last != NULL; last = last->next) {
+		if (last->next && last->next->id == id) {
+			last->next = last->next->next;
+			return;
 		}
+	}
 }
