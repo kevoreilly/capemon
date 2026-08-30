@@ -38,19 +38,31 @@ typedef struct {
 
 // These ICorJitInfo methods are plain virtuals (no __stdcall qualifier), so on
 // x86 they are __thiscall (this in ECX); on x64 there is a single convention.
+// The name accessor differs by runtime, hence three shapes:
 //
-// .NET Framework (clr.dll) exposes the classic 2-arg accessor:
+//   Framework (clr.dll), METHOD_NAME_ABI_FRAMEWORK_V2:
 //     const char* getMethodName(CORINFO_METHOD_HANDLE ftn, const char** moduleName)
-// .NET Core / 5+ removed it; the metadata name accessor there is:
+//   .NET Core 3.1 ... .NET 8, METHOD_NAME_ABI_CORE_V4:
 //     const char* getMethodNameFromMetadata(CORINFO_METHOD_HANDLE ftn,
 //         const char** className, const char** namespaceName,
-//         const char** enclosingClassNames, size_t maxEnclosingClassNames)
+//         const char** enclosingClassName)
+//   .NET 9+, METHOD_NAME_ABI_CORE_V5 (adds maxEnclosingClassNames):
+//     ...same, plus  size_t maxEnclosingClassNames
+typedef enum {
+	METHOD_NAME_ABI_NONE = 0,
+	METHOD_NAME_ABI_FRAMEWORK_V2,
+	METHOD_NAME_ABI_CORE_V4,
+	METHOD_NAME_ABI_CORE_V5
+} method_name_abi_t;
+
 #if defined(_M_IX86)
-typedef const char* (__thiscall *fnGetMethodName)(PVOID _this, PVOID ftn, const char** moduleName);
-typedef const char* (__thiscall *fnGetMethodNameFromMetadata)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassNames, size_t maxEnclosingClassNames);
+typedef const char* (__thiscall *fnGetMethodName_v2)(PVOID _this, PVOID ftn, const char** moduleName);
+typedef const char* (__thiscall *fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
+typedef const char* (__thiscall *fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #else
-typedef const char* (*fnGetMethodName)(PVOID _this, PVOID ftn, const char** moduleName);
-typedef const char* (*fnGetMethodNameFromMetadata)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassNames, size_t maxEnclosingClassNames);
+typedef const char* (*fnGetMethodName_v2)(PVOID _this, PVOID ftn, const char** moduleName);
+typedef const char* (*fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
+typedef const char* (*fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #endif
 
 // --- .NET runtime identification ----------------------------------------------
@@ -70,27 +82,58 @@ static dotnet_runtime_t g_dotnet_runtime = DOTNET_RT_UNKNOWN;
 static char g_dotnet_version[64] = {0};   // best-effort, taken from the module directory
 static int  g_dotnet_major = 0;           // major version parsed from the above (Core only)
 static int  g_getmethodname_slot = -1;    // -1 => unknown layout, name resolution disabled
+static method_name_abi_t g_method_name_abi = METHOD_NAME_ABI_NONE;
 static BOOL g_dotnet_runtime_resolved = FALSE;
 
-// Returns the ICorJitInfo vtable index of the metadata name accessor for the
-// detected runtime, or -1 when the layout is not known. The JIT-EE interface is
-// reordered on every major .NET release (and, rarely, in servicing), so each
-// entry is version-gated; a wrong index is still rejected by the output
-// validation in SafeGetMethodName(), and -1 avoids the call entirely.
-static int GetMethodNameSlot(dotnet_runtime_t rt, int major)
+// Resolves the ICorJitInfo vtable index of the name accessor for the detected
+// runtime and the ABI to call it with. Returns -1 (and *abi = NONE) when the
+// layout is not known for certain: the JIT-EE interface is reordered on every
+// major .NET release, so an index MUST be verified for that exact release
+// before being enabled here - either by counting the "...override;" method
+// declarations in that branch's src/coreclr/inc/icorjitinfoimpl_generated.h,
+// or with `dps poi(@comp)` in a debugger against the real binary. A wrong index
+// is still rejected by the output validation in SafeGetMethodName(), but -1
+// avoids the call (and its cost) entirely.
+static int GetMethodNameSlot(dotnet_runtime_t rt, int major, method_name_abi_t *abi)
 {
+	*abi = METHOD_NAME_ABI_NONE;
+
+	// getMethodNameFromMetadata 0-based ICorJitInfo vtable slot. Indices below
+	// were derived by counting "...override;" method declarations in each release
+	// branch's src/coreclr/inc/icorjitinfoimpl_generated.h and cross-checked
+	// against the FUNCTIONS list in .../JitInterface/ThunkGenerator/ThunkInput.txt
+	// (both agree for .NET 6-9). .NET 8 and earlier use the 4-arg form; .NET 9
+	// added size_t maxEnclosingClassNames (the 5-arg form).
 	switch (rt) {
 	case DOTNET_RT_CORE:
-		// getMethodNameFromMetadata. Index cross-checked against dotnet/runtime
-		// release/9.0: ThunkInput.txt position 121 (1-based) and the flat vtable
-		// order in icorjitinfoimpl_generated.h agree on 0-based slot 120.
-		// .NET 8 and 10 place it elsewhere, hence the exact-major gate.
-		if (major == 9)
+		switch (major) {
+		// .NET 5 / Core 3.1 are EOL and single-source (ThunkInput / corinfo.h
+		// only, no generated header to cross-check). Slots found: 113 / 118.
+		// Uncomment after confirming against the target binary.
+		// case 3: *abi = METHOD_NAME_ABI_CORE_V4; return 118; // .NET Core 3.1
+		// case 5: *abi = METHOD_NAME_ABI_CORE_V4; return 113; // .NET 5
+		case 6:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 115;
+		case 7:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 117;
+		case 8:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 115;
+		case 9:
+			*abi = METHOD_NAME_ABI_CORE_V5;
 			return 120;
-		return -1;
+		default:
+			// .NET 10+ : reordered again, needs its own verified entry.
+			return -1;
+		}
 	case DOTNET_RT_FRAMEWORK:
-		// Classic getMethodName (different, older API - see fnGetMethodName).
-		return -1; // TODO: verified slot for clr.dll (v4.0.30319)
+		// getMethodName is NOT vtable slot 0 (that is getMethodAttribs). The
+		// shipping Framework JIT-EE interface is not in any public source; the
+		// real index needs `dps poi(@comp)` against a live clr.dll. Disabled.
+		// *abi = METHOD_NAME_ABI_FRAMEWORK_V2; return <verified>;
+		return -1;
 	default:
 		return -1;
 	}
@@ -138,7 +181,7 @@ static void ResolveDotNetRuntime(void)
 	if (g_dotnet_runtime == DOTNET_RT_CORE && g_dotnet_version[0])
 		g_dotnet_major = atoi(g_dotnet_version);
 
-	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major);
+	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, &g_method_name_abi);
 	g_dotnet_runtime_resolved = TRUE;
 	LeaveCriticalSection(&g_dotnet_jit_lock);
 
@@ -148,36 +191,48 @@ static void ResolveDotNetRuntime(void)
 		g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
 }
 
-static BOOLEAN IsSafeStringA(const char* str, size_t max_len) {
-	if (!str || our_isbadreadptr(str, 1))
+// Bounded, fault-tolerant check that s is a readable, NUL-terminated string
+// (within 256 bytes) that plausibly looks like a managed type/method identifier.
+// Rejects anything a stray/mis-typed vtable call is likely to hand back.
+static BOOLEAN IsPlausibleName(const char* s)
+{
+	if (!s || our_isbadreadptr(s, 1))
 		return FALSE;
 
 	__try {
-		for (size_t i = 0; i < max_len; i++) {
-			char c = str[i];
-			if (c == '\0')
-				return TRUE;
+		char c0 = s[0];
+		if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') ||
+		      c0 == '_' || c0 == '.' || c0 == '<' || c0 == '?'))
+			return FALSE;
+
+		for (size_t i = 0; i < 256; i++) {
+			if (s[i] == '\0')
+				return i > 0;
 		}
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		return FALSE;
 	}
-	return FALSE; // Exceeded max_len without null-termination
+	return FALSE; // not NUL-terminated within 256 bytes
 }
 
-static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** moduleName) {
+// Resolves the managed method name (return value) and, for the CoreCLR ABIs, the
+// class and namespace via out-params. Every path is guarded: unknown slot/ABI,
+// unreadable pointers and a faulting call all yield NULL with the out-params
+// cleared. Never invokes a hard-coded slot without a verified GetMethodNameSlot()
+// entry for the running runtime.
+static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** className, const char** namespaceName)
+{
 	const char* name = NULL;
-	if (moduleName)
-		*moduleName = NULL;
 
-	if (!compHnd || !ftn)
+	if (className)
+		*className = NULL;
+	if (namespaceName)
+		*namespaceName = NULL;
+
+	if (!compHnd || !ftn || g_getmethodname_slot < 0 || g_method_name_abi == METHOD_NAME_ABI_NONE)
 		return NULL;
 
-	// Only proceed when the name-accessor vtable slot is known for this runtime.
-	if (g_getmethodname_slot < 0)
-		return NULL;
-
-	// Verify compHnd and ftn pointers are readable before dereferencing or invoking
 	if (our_isbadreadptr(compHnd, sizeof(PVOID)) || our_isbadreadptr(ftn, sizeof(PVOID)))
 		return NULL;
 
@@ -185,48 +240,46 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** modu
 		PVOID* vtable = *(PVOID**)compHnd;
 		PVOID slotfn = (vtable && !our_isbadreadptr(vtable, (ULONG)((g_getmethodname_slot + 1) * sizeof(PVOID))))
 			? vtable[g_getmethodname_slot] : NULL;
+
 		if (slotfn && !our_isbadreadptr(slotfn, 1)) {
-			if (g_dotnet_runtime == DOTNET_RT_CORE) {
-				// getMethodNameFromMetadata: moduleName receives the class name,
-				// namespace is returned separately (captured but not used here -
-				// the caller logs Class + Method only).
-				const char* namespaceName = NULL;
-				fnGetMethodNameFromMetadata getMethodNameFromMetadata = (fnGetMethodNameFromMetadata)slotfn;
-				name = getMethodNameFromMetadata(compHnd, ftn, moduleName, &namespaceName, NULL, 0);
-			} else {
-				fnGetMethodName getMethodName = (fnGetMethodName)slotfn;
-				name = getMethodName(compHnd, ftn, moduleName);
+			const char* enclosing = NULL;
+
+			switch (g_method_name_abi) {
+			case METHOD_NAME_ABI_FRAMEWORK_V2:
+				// className receives the combined "Namespace.Class" string.
+				name = ((fnGetMethodName_v2)slotfn)(compHnd, ftn, className);
+				break;
+			case METHOD_NAME_ABI_CORE_V4:
+				name = ((fnGetMethodNameFromMetadata_v4)slotfn)(compHnd, ftn, className, namespaceName, &enclosing);
+				break;
+			case METHOD_NAME_ABI_CORE_V5:
+				name = ((fnGetMethodNameFromMetadata_v5)slotfn)(compHnd, ftn, className, namespaceName, &enclosing, 0);
+				break;
+			default:
+				name = NULL;
+				break;
 			}
 
-			// Probe-verify the returned name pointer for absolute crash-protection
-			if (name != NULL) {
-				if (!IsSafeStringA(name, 256)) {
-					name = NULL;
-				} else {
-					char c = name[0];
-					if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.' || c == '<' || c == '?')) {
-						name = NULL;
-					}
-				}
-			}
-
-			// Probe-verify the returned class/module name pointer
-			if (name != NULL && moduleName && *moduleName) {
-				if (!IsSafeStringA(*moduleName, 256)) {
-					*moduleName = NULL;
-				} else {
-					char c = (*moduleName)[0];
-					if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.' || c == '<' || c == '?')) {
-						*moduleName = NULL;
-					}
-				}
+			if (name && !IsPlausibleName(name))
+				name = NULL;
+			if (name && className && *className && !IsPlausibleName(*className))
+				*className = NULL;
+			if (name && namespaceName && *namespaceName && !IsPlausibleName(*namespaceName))
+				*namespaceName = NULL;
+			if (!name) {
+				if (className)
+					*className = NULL;
+				if (namespaceName)
+					*namespaceName = NULL;
 			}
 		}
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		name = NULL;
-		if (moduleName)
-			*moduleName = NULL;
+		if (className)
+			*className = NULL;
+		if (namespaceName)
+			*namespaceName = NULL;
 	}
 	return name;
 }
@@ -250,11 +303,15 @@ HOOKDEF(int, WINAPI, compileMethod,
 		ResolveDotNetRuntime();
 
 		const char* className = NULL;
-		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className);
+		const char* namespaceName = NULL;
+		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className, &namespaceName);
 
 		if (methodName != NULL) {
-			LOQ_void("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
-			DebugOutput("compileMethod: Translated .NET JIT API: %s.%s\n", className ? className : "UnknownClass", methodName);
+			LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
+				"Class", className ? className : "UnknownClass", "Method", methodName);
+			DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
+				namespaceName ? namespaceName : "", namespaceName ? "." : "",
+				className ? className : "UnknownClass", methodName);
 		}
 
 		PVOID nativeCode = NULL;
