@@ -146,11 +146,98 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 			return -1;
 		}
 	case DOTNET_RT_FRAMEWORK:
-		// getMethodName on .NET Framework clr.dll (4.8)
-		*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
-		return 113;
+		switch (major) {
+		case 2:
+			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+#if defined(_M_AMD64) || defined(_M_X64)
+			return 16;  // amd64 slot
+#else
+			return 110; // x86 slot
+#endif
+		case 4:
+			switch (minor) {
+			case 0:
+				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+				return 101; // .NET 4.0 - 4.5.2
+			case 6:
+				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+				return 102; // .NET 4.6 - 4.6.2
+			case 7:
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 106; // .NET 4.7 - 4.7.2
+			case 8:
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 113; // .NET 4.8 - 4.8.1
+			default:
+				// Fallback to 113 (.NET 4.8) as default
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 113;
+			}
+		default:
+			return -1;
+		}
 	default:
 		return -1;
+	}
+}
+
+#ifndef HIWORD
+#define HIWORD(l) ((WORD)((((DWORD_PTR)(l)) >> 16) & 0xffff))
+#endif
+#ifndef LOWORD
+#define LOWORD(l) ((WORD)(((DWORD_PTR)(l)) & 0xffff))
+#endif
+
+typedef struct {
+	DWORD dwSignature;
+	DWORD dwStrucVersion;
+	DWORD dwFileVersionMS;
+	DWORD dwFileVersionLS;
+	DWORD dwProductVersionMS;
+	DWORD dwProductVersionLS;
+	DWORD dwFileFlagsMask;
+	DWORD dwFileFlags;
+	DWORD dwFileOS;
+	DWORD dwFileType;
+	DWORD dwFileSubtype;
+	DWORD dwFileDateMS;
+	DWORD dwFileDateLS;
+} VS_FIXEDFILEINFO_LOCAL;
+
+static void GetDllVersion(HMODULE hMod, int* major, int* minor)
+{
+	*major = 0;
+	*minor = 0;
+
+	if (!hMod)
+		return;
+
+	__try {
+		// RT_VERSION is (LPCSTR)16, VS_VERSION_INFO is (LPCSTR)1
+		HRSRC hRes = FindResourceA(hMod, (LPCSTR)1, (LPCSTR)16);
+		if (hRes) {
+			HGLOBAL hGlobal = LoadResource(hMod, hRes);
+			if (hGlobal) {
+				LPVOID pData = LockResource(hGlobal);
+				DWORD dwSize = SizeofResource(hMod, hRes);
+				if (pData && dwSize >= sizeof(VS_FIXEDFILEINFO_LOCAL)) {
+					DWORD* pDword = (DWORD*)pData;
+					DWORD* pLimit = (DWORD*)((BYTE*)pData + dwSize - sizeof(VS_FIXEDFILEINFO_LOCAL));
+					while (pDword < pLimit) {
+						if (*pDword == 0xFEEF04BD) { // VS_FFI_SIGNATURE
+							VS_FIXEDFILEINFO_LOCAL* pFileInfo = (VS_FIXEDFILEINFO_LOCAL*)pDword;
+							*major = HIWORD(pFileInfo->dwFileVersionMS);
+							*minor = LOWORD(pFileInfo->dwFileVersionMS);
+							break;
+						}
+						pDword++;
+					}
+				}
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		// Squelch any exceptions
 	}
 }
 
@@ -191,10 +278,17 @@ static void ResolveDotNetRuntime(void)
 		}
 	}
 
-	// Directory token is "9.0.11" for CoreCLR, "v4.0.30319" for Framework;
-	if (g_dotnet_runtime == DOTNET_RT_CORE && g_dotnet_version[0]) {
+	if (hMod) {
+		GetDllVersion(hMod, &g_dotnet_major, &g_dotnet_minor);
+	}
+
+	// Fallback to directory-name parsing if GetDllVersion didn't resolve version
+	if (g_dotnet_major == 0 && g_dotnet_version[0]) {
 		int major = 0, minor = 0;
-		if (sscanf(g_dotnet_version, "%d.%d", &major, &minor) >= 1) {
+		// Skip leading 'v' if present (e.g. "v4.0.30319")
+		const char* verStr = g_dotnet_version;
+		if (verStr[0] == 'v' || verStr[0] == 'V') verStr++;
+		if (sscanf(verStr, "%d.%d", &major, &minor) >= 1) {
 			g_dotnet_major = major;
 			g_dotnet_minor = minor;
 		}
@@ -204,9 +298,10 @@ static void ResolveDotNetRuntime(void)
 	g_dotnet_runtime_resolved = TRUE;
 	LeaveCriticalSection(&g_dotnet_jit_lock);
 
-	DebugOutput("compileMethod: .NET runtime = %s %s (name accessor vtable slot %d)\n",
+	DebugOutput("compileMethod: .NET runtime = %s %d.%d (%s, name accessor vtable slot %d)\n",
 		g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
 		g_dotnet_runtime == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown",
+		g_dotnet_major, g_dotnet_minor,
 		g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
 }
 

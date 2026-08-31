@@ -65,7 +65,11 @@ This table contains the exact, 0-based vtable slot indexes and method signatures
 
 | Runtime Family | Runtime Version | Runtime DLL | Method Name | Slot Index (0-based) | Arguments (excluding `this`) | ABI Version |
 | :--- | :--- | :--- | :--- | :---: | :--- | :---: |
-| **.NET Framework** | **4.0 - 4.8.1** | `clr.dll` | `getMethodName` | **113** | `(CORINFO_METHOD_HANDLE ftn, const char** moduleName)` | **ABI V2** |
+| **.NET Framework** | **2.0 - 3.5 SP1** | `mscorwks.dll` | `getMethodName` | **16** (x64) / **110** (x86) | `(CORINFO_METHOD_HANDLE ftn, const char** moduleName)` | **ABI V2** |
+| **.NET Framework** | **4.0 - 4.5.2** | `clr.dll` | `getMethodName` | **101** | `(CORINFO_METHOD_HANDLE ftn, const char** moduleName)` | **ABI V2** |
+| **.NET Framework** | **4.6 - 4.6.2** | `clr.dll` | `getMethodName` | **102** | `(CORINFO_METHOD_HANDLE ftn, const char** moduleName)` | **ABI V2** |
+| **.NET Framework** | **4.7 - 4.7.2** | `clr.dll` | `getMethodNameFromMetadata` | **106** | `(CORINFO_METHOD_HANDLE, const char**, const char**)` | **ABI V3** |
+| **.NET Framework** | **4.8 - 4.8.1** | `clr.dll` | `getMethodNameFromMetadata` | **113** | `(CORINFO_METHOD_HANDLE, const char**, const char**)` | **ABI V3** |
 | **.NET Core** | **1.1** | `coreclr.dll` | `getMethodName` | **105** | `(CORINFO_METHOD_HANDLE ftn, const char** moduleName)` | **ABI V2** |
 | **.NET Core** | **2.0** | `coreclr.dll` | `getMethodName` | **106** | `(CORINFO_METHOD_HANDLE ftn, const char** moduleName)` | **ABI V2** |
 | **.NET Core** | **2.1 - 2.2** | `coreclr.dll` | `getMethodNameFromMetadata` | **114** | `(CORINFO_METHOD_HANDLE, const char**, const char**)` | **ABI V3** |

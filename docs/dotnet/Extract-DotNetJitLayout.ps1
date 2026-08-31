@@ -43,11 +43,11 @@ Write-Host "Scanning Root Folder: $RootFolder" -ForegroundColor Cyan
 Write-Host "Symbol Cache: $SymbolCache" -ForegroundColor Cyan
 Write-Host "--------------------------------------------------" -ForegroundColor Gray
 
-# 2. Find all clr.dll and coreclr.dll binaries
-$targets = Get-ChildItem -Path $RootFolder -Recurse -Include "clr.dll", "coreclr.dll"
+# 2. Find all clr.dll, coreclr.dll, and mscorwks.dll binaries
+$targets = Get-ChildItem -Path $RootFolder -Recurse -Include "clr.dll", "coreclr.dll", "mscorwks.dll"
 
 if ($targets.Count -eq 0) {
-    Write-Warning "No 'clr.dll' or 'coreclr.dll' files found in the specified path structure."
+    Write-Warning "No 'clr.dll', 'coreclr.dll', or 'mscorwks.dll' files found in the specified path structure."
     return
 }
 
@@ -62,7 +62,7 @@ foreach ($target in $targets) {
     Write-Host "Processing $fileName ($versionDir)..." -ForegroundColor Yellow
 
     # Determine module name and default target method based on runtime type
-    $moduleName = if ($fileName -eq "coreclr.dll") { "coreclr" } else { "clr" }
+    $moduleName = if ($fileName -eq "coreclr.dll") { "coreclr" } elseif ($fileName -eq "mscorwks.dll") { "mscorwks" } else { "clr" }
     $targetMethod = if ($fileName -eq "coreclr.dll") { "getMethodNameFromMetadata" } else { "getMethodName" }
 
     # Step 1: Find all candidate vtable addresses
@@ -173,7 +173,7 @@ foreach ($target in $targets) {
 
     # Append to results
     $results += [PSCustomObject]@{
-        "Runtime"   = if ($fileName -eq "coreclr.dll") { "CoreCLR" } else { "Framework" }
+        "Runtime"   = if ($fileName -eq "coreclr.dll") { "CoreCLR" } elseif ($fileName -eq "mscorwks.dll") { "Framework (v2/v3.5)" } else { "Framework" }
         "Version"   = $versionDir
         "Method"    = $targetMethod
         "Slot"      = $slotIndex
