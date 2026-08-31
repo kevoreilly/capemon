@@ -75,6 +75,9 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `fake-rdtsc` | Boolean | Enable fake RDTSC (Read Time-Stamp Counter) results. |
 | `nop-rdtscp` | Boolean | NOP (No Operation) the RDTSCP instruction. |
 | `cpu-count` | Integer | Spoof the number of CPU cores (default: 4). |
+| `wmi-cache-size` | Integer | Spoof the L1/L2/L3 cache memory size in bytes returned via Win32_CacheMemory queries (default: 32768). |
+| `wmi-voltage-reading` | Integer | Spoof the voltage reading in millivolts returned via Win32_VoltageProbe queries (default: 12000). |
+| `wmi-temperature-reading` | Integer | Spoof the thermal zone sensor temperature in tenths of Kelvins returned via Win32_ThermalZoneInfo queries (default: 3000). |
 | `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code (enabled by default). |
 | `ntdll-unhook` | Boolean | Enable protection against `ntdll` unhooking (via `NtReadFile`). |
 | `ntdll-remap` | Boolean | Enable `ntdll` remapping protection. |
