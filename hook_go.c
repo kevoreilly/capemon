@@ -65,8 +65,15 @@ GoHookedFunc g_go_hooked_funcs[128] = {0};
 int g_go_hooked_count = 0;
 
 // Thread-local variables to handle async-safe, re-entrant TLS unencrypted response capturing on return
-static __declspec(thread) PVOID t_go_read_buf = NULL;
-static __declspec(thread) PVOID t_go_return_hook_address = NULL;
+// Stack-based tracking for nested crypto/tls.Read calls (max 16 nested levels)
+#define GO_TLS_STACK_DEPTH 16
+typedef struct {
+    PVOID returnAddress;
+    PVOID readBuffer;
+} GoTlsState;
+
+static __declspec(thread) GoTlsState t_go_tls_stack[GO_TLS_STACK_DEPTH] = {0};
+static __declspec(thread) int t_go_tls_stack_ptr = 0;
 
 extern PVOID ImageBase;
 extern lookup_t SoftBPs;
@@ -263,22 +270,27 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
         else if (strstr(funcName, "crypto/tls.(*Conn).Read")) {
             ULONG_PTR pData = GO_REG_ARG1(ExceptionInfo);
             ULONG_PTR length = GO_REG_ARG2(ExceptionInfo);
-            
+
             if (pData != 0 && length > 0 && IsAddressAccessible((PVOID)pData)) {
-                // Stash the destination plaintext buffer pointer thread-locally
-                t_go_read_buf = (PVOID)pData;
-                
-                // Read the return address from top of stack
+                // Push TLS state onto stack for re-entrant call handling
+                if (t_go_tls_stack_ptr < GO_TLS_STACK_DEPTH) {
+                    // Read the return address from top of stack
 #ifdef _WIN64
-                PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Rsp;
+                    PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Rsp;
 #else
-                PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Esp;
+                    PVOID* pReturnAddress = (PVOID*)ExceptionInfo->ContextRecord->Esp;
 #endif
-                if (IsAddressAccessible(pReturnAddress) && *pReturnAddress != NULL) {
-                    t_go_return_hook_address = *pReturnAddress;
-                    
-                    // Arm a temporary software return breakpoint (0xCC)
-                    SetSoftwareBreakpoint(&SoftBPs, t_go_return_hook_address);
+                    if (IsAddressAccessible(pReturnAddress) && *pReturnAddress != NULL) {
+                        // Store both return address and buffer pointer on stack
+                        t_go_tls_stack[t_go_tls_stack_ptr].returnAddress = *pReturnAddress;
+                        t_go_tls_stack[t_go_tls_stack_ptr].readBuffer = (PVOID)pData;
+                        t_go_tls_stack_ptr++;
+
+                        // Arm a temporary software return breakpoint (0xCC)
+                        SetSoftwareBreakpoint(&SoftBPs, *pReturnAddress);
+                    }
+                } else {
+                    DebugOutput("Go Trace: TLS stack overflow (>%d nested calls), skipping breakpoint\n", GO_TLS_STACK_DEPTH);
                 }
             }
         }
@@ -317,20 +329,24 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
 
 // Global dispatcher to route software breakpoint exceptions securely to hook_go.c
 BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo) {
-    // 1. Intercept temporary thread-local TLS Read return breakpoints
-    if (t_go_return_hook_address != NULL && Address == t_go_return_hook_address) {
+    // 1. Intercept temporary thread-local TLS Read return breakpoints (stack-based for re-entrancy)
+    if (t_go_tls_stack_ptr > 0 && Address == t_go_tls_stack[t_go_tls_stack_ptr - 1].returnAddress) {
         __try {
+            // Pop the matching TLS state from stack
+            t_go_tls_stack_ptr--;
+            GoTlsState currentState = t_go_tls_stack[t_go_tls_stack_ptr];
+
             // Under Go's ABI, the first return value "n" (bytes successfully decrypted/read) is in RAX/EAX
 #ifdef _WIN64
             ULONG_PTR bytesRead = ExceptionInfo->ContextRecord->Rax;
 #else
             ULONG_PTR bytesRead = ExceptionInfo->ContextRecord->Eax;
 #endif
-            
-            if (t_go_read_buf != NULL && bytesRead > 0 && bytesRead < 8192 && IsAddressAccessible(t_go_read_buf)) {
+
+            if (currentState.readBuffer != NULL && bytesRead > 0 && bytesRead < 8192 && IsAddressAccessible(currentState.readBuffer)) {
                 char* pBuf = (char*)calloc(bytesRead + 1, 1);
                 if (pBuf) {
-                    memcpy(pBuf, t_go_read_buf, bytesRead);
+                    memcpy(pBuf, currentState.readBuffer, bytesRead);
                     LOQ_string("go_tls", "ss", "Direction", "Inbound", "Plaintext", pBuf);
                     DebugOutput("Go TLS Inbound Plaintext Payload (%d bytes) Intercepted on Return:\n%s\n", bytesRead, pBuf);
                     free(pBuf);
@@ -339,12 +355,15 @@ BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInf
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             DebugOutput("Go Trace: Exception occurred resolving Go tls.Read return.\n");
+            // Ensure stack pointer is consistent even on exception
+            if (t_go_tls_stack_ptr > 0) t_go_tls_stack_ptr--;
         }
-        
-        // Immediately disarm and cleanup the temporary return breakpoint
-        ClearSoftwareBreakpoint(&SoftBPs, t_go_return_hook_address);
-        t_go_return_hook_address = NULL;
-        t_go_read_buf = NULL;
+
+        // Immediately disarm the return breakpoint
+        ClearSoftwareBreakpoint(&SoftBPs, Address);
+        // Zero out the popped entry for safety
+        t_go_tls_stack[t_go_tls_stack_ptr].returnAddress = NULL;
+        t_go_tls_stack[t_go_tls_stack_ptr].readBuffer = NULL;
         return TRUE;
     }
 
