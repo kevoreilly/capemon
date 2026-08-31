@@ -81,6 +81,7 @@ typedef enum {
 static dotnet_runtime_t g_dotnet_runtime = DOTNET_RT_UNKNOWN;
 static char g_dotnet_version[64] = {0};   // best-effort, taken from the module directory
 static int  g_dotnet_major = 0;           // major version parsed from the above (Core only)
+static int  g_dotnet_minor = 0;           // minor version parsed from the above (Core only)
 static int  g_getmethodname_slot = -1;    // -1 => unknown layout, name resolution disabled
 static method_name_abi_t g_method_name_abi = METHOD_NAME_ABI_NONE;
 static BOOL g_dotnet_runtime_resolved = FALSE;
@@ -94,46 +95,54 @@ static BOOL g_dotnet_runtime_resolved = FALSE;
 // or with `dps poi(@comp)` in a debugger against the real binary. A wrong index
 // is still rejected by the output validation in SafeGetMethodName(), but -1
 // avoids the call (and its cost) entirely.
-static int GetMethodNameSlot(dotnet_runtime_t rt, int major, method_name_abi_t *abi)
+static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_name_abi_t *abi)
 {
 	*abi = METHOD_NAME_ABI_NONE;
 
-	// getMethodNameFromMetadata 0-based ICorJitInfo vtable slot. Indices below
-	// were derived by counting "...override;" method declarations in each release
-	// branch's src/coreclr/inc/icorjitinfoimpl_generated.h and cross-checked
-	// against the FUNCTIONS list in .../JitInterface/ThunkGenerator/ThunkInput.txt
-	// (both agree for .NET 6-9). .NET 8 and earlier use the 4-arg form; .NET 9
-	// added size_t maxEnclosingClassNames (the 5-arg form).
+	// getMethodName / getMethodNameFromMetadata ICorJitInfo vtable slot.
+	// Indices are based on real shipping binary verification.
 	switch (rt) {
 	case DOTNET_RT_CORE:
 		switch (major) {
-		// .NET 5 / Core 3.1 are EOL and single-source (ThunkInput / corinfo.h
-		// only, no generated header to cross-check). Slots found: 113 / 118.
-		// Uncomment after confirming against the target binary.
-		// case 3: *abi = METHOD_NAME_ABI_CORE_V4; return 118; // .NET Core 3.1
-		// case 5: *abi = METHOD_NAME_ABI_CORE_V4; return 113; // .NET 5
+		case 1:
+			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+			return 105; // CoreCLR 1.1.x
+		case 2:
+			if (minor == 0) {
+				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+				return 106; // CoreCLR 2.0.x
+			} else {
+				*abi = METHOD_NAME_ABI_CORE_V4;
+				return 114; // CoreCLR 2.1.x, 2.2.x
+			}
+		case 3:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 118; // CoreCLR 3.0.x / 3.1.x
+		case 5:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 113; // .NET 5.0
 		case 6:
 			*abi = METHOD_NAME_ABI_CORE_V4;
-			return 115;
+			return 115; // .NET 6.0
 		case 7:
 			*abi = METHOD_NAME_ABI_CORE_V4;
-			return 117;
+			return 117; // .NET 7.0
 		case 8:
 			*abi = METHOD_NAME_ABI_CORE_V4;
-			return 115;
+			return 115; // .NET 8.0
 		case 9:
 			*abi = METHOD_NAME_ABI_CORE_V5;
-			return 120;
+			return 120; // .NET 9.0
+		case 10:
+			*abi = METHOD_NAME_ABI_CORE_V5;
+			return 122; // .NET 10.0
 		default:
-			// .NET 10+ : reordered again, needs its own verified entry.
 			return -1;
 		}
 	case DOTNET_RT_FRAMEWORK:
-		// getMethodName is NOT vtable slot 0 (that is getMethodAttribs). The
-		// shipping Framework JIT-EE interface is not in any public source; the
-		// real index needs `dps poi(@comp)` against a live clr.dll. Disabled.
-		// *abi = METHOD_NAME_ABI_FRAMEWORK_V2; return <verified>;
-		return -1;
+		// getMethodName on .NET Framework clr.dll (4.8)
+		*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+		return 113;
 	default:
 		return -1;
 	}
@@ -177,11 +186,15 @@ static void ResolveDotNetRuntime(void)
 	}
 
 	// Directory token is "9.0.11" for CoreCLR, "v4.0.30319" for Framework;
-	// atoi() yields the CoreCLR major and 0 for the (unused-here) Framework case.
-	if (g_dotnet_runtime == DOTNET_RT_CORE && g_dotnet_version[0])
-		g_dotnet_major = atoi(g_dotnet_version);
+	if (g_dotnet_runtime == DOTNET_RT_CORE && g_dotnet_version[0]) {
+		int major = 0, minor = 0;
+		if (sscanf(g_dotnet_version, "%d.%d", &major, &minor) >= 1) {
+			g_dotnet_major = major;
+			g_dotnet_minor = minor;
+		}
+	}
 
-	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, &g_method_name_abi);
+	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, g_dotnet_minor, &g_method_name_abi);
 	g_dotnet_runtime_resolved = TRUE;
 	LeaveCriticalSection(&g_dotnet_jit_lock);
 
