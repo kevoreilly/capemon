@@ -91,6 +91,7 @@ Integration of YARA for in-memory scanning
 
 - **Account for vtable offset variance.** COM interfaces across OS versions and MSVC versions have shifting offsets. Protect with SEH blocks and pointer-validation checks (`IsBadReadPtr`-like probes).
 - **Use self-propagating COM chains.** For dynamically-instantiated interfaces without symbol exports (Windows 10/11), hook the creator (e.g., `IWbemServices`), then intercept returned objects (e.g., `IEnumWbemClassObject`) to hook their vtables on-the-fly.
+- **Match calling conventions for COM methods:** x86 COM methods (e.g., `ICorJitInfo::getMethodName`) use `__thiscall` where `this` is passed in `ECX`, not `__stdcall`. Using wrong convention causes stack imbalance: callee cleans wrong stack frame → ESP corruption → crash. On x86, typedef function pointers as `__thiscall`; on x64, use `__fastcall`. Always validate vtable pointers and method parameters with `IsBadReadPtr` before calling CLR/COM vtables.
 
 ### Pull Request Discipline
 
