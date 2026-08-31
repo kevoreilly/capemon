@@ -111,7 +111,7 @@ static BOOL IsPEFile(PVOID pBase) {
 static PBYTE ScanSectionForBytes(PBYTE pStart, DWORD Size, PBYTE pPattern, DWORD PatternSize) {
     if (Size < PatternSize) return NULL;
     __try {
-        for (PBYTE p = pStart; p < pStart + Size - PatternSize; p += 4) {
+        for (PBYTE p = pStart; p < pStart + Size - PatternSize; p++) {
             if (memcmp(p, pPattern, PatternSize) == 0) {
                 return p;
             }
@@ -127,7 +127,7 @@ static PBYTE ScanSectionForBytes(PBYTE pStart, DWORD Size, PBYTE pPattern, DWORD
 static PBYTE ScanSectionForPclntab(PBYTE pStart, DWORD Size) {
     if (Size < sizeof(GoPCHeader)) return NULL;
     __try {
-        for (PBYTE p = pStart; p < pStart + Size - sizeof(GoPCHeader); p += 4) {
+        for (PBYTE p = pStart; p < pStart + Size - sizeof(GoPCHeader); p++) {
             DWORD Magic = *(PDWORD)p;
             if (Magic == 0xFFFFFFF1 || Magic == 0xFFFFFFF0 || Magic == 0xFFFFFFFA || Magic == 0xFFFFFFFB) {
                 // Verify the structural bounds to eliminate false positives
@@ -194,19 +194,25 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                                 DebugOutput("Go Trace: Detected direct in-memory PE execution (MZ or PE signature found) at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
                                 LOQ_string("go_trace", "sp", "Event", "Go Reflective PE Payload Execution Intercepted",
                                            "Jump Address", (PVOID)trapAddress);
-                                CapeMetaData->TypeString = "Go Reflective PE Payload";
+                                if (CapeMetaData) {
+                                    CapeMetaData->TypeString = "Go Reflective PE Payload";
+                                }
                             } else {
                                 DebugOutput("Go Trace: Detected direct in-memory shellcode execution at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, mbi.RegionSize);
                                 LOQ_string("go_trace", "sp", "Event", "Go Direct Shellcode/Payload Execution Intercepted",
                                            "Jump Address", (PVOID)trapAddress);
-                                CapeMetaData->TypeString = "Go In-Memory Shellcode Payload";
+                                if (CapeMetaData) {
+                                    CapeMetaData->TypeString = "Go In-Memory Shellcode Payload";
+                                }
                             }
 
                             // Dump the raw in-memory payload cleanly (headers + sections)
-                            CapeMetaData->ModulePath = NULL;
-                            CapeMetaData->DumpType = 0;
-                            CapeMetaData->Address = mbi.AllocationBase;
-                            
+                            if (CapeMetaData) {
+                                CapeMetaData->ModulePath = NULL;
+                                CapeMetaData->DumpType = 0;
+                                CapeMetaData->Address = mbi.AllocationBase;
+                            }
+
                             DumpMemoryRaw(mbi.AllocationBase, mbi.RegionSize);
                         }
                     }

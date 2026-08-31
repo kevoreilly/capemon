@@ -523,9 +523,9 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	// Execute custom Go breakpoint callback if it matches our list
 	extern BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo);
-	GoBreakpointHandler(Address, ExceptionInfo);
-
-	SoftwareBreakpointCallback(ExceptionInfo);
+	if (!GoBreakpointHandler(Address, ExceptionInfo)) {
+		SoftwareBreakpointCallback(ExceptionInfo);
+	}
 
 	if (g_config.softbpmode)
 	{
