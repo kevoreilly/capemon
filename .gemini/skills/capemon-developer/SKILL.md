@@ -71,8 +71,8 @@ Integration of YARA for in-memory scanning
 
 ### Memory & Thread Locality
 
-- **NEVER use `__declspec(thread)` for data structures.** Static TLS allocated by the OS loader is unstable/unsupported inside post-loaded DLLs. Always use dynamic Windows TLS APIs (`TlsAlloc`, `TlsGetValue`, `TlsSetValue`, `TlsFree`).
-  - *Exception:* Cache pointers to TLS contexts only: `static __declspec(thread) ctx_t* g_tls_cache = NULL;` with NULL-safety fallback.
+- **Never use `__declspec(thread)` for data structures in post-loaded DLLs.** Static TLS is allocated at process load time and causes crashes/corruption when DLLs are injected post-startup. Use dynamic Windows TLS APIs (`TlsAlloc`, `TlsGetValue`, `TlsSetValue`, `TlsFree`) for actual context data.
+  - *Pointer caching is safe:* `static __declspec(thread) ctx_t* g_tls_cache = NULL;` with NULL-fallback to `TlsGetValue()` is a valid performance optimization (avoids repeated API calls on hot path).
 - **NEVER allocate heap memory in hot-path hooks.** A hook running in all threads can deadlock if another thread holds the heap lock. Use stack allocation, Small Buffer Optimization (SBO), or pre-allocated TLS instead.
 - **NEVER call hooked APIs inside hook callbacks.** Recursion causes stack overflow. Always call the original function pointer (e.g., `Old_FunctionName()`).
 
