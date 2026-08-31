@@ -100,9 +100,9 @@ Integration of YARA for in-memory scanning
 
 - **Never delete comments with research citations.** Developer comments contain malware hashes, CVE references, and GitHub repository links. When refactoring, migrate citations cleanly to keep the codebase traceable and educational.
 
-## Design Decision Checklist
+## Design Decision & Thinking Frameworks
 
-Before implementing any hook, bypass, or feature, verify:
+### Pre-Implementation Checklist
 
 **API Fidelity:**
 - Exact Windows SDK specification (legal, illegal, undocumented return values)?
@@ -117,6 +117,23 @@ Before implementing any hook, bypass, or feature, verify:
 **Logging & Completeness:**
 - What gets logged—exact argument names, values, state transitions for accurate behavior timeline reconstruction?
 - Is the log noise-free? (Set caps, e.g., max 20 exception queries, to prevent expansion attacks)
+
+### Four-Persona Challenge Framework
+
+Challenge every hook/bypass proposal by asking:
+
+| Persona | Key Questions |
+|---------|---|
+| **OS/Kernel Dev** | What's the exact API spec? Does this break multi-threading or cause CPU starvation? |
+| **Malware Author** | How do I detect this mock? Via invalid probes, timing, or memory watches? Can I bypass via direct syscalls? |
+| **Capemon Dev** | Should this consolidate into an existing hook? Is it re-entrancy safe? x86/x64 compatible? |
+| **Security Analyst** | Is logging complete (names, values, state)? Are there safeguards against infinite expansion? |
+
+### Critical Thinking Mandates
+
+- **Deadlock & Starvation Check:** Before blocking/skipping any syscall, simulate downstream consequences. Will multi-threaded programs or Windows libraries deadlock or starve?
+- **Arch Generalization Rule:** If code is `#ifdef _WIN64` or `#ifdef _X86_`, question why. If the fix applies equally to both, refactor to support both cleanly.
+- **Historical Debt Preservation:** Never delete comments with malware hashes, CVEs, or repo links. These are research artifacts; migrate them cleanly during refactors.
 
 ## Build & Compilation Guide
 
