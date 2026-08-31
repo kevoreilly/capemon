@@ -85,8 +85,8 @@ static thread_log_context_t* GetThreadLogContext(void) {
 
 // Safe accessor macros with NULL check
 // Note: These will return NULL if TLS allocation failed, callers must check
-#define g_bson (GetThreadLogContext() ? GetThreadLogContext()->g_bson : NULL)
-#define g_istr (GetThreadLogContext() ? GetThreadLogContext()->g_istr : NULL)
+#define g_bson ({ thread_log_context_t *_ctx = GetThreadLogContext(); _ctx ? _ctx->g_bson : NULL; })
+#define g_istr ({ thread_log_context_t *_ctx = GetThreadLogContext(); _ctx ? _ctx->g_istr : NULL; })
 
 void TlsThreadCleanup(void) {
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {

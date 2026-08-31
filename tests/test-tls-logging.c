@@ -220,7 +220,7 @@ int main()
 
     // Initialize logging system
     printf("[INIT] Initializing logging system...\n");
-    log_init(0, 0, 1);
+    log_init(0);
     printf("[INIT] Logging system initialized\n\n");
 
     // Run tests
