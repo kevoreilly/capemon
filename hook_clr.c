@@ -56,9 +56,9 @@ typedef enum {
 } method_name_abi_t;
 
 #if defined(_M_IX86)
-typedef const char* (__thiscall *fnGetMethodName_v2)(PVOID _this, PVOID ftn, const char** moduleName);
-typedef const char* (__thiscall *fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
-typedef const char* (__thiscall *fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
+typedef const char* (__fastcall *fnGetMethodName_v2)(PVOID _this, PVOID dummy, PVOID ftn, const char** moduleName);
+typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
+typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #else
 typedef const char* (*fnGetMethodName_v2)(PVOID _this, PVOID ftn, const char** moduleName);
 typedef const char* (*fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
@@ -244,6 +244,23 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** clas
 		if (slotfn && !our_isbadreadptr(slotfn, 1)) {
 			const char* enclosing = NULL;
 
+#if defined(_M_IX86)
+			switch (g_method_name_abi) {
+			case METHOD_NAME_ABI_FRAMEWORK_V2:
+				// className receives the combined "Namespace.Class" string.
+				name = ((fnGetMethodName_v2)slotfn)(compHnd, NULL, ftn, className);
+				break;
+			case METHOD_NAME_ABI_CORE_V4:
+				name = ((fnGetMethodNameFromMetadata_v4)slotfn)(compHnd, NULL, ftn, className, namespaceName, &enclosing);
+				break;
+			case METHOD_NAME_ABI_CORE_V5:
+				name = ((fnGetMethodNameFromMetadata_v5)slotfn)(compHnd, NULL, ftn, className, namespaceName, &enclosing, 0);
+				break;
+			default:
+				name = NULL;
+				break;
+			}
+#else
 			switch (g_method_name_abi) {
 			case METHOD_NAME_ABI_FRAMEWORK_V2:
 				// className receives the combined "Namespace.Class" string.
@@ -259,6 +276,7 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** clas
 				name = NULL;
 				break;
 			}
+#endif
 
 			if (name && !IsPlausibleName(name))
 				name = NULL;
