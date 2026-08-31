@@ -101,6 +101,99 @@ Integration of YARA for in-memory scanning
 
 - **Never delete comments with research citations.** Developer comments contain malware hashes, CVE references, and GitHub repository links. When refactoring, migrate citations cleanly to keep the codebase traceable and educational.
 
+## Common Crash Patterns & Prevention
+
+### Crash 1: Static TLS Corruption in Post-Loaded DLLs
+
+**Symptoms:** Immediate crash or stack corruption during early logging or thread-local operations.
+
+**Root Cause:** Using `__declspec(thread)` to store data structures (not pointers) in a DLL loaded post-startup. Static TLS is allocated by the OS loader at process init; dynamic injection skips this initialization, leading to memory corruption.
+
+**Example:** `static __declspec(thread) bson g_bson[1];` → **CRASH**
+
+**Fix:** Use dynamic Windows TLS APIs for actual data:
+```c
+// g_bson → stored via TlsSetValue(g_bson_tls_index, context)
+// Macro accessor: #define g_bson (ctx ? ctx->g_bson : NULL)
+// Fallback: IsBadReadPtr checks before access
+```
+
+### Crash 2: Calling Convention Mismatch (`__thiscall` vs `__stdcall`)
+
+**Symptoms:** ESP corruption, immediate crash, or delayed stack corruption inside hooked COM methods.
+
+**Root Cause:** x86 COM methods (e.g., `ICorJitInfo::getMethodName`) use `__thiscall` (this in ECX), not `__stdcall`. Wrong convention = arguments on stack instead of registers → callee cleans wrong frame size → ESP corrupted.
+
+**Example:** `typedef const char* (__stdcall *fn)(PVOID _this, ...)` on x86 → **CRASH**
+
+**Fix:** Architecture-specific function pointers:
+```c
+#if defined(_M_IX86)
+typedef const char* (__thiscall *fn)(PVOID _this, PVOID ftn, ...);
+#else
+typedef const char* (__fastcall *fn)(PVOID _this, PVOID ftn, ...);
+#endif
+```
+
+### Crash 3: Heap Allocation Under Lock (Re-entrancy Deadlock)
+
+**Symptoms:** Process freezes, all threads block, no exception. Debugger shows one thread holds heap lock, another waits on hook callback that needs heap alloc.
+
+**Root Cause:** Hook runs in all threads. If hook allocates heap (`malloc`, `HeapAlloc`), and another thread holds the heap lock, deadlock. Cannot be caught by SEH; freezes the process.
+
+**Example:**
+```c
+void hook_callback() {
+    EnterCriticalSection(&g_mutex);
+    char *buf = malloc(256);  // ← DEADLOCK if another thread holds heap lock
+}
+```
+
+**Fix:** Use stack allocation or pre-allocated TLS only:
+```c
+void hook_callback() {
+    char buf[256];  // stack: always safe
+    // or
+    thread_ctx_t *ctx = TlsGetValue(g_tls_index);  // pre-allocated
+}
+```
+
+## Synchronization & Lock Safety
+
+- **Use critical sections only for slow-path operations.** Locks block all threads in the process. Minimize hold time; never call complex functions (API calls, allocations) inside critical sections.
+- **Establish a global lock ordering.** If hook A acquires `lock1` then `lock2`, every other code path must acquire locks in the same order. Document lock hierarchy comments in code.
+- **Never nest locks on the same thread.** If you hold `g_mutex`, don't try to acquire it again on the same thread. Use `TryEnterCriticalSection` with fallback logic, not blocking re-entry.
+- **Protect shared state, not code regions.** Only lock access to shared memory (counters, caches, vtables), not entire operations. Release the lock immediately after modifying shared data.
+
+## Stack-Based Allocation (SBO) Pattern
+
+**Rule:** In hook callbacks, always use **stack allocation**, not heap.
+
+**Why:** Hooks run in all threads. If a callback does `malloc()` and another thread holds the heap lock, re-entrancy deadlock (process freeze, no exception).
+
+**Pattern:**
+```c
+// Good: stack-based, bounded
+static void log_value(const char *name, int value) {
+    char buf[256];  // bounded stack
+    snprintf(buf, sizeof(buf), "%s=%d", name, value);
+}
+
+// Bad: heap allocation in hook
+void hook_callback() {
+    char *buf = malloc(1024);  // ← DEADLOCK risk
+}
+
+// Good: Small Buffer Optimization (SBO)
+// Pre-allocate thread-local context once, reuse in all callbacks
+thread_ctx_t *ctx = TlsGetValue(g_tls_index);  // cached pointer
+if (ctx) {
+    snprintf(ctx->buf, sizeof(ctx->buf), ...);  // reuse pre-allocated
+}
+```
+
+**Verification:** Before committing hook code, grep for `malloc`, `calloc`, `HeapAlloc` inside hook callbacks. If found, refactor to stack or pre-allocated TLS.
+
 ## Design Decision & Thinking Frameworks
 
 ### Pre-Implementation Checklist
