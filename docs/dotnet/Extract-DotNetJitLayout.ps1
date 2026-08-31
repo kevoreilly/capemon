@@ -1,5 +1,5 @@
-# Get-DotNetVTableSlots.ps1
-# Automates the extraction of ICorJitInfo/CEEJitInfo vtable slots across multiple .NET versions.
+# Extract-DotNetJitLayout.ps1
+# Automates the extraction of ICorJitInfo/CEEJitInfo vtable slots and method signatures across multiple .NET versions.
 # Set-ExecutionPolicy Bypass -Scope Process
 param (
     [string]$RootFolder = "",
@@ -151,16 +151,37 @@ foreach ($target in $targets) {
         }
     }
 
+    # Step 3: Extract Method Signature (Arguments & Types)
+    $sigQuery = "x $moduleName!*CEEInfo::*${targetMethod}*"
+    $sigArguments = @("-z", "`"$($target.FullName)`"", "-y", "`"$symPath`"", "-c", "`"$sigQuery; q`"")
+    
+    $pinfo.Arguments = $sigArguments -join " "
+    $process = [System.Diagnostics.Process]::Start($pinfo)
+    $sigOutput = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+    
+    $methodSig = "Unknown"
+    $sigLines = $sigOutput -split "`r?`n"
+    foreach ($line in $sigLines) {
+        if ($line -match "(.*::$targetMethod.*)") {
+            if ($line -match "\(([^)]*)\)") {
+                $methodSig = "($($Matches[1]))"
+                break
+            }
+        }
+    }
+
     # Append to results
     $results += [PSCustomObject]@{
-        "Runtime" = if ($fileName -eq "coreclr.dll") { "CoreCLR" } else { "Framework" }
-        "Version" = $versionDir
-        "Method"  = $targetMethod
-        "Slot"    = $slotIndex
-        "Path"    = $target.FullName
+        "Runtime"   = if ($fileName -eq "coreclr.dll") { "CoreCLR" } else { "Framework" }
+        "Version"   = $versionDir
+        "Method"    = $targetMethod
+        "Slot"      = $slotIndex
+        "Signature" = $methodSig
+        "Path"      = $target.FullName
     }
 }
 
-# 3. Output beautiful Markdown Summary
+# 3. Output summary
 Write-Host "`nAnalysis Complete!`n" -ForegroundColor Green
 $results | Format-Table -AutoSize

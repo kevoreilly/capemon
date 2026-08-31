@@ -38,10 +38,13 @@ typedef struct {
 
 // These ICorJitInfo methods are plain virtuals (no __stdcall qualifier), so on
 // x86 they are __thiscall (this in ECX); on x64 there is a single convention.
-// The name accessor differs by runtime, hence three shapes:
+// The name accessor differs by runtime, hence four shapes:
 //
 //   Framework (clr.dll), METHOD_NAME_ABI_FRAMEWORK_V2:
 //     const char* getMethodName(CORINFO_METHOD_HANDLE ftn, const char** moduleName)
+//   .NET Core 2.1 ... .NET 2.2, METHOD_NAME_ABI_CORE_V3:
+//     const char* getMethodNameFromMetadata(CORINFO_METHOD_HANDLE ftn,
+//         const char** className, const char** namespaceName)
 //   .NET Core 3.1 ... .NET 8, METHOD_NAME_ABI_CORE_V4:
 //     const char* getMethodNameFromMetadata(CORINFO_METHOD_HANDLE ftn,
 //         const char** className, const char** namespaceName,
@@ -51,16 +54,19 @@ typedef struct {
 typedef enum {
 	METHOD_NAME_ABI_NONE = 0,
 	METHOD_NAME_ABI_FRAMEWORK_V2,
+	METHOD_NAME_ABI_CORE_V3,
 	METHOD_NAME_ABI_CORE_V4,
 	METHOD_NAME_ABI_CORE_V5
 } method_name_abi_t;
 
 #if defined(_M_IX86)
 typedef const char* (__fastcall *fnGetMethodName_v2)(PVOID _this, PVOID dummy, PVOID ftn, const char** moduleName);
+typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v3)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName);
 typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
 typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #else
 typedef const char* (*fnGetMethodName_v2)(PVOID _this, PVOID ftn, const char** moduleName);
+typedef const char* (*fnGetMethodNameFromMetadata_v3)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName);
 typedef const char* (*fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
 typedef const char* (*fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #endif
@@ -112,7 +118,7 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
 				return 106; // CoreCLR 2.0.x
 			} else {
-				*abi = METHOD_NAME_ABI_CORE_V4;
+				*abi = METHOD_NAME_ABI_CORE_V3;
 				return 114; // CoreCLR 2.1.x, 2.2.x
 			}
 		case 3:
@@ -263,6 +269,9 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** clas
 				// className receives the combined "Namespace.Class" string.
 				name = ((fnGetMethodName_v2)slotfn)(compHnd, NULL, ftn, className);
 				break;
+			case METHOD_NAME_ABI_CORE_V3:
+				name = ((fnGetMethodNameFromMetadata_v3)slotfn)(compHnd, NULL, ftn, className, namespaceName);
+				break;
 			case METHOD_NAME_ABI_CORE_V4:
 				name = ((fnGetMethodNameFromMetadata_v4)slotfn)(compHnd, NULL, ftn, className, namespaceName, &enclosing);
 				break;
@@ -278,6 +287,9 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** clas
 			case METHOD_NAME_ABI_FRAMEWORK_V2:
 				// className receives the combined "Namespace.Class" string.
 				name = ((fnGetMethodName_v2)slotfn)(compHnd, ftn, className);
+				break;
+			case METHOD_NAME_ABI_CORE_V3:
+				name = ((fnGetMethodNameFromMetadata_v3)slotfn)(compHnd, ftn, className, namespaceName);
 				break;
 			case METHOD_NAME_ABI_CORE_V4:
 				name = ((fnGetMethodNameFromMetadata_v4)slotfn)(compHnd, ftn, className, namespaceName, &enclosing);
