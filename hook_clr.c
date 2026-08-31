@@ -142,11 +142,17 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 		case 10:
 			*abi = METHOD_NAME_ABI_CORE_V5;
 			return 122; // .NET 10.0
+		case 11:
+			*abi = METHOD_NAME_ABI_CORE_V5;
+			return 123; // .NET 11.0
 		default:
 			return -1;
 		}
 	case DOTNET_RT_FRAMEWORK:
 		switch (major) {
+		case 1:
+			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+			return 105; // .NET Framework 1.1 (x86, based on SSCLI/Rotor corjit.h layout)
 		case 2:
 			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
 #if defined(_M_AMD64) || defined(_M_X64)
