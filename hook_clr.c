@@ -294,9 +294,12 @@ static void ResolveDotNetRuntime(void)
 		// Skip leading 'v' if present (e.g. "v4.0.30319")
 		const char* verStr = g_dotnet_version;
 		if (verStr[0] == 'v' || verStr[0] == 'V') verStr++;
-		if (sscanf(verStr, "%d.%d", &major, &minor) >= 1) {
+		if (sscanf(verStr, "%d.%d", &major, &minor) == 2) {
 			g_dotnet_major = major;
 			g_dotnet_minor = minor;
+		} else if (sscanf(verStr, "%d", &major) == 1) {
+			g_dotnet_major = major;
+			g_dotnet_minor = 0;
 		}
 	}
 
@@ -325,15 +328,17 @@ static BOOLEAN IsPlausibleName(const char* s)
 		      c0 == '_' || c0 == '.' || c0 == '<' || c0 == '?'))
 			return FALSE;
 
-		for (size_t i = 0; i < 256; i++) {
+		for (size_t i = 1; i < 256; i++) {
 			if (s[i] == '\0')
-				return i > 0;
+				return TRUE;
 		}
+		if (s[255] == '\0')
+			return TRUE;
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		return FALSE;
 	}
-	return FALSE; // not NUL-terminated within 256 bytes
+	return FALSE;
 }
 
 // Resolves the managed method name (return value) and, for the CoreCLR ABIs, the
@@ -353,7 +358,7 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** clas
 	if (!compHnd || !ftn || g_getmethodname_slot < 0 || g_method_name_abi == METHOD_NAME_ABI_NONE)
 		return NULL;
 
-	if (our_isbadreadptr(compHnd, sizeof(PVOID)) || our_isbadreadptr(ftn, sizeof(PVOID)))
+	if (!g_dotnet_runtime_resolved || our_isbadreadptr(compHnd, sizeof(PVOID)) || our_isbadreadptr(ftn, sizeof(PVOID)))
 		return NULL;
 
 	__try {

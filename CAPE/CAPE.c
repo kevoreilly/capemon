@@ -3429,20 +3429,25 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	// The two blocks below write the shared CapeMetaData scratch struct and touch
 	// DotNetCacheDumpCount / g_dotnet_jit, which the compileMethod hook may still
 	// be updating on CLR JIT worker threads while this teardown scan runs.
+	BOOLEAN isDotNetImage = FALSE;
+	BOOLEAN inJitCache = FALSE;
+
 	EnterCriticalSection(&g_dotnet_jit_lock);
+	isDotNetImage = IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT;
+	inJitCache = lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0);
+	LeaveCriticalSection(&g_dotnet_jit_lock);
 
-	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
+	if (isDotNetImage)
 	{
-		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
-
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = UNPACKED_PE;
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
+		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
 	}
 
-	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
+	if (inJitCache)
 	{
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
@@ -3456,15 +3461,15 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
 		{
 			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+			EnterCriticalSection(&g_dotnet_jit_lock);
 			DotNetCacheDumpCount++;
+			LeaveCriticalSection(&g_dotnet_jit_lock);
 		}
 		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
 		else if (!g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
 	}
-
-	LeaveCriticalSection(&g_dotnet_jit_lock);
 }
 
 //**************************************************************************************
