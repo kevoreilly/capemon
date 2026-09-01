@@ -288,6 +288,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
 		ret = 0;
 	}
 
+	// Opt-in per-sample via YARA cape_options (loaderlock-settle=1). Trojanized sideload DLLs
+	// (AxolotlLoader/dui70.dll) crash under monitoring because a reentrant DllMain bootstrap re-clobbers a
+	// dispatch-table slot back to a -1 sentinel mid-resolver, so the consumer calls slot[0]==-1 (RIP=~0).
+	// The resolver runs with the loader lock released, so a loader_lock_held() gate never covered it; yield
+	// on every resolution while active to spread the bootstrap/resolver timing apart and avoid the clobber.
+	if (g_config.loaderlock_settle)
+		Sleep(1);
+
 	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
 		"Ordinal", Ordinal, "FunctionAddress", FunctionAddress);
