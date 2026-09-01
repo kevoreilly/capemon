@@ -64,3 +64,34 @@ Integration of YARA for in-memory scanning
 
 ## Engineering & Documentation Mandates
 - **Always update `@docs/configuration.md`:** Whenever a new configurable option is introduced to the engine (such as `log-format`, `sleep-skip-seconds`, etc.), you must immediately append its documentation details to the appropriate table inside the configuration reference document to ensure the user and the system documentation are fully up-to-date.
+
+## Build & Compilation Guide
+
+### 1. Locating MSBuild
+On a standard Windows development machine, MSBuild may not be present in the global `PATH`. You can locate it using PowerShell by running a query over the standard Microsoft Visual Studio or Build Tools installation directories:
+
+```powershell
+Get-ChildItem -Path "C:\Program Files", "C:\Program Files (x86)" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+```
+
+Typical installation paths include:
+* **Visual Studio 2022 Build Tools (32-bit/64-bit host):**
+  `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe`
+* **Visual Studio 2022 Community Edition:**
+  `C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe`
+
+### 2. Compilation Targets and Toolset Overrides
+The `capemon` solution specifies the legacy Visual Studio 2017 (`v141`) platform toolset. If your local build system only has Visual Studio 2022 (`v143`) installed, you can compile successfully by dynamically overriding the platform toolset and disabling Whole Program Optimization (`LTCG` / Link-Time Code Generation) to prevent linker mismatches against precompiled static `.lib` dependencies (like `libyara`).
+
+#### Compiling Win32 (x86) Release Target:
+```powershell
+$msbuild = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+& $msbuild /m /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143 /p:WholeProgramOptimization=false capemon.sln
+```
+
+#### Compiling x64 (64-bit) Release Target:
+```powershell
+$msbuild = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+& $msbuild /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WholeProgramOptimization=false capemon.sln
+```
+
