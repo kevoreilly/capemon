@@ -1,6 +1,11 @@
+#ifdef _MSC_VER
+#include <WinSock2.h>
+#endif
 #include <windows.h>
-#include <corprof.h>
+#include <unknwn.h>
+#include <cor.h>
 #include <corhdr.h>
+#include <corprof.h>
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -86,6 +91,8 @@ public:
     virtual HRESULT STDMETHODCALLTYPE ExceptionUnwindFinallyLeave();
     virtual HRESULT STDMETHODCALLTYPE ExceptionCatcherEnter(FunctionID functionId, ObjectID objectId);
     virtual HRESULT STDMETHODCALLTYPE ExceptionCatcherLeave();
+    virtual HRESULT STDMETHODCALLTYPE ExceptionCLRCatcherFound();
+    virtual HRESULT STDMETHODCALLTYPE ExceptionCLRCatcherExecute();
     virtual HRESULT STDMETHODCALLTYPE COMClassicVTableCreated(ClassID wrappedClassId, REFGUID implementedIID, void *pVTable, ULONG cSlots);
     virtual HRESULT STDMETHODCALLTYPE COMClassicVTableDestroyed(ClassID wrappedClassId, REFGUID implementedIID, void *pVTable);
     virtual HRESULT STDMETHODCALLTYPE ExceptionCatchFunctionEnter(FunctionID functionId, ObjectID objectId);

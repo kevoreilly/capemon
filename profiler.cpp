@@ -1,11 +1,16 @@
 #include "profiler.h"
 
+#pragma comment(lib, "corguids.lib")
+
+extern "C" int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
+extern "C" BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
+
 // Defined in hook_clr.c / capemon.c
 extern "C" {
-    #include "hooks.h"
+    #include "hooking.h"
     extern unsigned int DotNetCacheDumpCount;
     extern lookup_t g_dotnet_jit;
-    extern config_t g_config;
+    extern struct _g_config g_config;
 }
 
 // Global profiler CLSID: {F39DABDF-BA6B-41E8-AB2A-16BE2E111005}
@@ -197,6 +202,8 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFinallyEnter(FunctionID) {
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFinallyLeave() { return S_OK; }
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionCatcherEnter(FunctionID, ObjectID) { return S_OK; }
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionCatcherLeave() { return S_OK; }
+HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionCLRCatcherFound() { return S_OK; }
+HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionCLRCatcherExecute() { return S_OK; }
 HRESULT STDMETHODCALLTYPE CorProfiler::COMClassicVTableCreated(ClassID, REFGUID, void*, ULONG) { return S_OK; }
 HRESULT STDMETHODCALLTYPE CorProfiler::COMClassicVTableDestroyed(ClassID, REFGUID, void*) { return S_OK; }
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionCatchFunctionEnter(FunctionID, ObjectID) { return S_OK; }
