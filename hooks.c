@@ -389,6 +389,8 @@ hook_t full_hooks[] = {
 	//HOOK(ntdll, RtlMoveMemory),
 	HOOK(kernel32, GetCommandLineA),
 	HOOK(kernel32, GetCommandLineW),
+	HOOK(kernel32, GetEnvironmentVariableA),
+	HOOK(kernel32, GetEnvironmentVariableW),
 	HOOK(shcore, CommandLineToArgvW),
 	HOOK(kernel32, OutputDebugStringA),
 	HOOK(kernel32, OutputDebugStringW),
