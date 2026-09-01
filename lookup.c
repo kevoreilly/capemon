@@ -57,6 +57,15 @@ void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size)
 	return NULL;
 }
 
+void *lookup_get_or_create(lookup_t *d, ULONG_PTR id, unsigned int size) {
+	void *p = lookup_get(d, id, NULL);
+	if (p == NULL) {
+		p = lookup_add(d, id, size);
+		memset(p, 0, size);
+	}
+	return p;
+}
+
 void lookup_del(lookup_t *d, ULONG_PTR id)
 {
 	entry_t *p, *last;
