@@ -4224,4 +4224,10 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD CheckSum
 );
 
+HOOKDEF(PVOID, WINAPI, nLoadImage,
+	_In_     PVOID        pArrayObject,
+	_In_opt_ PVOID        pAppDomain,
+	_Inout_  PVOID*       pAssembly
+);
+
 #include "hook_vbscript.h"

@@ -84,6 +84,18 @@ void DumpStrings(void);
 BOOL ProcessDumped;
 unsigned int DumpCount, DotNetCacheDumpCount;
 
+typedef struct {
+	ULONG_PTR ModuleBase;
+	DWORD     MetadataRVA;
+	DWORD     MetadataSize;
+} dotnet_module_cache_t;
+
+extern dotnet_module_cache_t g_dotnet_modules[1024];
+extern int g_dotnet_modules_count;
+
+void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize);
+dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase);
+
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
 
