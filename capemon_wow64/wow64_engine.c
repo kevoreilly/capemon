@@ -148,7 +148,7 @@ void LogToPipe(const char* msg) {
 
 void* create_trampoline(void* target) {
     int copied = 0;
-    while (copied < 6) { 
+    while (copied < 14) { 
         int inst_len = lde((char*)target + copied);
         if (inst_len == 0) return NULL;
         copied += inst_len;
@@ -176,16 +176,19 @@ void write_wow64_trampoline(void *source, void *destination, void** original)
     if (!trampoline) return;
     *original = trampoline;
 
-    BYTE push_ret_stub[] = { 0x68, 0x00, 0x00, 0x00, 0x00, 0xC3 };
-    *(DWORD *)(push_ret_stub + 1) = (DWORD)(ULONG_PTR)destination;
+    BYTE jmp_stub[] = {
+        0xFF, 0x25, 0x00, 0x00, 0x00, 0x00,             // jmp [rip + 0]
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // 8-byte destination address
+    };
+    *(DWORD64 *)(jmp_stub + 6) = (DWORD64)destination;
 
     HANDLE hProcess = (HANDLE)-1;
     PVOID base = source;
-    SIZE_T region_size = sizeof(push_ret_stub);
+    SIZE_T region_size = sizeof(jmp_stub);
     ULONG old_protect = 0;
     
     if (NT_SUCCESS(NtProtectVirtualMemory(hProcess, &base, &region_size, PAGE_EXECUTE_READWRITE, &old_protect))) {
-        memcpy(source, push_ret_stub, sizeof(push_ret_stub));
+        memcpy(source, jmp_stub, sizeof(jmp_stub));
         ULONG dummy;
         NtProtectVirtualMemory(hProcess, &base, &region_size, old_protect, &dummy);
     }
