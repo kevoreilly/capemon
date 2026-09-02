@@ -1,8 +1,7 @@
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "../ntapi.h"
 #include <distorm.h>
-
-#define TEB_TLS_SLOT_WOW64 0x14
 
 #ifndef EXTERN_C
 #ifdef __cplusplus
@@ -28,6 +27,12 @@ EXTERN_C NTSTATUS NTAPI NtAllocateVirtualMemory(
     IN ULONG AllocationType,
     IN ULONG Protect
 );
+
+void *memcpy(void *dest, const void *src, size_t n);
+int strcmp(const char *s1, const char *s2);
+
+#pragma function(memcpy)
+#pragma function(strcmp)
 
 void *memcpy(void *dest, const void *src, size_t n) {
     char *d = (char*)dest;
@@ -140,7 +145,8 @@ void LogToPipe(const char* msg) {
     // using purely native NT allocs and string parsing.
     // For now, this is a placeholder implementation that avoids breaking.
 }
-\nvoid* create_trampoline(void* target) {
+
+void* create_trampoline(void* target) {
     int copied = 0;
     while (copied < 6) { 
         int inst_len = lde((char*)target + copied);
