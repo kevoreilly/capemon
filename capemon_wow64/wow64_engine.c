@@ -1,69 +1,91 @@
+// capemon_wow64 - native x64 monitor injected alongside the 32-bit monitor into a
+// WOW64 target, so calls made through Heaven's Gate (far call/jmp to 0x33 to run
+// native x64 ntdll syscalls) are still observed.
+//
+// This DLL is deliberately standalone and CRT-less: it does NOT include capemon's
+// ntapi.h / alloc.h (those pull in the whole NT surface plus externs that would need
+// to link against the main monitor). Only the few NT types it uses are declared here.
+
 #include <windows.h>
-#include "../ntapi.h"
 
-// TEB offset for Thread Local Storage (TLS) array in 64-bit mode
-#define TEB_TLS_SLOT_WOW64 0x14 // Using an unused slot for recursive hook counting
+#ifndef NT_SUCCESS
+typedef LONG NTSTATUS;
+#endif
+#define WOW64_STATUS_NOT_IMPLEMENTED ((NTSTATUS)0xC0000002L)
 
-// To prevent infinite recursions when our hooks call native APIs
-BOOL check_and_increment_recursion(void) {
+// x64 TEB.TlsSlots is a PVOID[64] array at offset 0x1480 (stable on Win10/11 x64).
+// TODO: replace this fixed slot with a TlsAlloc()'d index - TlsAlloc hands out low
+// indices first, so a high slot is the least-bad interim choice.
+#define TEB_TLS_SLOTS_OFFSET 0x1480
+#define TEB_TLS_SLOT_WOW64   63
+
+// Prevent infinite recursion when our hooks call native APIs. Per-thread state (TEB),
+// so the non-atomic read/modify/write is safe.
+static BOOL check_and_increment_recursion(void)
+{
     DWORD64 teb_base = __readgsqword(0x30); // 64-bit TEB
-    PDWORD tls_slots = (PDWORD)(teb_base + 0x1480); // TlsSlots array
-    if (tls_slots[TEB_TLS_SLOT_WOW64] > 0) return FALSE;
+    volatile ULONG_PTR *tls_slots = (volatile ULONG_PTR *)(teb_base + TEB_TLS_SLOTS_OFFSET);
+    if (tls_slots[TEB_TLS_SLOT_WOW64] > 0)
+        return FALSE;
     tls_slots[TEB_TLS_SLOT_WOW64]++;
     return TRUE;
 }
 
-void decrement_recursion(void) {
+static void decrement_recursion(void)
+{
     DWORD64 teb_base = __readgsqword(0x30);
-    PDWORD tls_slots = (PDWORD)(teb_base + 0x1480);
+    volatile ULONG_PTR *tls_slots = (volatile ULONG_PTR *)(teb_base + TEB_TLS_SLOTS_OFFSET);
     if (tls_slots[TEB_TLS_SLOT_WOW64] > 0)
         tls_slots[TEB_TLS_SLOT_WOW64]--;
 }
 
-// Push/Ret stub instead of JMP to bypass 2GB limit 
-// The trampoline sits in the lower 4GB, but native NTDLL can be anywhere
-void write_wow64_trampoline(void* source, void* destination) {
-    // x64 PUSH instruction for lower 4GB addresses pushes 8 bytes via sign extension
-    // 68 [4 bytes address] -> PUSH address
-    // C3                   -> RET
+// PUSH imm32 / RET instead of a JMP: the trampoline lives in the low 4GB (so the
+// sign-extended imm32 is exact) while native ntdll can sit anywhere in the address space.
+void write_wow64_trampoline(void *source, void *destination)
+{
+    // 68 <imm32>  PUSH destination
+    // C3          RET
     BYTE push_ret_stub[] = { 0x68, 0x00, 0x00, 0x00, 0x00, 0xC3 };
-    
-    // Fill in the destination trampoline address (must be < 4GB)
-    *(DWORD*)(push_ret_stub + 1) = (DWORD)(ULONG_PTR)destination;
+    *(DWORD *)(push_ret_stub + 1) = (DWORD)(ULONG_PTR)destination;
 
-    // Use native NTDLL API to patch
-    // (Assuming NtProtectVirtualMemory is dynamically resolved)
-    // NtProtectVirtualMemory(...)
-    // RtlCopyMemory((PBYTE)source, push_ret_stub, sizeof(push_ret_stub));
-    // NtProtectVirtualMemory(...) (Restore)
+    // TODO: patch `source` with push_ret_stub via NtProtectVirtualMemory (RW) ->
+    // copy -> NtProtectVirtualMemory (restore), using natively-resolved ntdll exports.
+    (void)source;
 }
 
 // ----------------------------------------------------------------------
-// Example Hook: NtAllocateVirtualMemory
+// Example hook: NtAllocateVirtualMemory
 // ----------------------------------------------------------------------
-typedef NTSTATUS(NTAPI *pNtAllocateVirtualMemory)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-pNtAllocateVirtualMemory original_NtAllocateVirtualMemory = NULL;
+typedef NTSTATUS (NTAPI *fnNtAllocateVirtualMemory)(HANDLE, PVOID *, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+static fnNtAllocateVirtualMemory original_NtAllocateVirtualMemory = NULL;
 
-NTSTATUS NTAPI Hook_NtAllocateVirtualMemory(HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits, PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect) {
-    if (check_and_increment_recursion()) {
-        // We are natively intercepting the call in x64 space!
-        // Heaven's Gate evasion has been nullified.
-        
-        // 1. Package telemetry
-        // 2. Transmit back to 32-bit counterpart via NtWriteFile (named pipe) or NtCreateSection
-        
+NTSTATUS NTAPI Hook_NtAllocateVirtualMemory(HANDLE ProcessHandle, PVOID *BaseAddress, ULONG_PTR ZeroBits, PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect)
+{
+    if (check_and_increment_recursion())
+    {
+        // Intercepted natively in x64 space - Heaven's Gate evasion is nullified here.
+        // TODO: package telemetry and transmit to the 32-bit counterpart
+        //       (named pipe via NtWriteFile, or a shared NtCreateSection).
         decrement_recursion();
     }
-    
+
+    // original_ is wired up by write_wow64_trampoline() at init; guard until then.
+    if (!original_NtAllocateVirtualMemory)
+        return WOW64_STATUS_NOT_IMPLEMENTED;
+
     return original_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 }
 
-// DLL Entry Point must use Native DllMain without CRT
-BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved) {
-    if (fdwReason == DLL_PROCESS_ATTACH) {
-        // Note: CFG must be disabled via linker flags for wow64 trampoline
-        // Initialize hooks natively directly on NTDLL functions
-        // write_wow64_trampoline(original_NtAllocateVirtualMemory, Hook_NtAllocateVirtualMemory);
+// CRT-less entry point (linker: /ENTRY:DllMain, IgnoreAllDefaultLibraries).
+BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
+{
+    UNREFERENCED_PARAMETER(hInstDll);
+    UNREFERENCED_PARAMETER(lpvReserved);
+
+    if (fdwReason == DLL_PROCESS_ATTACH)
+    {
+        // TODO: resolve ntdll exports natively and install hooks, e.g.
+        // write_wow64_trampoline(real_NtAllocateVirtualMemory, Hook_NtAllocateVirtualMemory);
     }
     return TRUE;
 }
