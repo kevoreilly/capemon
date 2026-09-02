@@ -46,7 +46,7 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ControlFlowGuard>false</ControlFlowGuard>
-    </ClCompile>
+          <AdditionalIncludeDirectories>.\distorm\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>\n    </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -59,6 +59,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="capemon_wow64\wow64_engine.c" />
+    <ClCompile Include="distorm\src\decoder.c" />
+    <ClCompile Include="distorm\src\distorm.c" />
+    <ClCompile Include="distorm\src\instructions.c" />
+    <ClCompile Include="distorm\src\insts.c" />
+    <ClCompile Include="distorm\src\mnemonics.c" />
+    <ClCompile Include="distorm\src\operands.c" />
+    <ClCompile Include="distorm\src\prefix.c" />
+    <ClCompile Include="distorm\src\textdefs.c" />
+    <ClCompile Include="distorm\src\wstring.c" />
+
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
