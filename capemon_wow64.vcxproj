@@ -59,7 +59,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="capemon_wow64\wow64_engine.c" />
+    <ClCompile Include="capemon_wow64\wow64_engine.c" />\n    <ClCompile Include="trampoline_64.c" />
     <ClCompile Include="distorm\src\decoder.c" />
     <ClCompile Include="distorm\src\distorm.c" />
     <ClCompile Include="distorm\src\instructions.c" />

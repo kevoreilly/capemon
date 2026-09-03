@@ -248,7 +248,7 @@
     <ClCompile Include="distorm\src\wstring.c" />
     <ClCompile Include="hooking.c" />
     <ClCompile Include="hooking_32.c" />
-    <ClCompile Include="hooking_64.c" />
+    <ClCompile Include="hooking_64.c" />\n    <ClCompile Include="trampoline_64.c" />
     <ClCompile Include="hooks.c" />
     <ClCompile Include="hook_clr.c" />
     <ClCompile Include="hook_com.c" />

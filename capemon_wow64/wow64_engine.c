@@ -1,4 +1,4 @@
-#define WIN32_LEAN_AND_MEAN
+#include "../trampoline_64.h"\n#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "../ntapi.h"
 #include <distorm.h>
@@ -75,14 +75,7 @@ static DWORD64 GetNtdllBase() {
     return *(DWORD64*)(curr + 0x20); // DllBase
 }
 
-static int lde(void *addr)
-{
-    unsigned int used_instruction_count; 
-    _DInst instructions[16];
-    _CodeInfo code_info = { 0, 0, (uint8_t*)addr, 16, Decode64Bits };
-    _DecodeResult ret = distorm_decompose(&code_info, instructions, 16, &used_instruction_count);
-    return ret == DECRES_SUCCESS ? instructions[0].size : 0;
-}
+
 
 
 #define TEB_TLS_SLOTS_OFFSET 0x1480
@@ -147,13 +140,6 @@ void LogToPipe(const char* msg) {
 }
 
 void* create_trampoline(void* target) {
-    int copied = 0;
-    while (copied < 14) { 
-        int inst_len = lde((char*)target + copied);
-        if (inst_len == 0) return NULL;
-        copied += inst_len;
-    }
-
     HANDLE hProcess = (HANDLE)-1;
     PVOID addr = NULL;
     SIZE_T size = 0x1000;
@@ -161,11 +147,9 @@ void* create_trampoline(void* target) {
         return NULL;
     }
     
-    memcpy(addr, target, copied);
-    
-    BYTE* jmp_stub = (BYTE*)addr + copied;
-    jmp_stub[0] = 0xFF; jmp_stub[1] = 0x25; jmp_stub[2] = 0x00; jmp_stub[3] = 0x00; jmp_stub[4] = 0x00; jmp_stub[5] = 0x00;
-    *(DWORD64*)(jmp_stub + 6) = (DWORD64)((char*)target + copied);
+    // Abstracted to existing mature hook engine to support RIP-relative reassignments within 64-bit address space
+    int tramp_len = hook_create_trampoline(target, 14, addr);
+    if (!tramp_len) return NULL;
 
     return addr;
 }
@@ -194,19 +178,25 @@ void write_wow64_trampoline(void *source, void *destination, void** original)
     }
 }
 
-typedef NTSTATUS (NTAPI *fnNtAllocateVirtualMemory)(HANDLE, PVOID *, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-static fnNtAllocateVirtualMemory original_NtAllocateVirtualMemory = NULL;
+#include "../hooking.h"
 
-NTSTATUS NTAPI Hook_NtAllocateVirtualMemory(HANDLE ProcessHandle, PVOID *BaseAddress, ULONG_PTR ZeroBits, PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect)
-{
+HOOKDEF(NTSTATUS, NTAPI, NtAllocateVirtualMemory,
+    __in HANDLE ProcessHandle,
+    __inout PVOID *BaseAddress,
+    __in ULONG_PTR ZeroBits,
+    __inout PSIZE_T RegionSize,
+    __in ULONG AllocationType,
+    __in ULONG Protect
+) {
     if (check_and_increment_recursion())
     {
 
-        LogToPipe("WOW64: Heaven's Gate Intercepted NtAllocateVirtualMemory\n");
+        LogToPipe("WOW64: Heaven's Gate Intercepted NtAllocateVirtualMemory
+");
         decrement_recursion();
     }
-    if (!original_NtAllocateVirtualMemory) return 0xC0000002;
-    return original_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
+    if (!Old_NtAllocateVirtualMemory) return 0xC0000002;
+    return Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
@@ -220,7 +210,7 @@ BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD fdwReason, LPVOID lpvReserved)
         if (ntdll) {
             void* pNtAllocateVirtualMemory = GetExport(ntdll, "NtAllocateVirtualMemory");
             if (pNtAllocateVirtualMemory) {
-                write_wow64_trampoline(pNtAllocateVirtualMemory, Hook_NtAllocateVirtualMemory, (void**)&original_NtAllocateVirtualMemory);
+                write_wow64_trampoline(pNtAllocateVirtualMemory, New_NtAllocateVirtualMemory, (void**)&Old_NtAllocateVirtualMemory);
             }
         }
     }
