@@ -4224,4 +4224,21 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD CheckSum
 );
 
+HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
+	_In_     PVOID        amsiContext,
+	_In_     PVOID        buffer,
+	_In_     ULONG        length,
+	_In_opt_ LPCWSTR      contentName,
+	_In_opt_ PVOID        amsiSession,
+	_Out_    PVOID        result
+);
+
+HOOKDEF(HRESULT, WINAPI, AmsiScanString,
+	_In_     PVOID        amsiContext,
+	_In_     LPCWSTR      string,
+	_In_opt_ LPCWSTR      contentName,
+	_In_opt_ PVOID        amsiSession,
+	_Out_    PVOID        result
+);
+
 #include "hook_vbscript.h"

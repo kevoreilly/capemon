@@ -46,6 +46,8 @@ extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 extern "C" BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
+extern "C" __declspec(thread) BOOL t_amsi_active;
+
 HMODULE g_currentModule;
 
 STDAPI DllGetClassObject(_In_ REFCLSID rclsid, _In_ REFIID riid, _Outptr_ LPVOID FAR* ppv)
@@ -75,6 +77,13 @@ T GetFixedSizeAttribute(_In_ IAmsiStream* stream, _In_ AMSI_ATTRIBUTE attribute)
 
 HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
 {
+    if (t_amsi_active)
+    {
+        DebugOutput("AmsiDumper: Skipping dump because active AMSI hook is handling it.\n");
+        *result = AMSI_RESULT_NOT_DETECTED;
+        return S_OK;
+    }
+
     auto session = GetFixedSizeAttribute<ULONGLONG>(stream, AMSI_ATTRIBUTE_SESSION);
     auto contentSize = GetFixedSizeAttribute<ULONGLONG>(stream, AMSI_ATTRIBUTE_CONTENT_SIZE);
     auto contentAddress = GetFixedSizeAttribute<PBYTE>(stream, AMSI_ATTRIBUTE_CONTENT_ADDRESS);
