@@ -26,6 +26,12 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 // safe without external locking. Entries are never removed.
 lookup_t g_dotnet_jit;
 
+// Serialises the .NET JIT *dump* path against itself across concurrent CLR JIT
+// worker threads and the teardown scan (DumpInterestingRegions): the jit_dumps
+// counter check+bump and the writes to the shared CapeMetaData scratch struct.
+// g_dotnet_jit above is lock-free and is NOT covered by this. Init in DllMain.
+CRITICAL_SECTION g_jit_dump_lock;
+
 // The CORINFO_METHOD_INFO structure is passed to compileMethod by the CLR JIT engine.
 // The first four fields are extremely stable and consistent across all .NET versions.
 typedef struct {
@@ -496,19 +502,20 @@ HOOKDEF(int, WINAPI, compileMethod,
 		}
 
 		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize)) {
-			// jit_dumps is a soft cap: a concurrent JIT thread may squeeze in an
-			// extra dump between the check and the increment. The counter itself
-			// is bumped atomically so it can't tear; the CapeMetaData scratch
-			// fields are written unlocked, as elsewhere in the dump paths.
+			// Held across the whole sequence so the jit_dumps counter and the
+			// shared CapeMetaData scratch fields stay consistent against other
+			// JIT threads and the teardown scan. Runs at most jit_dumps times.
+			EnterCriticalSection(&g_jit_dump_lock);
 			if (DotNetCacheDumpCount < g_config.jit_dumps) {
 				CapeMetaData->ModulePath = NULL;
 				CapeMetaData->DumpType = 0;
 				CapeMetaData->TypeString = ".NET JIT MSIL bytecode";
 				CapeMetaData->Address = info->ILCode;
 				DumpMemoryRaw(info->ILCode, info->ILCodeSize);
-				InterlockedIncrement((LONG volatile *)&DotNetCacheDumpCount);
+				DotNetCacheDumpCount++;
 				DebugOutput("compileMethod: Dumped decrypted .NET JIT MSIL bytecode at 0x%p (size 0x%x).\n", info->ILCode, info->ILCodeSize);
 			}
+			LeaveCriticalSection(&g_jit_dump_lock);
 		}
 
 		if (g_config.break_on_jit && nativeCode) {
