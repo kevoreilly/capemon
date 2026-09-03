@@ -64,3 +64,55 @@ Integration of YARA for in-memory scanning
 
 ## Engineering & Documentation Mandates
 - **Always update `@docs/configuration.md`:** Whenever a new configurable option is introduced to the engine (such as `log-format`, `sleep-skip-seconds`, etc.), you must immediately append its documentation details to the appropriate table inside the configuration reference document to ensure the user and the system documentation are fully up-to-date.
+
+## Build & Compilation Guide
+
+### 1. Locating MSBuild
+On a standard Windows development machine, MSBuild may not be present in the global `PATH`. You can locate it using PowerShell by running a query over the standard Microsoft Visual Studio or Build Tools installation directories:
+
+```powershell
+Get-ChildItem -Path "C:\Program Files", "C:\Program Files (x86)" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+```
+
+Typical installation paths include:
+* **Visual Studio 2022 Build Tools (32-bit/64-bit host):**
+  `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe`
+* **Visual Studio 2022 Community Edition:**
+  `C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe`
+
+### 2. Compilation Targets and Toolset Overrides
+The `capemon` solution specifies the legacy Visual Studio 2017 (`v141`) platform toolset. If your local build system only has Visual Studio 2022 (`v143`) installed, you can compile successfully by dynamically overriding the platform toolset and disabling Whole Program Optimization (`LTCG` / Link-Time Code Generation) to prevent linker mismatches against precompiled static `.lib` dependencies (like `libyara`).
+
+#### Compiling Win32 (x86) Release Target:
+```powershell
+$msbuild = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+& $msbuild /m /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143 /p:WholeProgramOptimization=false capemon.sln
+```
+
+#### Compiling x64 (64-bit) Release Target:
+```powershell
+$msbuild = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+& $msbuild /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WholeProgramOptimization=false capemon.sln
+```
+
+### 3. C++ Compilation & Include Order Guidelines
+When developing or integrating C++ components (such as the `.NET` profiler) into the `capemon` C codebase, adhere to these guidelines to prevent compiler/linker errors:
+
+* **Preventing Winsock Redefinition Conflicts**: Always include `WinSock2.h` before `windows.h` inside C++ files or headers to prevent legacy definitions from being pulled in by default:
+  ```cpp
+  #ifdef _MSC_VER
+  #include <WinSock2.h>
+  #endif
+  #include <windows.h>
+  ```
+* **Required Include Order for .NET Profiler Headers**: `corprof.h` relies on definitions from `cor.h` and `corhdr.h`. To avoid compilation/syntax errors, use this exact order:
+  ```cpp
+  #include <unknwn.h>
+  #include <cor.h>
+  #include <corhdr.h>
+  #include <corprof.h>
+  ```
+  Additionally, add `#pragma comment(lib, "corguids.lib")` in your source files to link the standard GUID definitions for COM callbacks and profiler interfaces.
+* **C++ Keyword and Redefinition Conflicts (`hooks.h`)**: Never include `hooks.h` inside C++ files. `hooks.h` contains parameter declarations using `this` (which is a C++ keyword) and tentative global variable declarations (which cause `LNK2005` duplicate symbol errors in C++). If you need to access monitor/dump functions like `SetCapeMetaData` and `DumpMemoryRaw`, declare them manually as `extern "C"` rather than including `hooks.h` or `CAPE/CAPE.h`.
+* **C++ Type-Safety for Allocations (`alloc.h`)**: Since C++ does not support implicit conversion from `void*`, any allocation calls from `alloc.h` inline functions (e.g., `cm_alloc`, `cm_calloc`, `cm_strdup`) inside C++ compilation contexts must be explicitly cast to `(char*)` or the appropriate pointer type.
+
