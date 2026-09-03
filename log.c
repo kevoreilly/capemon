@@ -59,7 +59,10 @@ typedef struct {
 	bson g_bson[1];
 	char g_istr[4];
 	log_serializer_t *active_serializer;  // Strategy pattern: BSON or Protobuf
-	protobuf_context_t g_pb_ctx[1];
+	// The protobuf context is ~100 KB (encode buffer + string scratch). It is
+	// only allocated on demand, on the first protobuf log made by this thread,
+	// so the default BSON path never pays for it.
+	protobuf_context_t *g_pb_ctx;
 } thread_log_context_t;
 
 DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
@@ -84,19 +87,38 @@ static thread_log_context_t* GetThreadLogContext(void) {
 
 protobuf_context_t* get_thread_pb_ctx(void) {
 	thread_log_context_t* pCtx = GetThreadLogContext();
-	return pCtx ? pCtx->g_pb_ctx : NULL;
+	if (!pCtx)
+		return NULL;
+	if (!pCtx->g_pb_ctx)
+		pCtx->g_pb_ctx = (protobuf_context_t*)calloc(1, sizeof(protobuf_context_t));
+	return pCtx->g_pb_ctx;
 }
 
-// Safe accessor macros with NULL check
-// Note: These will return NULL if TLS allocation failed, callers must check
-#define g_bson (GetThreadLogContext() ? GetThreadLogContext()->g_bson : NULL)
-#define g_istr (GetThreadLogContext() ? GetThreadLogContext()->g_istr : NULL)
-#define g_active_serializer (GetThreadLogContext() ? GetThreadLogContext()->active_serializer : g_default_serializer)
+// Single-lookup accessors. Every caller runs after loq() has already verified
+// that GetThreadLogContext() is non-NULL for this thread, but the NULL guards
+// are kept as cheap defensive fallbacks. Each accessor performs exactly one
+// TLS lookup (the previous macros did two per expansion).
+static __inline bson *log_ctx_bson(void) {
+	thread_log_context_t *c = GetThreadLogContext();
+	return c ? c->g_bson : NULL;
+}
+static __inline char *log_ctx_istr(void) {
+	thread_log_context_t *c = GetThreadLogContext();
+	return c ? c->g_istr : NULL;
+}
+static __inline log_serializer_t *log_ctx_serializer(void) {
+	thread_log_context_t *c = GetThreadLogContext();
+	return c ? c->active_serializer : g_default_serializer;
+}
+#define g_bson (log_ctx_bson())
+#define g_istr (log_ctx_istr())
+#define g_active_serializer (log_ctx_serializer())
 
 void TlsThreadCleanup(void) {
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
 		thread_log_context_t* pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
 		if (pCtx) {
+			free(pCtx->g_pb_ctx);
 			free(pCtx);
 			TlsSetValue(g_bson_tls_index, NULL);
 		}
@@ -113,24 +135,84 @@ static void bson_serializer_append_int(const char *name, int32_t val) {
 static void bson_serializer_append_long(const char *name, int64_t val) {
 	bson_append_long(g_bson, name, val);
 }
-static void bson_serializer_append_string(const char *name, const char *val) {
+// Strings are stored exactly as the historical log_string()/log_wstring() did:
+// every source unit is run through utf8_do_encode() and the result is written
+// as a BSON binary blob. This keeps the on-the-wire bytes byte-for-byte
+// compatible with the result-server parser (which expects sanitised UTF-8
+// binary, tolerates embedded NULs, and would reject a raw BSON string that is
+// not valid UTF-8). `length` is honoured so counted, non-NUL-terminated inputs
+// are never over-read.
+static void bson_serializer_append_string(const char *name, const char *val, int length) {
+	char stack_buf[2048];
+	char *utf8s = stack_buf;
+	int utf8len, pos, temp_len;
+	const char *p;
+	BOOL allocated = FALSE;
+
 	if (val == NULL) {
 		bson_append_string_n(g_bson, name, "", 0);
-	} else {
-		bson_append_string(g_bson, name, val);
+		return;
 	}
+	if (length == -1)
+		length = (int)strlen(val);
+
+	utf8len = utf8_strlen_ascii(val, length);
+	if ((size_t)utf8len + 4 > sizeof(stack_buf)) {
+		utf8s = malloc(utf8len + 4);
+		allocated = TRUE;
+	}
+	if (utf8s == NULL) {
+		bson_append_string_n(g_bson, name, "", 0);
+		return;
+	}
+
+	pos = 4;
+	p = val;
+	temp_len = length;
+	while (temp_len-- != 0)
+		pos += utf8_do_encode(*p++, (unsigned char *)&utf8s[pos]);
+
+	if (bson_append_binary(g_bson, name, BSON_BIN_BINARY, utf8s + 4, utf8len) == BSON_ERROR)
+		bson_append_string_n(g_bson, name, "", 0);
+
+	if (allocated)
+		free(utf8s);
 }
-static void bson_serializer_append_wstring(const char *name, const wchar_t *val) {
+static void bson_serializer_append_wstring(const char *name, const wchar_t *val, int length) {
+	char stack_buf[2048];
+	char *utf8s = stack_buf;
+	int utf8len, pos, temp_len;
+	const wchar_t *p;
+	BOOL allocated = FALSE;
+
 	if (val == NULL) {
 		bson_append_string_n(g_bson, name, "", 0);
-	} else {
-		char *utf8s = utf8_wstring(val, -1);
-		if (utf8s) {
-			int utf8len = *(int*)utf8s;
-			bson_append_binary(g_bson, name, BSON_BIN_BINARY, utf8s + 4, utf8len);
-			free(utf8s);
-		}
+		return;
 	}
+	if (length == -1)
+		length = lstrlenW(val);
+
+	utf8len = utf8_strlen_unicode(val, length);
+	if ((size_t)utf8len + 4 > sizeof(stack_buf)) {
+		utf8s = malloc(utf8len + 4);
+		allocated = TRUE;
+	}
+	if (utf8s == NULL) {
+		bson_append_string_n(g_bson, name, "", 0);
+		return;
+	}
+
+	pos = 4;
+	p = val;
+	temp_len = length;
+	while (temp_len-- != 0)
+		pos += utf8_do_encode(*p++, (unsigned char *)&utf8s[pos]);
+
+	if (bson_append_binary(g_bson, name, BSON_BIN_BINARY, utf8s + 4, utf8len) == BSON_ERROR)
+		bson_append_string_n(g_bson, name, "", 0);
+
+	if (allocated)
+		free(utf8s);
 }
 static void bson_serializer_append_binary(const char *name, const void *buf, size_t len) {
 	bson_append_binary(g_bson, name, BSON_BIN_BINARY, (const char *)buf, (int)len);
@@ -155,18 +237,18 @@ static void bson_serializer_destroy(void) {
 }
 
 log_serializer_t g_bson_serializer = {
-	bson_serializer_init,
-	bson_serializer_append_int,
-	bson_serializer_append_long,
-	bson_serializer_append_string,
-	bson_serializer_append_wstring,
-	bson_serializer_append_binary,
-	bson_serializer_finish,
-	bson_serializer_append_start_array,
-	bson_serializer_append_finish_array,
-	bson_serializer_get_data,
-	bson_serializer_get_size,
-	bson_serializer_destroy
+	.init = bson_serializer_init,
+	.append_int = bson_serializer_append_int,
+	.append_long = bson_serializer_append_long,
+	.append_string = bson_serializer_append_string,
+	.append_wstring = bson_serializer_append_wstring,
+	.append_binary = bson_serializer_append_binary,
+	.append_finish = bson_serializer_finish,
+	.append_start_array = bson_serializer_append_start_array,
+	.append_finish_array = bson_serializer_append_finish_array,
+	.get_data = bson_serializer_get_data,
+	.get_size = bson_serializer_get_size,
+	.destroy = bson_serializer_destroy
 };
 
 static char logtbl_explained[256] = {0};
@@ -358,14 +440,25 @@ static void log_ptr(void *value)
 		log_int32((int)(ULONG_PTR)value);
 }
 
+// Emit a pointer-sized value under an explicit key. Matches the historical
+// bson_append_ptr(): int32 on 32-bit builds, int64 on 64-bit builds - the same
+// width for every pointer field so the parser never has to guess.
+static void serializer_append_ptr(log_serializer_t *s, const char *name, ULONG_PTR ptr)
+{
+	if (sizeof(ULONG_PTR) == 8)
+		s->append_long(name, (int64_t)ptr);
+	else
+		s->append_int(name, (int32_t)ptr);
+}
+
 static void log_string(const char *str, int length)
 {
-	g_active_serializer->append_string(g_istr, str);
+	g_active_serializer->append_string(g_istr, str, length);
 }
 
 static void log_wstring(const wchar_t *str, int length)
 {
-	g_active_serializer->append_wstring(g_istr, str);
+	g_active_serializer->append_wstring(g_istr, str, length);
 }
 
 static void log_variant(VARIANT* var) {
@@ -577,6 +670,7 @@ void loq(int index, const char *category, const char *name,
 	unsigned int compare_offset = 0;
 	lasterror_t lasterror;
 	hook_info_t *hookinfo;
+	log_serializer_t *s = NULL;
 
 	if (index >= LOG_ID_PREDEFINED_MAX && g_config.suspend_logging)
 		return;
@@ -593,9 +687,12 @@ void loq(int index, const char *category, const char *name,
 		return;
 	}
 
-	// Use volatile to ensure proper memory ordering for logtbl_explained
-	// This fixes the race condition in double-checked locking
-	if (*(volatile char*)&logtbl_explained[index] == 0) {
+	// The per-index "explain" frame is raw BSON metadata the result server uses
+	// to name argument positions. It has no protobuf equivalent, so in protobuf
+	// mode it must not be emitted - otherwise the stream is BSON frames
+	// interleaved with protobuf frames.
+	if (g_active_serializer == &g_bson_serializer &&
+		*(volatile char*)&logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
@@ -764,40 +861,73 @@ void loq(int index, const char *category, const char *name,
 		LeaveCriticalSection(&g_mutex);
 	}
 
+	// Consume the special-API state now, before serialization. Serialization
+	// runs outside g_mutex (into thread-local buffers), so leaving this at the
+	// tail (post-serialization) would let a concurrent loq() on another thread
+	// observe a stale special_api_triggered / last_api_logged, or free
+	// lastlog.buf out from under the API that set_special_api() was meant for.
+	{
+		int retries = 100;
+		BOOL acquired = FALSE;
+
+		while (retries-- > 0) {
+			if (TryEnterCriticalSection(&g_mutex)) {
+				acquired = TRUE;
+				break;
+			}
+			SwitchToThread();
+		}
+
+		if (!acquired) {
+			hook_enable();
+			set_lasterrors(&lasterror);
+			return;
+		}
+
+		if (!special_api_triggered)
+			last_api_logged = API_OTHER;
+		else {
+			special_api_triggered = FALSE;
+			if (delete_last_log) {
+				free(lastlog.buf);
+				lastlog.buf = NULL;
+			}
+		}
+		LeaveCriticalSection(&g_mutex);
+	}
+
 	fmt = fmtbak;
 	va_start(args, fmt);
 	count = 1; key = 0; argnum = 2;
 
-	g_active_serializer->init();
-	g_active_serializer->append_int( "I", index );
-	hookinfo = hook_info();
-	if (sizeof(ULONG_PTR) == 8) {
-		g_active_serializer->append_long("C", (int64_t)hookinfo->return_address);
-		g_active_serializer->append_long("R", (int64_t)hookinfo->main_caller_retaddr);
-		g_active_serializer->append_long("P", (int64_t)hookinfo->parent_caller_retaddr);
-	} else {
-		g_active_serializer->append_int("C", (int32_t)(ULONG_PTR)hookinfo->return_address);
-		g_active_serializer->append_long("R", (int64_t)(ULONG_PTR)hookinfo->main_caller_retaddr);
-		g_active_serializer->append_long("P", (int64_t)(ULONG_PTR)hookinfo->parent_caller_retaddr);
-	}
-	g_active_serializer->append_int("T", GetCurrentThreadId());
-	g_active_serializer->append_int("t", raw_gettickcount() - g_starttick );
-	g_active_serializer->append_int("r", 0);
+	// Cache the serializer for the rest of the call - it cannot change mid-loq,
+	// and this avoids a TLS lookup on every field append.
+	s = g_active_serializer;
 
-	if (g_active_serializer == &g_bson_serializer) {
+	s->init();
+	s->append_int( "I", index );
+	hookinfo = hook_info();
+	// return location of malware callsite / its parent - same width as "C".
+	serializer_append_ptr(s, "C", (ULONG_PTR)hookinfo->return_address);
+	serializer_append_ptr(s, "R", (ULONG_PTR)hookinfo->main_caller_retaddr);
+	serializer_append_ptr(s, "P", (ULONG_PTR)hookinfo->parent_caller_retaddr);
+	s->append_int("T", GetCurrentThreadId());
+	s->append_int("t", raw_gettickcount() - g_starttick );
+	// number of times this log was repeated -- we'll modify this
+	s->append_int("r", 0);
+
+	if (s == &g_bson_serializer) {
 		compare_offset = (unsigned int)(g_bson->cur - bson_data(g_bson));
+		// the repeated value is encoded immediately before the stream we compare
 		repeat_offset = compare_offset - 4;
 	} else {
 		compare_offset = 0;
 		repeat_offset = 0;
 	}
 
-	g_active_serializer->append_start_array("args");
-	g_active_serializer->append_int( "0", is_success );
-	if (sizeof(ULONG_PTR) == 8)
-		g_active_serializer->append_long("1", (int64_t)return_value);
-	else
-		g_active_serializer->append_int("1", (int32_t)return_value);
+	s->append_start_array("args");
+	s->append_int( "0", is_success );
+	serializer_append_ptr(s, "1", (ULONG_PTR)return_value);
 
 
 	while (--count != 0 || *fmt != 0) {
@@ -1060,8 +1190,7 @@ void loq(int index, const char *category, const char *name,
 			else if (type == REG_EXPAND_SZ || type == REG_SZ) {
 
 				if (data == NULL) {
-					bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY,
-						(const char *)data, 0);
+					s->append_binary(g_istr, NULL, 0);
 				}
 				// ascii strings
 				else if (key == 'r') {
@@ -1076,8 +1205,7 @@ void loq(int index, const char *category, const char *name,
 				}
 			} else if (type == REG_MULTI_SZ) {
 				if (data == NULL) {
-					bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY,
-						(const char *)data, 0);
+					s->append_binary(g_istr, NULL, 0);
 				}
 				else if ((type == 'r' && size < 2) || (type == 'R' && size < 4))
 					goto buffer_log;
@@ -1163,8 +1291,7 @@ void loq(int index, const char *category, const char *name,
 			}
 			else {
 buffer_log:
-				bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY,
-					(const char *) data, size);
+				s->append_binary(g_istr, (const char *) data, size);
 			}
 
 			// bson_append_finish_object( g_bson );
@@ -1173,8 +1300,8 @@ buffer_log:
 
 	va_end(args);
 
-	g_active_serializer->append_finish_array();
-	g_active_serializer->append_finish();
+	s->append_finish_array();
+	s->append_finish();
 
 	{
 		int retries = 100;
@@ -1189,31 +1316,25 @@ buffer_log:
 		}
 
 		if (!acquired) {
-			g_active_serializer->destroy();
+			s->destroy();
 			goto exit;
 		}
 	}
 
-	if (!special_api_triggered)
-		last_api_logged = API_OTHER;
-	else {
-		special_api_triggered = FALSE;
-		if (delete_last_log) {
-			free(lastlog.buf);
-			lastlog.buf = NULL;
-		}
-	}
+	// special-API state was already consumed above, before serialization.
 
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
-		log_raw_direct(g_active_serializer->get_data(), g_active_serializer->get_size());
+		log_raw_direct(s->get_data(), s->get_size());
 	}
 	else {
 		// Caching and duplicate-checking are exclusive to BSON formatting (due to Protobuf's frame encapsulation)
-		if (g_active_serializer == &g_bson_serializer) {
+		if (s == &g_bson_serializer) {
 			if (lastlog.buf) {
-				unsigned int our_len = g_active_serializer->get_size() - compare_offset;
-				if (lastlog.compare_len == our_len && !memcmp(lastlog.compare_ptr, g_active_serializer->get_data() + compare_offset, our_len)) {
+				// BSON documents are bounded by BUFFERSIZE (16 MB); the
+				// size_t -> unsigned int narrowing here is safe.
+				unsigned int our_len = (unsigned int)s->get_size() - compare_offset;
+				if (lastlog.compare_len == our_len && !memcmp(lastlog.compare_ptr, s->get_data() + compare_offset, our_len)) {
 					(*lastlog.repeated_ptr)++;
 				}
 				else {
@@ -1227,20 +1348,20 @@ buffer_log:
 				}
 			}
 			if (lastlog.buf == NULL) {
-				lastlog.len = g_active_serializer->get_size();
+				lastlog.len = (unsigned int)s->get_size();
 				lastlog.buf = malloc(lastlog.len);
-				memcpy(lastlog.buf, g_active_serializer->get_data(), lastlog.len);
+				memcpy(lastlog.buf, s->get_data(), lastlog.len);
 				lastlog.compare_len = lastlog.len - compare_offset;
 				lastlog.compare_ptr = lastlog.buf + compare_offset;
 				lastlog.repeated_ptr = (int *)(lastlog.buf + repeat_offset);
 			}
 		} else {
 			// For Protobuf, write directly to result server
-			log_raw_direct(g_active_serializer->get_data(), g_active_serializer->get_size());
+			log_raw_direct(s->get_data(), s->get_size());
 		}
 	}
 
-	g_active_serializer->destroy();
+	s->destroy();
 	LeaveCriticalSection(&g_mutex);
 exit:
 	if (g_config.force_flush == 2)
@@ -1530,9 +1651,22 @@ void log_init(int debug)
 
 	if (g_config.log_format == LOG_FORMAT_PROTOBUF) {
 		g_default_serializer = &g_protobuf_serializer;
+		// The protobuf backend is EXPERIMENTAL. The current schema cannot
+		// represent capemon's full call model (heterogeneous indexed
+		// arguments, nested %a arrays, the caller "C" address, the thread id),
+		// and no result-server parser consumes it yet. It is safe to enable
+		// (the output stream stays self-consistent), but it is lossy - do not
+		// use it for analysis until schema.proto is finalised and a parser
+		// exists on the host side.
+		pipe("CRITICAL:log-format=1 (protobuf) is experimental and lossy; "
+			"only I/t/R/P are emitted and there is no host-side parser.");
 	} else {
 		g_default_serializer = &g_bson_serializer;
 	}
+
+	// The netlog protocol header announced by announce_netlog() is still "BSON";
+	// a real protobuf transport would need its own header and a matching host
+	// reader. Left as-is deliberately while protobuf is experimental.
 
 	// Update active serializer for the main thread context too
 	thread_log_context_t *pCtx = GetThreadLogContext();

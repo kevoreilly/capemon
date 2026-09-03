@@ -1,12 +1,18 @@
 /*
  * Unit Test for PR #164: Pluggable Logging Strategy Pattern
  *
- * Tests:
- * 1. BSON serialization (default mode)
- * 2. Protobuf serialization (opt-in mode)
- * 3. Strategy pattern switching
- * 4. Thread-local serializer isolation
- * 5. Concurrent logging with different serializers
+ * IMPORTANT - what this test can and cannot check:
+ *   - The output log format is process-global and latched once, in log_init(),
+ *     from g_config.log_format. Assigning g_config.log_format at run time after
+ *     log_init() does NOT switch the active serializer, and mixing BSON and
+ *     protobuf frames in a single output stream is unsupported by design.
+ *   - So the "switching" / "per-thread format" cases below are smoke tests of
+ *     the call path only (they must not crash, deadlock, or leak); they do not
+ *     assert on the emitted bytes.
+ *   - The behaviour that actually needs guarding - log_string()/log_wstring()
+ *     honouring an explicit length for counted, non-NUL-terminated inputs
+ *     (%S / %U / %o / registry values) so they never over-read - requires a
+ *     full monitor build to exercise and is covered at that level.
  */
 
 #include <stdio.h>

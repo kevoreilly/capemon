@@ -55,22 +55,31 @@ void protobuf_finish(protobuf_context_t* ctx) {
     }
 }
 
-static const char* copy_to_scratch(protobuf_context_t* ctx, const char* str) {
+// Copy at most `length` bytes (or strlen(str) when length < 0) into the scratch
+// arena and NUL-terminate. Honouring an explicit length is required: callers
+// pass counted, non-NUL-terminated buffers (%S / UNICODE_STRING / registry
+// values) and a strlen() here would over-read process memory.
+static const char* copy_to_scratch_n(protobuf_context_t* ctx, const char* str, int length) {
+    size_t len;
+    char *dest;
     if (!str) return NULL;
-    size_t len = strlen(str);
+    len = (length < 0) ? strlen(str) : (size_t)length;
     if (ctx->scratch_offset + len + 1 > sizeof(ctx->string_scratch)) {
-        return NULL; // Out of scratch space
+        // Out of scratch space. The value is dropped - acceptable only because
+        // the protobuf backend is explicitly experimental/lossy (see log_init).
+        return NULL;
     }
-    char *dest = ctx->string_scratch + ctx->scratch_offset;
-    memcpy(dest, str, len + 1);
+    dest = ctx->string_scratch + ctx->scratch_offset;
+    memcpy(dest, str, len);
+    dest[len] = '\0';
     ctx->scratch_offset += len + 1;
     return dest;
 }
 
-int protobuf_append_string(protobuf_context_t* ctx, const char* name, const char* value) {
+int protobuf_append_string(protobuf_context_t* ctx, const char* name, const char* value, int length) {
     if (!value) return 0;
-    
-    const char *copied_val = copy_to_scratch(ctx, value);
+
+    const char *copied_val = copy_to_scratch_n(ctx, value, length);
     if (!copied_val) return 0;
     
     if (ctx->event.which_message_type == HookEvent_str_tag) {
@@ -100,13 +109,18 @@ int protobuf_append_string(protobuf_context_t* ctx, const char* name, const char
     return 1;
 }
 
-int protobuf_append_wstring(protobuf_context_t* ctx, const char* name, const wchar_t* value) {
+int protobuf_append_wstring(protobuf_context_t* ctx, const char* name, const wchar_t* value, int length) {
+    int ret, utf8len;
+    char *utf8s;
     if (!value) return 0;
-    
-    char *utf8s = utf8_wstring(value, -1);
+
+    // utf8_wstring() honours an explicit length (encodes exactly `length` wide
+    // chars) and returns a 4-byte length prefix followed by the encoded bytes.
+    utf8s = utf8_wstring(value, length);
     if (!utf8s) return 0;
-    
-    int ret = protobuf_append_string(ctx, name, utf8s + 4);
+
+    utf8len = *(int*)utf8s;
+    ret = protobuf_append_string(ctx, name, utf8s + 4, utf8len);
     free(utf8s);
     return ret;
 }
@@ -114,10 +128,13 @@ int protobuf_append_wstring(protobuf_context_t* ctx, const char* name, const wch
 int protobuf_append_int(protobuf_context_t* ctx, const char* name, int32_t value) {
     if (ctx->event.which_message_type == HookEvent_regular_call_tag) {
         RegularCall* call = &ctx->event.message_type.regular_call;
-        
+
         if (strcmp(name, "I") == 0 || strcmp(name, "i") == 0) {
             call->i = value;
-        } else if (strcmp(name, "T") == 0 || strcmp(name, "t") == 0) {
+        } else if (strcmp(name, "t") == 0) {
+            // Elapsed-tick field. NOTE: the thread id ("T") has no field in the
+            // current schema - it is intentionally dropped rather than
+            // overwriting the timestamp.
             call->t = value;
         }
     } else if (ctx->event.which_message_type == HookEvent_str_tag) {
@@ -145,11 +162,16 @@ int protobuf_append_long(protobuf_context_t* ctx, const char* name, int64_t valu
 
 int protobuf_append_binary(protobuf_context_t* ctx, const char* name, const void* buf, size_t len) {
     if (!buf || len == 0) return 0;
-    
+
     if (ctx->scratch_offset + len > sizeof(ctx->string_scratch)) {
-        return 0; // Out of scratch space
+        // Scratch exhausted: a large %c buffer, or several buffers in one call,
+        // can exceed string_scratch (32 KB). The value is dropped. Acceptable
+        // only under the experimental/lossy protobuf banner (see log_init);
+        // a finalised schema should size or grow this arena to match
+        // large_buffer_log_max.
+        return 0;
     }
-    
+
     uint8_t *copied_buf = (uint8_t *)(ctx->string_scratch + ctx->scratch_offset);
     memcpy(copied_buf, buf, len);
     ctx->scratch_offset += len;
@@ -231,18 +253,18 @@ static void pb_serializer_append_long(const char *name, int64_t val) {
     if (ctx) protobuf_append_long(ctx, name, val);
 }
 
-static void pb_serializer_append_string(const char *name, const char *val) {
+static void pb_serializer_append_string(const char *name, const char *val, int length) {
     protobuf_context_t* ctx = get_thread_pb_ctx();
     if (!ctx) return;
     if (strcmp(name, "type") == 0 || strcmp(name, "category") == 0) {
         ctx->event.which_message_type = HookEvent_str_tag;
     }
-    protobuf_append_string(ctx, name, val);
+    protobuf_append_string(ctx, name, val, length);
 }
 
-static void pb_serializer_append_wstring(const char *name, const wchar_t *val) {
+static void pb_serializer_append_wstring(const char *name, const wchar_t *val, int length) {
     protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_append_wstring(ctx, name, val);
+    if (ctx) protobuf_append_wstring(ctx, name, val, length);
 }
 
 static void pb_serializer_append_binary(const char *name, const void *buf, size_t len) {
@@ -279,16 +301,16 @@ static void pb_serializer_destroy(void) {
 }
 
 log_serializer_t g_protobuf_serializer = {
-    pb_serializer_init,
-    pb_serializer_append_int,
-    pb_serializer_append_long,
-    pb_serializer_append_string,
-    pb_serializer_append_wstring,
-    pb_serializer_append_binary,
-    pb_serializer_finish,
-    pb_serializer_append_start_array,
-    pb_serializer_append_finish_array,
-    pb_serializer_get_data,
-    pb_serializer_get_size,
-    pb_serializer_destroy
+    .init = pb_serializer_init,
+    .append_int = pb_serializer_append_int,
+    .append_long = pb_serializer_append_long,
+    .append_string = pb_serializer_append_string,
+    .append_wstring = pb_serializer_append_wstring,
+    .append_binary = pb_serializer_append_binary,
+    .append_finish = pb_serializer_finish,
+    .append_start_array = pb_serializer_append_start_array,
+    .append_finish_array = pb_serializer_append_finish_array,
+    .get_data = pb_serializer_get_data,
+    .get_size = pb_serializer_get_size,
+    .destroy = pb_serializer_destroy
 };

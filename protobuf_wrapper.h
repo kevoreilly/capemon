@@ -32,9 +32,11 @@ typedef struct {
 void protobuf_init(protobuf_context_t* ctx, int message_type);
 void protobuf_finish(protobuf_context_t* ctx);
 
-// Field appending - simplified for callback-based fields
-int protobuf_append_string(protobuf_context_t* ctx, const char* name, const char* value);
-int protobuf_append_wstring(protobuf_context_t* ctx, const char* name, const wchar_t* value);
+// Field appending - simplified for callback-based fields.
+// `length` is the source unit count, or -1 when the input is NUL-terminated;
+// implementations must honour it and never strlen()/lstrlenW() the raw input.
+int protobuf_append_string(protobuf_context_t* ctx, const char* name, const char* value, int length);
+int protobuf_append_wstring(protobuf_context_t* ctx, const char* name, const wchar_t* value, int length);
 int protobuf_append_int(protobuf_context_t* ctx, const char* name, int32_t value);
 int protobuf_append_long(protobuf_context_t* ctx, const char* name, int64_t value);
 int protobuf_append_binary(protobuf_context_t* ctx, const char* name, const void* buf, size_t len);
