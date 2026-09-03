@@ -1,4 +1,5 @@
-#include "../trampoline_64.h"\n#define WIN32_LEAN_AND_MEAN
+#include "../trampoline_64.h"
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "../ntapi.h"
 #include <distorm.h>

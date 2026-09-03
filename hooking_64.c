@@ -1,4 +1,5 @@
-#include "trampoline_64.h"\n#ifdef _WIN64
+#include "trampoline_64.h"
+#ifdef _WIN64
 /*
 Cuckoo Sandbox - Automated Malware Analysis
 Copyright (C) 2014 Optiv, Inc. (brad.spengler@optiv.com), Cuckoo Sandbox Developers
