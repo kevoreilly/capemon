@@ -1453,6 +1453,34 @@ void parse_config_line(char* line)
 			if (g_config.hook_watch)
 				DebugOutput("Config: Hook watch enabled.\n");
 		}
+		else if (!stricmp(key, "wmi-board-vendor")) {
+			strncpy_s(g_config.board_vendor, _countof(g_config.board_vendor), value, _TRUNCATE);
+			DebugOutput("Config: WMI board vendor set to %s.\n", g_config.board_vendor);
+		}
+		else if (!stricmp(key, "wmi-board-product")) {
+			strncpy_s(g_config.board_product, _countof(g_config.board_product), value, _TRUNCATE);
+			DebugOutput("Config: WMI board product set to %s.\n", g_config.board_product);
+		}
+		else if (!stricmp(key, "wmi-board-serial")) {
+			strncpy_s(g_config.board_serial, _countof(g_config.board_serial), value, _TRUNCATE);
+			DebugOutput("Config: WMI board serial set to %s.\n", g_config.board_serial);
+		}
+		else if (!stricmp(key, "wmi-disk-model")) {
+			strncpy_s(g_config.disk_model, _countof(g_config.disk_model), value, _TRUNCATE);
+			DebugOutput("Config: WMI disk model set to %s.\n", g_config.disk_model);
+		}
+		else if (!stricmp(key, "wmi-disk-serial")) {
+			strncpy_s(g_config.disk_serial, _countof(g_config.disk_serial), value, _TRUNCATE);
+			DebugOutput("Config: WMI disk serial set to %s.\n", g_config.disk_serial);
+		}
+		else if (!stricmp(key, "wmi-bios-vendor")) {
+			strncpy_s(g_config.bios_vendor, _countof(g_config.bios_vendor), value, _TRUNCATE);
+			DebugOutput("Config: WMI BIOS vendor set to %s.\n", g_config.bios_vendor);
+		}
+		else if (!stricmp(key, "wmi-bios-serial")) {
+			strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), value, _TRUNCATE);
+			DebugOutput("Config: WMI BIOS serial set to %s.\n", g_config.bios_serial);
+		}
 		else if (!stricmp(key, "sleep-skip-seconds")) {
 			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);
@@ -1504,6 +1532,13 @@ void read_config(void)
 	g_config.loaderlock_scans = 1;
 	g_config.spoofed_cpu_count = SPOOFED_CPU_CORE_NUM;
 	g_config.syscall = 1;
+	strncpy_s(g_config.board_vendor, _countof(g_config.board_vendor), "ASUSTeK COMPUTER INC.", _TRUNCATE);
+	strncpy_s(g_config.board_product, _countof(g_config.board_product), "PRIME Z390-A", _TRUNCATE);
+	strncpy_s(g_config.board_serial, _countof(g_config.board_serial), "190442345001294", _TRUNCATE);
+	strncpy_s(g_config.disk_model, _countof(g_config.disk_model), "Samsung SSD 860 EVO 500GB", _TRUNCATE);
+	strncpy_s(g_config.disk_serial, _countof(g_config.disk_serial), "S3Y1NX0K412941X", _TRUNCATE);
+	strncpy_s(g_config.bios_vendor, _countof(g_config.bios_vendor), "American Megatrends Inc.", _TRUNCATE);
+	strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), "System Serial Number", _TRUNCATE);
 	g_config.sleep_skip_seconds = 10;
 
 	StepLimit = SINGLE_STEP_LIMIT;

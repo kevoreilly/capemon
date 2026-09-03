@@ -1949,7 +1949,6 @@ int set_IWbemServices_hooks(PVOID pComObject, hook_t* hook) {
 	return -1;
 }
 
-extern __declspec(thread) BOOL bHookViaWbemLocator;
 void set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
 	if (!com_hooks_initialized) {
 		init_com_hooks();
