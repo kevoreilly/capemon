@@ -2,64 +2,21 @@
 #include "misc.h"
 #include "config.h"
 #include "hooks.h"
+#include "lookup.h"
 #include <Wbemidl.h>
 
 extern void set_com_hooks(REFCLSID rclsid, REFIID riid, PVOID pComObject);
 
-typedef struct {
-	int last_seen_disk_query;
-	int last_seen_physicalmemory;
-	int last_seen_fake_class;
-	BOOL hook_via_wbemlocator;
-} wmi_thread_context_t;
-
-
-extern DWORD g_wmi_tracker_tls_index;
-
-// Fallback context if TLS allocation fails (shared across threads as last resort)
-static wmi_thread_context_t g_wmi_fallback_context = {0};
-
-static wmi_thread_context_t* GetWmiThreadContext(void) {
-	wmi_thread_context_t* pCtx = NULL;
-	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
-		pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
-		if (!pCtx) {
-			pCtx = (wmi_thread_context_t*)calloc(1, sizeof(wmi_thread_context_t));
-			if (pCtx) {
-				TlsSetValue(g_wmi_tracker_tls_index, pCtx);
-			} else {
-				// calloc failed - use fallback (not thread-safe but prevents crash)
-				pCtx = &g_wmi_fallback_context;
-			}
-		}
-	} else {
-		// TLS not initialized - use fallback
-		pCtx = &g_wmi_fallback_context;
-	}
-	return pCtx;
-}
-
-// Accessor macros: GetWmiThreadContext now guaranteed to return non-NULL
-#define g_last_seen_disk_query (GetWmiThreadContext()->last_seen_disk_query)
-#define g_last_seen_physicalmemory (GetWmiThreadContext()->last_seen_physicalmemory)
-#define g_last_seen_fake_class (GetWmiThreadContext()->last_seen_fake_class)
+// Per-thread "hooking via IWbemLocator" flag. Uses the lock-free lookup table
+// (LOOKUP_THREAD idiom) in place of a TLS slot, matching the SafeLookup convention.
+static lookup_t g_wmi_locator_lookup;
 
 BOOL IsHookViaWbemLocator(void) {
-	return GetWmiThreadContext()->hook_via_wbemlocator;
+	return *(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL);
 }
 
 void SetHookViaWbemLocator(BOOL val) {
-	GetWmiThreadContext()->hook_via_wbemlocator = val;
-}
-
-void TlsWmiThreadCleanup(void) {
-	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
-		wmi_thread_context_t* pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
-		if (pCtx) {
-			free(pCtx);
-			TlsSetValue(g_wmi_tracker_tls_index, NULL);
-		}
-	}
+	*(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL) = val;
 }
 
 HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
@@ -118,21 +75,17 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 		// Logic for BSTR fakery specific to an exact szClassName
 		//
 		else if (!_wcsicmp(szClassName, L"Win32_LogicalDisk") && !_wcsicmp(wszName, L"Size")) {
-			if (g_last_seen_disk_query) {
-				unsigned long long lSize = wcstoull(pVal->bstrVal, NULL, 10);
-				if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
-					SysFreeString(pVal->bstrVal);
-					pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
-				}
+			unsigned long long lSize = wcstoull(pVal->bstrVal, NULL, 10);
+			if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
+				SysFreeString(pVal->bstrVal);
+				pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_PhysicalMemory") && !_wcsicmp(wszName, L"Capacity")) {
-			if (g_last_seen_physicalmemory) {
-				unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
-				if (actualMemory < SPOOFED_RAM) {
-					SysFreeString(pVal->bstrVal);
-					pVal->bstrVal = SysAllocString(WIDE_SPOOFED_RAM);
-				}
+			unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
+			if (actualMemory < SPOOFED_RAM) {
+				SysFreeString(pVal->bstrVal);
+				pVal->bstrVal = SysAllocString(WIDE_SPOOFED_RAM);
 			}
 		}
 	}
@@ -282,22 +235,8 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
-	HRESULT ret;
-	g_last_seen_disk_query = 0;
-	g_last_seen_physicalmemory = 0;
+	HRESULT ret = Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
 
-	if (strQuery) {
-		if (!_wcsnicmp(strQuery, L"SELECT ", 7)) {
-			if (wcsistr(strQuery, L" FROM Win32_LogicalDisk")) {
-				g_last_seen_disk_query = 1;
-			}
-			else if (wcsistr(strQuery, L" FROM Win32_PhysicalMemory")) {
-				g_last_seen_physicalmemory = 1;
-			}
-		}
-	}
-	ret = Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
-	
 	if (ret == S_OK && ppEnum && *ppEnum) {
 		SetHookViaWbemLocator(TRUE);
 		set_com_hooks(NULL, NULL, *ppEnum);
@@ -316,23 +255,9 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
 	_In_	IWbemContext	*pCtx,
 	_In_	IWbemObjectSink	*pResponseHandler
 ) {
-	HRESULT ret;
-	g_last_seen_disk_query = 0;
-	g_last_seen_physicalmemory = 0;
-
-	if (strQuery) {
-		if (!_wcsnicmp(strQuery, L"SELECT ", 7)) {
-			if (wcsistr(strQuery, L" FROM Win32_LogicalDisk")) {
-				g_last_seen_disk_query = 1;
-			}
-			else if (wcsistr(strQuery, L" FROM Win32_PhysicalMemory")) {
-				g_last_seen_physicalmemory = 1;
-			}
-		}
-	}
-	ret = Old_WMI_ExecQueryAsync(_this, strQueryLanguage, strQuery, lFlags, pCtx, pResponseHandler);
+	HRESULT ret = 0;
 	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
-	return ret;
+	return Old_WMI_ExecQueryAsync(_this, strQueryLanguage, strQuery, lFlags, pCtx, pResponseHandler);
 }
 
 HOOKDEF(HRESULT, WINAPI, WMI_ExecMethod,

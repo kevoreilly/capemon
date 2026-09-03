@@ -315,8 +315,6 @@ void FreeHandler(PVOID BaseAddress)
 	if (TrackedRegion == NULL)
 		return;
 
-	DebugOutput("FreeHandler: Address: 0x%p.\n", BaseAddress);
-
 	hook_disable();
 
 	if (!TrackedRegion->PagesDumped && TrackedRegion->Committed == TRUE && TrackedRegion->MemInfo.Protect & EXECUTABLE_FLAGS && ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)))
