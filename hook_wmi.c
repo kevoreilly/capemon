@@ -1,5 +1,6 @@
 #include "log.h"
 #include "misc.h"
+#include "config.h"
 #include <Wbemidl.h>
 
 void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
@@ -12,7 +13,7 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 	//
 	// Spoofery logic for BSTR (wchar_t *)
 	//
-	if (pVal->vt == VT_BSTR && pVal->bstrVal) {
+	if (pVal->vt == VT_BSTR && pVal->bstrVal != NULL) {
 		if (!_wcsicmp(pVal->bstrVal, L"Microsoft Basic Display Adapter")) {
 			SysFreeString(pVal->bstrVal);
 			pVal->bstrVal = SysAllocString(SPOOFED_GPU_NAME);
@@ -71,15 +72,13 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 				pVal->lVal = (LONG)g_config.spoofed_cpu_count;
 		}
 		else if (!_wcsicmp(wszName, L"AdapterRAM")) {
-			if (SPOOFED_GPU_RAM > 0x7FFFFFFFULL) {
-				// Mimic overflowing the I4 if you have >2GB of Spoofed GPU RAM
-				pVal->lVal = 0x7FFFFFFF;
+			if (pVal->lVal < SPOOFED_GPU_RAM) {
+				pVal->lVal = SPOOFED_GPU_RAM_WMI;
 			}
-			else {
-				// Cast to LONG to avoid compiler warning if SPOOFED_GPU_RAM is >2GB
-				if (pVal->lVal < (LONG)SPOOFED_GPU_RAM) {
-					pVal->lVal = (LONG)SPOOFED_GPU_RAM;
-				}
+		}
+		else if (!_wcsicmp(wszName, L"MaxRefreshRate")) {
+			if (pVal->lVal < SPOOFED_REFRESH_RATE) {
+				pVal->lVal = SPOOFED_REFRESH_RATE;
 			}
 		}
 	}

@@ -19,6 +19,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #define _CRT_RAND_S
 #define MD5LEN			  16
+#define SHA256LEN		  32
 
 #define MAX_PRETRAMP_SIZE 320
 #define MAX_TRAMP_SIZE 128
@@ -1315,6 +1316,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 				DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
 			else
 				DebugOutput("ProcessTrackedRegion: Entropy for tracked region at 0x%p: %e", Address, Entropy);
+			TrackedRegion->Entropy = Entropy;
 		}
 #ifdef DEBUG_COMMENTS
 		else
@@ -1350,9 +1352,6 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 			DebugOutput("ProcessTrackedRegion: Interesting region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 	}
 
-	if (Entropy)
-		TrackedRegion->Entropy = Entropy;
-
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
 
@@ -1371,13 +1370,16 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	}
 	else
 	{
+		if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
+			TrackedRegion->PagesDumped = TRUE;
+
 		if (TraceIsRunning)
 			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
 
-	if (g_config.yarascan)
+	if (g_config.yarascan && (!TrackedRegion->PagesDumped || (g_config.dump_limit && DumpCount >= g_config.dump_limit)))
 		YaraScan(Address, Size);
 }
 
@@ -1674,7 +1676,7 @@ char* GetTempName()
 }
 
 //**************************************************************************************
-BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffer)
+BOOL GetMD5(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 //**************************************************************************************
 {
 	DWORD i;
@@ -1717,8 +1719,56 @@ BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffe
 
 	for (i = 0; i < cbHash; i++)
 	{
-		PrintHexBytes(OutputFilenameBuffer, MD5Hash, MD5LEN);
+		PrintHexBytes(OutputBuffer, MD5Hash, MD5LEN);
 	}
+
+	return 1;
+}
+
+//**************************************************************************************
+BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
+//**************************************************************************************
+{
+	DWORD i;
+	HCRYPTPROV hProv = 0;
+	HCRYPTHASH hHash = 0;
+	DWORD cbHash = SHA256LEN;
+	BYTE Hash[SHA256LEN];
+
+	if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+	{
+		ErrorOutput("CryptAcquireContext failed");
+		return 0;
+	}
+
+	if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash))
+	{
+		ErrorOutput("CryptCreateHash failed");
+		CryptReleaseContext(hProv, 0);
+		return 0;
+	}
+
+	if (!CryptHashData(hHash, Buffer, Size, 0))
+	{
+		ErrorOutput("CryptHashData failed");
+		CryptReleaseContext(hProv, 0);
+		CryptDestroyHash(hHash);
+		return 0;
+	}
+
+	if (!CryptGetHashParam(hHash, HP_HASHVAL, Hash, &cbHash, 0))
+	{
+		ErrorOutput("CryptGetHashParam failed");
+	}
+
+	CryptDestroyHash(hHash);
+	CryptReleaseContext(hProv, 0);
+
+	for (i = 0; i < cbHash; i++)
+	{
+		sprintf(OutputBuffer + (i * 2), "%02x", Hash[i]);
+	}
+	OutputBuffer[cbHash * 2] = '\0';
 
 	return 1;
 }

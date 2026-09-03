@@ -873,11 +873,37 @@ static int hook_api_native_push_retn(hook_t *h, unsigned char *from, unsigned ch
 	return hook_api_push_retn(h, from, to);
 }
 
+typedef struct _hook_page_arena_t {
+	PVOID BaseAddress;
+	SIZE_T CommittedSize;
+	SIZE_T NextFreeOffset;
+	struct _hook_page_arena_t *next;
+} hook_page_arena_t;
+
+static hook_page_arena_t *g_hook_arenas = NULL;
+
 hook_data_t *alloc_hookdata_near(void *addr)
 {
+	hook_page_arena_t *curr = g_hook_arenas;
+	SIZE_T requested_size = sizeof(hook_data_t);
+
+	// 1. Scan current arenas for an existing chunk within 1GB of 'addr' with free slots
+	while (curr != NULL) {
+		LONG_PTR distance = (LONG_PTR)curr->BaseAddress - (LONG_PTR)addr;
+		if (distance >= -((LONG_PTR)1024*1024*1024) && distance <= ((LONG_PTR)1024*1024*1024)) {
+			if (curr->NextFreeOffset + requested_size <= curr->CommittedSize) {
+				hook_data_t *allocated = (hook_data_t *)((PBYTE)curr->BaseAddress + curr->NextFreeOffset);
+				curr->NextFreeOffset += requested_size;
+				return allocated;
+			}
+		}
+		curr = curr->next;
+	}
+
+	// 2. No matching arena block. Perform search to allocate a new 64KB arena near 'addr'
 	PVOID BaseAddress;
-	int offset = -(1024 * 1024 * 1024);
-	SIZE_T RegionSize = sizeof(hook_data_t);
+	int offset = -(512 * 1024 * 1024); // Start closer (512MB) for optimal results
+	SIZE_T RegionSize = 65536; // Allocate a standard 64KB page chunk
 	LONG status;
 
 	do {
@@ -885,10 +911,24 @@ hook_data_t *alloc_hookdata_near(void *addr)
 			offset = 0x10000;
 		BaseAddress = (PCHAR)addr + offset;
 		status = pNtAllocateVirtualMemory(GetCurrentProcess(), &BaseAddress, 0, &RegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-		if (status >= 0)
-			return (hook_data_t *)BaseAddress;
+		if (status >= 0) {
+			// Place the metadata directly at the beginning of the newly allocated page
+			hook_page_arena_t *new_arena = (hook_page_arena_t *)BaseAddress;
+			new_arena->BaseAddress = BaseAddress;
+			new_arena->CommittedSize = RegionSize;
+			
+			// NextFreeOffset starts after metadata (128-byte aligned for performance and safety)
+			new_arena->NextFreeOffset = 128;
+			
+			new_arena->next = g_hook_arenas;
+			g_hook_arenas = new_arena;
+			
+			hook_data_t *allocated = (hook_data_t *)((PBYTE)new_arena->BaseAddress + new_arena->NextFreeOffset);
+			new_arena->NextFreeOffset += requested_size;
+			return allocated;
+		}
 		offset += 0x10000;
-	} while (status < 0 && offset <= (1024 * 1024 * 1024));
+	} while (status < 0 && offset <= (512 * 1024 * 1024));
 
 	return NULL;
 }
@@ -1045,8 +1085,6 @@ int hook_api(hook_t *h, int type)
 				addr = exportaddr;
 				if  (!wcscmp(h->library, L"clrjit"))
 					DebugOutput("hook_api: clrjit::%s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
-				else
-					DebugOutput("hook_api: %s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
 			}
 		}
 	}

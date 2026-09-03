@@ -56,6 +56,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `exclude-apis` | List | Colon-separated list of APIs to exclude from hooking. |
 | `exclude-dlls` | List | Colon-separated list of DLLs to exclude from hooking. |
 | `unhook-apis` | List | Colon-separated list of already hooked APIs to unhook at runtime. |
+| `unhook-on-terminate` | Boolean | If `true`, restore all hooked API original bytes to memory when the process terminates. |
 | `api-rate-cap` | Integer | Limit the rate of API logging. |
 | `api-cap` | Integer | Limit the total number of API logs allowed. |
 
@@ -65,6 +66,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | :--- | :--- | :--- |
 | `no-stealth` | Boolean | Disable anti-anti-VM/sandbox tricks. |
 | `force-sleepskip` | Boolean | `0` = Disable sleep skipping, `1` = Skip all sleeps. |
+| `sleep-skip-seconds` | Integer | Threshold and delay (in seconds) to replace clamped/skipped sleeps and timeouts with (default: 10). |
 | `serial` | Hex | Spoof the system volume serial number. |
 | `sysvol_ctimelow` | Hex | Spoof the low part of the creation time of the system volume. |
 | `sysvol_ctimehigh` | Hex | Spoof the high part of the creation time of the system volume. |
@@ -93,7 +95,10 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `dump-crypto` | Boolean | Dump buffers from Crypto APIs. |
 | `dump-keys` | Boolean | Dump keys from `CryptImportKey`. |
 | `amsidump` | Boolean | Enable AMSI buffer dumping (Windows 10+). |
-| `jit-dumps` | Integer | Limit for .NET JIT cache dumps. |
+| `yarascan` | Boolean | Enable in-memory YARA scanning of process memory, including JIT-compiled native code and decrypted MSIL bytecode payloads. |
+| `yara-timeout` | Integer | Timeout limit in milliseconds for in-memory YARA scanning (default: 60000). |
+| `dumpsize` | Integer | Maximum size in bytes allowed for a single raw memory dump. |
+| `jit-dumps` | Integer | Limit for .NET JIT cache and MSIL bytecode dumps. |
 | `tlsdump` | Boolean | Enable dumping of TLS secrets. |
 | `regdump` | Boolean | Enable dumping of Registry data. |
 | `unpacker` | Integer | `1` = Passive unpacking (default), `2` = Active unpacking. |
@@ -109,8 +114,10 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `bp` | List | Colon-separated list of addresses for software breakpoints. |
 | `sysbp` | List | Colon-separated list of addresses for syscall breakpoints. |
 | `sysbpmode` | Integer | Mode for syscall breakpoints. |
+| `softbpmode` | Integer | Execution mode behavior for software breakpoints. |
 | `break-on-return` | List | Colon-separated list of APIs to break on return. |
 | `break-on-jit` | Boolean | Break on .NET JIT compiled native code. |
+| `idbg` | Boolean | Enable interactive remote debugger interface (CAPEsolo internal). |
 | `trace-all` | Boolean | Enable full execution tracing. |
 | `trace-into-api` | List | Colon-separated list of APIs to trace into. |
 | `branch-trace` | Boolean | Enable branch tracing. |

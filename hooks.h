@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include <tlhelp32.h>
 #include <ncrypt.h>
+#include "hook_trace.h"
 #include <Wbemidl.h>
 
 #pragma comment(lib, "wbemuuid.lib")
@@ -1893,6 +1894,19 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__inout_opt  LPOVERLAPPED lpOverlapped
 );
 
+HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_In_  DWORD FirmwareTableID,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
+HOOKDEF(UINT, WINAPI, EnumSystemFirmwareTables,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
 	IN HANDLE			   TimerHandle,
 	IN PLARGE_INTEGER	   DueTime,
@@ -2598,6 +2612,41 @@ HOOKDEF(DWORD, WINAPI, GetAdaptersInfo,
 	_Inout_ PULONG		   pOutBufLen
 );
 
+typedef ULONG IPAddr;
+
+typedef struct ip_option_information {
+  UCHAR  Ttl;
+  UCHAR  Tos;
+  UCHAR  Flags;
+  UCHAR  OptionsSize;
+  PUCHAR OptionsData;
+} IP_OPTION_INFORMATION, *PIP_OPTION_INFORMATION;
+
+HOOKDEF(DWORD, WINAPI, IcmpSendEcho,
+    _In_     HANDLE                 IcmpHandle,
+    _In_     IPAddr                 DestinationAddress,
+    _In_     LPVOID                 RequestData,
+    _In_     WORD                   RequestSize,
+    _In_opt_ PIP_OPTION_INFORMATION RequestOptions,
+    _Out_    LPVOID                 ReplyBuffer,
+    _In_     DWORD                  ReplySize,
+    _In_     DWORD                  Timeout
+);
+
+HOOKDEF(DWORD, WINAPI, IcmpSendEcho2,
+    _In_     HANDLE                 IcmpHandle,
+    _In_opt_ HANDLE                 Event,
+    _In_opt_ PVOID                  ApcRoutine,
+    _In_opt_ PVOID                  ApcContext,
+    _In_     IPAddr                 DestinationAddress,
+    _In_     LPVOID                 RequestData,
+    _In_     WORD                   RequestSize,
+    _In_opt_ PIP_OPTION_INFORMATION RequestOptions,
+    _Out_    LPVOID                 ReplyBuffer,
+    _In_     DWORD                  ReplySize,
+    _In_     DWORD                  Timeout
+);
+
 HOOKDEF(ULONG, WINAPI, NetGetJoinInformation,
 	_In_  LPCWSTR			   lpServer,
 	_Out_ LPWSTR				*lpNameBuffer,
@@ -2739,6 +2788,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForSingleObject,
 	__in HANDLE Handle,
 	__in	BOOLEAN Alertable,
 	__in_opt	PLARGE_INTEGER Timeout
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
+	_In_ ULONG Count,
+	_In_ HANDLE *Handles,
+	_In_ int WaitType,
+	_In_ BOOLEAN Alertable,
+	_In_opt_ PLARGE_INTEGER Timeout
 );
 
 HOOKDEF(void, WINAPI, GetLocalTime,
@@ -3460,6 +3517,168 @@ HOOKDEF(NTSTATUS, WINAPI, SystemFunction041,
     _Inout_ PVOID  Memory,
     _In_    ULONG  MemorySize,
     _In_    ULONG  OptionFlags
+);
+
+//
+// Event Trace Hooks
+//
+
+HOOKDEF(ULONG, WINAPI, CloseTrace,
+	_In_ TRACEHANDLE TraceHandle
+);
+
+HOOKDEF(ULONG, WINAPI, ControlTraceA,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCTSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties,
+	_In_ ULONG ControlCode
+);
+
+HOOKDEF(ULONG, WINAPI, ControlTraceW,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCWSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties,
+	_In_ ULONG ControlCode
+);
+
+HOOKDEF(ULONG, WINAPI, EnableTrace,
+	_In_ ULONG Enable,
+	_In_ ULONG EnableFlag,
+	_In_ ULONG EnableLevel,
+	_In_ LPCGUID ControlGuid,
+	_In_ TRACEHANDLE SessionHandle
+);
+
+HOOKDEF(ULONG, WINAPI, EnableTraceEx,
+	_In_ LPCGUID ProviderId,
+	_In_opt_ LPCGUID SourceId,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ ULONG IsEnabled,
+	_In_ UCHAR Level,
+	_In_ ULONGLONG MatchAnyKeyword,
+	_In_ ULONGLONG MatchAllKeyword,
+	_In_ ULONG EnableProperty,
+	_In_opt_ PEVENT_FILTER_DESCRIPTOR EnableFilterDesc
+);
+
+HOOKDEF(ULONG, WINAPI, EnableTraceEx2,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCGUID ProviderId,
+	_In_ ULONG ControlCode,
+	_In_ UCHAR Level,
+	_In_ ULONGLONG MatchAnyKeyword,
+	_In_ ULONGLONG MatchAllKeyword,
+	_In_ ULONG Timeout,
+	_In_opt_ PENABLE_TRACE_PARAMETERS EnableParameters
+);
+
+HOOKDEF(TRACEHANDLE, WINAPI, OpenTraceA,
+	_Inout_ PEVENT_TRACE_LOGFILEA Logfile
+);
+
+HOOKDEF(TRACEHANDLE, WINAPI, OpenTraceW,
+	_Inout_ PEVENT_TRACE_LOGFILEW Logfile
+);
+
+HOOKDEF(ULONG, WINAPI, QueryAllTracesA,
+	_Out_ PEVENT_TRACE_PROPERTIES* PropertyArray,
+	_In_ ULONG PropertyArrayCount,
+	_Out_ PULONG LoggerCount
+);
+
+HOOKDEF(ULONG, WINAPI, QueryAllTracesW,
+	_Out_ PEVENT_TRACE_PROPERTIES* PropertyArray,
+	_In_ ULONG PropertyArrayCount,
+	_Out_ PULONG LoggerCount
+);
+
+HOOKDEF(ULONG, WINAPI, QueryTraceA,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCTSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, QueryTraceW,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCWSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, StartTraceA,
+	_Out_ PTRACEHANDLE TraceHandle,
+	_In_ LPCTSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, StartTraceW,
+	_Out_ PTRACEHANDLE TraceHandle,
+	_In_ LPCWSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, StopTraceA,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCTSTR InstanceName,
+	_Out_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, StopTraceW,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCWSTR InstanceName,
+	_Out_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, UpdateTraceA,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCTSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(ULONG, WINAPI, UpdateTraceW,
+	_In_ TRACEHANDLE TraceHandle,
+	_In_ LPCWSTR InstanceName,
+	_Inout_ PEVENT_TRACE_PROPERTIES Properties
+);
+
+HOOKDEF(LONG, WINAPI, CveEventWrite,
+	_In_ PCWSTR CveId,
+	_In_opt_ PCWSTR AdditionalDetails
+);
+
+HOOKDEF(ULONG, WINAPI, EventAccessControl,
+	_In_ LPGUID Guid,
+	_In_ ULONG Operation,
+	_In_ PSID Sid,
+	_In_ ULONG Rights,
+	_In_ BOOLEAN AllowOrDeny
+);
+
+HOOKDEF(ULONG, WINAPI, EventAccessQuery,
+	_In_ LPGUID Guid,
+	_Inout_ PSECURITY_DESCRIPTOR Buffer,
+	_Inout_ PULONG BufferSize
+);
+
+HOOKDEF(ULONG, WINAPI, EventAccessRemove,
+	_In_ LPGUID Guid
+);
+
+HOOKDEF(ULONG, WINAPI, EventRegister,
+	_In_ LPCGUID ProviderId,
+	_In_opt_ PENABLECALLBACK EnableCallback,
+	_In_opt_ PVOID CallbackContext,
+	_Out_ PREGHANDLE RegHandle
+);
+
+HOOKDEF(ULONG, WINAPI, EventSetInformation,
+	_In_ REGHANDLE RegHandle,
+	_In_ EVENT_INFO_CLASS InformationClass,
+	_In_ PVOID EventInformation,
+	_In_ ULONG InformationLength
+);
+
+HOOKDEF(ULONG, WINAPI, EventUnregister,
+	_In_ REGHANDLE RegHandle
 );
 
 //

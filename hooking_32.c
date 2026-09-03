@@ -714,8 +714,6 @@ int hook_api(hook_t *h, int type)
 				addr = exportaddr;
 				if  (!wcscmp(h->library, L"clrjit"))
 					DebugOutput("hook_api: clrjit::%s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
-				else
-					DebugOutput("hook_api: %s export address 0x%p obtained via GetFunctionAddress\n", h->funcname, addr);
 			}
 		}
 	}

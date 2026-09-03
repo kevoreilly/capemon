@@ -255,39 +255,91 @@ static void log_ptr(void *value)
 static void log_string(const char *str, int length)
 {
 	int ret;
-	char *utf8s;
+	char stack_buf[2048];
+	char *utf8s = stack_buf;
 	int utf8len;
+	BOOL allocated = FALSE;
 
 	if (str == NULL) {
 		bson_append_string_n( g_bson, g_istr, "", 0 );
 		return;
 	}
-	utf8s = utf8_string(str, length);
-	utf8len = * (int *) utf8s;
+
+	if (length == -1)
+		length = (int)strlen(str);
+
+	utf8len = utf8_strlen_ascii(str, length);
+	if (utf8len + 4 > sizeof(stack_buf)) {
+		utf8s = malloc(utf8len + 4);
+		allocated = TRUE;
+	}
+
+	if (utf8s == NULL) {
+		bson_append_string_n(g_bson, g_istr, "", 0);
+		return;
+	}
+
+	*((int *) utf8s) = utf8len;
+	int pos = 4;
+	const char *p = str;
+	int temp_len = length;
+	while (temp_len-- != 0) {
+		pos += utf8_do_encode(*p++, (unsigned char *) &utf8s[pos]);
+	}
+
 	ret = bson_append_binary( g_bson, g_istr, BSON_BIN_BINARY, utf8s+4, utf8len );
 	if (ret == BSON_ERROR) {
 		bson_append_string_n(g_bson, g_istr, "", 0);
 	}
-	free(utf8s);
+
+	if (allocated) {
+		free(utf8s);
+	}
 }
 
 static void log_wstring(const wchar_t *str, int length)
 {
 	int ret;
-	char *utf8s;
+	char stack_buf[2048];
+	char *utf8s = stack_buf;
 	int utf8len;
+	BOOL allocated = FALSE;
 
 	if (str == NULL) {
 		bson_append_string_n( g_bson, g_istr, "", 0 );
 		return;
 	}
-	utf8s = utf8_wstring(str, length);
-	utf8len = * (int *) utf8s;
+
+	if (length == -1)
+		length = lstrlenW(str);
+
+	utf8len = utf8_strlen_unicode(str, length);
+	if (utf8len + 4 > sizeof(stack_buf)) {
+		utf8s = malloc(utf8len + 4);
+		allocated = TRUE;
+	}
+
+	if (utf8s == NULL) {
+		bson_append_string_n(g_bson, g_istr, "", 0);
+		return;
+	}
+
+	*((int *) utf8s) = utf8len;
+	int pos = 4;
+	const wchar_t *p = str;
+	int temp_len = length;
+	while (temp_len-- != 0) {
+		pos += utf8_do_encode(*p++, (unsigned char *) &utf8s[pos]);
+	}
+
 	ret = bson_append_binary( g_bson, g_istr, BSON_BIN_BINARY, utf8s+4, utf8len );
 	if (ret == BSON_ERROR) {
 		bson_append_string_n(g_bson, g_istr, "", 0);
 	}
-	free(utf8s);
+
+	if (allocated) {
+		free(utf8s);
+	}
 }
 
 static void log_variant(VARIANT* var) {
@@ -507,8 +559,22 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	if (!TryEnterCriticalSection(&g_mutex))
-		goto exit;
+	{
+		int retries = 100;
+		BOOL acquired = FALSE;
+
+		while (retries-- > 0) {
+			if (TryEnterCriticalSection(&g_mutex)) {
+				acquired = TRUE;
+				break;
+			}
+			SwitchToThread();
+		}
+
+		if (!acquired) {
+			goto exit;
+		}
+	}
 
 	if (!special_api_triggered)
 		last_api_logged = API_OTHER;
