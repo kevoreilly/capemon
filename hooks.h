@@ -4241,7 +4241,4 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 	_Out_    PVOID        result
 );
 
-#define New_coreclr_compileMethod New_clrjit_compileMethod
-#define Old_coreclr_compileMethod Old_clrjit_compileMethod
-
 #include "hook_vbscript.h"
