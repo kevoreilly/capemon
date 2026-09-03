@@ -1231,56 +1231,6 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 		goto out;
 	}
 
-	// ----- HEAVEN'S GATE MITIGATION START -----
-	// A WOW64 target can use Heaven's Gate to run native x64 syscalls past the 32-bit
-	// hooks, so also inject a native x64 monitor (capemon_wow64.dll) via loader_x64.exe.
-	// Guard against re-entry: that spawned x64 loader runs this same code against the
-	// still-WOW64 target - skip when we are already the one injecting capemon_wow64.dll,
-	// otherwise loader_x64.exe fork-bombs.
-	BOOL bIsWow64 = FALSE;
-	if (IsWow64Process(ProcessHandle, &bIsWow64) && bIsWow64 && !strstr(DllPath, "capemon_wow64"))
-	{
-		DebugOutput("InjectDll: Target is WOW64. Launching x64 loader to inject wow64 monitor.\n");
-		char X64LoaderPath[MAX_PATH];
-		char Wow64DllPath[MAX_PATH];
-
-		// Derive paths
-		if (GetModuleFileName(NULL, X64LoaderPath, MAX_PATH) == 0)
-			X64LoaderPath[0] = 0;
-		char* pLoaderName = strrchr(X64LoaderPath, '\\');
-		if (pLoaderName)
-		{
-			strcpy_s(pLoaderName + 1, sizeof(X64LoaderPath) - (pLoaderName - X64LoaderPath) - 1, "loader_x64.exe");
-
-			strcpy_s(Wow64DllPath, sizeof(Wow64DllPath), DllPath);
-			char* pDllName = strrchr(Wow64DllPath, '\\');
-			if (pDllName)
-			{
-				strcpy_s(pDllName + 1, sizeof(Wow64DllPath) - (pDllName - Wow64DllPath) - 1, "capemon_wow64.dll");
-
-				// Inject capemon_wow64.dll using the x64 loader
-				char CommandLine[BUFSIZE];
-				PROCESS_INFORMATION piWow64 = {0};
-				STARTUPINFO siWow64 = { sizeof(siWow64) };
-				sprintf_s(CommandLine, sizeof(CommandLine), "\"%s\" inject %d %d \"%s\"", X64LoaderPath, ProcessId, ThreadId, Wow64DllPath);
-
-				if (CreateProcess(NULL, CommandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &siWow64, &piWow64))
-				{
-					// Bounded wait: a hung/missing x64 loader must not stall injection.
-					WaitForSingleObject(piWow64.hProcess, 30000);
-					CloseHandle(piWow64.hProcess);
-					CloseHandle(piWow64.hThread);
-					DebugOutput("InjectDll: WOW64 monitor injection via loader_x64 completed.\n");
-				}
-				else
-				{
-					DebugOutput("InjectDll: Failed to launch x64 loader for WOW64 capabilities.\n");
-				}
-			}
-		}
-	}
-	// ----- HEAVEN'S GATE MITIGATION END -----
-
 	PPEB pPeb = GetProcessPeb(ProcessHandle, &Peb);
 	if (!pPeb)
 		DebugOutput("InjectDll: GetProcessPeb failure.\n");
