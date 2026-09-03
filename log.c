@@ -118,7 +118,10 @@ void TlsThreadCleanup(void) {
 	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
 		thread_log_context_t* pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
 		if (pCtx) {
-			free(pCtx->g_pb_ctx);
+			if (pCtx->g_pb_ctx) {
+				protobuf_ctx_free(pCtx->g_pb_ctx);
+				free(pCtx->g_pb_ctx);
+			}
 			free(pCtx);
 			TlsSetValue(g_bson_tls_index, NULL);
 		}
@@ -401,6 +404,16 @@ void log_flush()
 
 void debug_message(const char *msg) {
 	bson b[1];
+
+	if (g_config.log_format == LOG_FORMAT_PROTOBUF) {
+		uint8_t pbuf[600];			// capemon_DebugMessage_size is 514
+		size_t plen = protobuf_encode_debug(pbuf, sizeof(pbuf), msg);
+		if (plen)
+			log_raw_direct((const char *)pbuf, plen);
+		log_flush();
+		return;
+	}
+
 	bson_init( b );
 	bson_append_string( b, "type", "debug" );
 	bson_append_string( b, "msg", msg );
@@ -687,14 +700,16 @@ void loq(int index, const char *category, const char *name,
 		return;
 	}
 
-	// The per-index "explain" frame is raw BSON metadata the result server uses
-	// to name argument positions. It has no protobuf equivalent, so in protobuf
-	// mode it must not be emitted - otherwise the stream is BSON frames
-	// interleaved with protobuf frames.
-	if (g_active_serializer == &g_bson_serializer &&
-		*(volatile char*)&logtbl_explained[index] == 0) {
+	// The per-index "explain" frame tells the result server the api name,
+	// category and ordered argument names for this index. BSON emits it as an
+	// "info" document; protobuf emits the equivalent InfoMessage. Either way it
+	// is built once, the first time the index is seen.
+	if (*(volatile char*)&logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
+		const char *pb_names[64];
+		const char *pb_types[64];
+		int pb_n = 0;
 
 		{
 			int retries = 100;
@@ -761,14 +776,20 @@ void loq(int index, const char *category, const char *name,
 				bson_append_string( b, "0", pname );
 				bson_append_string( b, "1", typestr );
 				bson_append_finish_array( b );
+
+				if (pb_n < 64) { pb_names[pb_n] = pname; pb_types[pb_n] = typestr; pb_n++; }
 			}
 			else if (key == 'x' || key == 'X') {
 				bson_append_start_array(b, g_istr);
 				bson_append_string(b, "0", pname);
 				bson_append_string(b, "1", "p");
 				bson_append_finish_array(b);
+
+				if (pb_n < 64) { pb_names[pb_n] = pname; pb_types[pb_n] = "p"; pb_n++; }
 			} else {
 				bson_append_string( b, g_istr, pname );
+
+				if (pb_n < 64) { pb_names[pb_n] = pname; pb_types[pb_n] = ""; pb_n++; }
 			}
 
 			//now ignore the values
@@ -853,7 +874,18 @@ void loq(int index, const char *category, const char *name,
 		}
 			bson_append_finish_array( b );
 			bson_finish( b );
-			log_raw_direct(bson_data( b ), bson_size( b ));
+			if (g_active_serializer == &g_bson_serializer) {
+				log_raw_direct(bson_data( b ), bson_size( b ));
+			} else {
+				// protobuf InfoMessage - capemon_InfoMessage_size is ~2.5 KB
+				uint8_t infobuf[4096];
+				size_t infolen = protobuf_encode_info(infobuf, sizeof(infobuf),
+					index, name, category,
+					(const char *const *)pb_names,
+					(const char *const *)pb_types, (size_t)pb_n);
+				if (infolen)
+					log_raw_direct((const char *)infobuf, infolen);
+			}
 			bson_destroy( b );
 			// log_flush();
 			va_end(args);
@@ -1375,8 +1407,12 @@ exit:
 void announce_netlog()
 {
 	char protoname[32];
-	sprintf(protoname, "BSON %u\n", GetCurrentProcessId());
-	//sprintf(protoname+5, "logs/%lu.bson\n", GetCurrentProcessId());
+	// The result server keys the stream reader off this token: "BSON" -> BsonStore,
+	// "PROTO" -> ProtobufStore (see CAPEv2 resultserver.py commands table).
+	if (g_config.log_format == LOG_FORMAT_PROTOBUF)
+		sprintf(protoname, "PROTO %u\n", GetCurrentProcessId());
+	else
+		sprintf(protoname, "BSON %u\n", GetCurrentProcessId());
 	log_raw_direct(protoname, strlen(protoname));
 }
 
@@ -1651,22 +1687,17 @@ void log_init(int debug)
 
 	if (g_config.log_format == LOG_FORMAT_PROTOBUF) {
 		g_default_serializer = &g_protobuf_serializer;
-		// The protobuf backend is EXPERIMENTAL. The current schema cannot
-		// represent capemon's full call model (heterogeneous indexed
-		// arguments, nested %a arrays, the caller "C" address, the thread id),
-		// and no result-server parser consumes it yet. It is safe to enable
-		// (the output stream stays self-consistent), but it is lossy - do not
-		// use it for analysis until schema.proto is finalised and a parser
-		// exists on the host side.
-		pipe("CRITICAL:log-format=1 (protobuf) is experimental and lossy; "
-			"only I/t/R/P are emitted and there is no host-side parser.");
+		// Protobuf output (schema.proto == CAPEv2 data/capemon_pb.proto) emits
+		// InfoMessage / CallMessage / DebugMessage frames under a "PROTO"
+		// netlog header. Known divergences from BSON: %a/%A array arguments are
+		// flattened into a single NUL-separated value, scalar integer arguments
+		// are rendered as decimal text, and the immediate caller ("C") is not
+		// carried (the BSON parser ignores it too). Requires a CAPEv2 with the
+		// ProtobufParser wired into behavior.py.
+		pipe("INFO:log-format=1 (protobuf) enabled; requires CAPEv2 ProtobufParser support.");
 	} else {
 		g_default_serializer = &g_bson_serializer;
 	}
-
-	// The netlog protocol header announced by announce_netlog() is still "BSON";
-	// a real protobuf transport would need its own header and a matching host
-	// reader. Left as-is deliberately while protobuf is experimental.
 
 	// Update active serializer for the main thread context too
 	thread_log_context_t *pCtx = GetThreadLogContext();

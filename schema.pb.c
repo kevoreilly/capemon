@@ -6,13 +6,22 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
-PB_BIND(StrMessage, StrMessage, AUTO)
+PB_BIND(capemon_ArgumentInfo, capemon_ArgumentInfo, AUTO)
 
 
-PB_BIND(RegularCall, RegularCall, AUTO)
+PB_BIND(capemon_InfoMessage, capemon_InfoMessage, 2)
 
 
-PB_BIND(HookEvent, HookEvent, AUTO)
+PB_BIND(capemon_CallMessage, capemon_CallMessage, AUTO)
+
+
+PB_BIND(capemon_ProcessMessage, capemon_ProcessMessage, 2)
+
+
+PB_BIND(capemon_DebugMessage, capemon_DebugMessage, 2)
+
+
+PB_BIND(capemon_HookEvent, capemon_HookEvent, 2)
 
 
 

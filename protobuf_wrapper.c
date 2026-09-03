@@ -1,316 +1,368 @@
+/*
+ * capemon protobuf log encoder (nanopb).
+ *
+ * Builds capemon_HookEvent messages that match CAPEv2's data/capemon_pb.proto.
+ * Wired into log.c through the log_serializer_t vtable (g_protobuf_serializer)
+ * plus two standalone helpers (protobuf_encode_info / protobuf_encode_debug)
+ * for the frames loq() does not build field-by-field.
+ */
 #include "protobuf_wrapper.h"
 #include "log_serializer.h"
 #include "utf8.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-// String callback functions for nanopb
-static bool encode_string_callback(pb_ostream_t *stream, const pb_field_t *field, void * const *arg) {
-    const char *str = (const char*)*arg;
-    if (!str) return true;
-    
-    size_t len = strlen(str);
-    if (!pb_encode_tag_for_field(stream, field))
-        return false;
-        
-    return pb_encode_string(stream, (const uint8_t*)str, len);
+/* Provided by log.c - one lazily-allocated context per logging thread. */
+extern protobuf_context_t *get_thread_pb_ctx(void);
+
+/* Separator inserted between elements of a flattened %a / %A array argument.
+ * repeated bytes cannot nest, so an argv-style argument is joined into a single
+ * entry; the CAPE parser splits it back on this byte. */
+#define PB_ARRAY_SEP 0x00
+
+/* --- arena ------------------------------------------------------------------ */
+
+static int arena_ensure(protobuf_context_t *ctx, size_t need)
+{
+    size_t cap = ctx->arg_arena_cap;
+    uint8_t *p;
+
+    if (need <= cap)
+        return 1;
+    if (cap == 0)
+        cap = 4096;
+    while (cap < need)
+        cap *= 2;
+    p = (uint8_t *)realloc(ctx->arg_arena, cap);
+    if (!p)
+        return 0;
+    ctx->arg_arena = p;
+    ctx->arg_arena_cap = cap;
+    return 1;
 }
 
-// Binary callback functions for nanopb
-static bool encode_binary_callback(pb_ostream_t *stream, const pb_field_t *field, void * const *arg) {
-    const pb_binary_t *bin = (const pb_binary_t *)*arg;
-    if (!bin || !bin->ptr || bin->len == 0) return true;
-    
-    if (!pb_encode_tag_for_field(stream, field))
-        return false;
-        
-    return pb_encode_string(stream, bin->ptr, bin->len);
+/* Append raw bytes as one new positional argument slot. */
+static void arg_push(protobuf_context_t *ctx, const void *buf, size_t len)
+{
+    if (ctx->arg_count >= PB_MAX_ARGS)
+        return;
+    if (!arena_ensure(ctx, ctx->arg_arena_len + len + 1))
+        return;
+    if (len && buf)
+        memcpy(ctx->arg_arena + ctx->arg_arena_len, buf, len);
+    ctx->args[ctx->arg_count].off = ctx->arg_arena_len;
+    ctx->args[ctx->arg_count].len = len;
+    ctx->arg_count++;
+    ctx->arg_arena_len += len;
 }
 
-void protobuf_init(protobuf_context_t* ctx, int message_type) {
-    // Zero the entire structure first
-    memset(ctx, 0, sizeof(protobuf_context_t));
-    
-    // Initialize nanopb structs manually for MSVC compatibility
-    ctx->event.which_message_type = message_type;
-    
-    if (message_type == HookEvent_regular_call_tag) {
-        RegularCall* call = &ctx->event.message_type.regular_call;
-        call->i = 0;
-        call->t = 0;
-        call->r = 0;
-        call->p = 0;
-    } else if (message_type == HookEvent_str_tag) {
-        StrMessage* str_msg = &ctx->event.message_type.str;
-        str_msg->i = 0;
+/* Append bytes to the argument slot currently open for a %a / %A array. */
+static void arg_array_append(protobuf_context_t *ctx, const void *buf, size_t len)
+{
+    pb_arg_slot_t *slot;
+    size_t add;
+
+    if (!ctx->arg_count)
+        return;
+    slot = &ctx->args[ctx->arg_count - 1];
+    add = len + (slot->len ? 1 : 0);   /* leading separator except for first */
+    if (!arena_ensure(ctx, ctx->arg_arena_len + add))
+        return;
+    if (slot->len)
+        ctx->arg_arena[ctx->arg_arena_len++] = PB_ARRAY_SEP;
+    if (len && buf) {
+        memcpy(ctx->arg_arena + ctx->arg_arena_len, buf, len);
+        ctx->arg_arena_len += len;
     }
+    slot->len += add;
 }
 
-void protobuf_finish(protobuf_context_t* ctx) {
-    pb_ostream_t stream = pb_ostream_from_buffer(ctx->buffer, sizeof(ctx->buffer));
-    if (pb_encode(&stream, HookEvent_fields, &ctx->event)) {
-        ctx->encoded_size = stream.bytes_written;
-    } else {
+static void arg_bytes(protobuf_context_t *ctx, const void *buf, size_t len)
+{
+    if (ctx->in_array)
+        arg_array_append(ctx, buf, len);
+    else
+        arg_push(ctx, buf, len);
+}
+
+/* --- encode callbacks ----------------------------------------------------- */
+
+static bool encode_arguments_cb(pb_ostream_t *stream, const pb_field_t *field,
+                                void *const *arg)
+{
+    const protobuf_context_t *ctx = (const protobuf_context_t *)*arg;
+    size_t i;
+
+    for (i = 0; i < ctx->arg_count; i++) {
+        if (!pb_encode_tag_for_field(stream, field))
+            return false;
+        if (!pb_encode_string(stream, ctx->arg_arena + ctx->args[i].off,
+                              ctx->args[i].len))
+            return false;
+    }
+    return true;
+}
+
+/* --- lifecycle ---------------------------------------------------------- */
+
+void protobuf_ctx_reset_call(protobuf_context_t *ctx)
+{
+    capemon_CallMessage *call;
+
+    if (!ctx)
+        return;
+
+    memset(&ctx->event, 0, sizeof(ctx->event));
+    ctx->event.which_payload = capemon_HookEvent_call_tag;
+    call = &ctx->event.payload.call;
+    call->arguments.funcs.encode = encode_arguments_cb;
+    call->arguments.arg = ctx;
+    /* aux is never populated by capemon */
+
+    ctx->arg_count = 0;
+    ctx->arg_arena_len = 0;
+    ctx->in_array = 0;
+    ctx->encoded_size = 0;
+}
+
+size_t protobuf_ctx_finish(protobuf_context_t *ctx)
+{
+    pb_ostream_t stream;
+    size_t need;
+
+    if (!ctx)
+        return 0;
+
+    /* Upper bound: every arena byte appears once, plus per-arg tag/len and the
+     * fixed scalar fields. 1 KiB slack covers both comfortably. */
+    need = ctx->arg_arena_len + 1024;
+    if (need > ctx->out_cap) {
+        uint8_t *p = (uint8_t *)realloc(ctx->out_buf, need);
+        if (!p) {
+            ctx->encoded_size = 0;
+            return 0;
+        }
+        ctx->out_buf = p;
+        ctx->out_cap = need;
+    }
+
+    stream = pb_ostream_from_buffer(ctx->out_buf, ctx->out_cap);
+    if (!pb_encode(&stream, capemon_HookEvent_fields, &ctx->event)) {
         ctx->encoded_size = 0;
-    }
-}
-
-// Copy at most `length` bytes (or strlen(str) when length < 0) into the scratch
-// arena and NUL-terminate. Honouring an explicit length is required: callers
-// pass counted, non-NUL-terminated buffers (%S / UNICODE_STRING / registry
-// values) and a strlen() here would over-read process memory.
-static const char* copy_to_scratch_n(protobuf_context_t* ctx, const char* str, int length) {
-    size_t len;
-    char *dest;
-    if (!str) return NULL;
-    len = (length < 0) ? strlen(str) : (size_t)length;
-    if (ctx->scratch_offset + len + 1 > sizeof(ctx->string_scratch)) {
-        // Out of scratch space. The value is dropped - acceptable only because
-        // the protobuf backend is explicitly experimental/lossy (see log_init).
-        return NULL;
-    }
-    dest = ctx->string_scratch + ctx->scratch_offset;
-    memcpy(dest, str, len);
-    dest[len] = '\0';
-    ctx->scratch_offset += len + 1;
-    return dest;
-}
-
-int protobuf_append_string(protobuf_context_t* ctx, const char* name, const char* value, int length) {
-    if (!value) return 0;
-
-    const char *copied_val = copy_to_scratch_n(ctx, value, length);
-    if (!copied_val) return 0;
-    
-    if (ctx->event.which_message_type == HookEvent_str_tag) {
-        StrMessage* str_msg = &ctx->event.message_type.str;
-        
-        if (strcmp(name, "name") == 0) {
-            str_msg->name.funcs.encode = encode_string_callback;
-            str_msg->name.arg = (void*)copied_val;
-        } else if (strcmp(name, "type") == 0) {
-            str_msg->type.funcs.encode = encode_string_callback;
-            str_msg->type.arg = (void*)copied_val;
-        } else if (strcmp(name, "category") == 0) {
-            str_msg->category.funcs.encode = encode_string_callback;
-            str_msg->category.arg = (void*)copied_val;
-        } else if (strcmp(name, "api_name") == 0) {
-            str_msg->api_name.funcs.encode = encode_string_callback;
-            str_msg->api_name.arg = (void*)copied_val;
-        }
-    } else if (ctx->event.which_message_type == HookEvent_regular_call_tag) {
-        RegularCall* call = &ctx->event.message_type.regular_call;
-        if (strcmp(name, "c") == 0) {
-            call->c.funcs.encode = encode_string_callback;
-            call->c.arg = (void*)copied_val;
-        }
-    }
-    
-    return 1;
-}
-
-int protobuf_append_wstring(protobuf_context_t* ctx, const char* name, const wchar_t* value, int length) {
-    int ret, utf8len;
-    char *utf8s;
-    if (!value) return 0;
-
-    // utf8_wstring() honours an explicit length (encodes exactly `length` wide
-    // chars) and returns a 4-byte length prefix followed by the encoded bytes.
-    utf8s = utf8_wstring(value, length);
-    if (!utf8s) return 0;
-
-    utf8len = *(int*)utf8s;
-    ret = protobuf_append_string(ctx, name, utf8s + 4, utf8len);
-    free(utf8s);
-    return ret;
-}
-
-int protobuf_append_int(protobuf_context_t* ctx, const char* name, int32_t value) {
-    if (ctx->event.which_message_type == HookEvent_regular_call_tag) {
-        RegularCall* call = &ctx->event.message_type.regular_call;
-
-        if (strcmp(name, "I") == 0 || strcmp(name, "i") == 0) {
-            call->i = value;
-        } else if (strcmp(name, "t") == 0) {
-            // Elapsed-tick field. NOTE: the thread id ("T") has no field in the
-            // current schema - it is intentionally dropped rather than
-            // overwriting the timestamp.
-            call->t = value;
-        }
-    } else if (ctx->event.which_message_type == HookEvent_str_tag) {
-        StrMessage* str_msg = &ctx->event.message_type.str;
-        
-        if (strcmp(name, "I") == 0 || strcmp(name, "i") == 0) {
-            str_msg->i = value;
-        }
-    }
-    
-    return 1;
-}
-
-int protobuf_append_long(protobuf_context_t* ctx, const char* name, int64_t value) {
-    if (ctx->event.which_message_type == HookEvent_regular_call_tag) {
-        RegularCall* call = &ctx->event.message_type.regular_call;
-        if (strcmp(name, "R") == 0 || strcmp(name, "r") == 0) {
-            call->r = (uint64_t)value;
-        } else if (strcmp(name, "P") == 0 || strcmp(name, "p") == 0) {
-            call->p = (uint64_t)value;
-        }
-    }
-    return 1;
-}
-
-int protobuf_append_binary(protobuf_context_t* ctx, const char* name, const void* buf, size_t len) {
-    if (!buf || len == 0) return 0;
-
-    if (ctx->scratch_offset + len > sizeof(ctx->string_scratch)) {
-        // Scratch exhausted: a large %c buffer, or several buffers in one call,
-        // can exceed string_scratch (32 KB). The value is dropped. Acceptable
-        // only under the experimental/lossy protobuf banner (see log_init);
-        // a finalised schema should size or grow this arena to match
-        // large_buffer_log_max.
         return 0;
     }
-
-    uint8_t *copied_buf = (uint8_t *)(ctx->string_scratch + ctx->scratch_offset);
-    memcpy(copied_buf, buf, len);
-    ctx->scratch_offset += len;
-    
-    if (ctx->event.which_message_type == HookEvent_regular_call_tag) {
-        RegularCall* call = &ctx->event.message_type.regular_call;
-        if (strcmp(name, "args") == 0) {
-            ctx->bin_args.ptr = copied_buf;
-            ctx->bin_args.len = len;
-            call->args.funcs.encode = encode_binary_callback;
-            call->args.arg = &ctx->bin_args;
-        } else if (strcmp(name, "data") == 0) {
-            ctx->bin_data.ptr = copied_buf;
-            ctx->bin_data.len = len;
-            call->data.funcs.encode = encode_binary_callback;
-            call->data.arg = &ctx->bin_data;
-        } else if (strcmp(name, "c") == 0) {
-            ctx->bin_c.ptr = copied_buf;
-            ctx->bin_c.len = len;
-            call->c.funcs.encode = encode_binary_callback;
-            call->c.arg = &ctx->bin_c;
-        } else if (strcmp(name, "index") == 0) {
-            ctx->bin_index.ptr = copied_buf;
-            ctx->bin_index.len = len;
-            call->index.funcs.encode = encode_binary_callback;
-            call->index.arg = &ctx->bin_index;
-        } else if (strcmp(name, "aux") == 0) {
-            ctx->bin_aux.ptr = copied_buf;
-            ctx->bin_aux.len = len;
-            call->aux.funcs.encode = encode_binary_callback;
-            call->aux.arg = &ctx->bin_aux;
-        }
-    } else if (ctx->event.which_message_type == HookEvent_str_tag) {
-        StrMessage* str_msg = &ctx->event.message_type.str;
-        if (strcmp(name, "args") == 0) {
-            ctx->bin_args.ptr = copied_buf;
-            ctx->bin_args.len = len;
-            str_msg->args.funcs.encode = encode_binary_callback;
-            str_msg->args.arg = &ctx->bin_args;
-        } else if (strcmp(name, "arguments") == 0) {
-            ctx->bin_data.ptr = copied_buf;
-            ctx->bin_data.len = len;
-            str_msg->arguments.funcs.encode = encode_binary_callback;
-            str_msg->arguments.arg = &ctx->bin_data;
-        }
-    }
-    
-    return 1;
-}
-
-size_t protobuf_size(protobuf_context_t* ctx) {
+    ctx->encoded_size = stream.bytes_written;
     return ctx->encoded_size;
 }
 
-const uint8_t* protobuf_data(protobuf_context_t* ctx) {
-    return ctx->buffer;
+const uint8_t *protobuf_ctx_data(protobuf_context_t *ctx)
+{
+    return (ctx && ctx->out_buf) ? ctx->out_buf : (const uint8_t *)"";
 }
 
-void protobuf_destroy(protobuf_context_t* ctx) {
-    // No dynamic memory was allocated inside context, so we just clean up
-    memset(ctx, 0, sizeof(protobuf_context_t));
+size_t protobuf_ctx_size(protobuf_context_t *ctx)
+{
+    return ctx ? ctx->encoded_size : 0;
 }
 
-// Strategy Pattern Implementation
-extern protobuf_context_t* get_thread_pb_ctx(void);
-
-static void pb_serializer_init(void) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_init(ctx, HookEvent_regular_call_tag);
+void protobuf_ctx_free(protobuf_context_t *ctx)
+{
+    if (!ctx)
+        return;
+    free(ctx->arg_arena);
+    free(ctx->out_buf);
+    ctx->arg_arena = NULL;
+    ctx->out_buf = NULL;
+    ctx->arg_arena_cap = ctx->arg_arena_len = 0;
+    ctx->out_cap = ctx->encoded_size = 0;
 }
 
-static void pb_serializer_append_int(const char *name, int32_t val) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_append_int(ctx, name, val);
-}
+/* --- CallMessage field setters ---------------------------------------- */
 
-static void pb_serializer_append_long(const char *name, int64_t val) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_append_long(ctx, name, val);
-}
+void protobuf_call_set_int(protobuf_context_t *ctx, const char *name, int32_t val)
+{
+    capemon_CallMessage *call;
+    char buf[16];
 
-static void pb_serializer_append_string(const char *name, const char *val, int length) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (!ctx) return;
-    if (strcmp(name, "type") == 0 || strcmp(name, "category") == 0) {
-        ctx->event.which_message_type = HookEvent_str_tag;
+    if (!ctx || ctx->event.which_payload != capemon_HookEvent_call_tag)
+        return;
+    call = &ctx->event.payload.call;
+
+    if (!strcmp(name, "I") || !strcmp(name, "i"))       call->index = val;
+    else if (!strcmp(name, "T"))                         call->thread_id = val;
+    else if (!strcmp(name, "t"))                         call->timestamp = (uint32_t)val;
+    else if (!strcmp(name, "r") || !strcmp(name, "C"))   /* repeat count / caller: no field */ ;
+    else if (!strcmp(name, "0"))                         call->is_success = (val != 0);
+    else if (!strcmp(name, "1"))                         call->retval = (uint32_t)val;
+    else {
+        /* scalar integer argument (%i / %h path) - store decimal text */
+        int n = _snprintf(buf, sizeof(buf), "%d", val);
+        if (n < 0) n = 0;
+        arg_bytes(ctx, buf, (size_t)n);
     }
-    protobuf_append_string(ctx, name, val, length);
 }
 
-static void pb_serializer_append_wstring(const char *name, const wchar_t *val, int length) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_append_wstring(ctx, name, val, length);
+void protobuf_call_set_long(protobuf_context_t *ctx, const char *name, int64_t val)
+{
+    capemon_CallMessage *call;
+    char buf[24];
+
+    if (!ctx || ctx->event.which_payload != capemon_HookEvent_call_tag)
+        return;
+    call = &ctx->event.payload.call;
+
+    if (!strcmp(name, "R"))       call->return_address = (uint64_t)val;
+    else if (!strcmp(name, "P"))  call->parent_return_address = (uint64_t)val;
+    else if (!strcmp(name, "1"))  call->retval = (uint64_t)val;
+    else if (!strcmp(name, "C"))  /* caller: no field */ ;
+    else {
+        int n = _snprintf(buf, sizeof(buf), "%lld", (long long)val);
+        if (n < 0) n = 0;
+        arg_bytes(ctx, buf, (size_t)n);
+    }
 }
 
-static void pb_serializer_append_binary(const char *name, const void *buf, size_t len) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_append_binary(ctx, name, buf, len);
+void protobuf_call_add_arg_bytes(protobuf_context_t *ctx, const char *name,
+                                 const void *buf, size_t len)
+{
+    (void)name;
+    if (ctx && ctx->event.which_payload == capemon_HookEvent_call_tag)
+        arg_bytes(ctx, buf, len);
 }
 
-static void pb_serializer_finish(void) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_finish(ctx);
+void protobuf_call_add_arg_str(protobuf_context_t *ctx, const char *name,
+                               const char *val, int length)
+{
+    size_t n;
+    (void)name;
+    if (!ctx || ctx->event.which_payload != capemon_HookEvent_call_tag)
+        return;
+    if (!val) {
+        arg_bytes(ctx, "", 0);
+        return;
+    }
+    n = (length < 0) ? strlen(val) : (size_t)length;
+    arg_bytes(ctx, val, n);
 }
 
-static void pb_serializer_append_start_array(const char *name) {
-    // Array nesting is handled implicitly by protobuf message schemas
+void protobuf_call_add_arg_wstr(protobuf_context_t *ctx, const char *name,
+                                const wchar_t *val, int length)
+{
+    char *utf8s;
+    int utf8len;
+    (void)name;
+    if (!ctx || ctx->event.which_payload != capemon_HookEvent_call_tag)
+        return;
+    if (!val) {
+        arg_bytes(ctx, "", 0);
+        return;
+    }
+    /* utf8_wstring honours an explicit length and returns a 4-byte length
+     * prefix followed by the encoded bytes. */
+    utf8s = utf8_wstring(val, length);
+    if (!utf8s) {
+        arg_bytes(ctx, "", 0);
+        return;
+    }
+    utf8len = *(int *)utf8s;
+    arg_bytes(ctx, utf8s + 4, (size_t)utf8len);
+    free(utf8s);
 }
 
-static void pb_serializer_append_finish_array(void) {
-    // Array nesting is handled implicitly by protobuf message schemas
+void protobuf_call_array_begin(protobuf_context_t *ctx)
+{
+    if (!ctx)
+        return;
+    ctx->in_array = 1;
+    arg_push(ctx, "", 0);          /* open a single accumulating slot */
 }
 
-static const uint8_t* pb_serializer_get_data(void) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    return ctx ? protobuf_data(ctx) : NULL;
+void protobuf_call_array_end(protobuf_context_t *ctx)
+{
+    if (ctx)
+        ctx->in_array = 0;
 }
 
-static size_t pb_serializer_get_size(void) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    return ctx ? protobuf_size(ctx) : 0;
+/* --- standalone frames ------------------------------------------------- */
+
+size_t protobuf_encode_info(uint8_t *out, size_t out_cap,
+                            int32_t index, const char *name, const char *category,
+                            const char *const *arg_names, const char *const *arg_types,
+                            size_t arg_n)
+{
+    capemon_HookEvent ev;
+    capemon_InfoMessage *info;
+    pb_ostream_t st;
+    size_t i;
+
+    memset(&ev, 0, sizeof(ev));
+    ev.which_payload = capemon_HookEvent_info_tag;
+    info = &ev.payload.info;
+    info->index = index;
+    if (name)
+        strncpy(info->name, name, sizeof(info->name) - 1);
+    if (category)
+        strncpy(info->category, category, sizeof(info->category) - 1);
+
+    if (arg_n > 40)               /* schema.options: max_count:40 */
+        arg_n = 40;
+    info->args_count = (pb_size_t)arg_n;
+    for (i = 0; i < arg_n; i++) {
+        if (arg_names && arg_names[i])
+            strncpy(info->args[i].name, arg_names[i], sizeof(info->args[i].name) - 1);
+        if (arg_types && arg_types[i])
+            strncpy(info->args[i].type, arg_types[i], sizeof(info->args[i].type) - 1);
+    }
+
+    st = pb_ostream_from_buffer(out, out_cap);
+    if (!pb_encode(&st, capemon_HookEvent_fields, &ev))
+        return 0;
+    return st.bytes_written;
 }
 
-static void pb_serializer_destroy(void) {
-    protobuf_context_t* ctx = get_thread_pb_ctx();
-    if (ctx) protobuf_destroy(ctx);
+size_t protobuf_encode_debug(uint8_t *out, size_t out_cap, const char *message)
+{
+    capemon_HookEvent ev;
+    pb_ostream_t st;
+
+    memset(&ev, 0, sizeof(ev));
+    ev.which_payload = capemon_HookEvent_debug_tag;
+    if (message)
+        strncpy(ev.payload.debug.message, message, sizeof(ev.payload.debug.message) - 1);
+
+    st = pb_ostream_from_buffer(out, out_cap);
+    if (!pb_encode(&st, capemon_HookEvent_fields, &ev))
+        return 0;
+    return st.bytes_written;
 }
+
+/* --- log_serializer_t vtable ---------------------------------------------- */
+
+static void pb_v_init(void)                { protobuf_ctx_reset_call(get_thread_pb_ctx()); }
+static void pb_v_int(const char *n, int32_t v)  { protobuf_call_set_int(get_thread_pb_ctx(), n, v); }
+static void pb_v_long(const char *n, int64_t v) { protobuf_call_set_long(get_thread_pb_ctx(), n, v); }
+static void pb_v_str(const char *n, const char *v, int len)     { protobuf_call_add_arg_str(get_thread_pb_ctx(), n, v, len); }
+static void pb_v_wstr(const char *n, const wchar_t *v, int len) { protobuf_call_add_arg_wstr(get_thread_pb_ctx(), n, v, len); }
+static void pb_v_bin(const char *n, const void *b, size_t l)    { protobuf_call_add_arg_bytes(get_thread_pb_ctx(), n, b, l); }
+static void pb_v_finish(void)              { protobuf_ctx_finish(get_thread_pb_ctx()); }
+static void pb_v_arr_begin(const char *n)  { if (strcmp(n, "args") != 0) protobuf_call_array_begin(get_thread_pb_ctx()); }
+static void pb_v_arr_end(void)             { protobuf_context_t *c = get_thread_pb_ctx(); if (c && c->in_array) protobuf_call_array_end(c); }
+static const uint8_t *pb_v_data(void)      { return protobuf_ctx_data(get_thread_pb_ctx()); }
+static size_t pb_v_size(void)              { return protobuf_ctx_size(get_thread_pb_ctx()); }
+static void pb_v_destroy(void)             { /* buffers are reused; freed in TlsThreadCleanup */ }
 
 log_serializer_t g_protobuf_serializer = {
-    .init = pb_serializer_init,
-    .append_int = pb_serializer_append_int,
-    .append_long = pb_serializer_append_long,
-    .append_string = pb_serializer_append_string,
-    .append_wstring = pb_serializer_append_wstring,
-    .append_binary = pb_serializer_append_binary,
-    .append_finish = pb_serializer_finish,
-    .append_start_array = pb_serializer_append_start_array,
-    .append_finish_array = pb_serializer_append_finish_array,
-    .get_data = pb_serializer_get_data,
-    .get_size = pb_serializer_get_size,
-    .destroy = pb_serializer_destroy
+    .init = pb_v_init,
+    .append_int = pb_v_int,
+    .append_long = pb_v_long,
+    .append_string = pb_v_str,
+    .append_wstring = pb_v_wstr,
+    .append_binary = pb_v_bin,
+    .append_finish = pb_v_finish,
+    .append_start_array = pb_v_arr_begin,
+    .append_finish_array = pb_v_arr_end,
+    .get_data = pb_v_data,
+    .get_size = pb_v_size,
+    .destroy = pb_v_destroy
 };
