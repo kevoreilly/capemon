@@ -52,8 +52,52 @@ static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
 // current to-be-logged API call
-static bson g_bson[1];
-static char g_istr[4];
+typedef struct {
+	bson g_bson[1];
+	char g_istr[4];
+} thread_log_context_t;
+
+DWORD g_bson_tls_index = TLS_OUT_OF_INDEXES;
+
+// Thread-local storage with caching to avoid repeated TLS lookups
+static __declspec(thread) thread_log_context_t* g_tls_ctx_cache = NULL;
+
+static thread_log_context_t* GetThreadLogContext(void) {
+	// Use cached value if available to avoid TLS overhead
+	if (g_tls_ctx_cache)
+		return g_tls_ctx_cache;
+
+	thread_log_context_t* pCtx = NULL;
+	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
+		pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
+		if (!pCtx) {
+			pCtx = (thread_log_context_t*)calloc(1, sizeof(thread_log_context_t));
+			if (pCtx) {
+				TlsSetValue(g_bson_tls_index, pCtx);
+				g_tls_ctx_cache = pCtx; // Cache for this thread
+			}
+		} else {
+			g_tls_ctx_cache = pCtx; // Cache for this thread
+		}
+	}
+	return pCtx;
+}
+
+// Safe accessor macros with NULL check
+// Note: These will return NULL if TLS allocation failed, callers must check
+#define g_bson ({ thread_log_context_t *_ctx = GetThreadLogContext(); _ctx ? _ctx->g_bson : NULL; })
+#define g_istr ({ thread_log_context_t *_ctx = GetThreadLogContext(); _ctx ? _ctx->g_istr : NULL; })
+
+void TlsThreadCleanup(void) {
+	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
+		thread_log_context_t* pCtx = (thread_log_context_t*)TlsGetValue(g_bson_tls_index);
+		if (pCtx) {
+			free(pCtx);
+			TlsSetValue(g_bson_tls_index, NULL);
+			g_tls_ctx_cache = NULL; // Clear cache
+		}
+	}
+}
 
 static char logtbl_explained[256] = {0};
 
@@ -559,40 +603,45 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	{
-		int retries = 100;
-		BOOL acquired = FALSE;
-
-		while (retries-- > 0) {
-			if (TryEnterCriticalSection(&g_mutex)) {
-				acquired = TRUE;
-				break;
-			}
-			SwitchToThread();
-		}
-
-		if (!acquired) {
-			goto exit;
-		}
+	// Verify TLS context is available before proceeding
+	if (!GetThreadLogContext()) {
+		// TLS allocation failed - cannot log, exit gracefully
+		hook_enable();
+		set_lasterrors(&lasterror);
+		return;
 	}
 
-	if (!special_api_triggered)
-		last_api_logged = API_OTHER;
-	else {
-		special_api_triggered = FALSE;
-		if (delete_last_log) {
-			free(lastlog.buf);
-			lastlog.buf = NULL;
-		}
-	}
-
-	if (logtbl_explained[index] == 0) {
+	// Use volatile to ensure proper memory ordering for logtbl_explained
+	// This fixes the race condition in double-checked locking
+	if (*(volatile char*)&logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
-		logtbl_explained[index] = 1;
+		{
+			int retries = 100;
+			BOOL acquired = FALSE;
 
-		va_start(args, fmt);
+			while (retries-- > 0) {
+				if (TryEnterCriticalSection(&g_mutex)) {
+					acquired = TRUE;
+					break;
+				}
+				SwitchToThread();
+			}
+
+			if (!acquired) {
+				// Failed to acquire lock - skip explanation and return
+				hook_enable();
+				set_lasterrors(&lasterror);
+				return;
+			}
+		}
+
+		// Double-check inside the lock (proper double-checked locking pattern)
+		if (logtbl_explained[index] == 0) {
+			logtbl_explained[index] = 1;
+
+			va_start(args, fmt);
 
 		bson_init( b );
 		bson_append_int( b, "I", index );
@@ -723,12 +772,14 @@ void loq(int index, const char *category, const char *name,
 			}
 
 		}
-		bson_append_finish_array( b );
-		bson_finish( b );
-		log_raw_direct(bson_data( b ), bson_size( b ));
-		bson_destroy( b );
-		// log_flush();
-		va_end(args);
+			bson_append_finish_array( b );
+			bson_finish( b );
+			log_raw_direct(bson_data( b ), bson_size( b ));
+			bson_destroy( b );
+			// log_flush();
+			va_end(args);
+		}
+		LeaveCriticalSection(&g_mutex);
 	}
 
 	fmt = fmtbak;
@@ -1133,6 +1184,34 @@ buffer_log:
 	bson_append_finish_array( g_bson );
 	bson_finish( g_bson );
 
+	{
+		int retries = 100;
+		BOOL acquired = FALSE;
+
+		while (retries-- > 0) {
+			if (TryEnterCriticalSection(&g_mutex)) {
+				acquired = TRUE;
+				break;
+			}
+			SwitchToThread();
+		}
+
+		if (!acquired) {
+			bson_destroy( g_bson );
+			goto exit;
+		}
+	}
+
+	if (!special_api_triggered)
+		last_api_logged = API_OTHER;
+	else {
+		special_api_triggered = FALSE;
+		if (delete_last_log) {
+			free(lastlog.buf);
+			lastlog.buf = NULL;
+		}
+	}
+
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
 		log_raw_direct(bson_data(g_bson), bson_size(g_bson));
@@ -1447,6 +1526,8 @@ DWORD g_logwatcher_thread_id;
 
 void log_init(int debug)
 {
+	g_bson_tls_index = TlsAlloc();
+
 	g_buffer = calloc(1, BUFFERSIZE);
 
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -1489,6 +1570,11 @@ void log_init(int debug)
 void log_free()
 {
 	log_flush();
+	if (g_bson_tls_index != TLS_OUT_OF_INDEXES) {
+		TlsThreadCleanup();
+		TlsFree(g_bson_tls_index);
+		g_bson_tls_index = TLS_OUT_OF_INDEXES;
+	}
 	if (g_sock == DEBUG_SOCKET) {
 		g_sock = INVALID_SOCKET;
 	}

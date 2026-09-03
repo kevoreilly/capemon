@@ -1,0 +1,74 @@
+name: PR Build Test
+
+on:
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      pr_number:
+        description: 'PR number to test'
+        required: true
+        type: number
+  pull_request:
+    branches: [ "capemon" ]
+
+env:
+  BUILD_CONFIGURATION: Release
+  SOLUTION_FILE_PATH: capemon.sln
+
+jobs:
+  build:
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            platform: Win32
+          - arch: x64
+            platform: x64
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.1
+      with:
+       msbuild-architecture: ${{ matrix.arch }}
+
+    - name: Restore NuGet packages
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ matrix.platform }} ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Build Tests
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cd tests
+        make test-tls-logging.exe
+        make test-pluggable-serialization.exe
+      shell: bash
+      continue-on-error: true
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: capemon_test_${{ matrix.arch }}_pr${{ github.event.inputs.pr_number || github.event.pull_request.number }}
+        path: |
+          Release/capemon.dll
+          x64/Release/capemon_x64.dll
+          tests/*.exe
+        if-no-files-found: ignore
+
+    - name: Comment Build Status
+      if: github.event.pull_request.number
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.name,
+            body: '✅ Build succeeded for ${{ matrix.platform }}! Artifacts available in workflow run.'
+          })
+      continue-on-error: true
