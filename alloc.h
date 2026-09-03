@@ -51,7 +51,7 @@ extern void *cm_calloc(size_t count, size_t size);
 #else
 static __inline void *cm_calloc(size_t count, size_t size)
 {
-	char *buf = cm_alloc(count * size);
+	char *buf = (char *)cm_alloc(count * size);
 	if (buf)
 		memset(buf, 0, count * size);
 	return buf;
@@ -60,7 +60,7 @@ static __inline void *cm_calloc(size_t count, size_t size)
 
 static __inline char *cm_strdup(const char *ptr)
 {
-	char *buf = cm_alloc(strlen(ptr) + 1);
+	char *buf = (char *)cm_alloc(strlen(ptr) + 1);
 	if (buf)
 		strncpy(buf, ptr, strlen(ptr) + 1);
 	return buf;

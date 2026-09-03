@@ -1097,6 +1097,29 @@ void hide_module_from_peb(HMODULE module_handle)
 	}
 }
 
+void scrub_profiler_env_vars(void)
+{
+	PEB *peb = (PEB *)get_peb();
+	if (!peb || !peb->ProcessParameters || !peb->ProcessParameters->Environment)
+		return;
+
+	PWSTR env = (PWSTR)peb->ProcessParameters->Environment;
+
+	while (*env) {
+		if (_wcsnicmp(env, L"COR_PROFILER", 12) == 0 ||
+			_wcsnicmp(env, L"COR_ENABLE_PROFILING", 20) == 0 ||
+			_wcsnicmp(env, L"CORECLR_PROFILER", 16) == 0) {
+			
+			PWSTR ptr = env;
+			while (*ptr && *ptr != L'=') {
+				*ptr = L'Z';
+				ptr++;
+			}
+		}
+		env += wcslen(env) + 1;
+	}
+}
+
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle)
 {
 	PLDR_DATA_TABLE_ENTRY mod;

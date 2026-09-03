@@ -4123,6 +4123,18 @@ HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 );
 
+HOOKDEF(DWORD, WINAPI, GetEnvironmentVariableA,
+	LPCSTR lpName,
+	LPSTR  lpBuffer,
+	DWORD  nSize
+);
+
+HOOKDEF(DWORD, WINAPI, GetEnvironmentVariableW,
+	LPCWSTR lpName,
+	LPWSTR  lpBuffer,
+	DWORD   nSize
+);
+
 HOOKDEF(LPWSTR, WINAPI, CommandLineToArgvW,
 	__in LPWSTR lpCmdLine,
 	__out int *pNumArgs

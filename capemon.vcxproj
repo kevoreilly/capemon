@@ -213,6 +213,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="alloc.c" />
+    <ClCompile Include="profiler.cpp" />
     <ClCompile Include="CAPE\AmsiDumper.cpp" />
     <ClCompile Include="CAPE\CAPE.c" />
     <ClCompile Include="CAPE\Debugger.c" />
