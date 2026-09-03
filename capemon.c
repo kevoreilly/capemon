@@ -562,8 +562,7 @@ void init_private_heap(void)
 }
 
 extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock;
-DWORD g_wmi_tls_index = TLS_OUT_OF_INDEXES;
-DWORD g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
+lookup_t g_wmi_locator_lookup;
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 
@@ -606,8 +605,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
-		g_wmi_tls_index = TlsAlloc();
-		g_wmi_tracker_tls_index = TlsAlloc();
 
 		// read the config settings
 		read_config();
@@ -697,19 +694,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		if (!g_config.tlsdump && !g_config.interactive)
 			notify_successful_load();
 	}
-	else if (dwReason == DLL_THREAD_DETACH) {
-		extern void TlsWmiThreadCleanup(void);
-		TlsWmiThreadCleanup();
-	}
 	else if(dwReason == DLL_PROCESS_DETACH) {
-		if (g_wmi_tls_index != TLS_OUT_OF_INDEXES) {
-			TlsFree(g_wmi_tls_index);
-			g_wmi_tls_index = TLS_OUT_OF_INDEXES;
-		}
-		if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
-			TlsFree(g_wmi_tracker_tls_index);
-			g_wmi_tracker_tls_index = TLS_OUT_OF_INDEXES;
-		}
 		// in production, we shouldn't ever get called in this way since we
 		// unlink ourselves from the module list in the PEB
 		// so don't call log_free(), as it'll have side-effects

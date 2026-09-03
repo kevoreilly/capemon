@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <tlhelp32.h>
 #include <ncrypt.h>
 #include "hook_trace.h"
+#include "lookup.h"
 #include <Wbemidl.h>
 
 #pragma comment(lib, "wbemuuid.lib")
@@ -1892,6 +1893,19 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__in		 DWORD nOutBufferSize,
 	__out_opt	LPDWORD lpBytesReturned,
 	__inout_opt  LPOVERLAPPED lpOverlapped
+);
+
+HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_In_  DWORD FirmwareTableID,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
+HOOKDEF(UINT, WINAPI, EnumSystemFirmwareTables,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
@@ -4213,8 +4227,10 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 
 void InitWmiSpoofStrings(void);
 
-extern DWORD g_wmi_tls_index;
-#define bHookViaWbemLocator ((BOOL)(ULONG_PTR)TlsGetValue(g_wmi_tls_index))
-#define SetHookViaWbemLocator(val) TlsSetValue(g_wmi_tls_index, (PVOID)(ULONG_PTR)(val))
+// Per-thread "hooking via IWbemLocator" flag. Uses the lock-free lookup table
+// (LOOKUP_THREAD idiom) instead of TLS, matching the SafeLookup convention.
+extern lookup_t g_wmi_locator_lookup;
+#define bHookViaWbemLocator (*(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL))
+#define SetHookViaWbemLocator(val) (bHookViaWbemLocator = (BOOL)(val))
 
 #include "hook_vbscript.h"
