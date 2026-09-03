@@ -42,6 +42,7 @@ extern void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtec
 extern void FreeHandler(PVOID BaseAddress), ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void ProcessTrackedRegion(), DebuggerShutdown(), DumpStrings();
 extern LONG WINAPI mini_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
+extern BOOLEAN is_monitor_thread(DWORD tid);
 extern BOOL dll_is_hooked(const wchar_t *library);
 extern BOOL CAPEExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 extern void file_handle_terminate();
@@ -127,30 +128,44 @@ HOOKDEF(BOOL, WINAPI, Module32NextW,
 	return ret;
 }
 
-HOOKDEF(BOOL, WINAPI, Thread32First,
+HOOKDEF(BOOL, WINAPI, Thread32Next,
 	__in HANDLE hSnapshot,
-	__out LPTHREADENTRY32 lpme
+	__out LPTHREADENTRY32 lpte
 ) {
-	BOOL ret = Old_Thread32First(hSnapshot, lpme);
+	BOOL ret = Old_Thread32Next(hSnapshot, lpte);
 
 	if (ret)
-		LOQ_bool("process", "ii", "ThreadID", lpme->th32ThreadID, "ProcessId", lpme->th32OwnerProcessID);
+		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
 	else
 		LOQ_bool("process", "");
+
+	// ignore our own threads
+	if (ret && lpte && lpte->th32OwnerProcessID && GetCurrentProcessId() == lpte->th32OwnerProcessID && lpte->th32ThreadID && is_monitor_thread(lpte->th32ThreadID)) {
+		do {
+			ret = Old_Thread32Next(hSnapshot, lpte);
+		} while (ret && lpte && GetCurrentProcessId() == lpte->th32OwnerProcessID && is_monitor_thread(lpte->th32ThreadID));
+	}
 
 	return ret;
 }
 
-HOOKDEF(BOOL, WINAPI, Thread32Next,
+HOOKDEF(BOOL, WINAPI, Thread32First,
 	__in HANDLE hSnapshot,
-	__out LPTHREADENTRY32 lpme
+	__out LPTHREADENTRY32 lpte
 ) {
-	BOOL ret = Old_Thread32Next(hSnapshot, lpme);
+	BOOL ret = Old_Thread32First(hSnapshot, lpte);
 
 	if (ret)
-		LOQ_bool("process", "ii", "ThreadID", lpme->th32ThreadID, "ProcessId", lpme->th32OwnerProcessID);
+		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
 	else
 		LOQ_bool("process", "");
+
+	// ignore our own threads
+	if (ret && lpte && lpte->th32OwnerProcessID && GetCurrentProcessId() == lpte->th32OwnerProcessID && lpte->th32ThreadID && is_monitor_thread(lpte->th32ThreadID)) {
+		do {
+			ret = Old_Thread32Next(hSnapshot, lpte);
+		} while (ret && lpte && GetCurrentProcessId() == lpte->th32OwnerProcessID && is_monitor_thread(lpte->th32ThreadID));
+	}
 
 	return ret;
 }

@@ -74,6 +74,15 @@ void add_ignored_thread(DWORD tid)
 	set_lasterrors(&lasterror);
 }
 
+BOOLEAN is_monitor_thread(DWORD tid)
+{
+	if (tid == g_unhook_detect_thread_id || tid == g_unhook_watcher_thread_id || tid == g_watchdog_thread_id ||
+		tid == g_terminate_event_thread_id || tid == g_log_thread_id || tid == g_logwatcher_thread_id ||
+		tid == g_procname_watcher_thread_id)
+		return TRUE;
+	return FALSE;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	__in HANDLE ThreadHandle,
 	__in PIO_APC_ROUTINE ApcRoutine,
@@ -603,14 +612,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	ENSURE_ULONG(PreviousSuspendCount);
 
-	if (pid == GetCurrentProcessId() && tid && (tid == g_unhook_detect_thread_id || tid == g_unhook_watcher_thread_id ||
-		tid == g_watchdog_thread_id || tid == g_terminate_event_thread_id || tid == g_log_thread_id ||
-		tid == g_logwatcher_thread_id || tid == g_procname_watcher_thread_id)) {
+	if (pid == GetCurrentProcessId() && is_monitor_thread(tid)) {
 		ret = 0;
 		*PreviousSuspendCount = 0;
-		LOQ_ntstatus("threading", "pIsi", "ThreadHandle", ThreadHandle,
-			"SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread",
-			"ProcessId", pid);
+		LOQ_ntstatus("threading", "pIsi", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread", "ProcessId", pid);
 	}
 	else {
 		if (pid != GetCurrentProcessId())
@@ -677,12 +682,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
 
 	//remove_ignored_thread(tid);
 
-	if (pid == GetCurrentProcessId() && tid && (tid == g_unhook_detect_thread_id || tid == g_unhook_watcher_thread_id ||
-		tid == g_watchdog_thread_id || tid == g_terminate_event_thread_id || tid == g_log_thread_id ||
-		tid == g_logwatcher_thread_id || tid == g_procname_watcher_thread_id)) {
+	if (pid == GetCurrentProcessId() && is_monitor_thread(tid)) {
 		ret = 0;
-		LOQ_ntstatus("threading", "phsi", "ThreadHandle", ThreadHandle, "ExitStatus", ExitStatus, "Alert", "Attempted to kill capemon thread",
-		"ProcessId", pid);
+		LOQ_ntstatus("threading", "phsi", "ThreadHandle", ThreadHandle, "ExitStatus", ExitStatus, "Alert", "Attempted to kill capemon thread", "ProcessId", pid);
 		return ret;
 	}
 
