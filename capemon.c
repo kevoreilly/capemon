@@ -561,7 +561,7 @@ void init_private_heap(void)
 #endif
 }
 
-extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock, g_dotnet_jit_lock;
+extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock;
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 
@@ -661,7 +661,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// initialize misc critical sections
 		InitializeCriticalSection(&readfile_critsec);
-		InitializeCriticalSection(&g_dotnet_jit_lock);
 		if (g_config.idbg)
 			InitializeCriticalSection(&g_interactive_debugger_lock);
 

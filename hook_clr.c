@@ -20,12 +20,11 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 
+// Lock-free set of JIT native-code allocation bases (see lookup.c). The
+// compileMethod hook runs on CLR JIT worker threads concurrently; membership is
+// recorded with LOOKUP_MARK_SEEN and read with lookup_get, both of which are
+// safe without external locking. Entries are never removed.
 lookup_t g_dotnet_jit;
-
-// Serialises access to g_dotnet_jit (a lock-free linked list in lookup.c) and to
-// DotNetCacheDumpCount, both of which are touched concurrently by the CLR's JIT
-// worker threads from inside the compileMethod hook. Initialised in DllMain.
-CRITICAL_SECTION g_dotnet_jit_lock;
 
 // The CORINFO_METHOD_INFO structure is passed to compileMethod by the CLR JIT engine.
 // The first four fields are extremely stable and consistent across all .NET versions.
@@ -251,14 +250,12 @@ static void ResolveDotNetRuntime(void)
 {
 	HMODULE hMod = NULL;
 
+	// First-writer-wins, no lock: resolution is idempotent (every JIT thread
+	// derives the same runtime/version/slot from the loaded CLR), so a race just
+	// repeats identical work and identical writes. g_dotnet_runtime_resolved is
+	// published last, after the slot/ABI it gates on.
 	if (g_dotnet_runtime_resolved)
 		return;
-
-	EnterCriticalSection(&g_dotnet_jit_lock);
-	if (g_dotnet_runtime_resolved) {
-		LeaveCriticalSection(&g_dotnet_jit_lock);
-		return;
-	}
 
 	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL)
 		g_dotnet_runtime = DOTNET_RT_CORE;
@@ -305,7 +302,6 @@ static void ResolveDotNetRuntime(void)
 
 	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, g_dotnet_minor, &g_method_name_abi);
 	g_dotnet_runtime_resolved = TRUE;
-	LeaveCriticalSection(&g_dotnet_jit_lock);
 
 	DebugOutput("compileMethod: .NET runtime = %s %d.%d (%s, name accessor vtable slot %d)\n",
 		g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
@@ -475,12 +471,8 @@ HOOKDEF(int, WINAPI, compileMethod,
 
 		if (nativeCode && nativeCodeSize > 0 && !our_isbadreadptr(nativeCode, nativeCodeSize)) {
 			PVOID AllocationBase = GetAllocationBase(nativeCode);
-			if (AllocationBase) {
-				EnterCriticalSection(&g_dotnet_jit_lock);
-				if (!lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0))
-					lookup_add(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0);
-				LeaveCriticalSection(&g_dotnet_jit_lock);
-			}
+			if (AllocationBase)
+				LOOKUP_MARK_SEEN(&g_dotnet_jit, AllocationBase);
 
 			if (g_config.yarascan)
 			{
@@ -504,20 +496,19 @@ HOOKDEF(int, WINAPI, compileMethod,
 		}
 
 		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize)) {
-			// Hold the lock across the whole dump: it serialises both the shared
-			// counter and the shared CapeMetaData scratch fields against other
-			// JIT threads, and only runs at most g_config.jit_dumps times.
-			EnterCriticalSection(&g_dotnet_jit_lock);
+			// jit_dumps is a soft cap: a concurrent JIT thread may squeeze in an
+			// extra dump between the check and the increment. The counter itself
+			// is bumped atomically so it can't tear; the CapeMetaData scratch
+			// fields are written unlocked, as elsewhere in the dump paths.
 			if (DotNetCacheDumpCount < g_config.jit_dumps) {
 				CapeMetaData->ModulePath = NULL;
 				CapeMetaData->DumpType = 0;
 				CapeMetaData->TypeString = ".NET JIT MSIL bytecode";
 				CapeMetaData->Address = info->ILCode;
 				DumpMemoryRaw(info->ILCode, info->ILCodeSize);
-				DotNetCacheDumpCount++;
+				InterlockedIncrement((LONG volatile *)&DotNetCacheDumpCount);
 				DebugOutput("compileMethod: Dumped decrypted .NET JIT MSIL bytecode at 0x%p (size 0x%x).\n", info->ILCode, info->ILCodeSize);
 			}
-			LeaveCriticalSection(&g_dotnet_jit_lock);
 		}
 
 		if (g_config.break_on_jit && nativeCode) {

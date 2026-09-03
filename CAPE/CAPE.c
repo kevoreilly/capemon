@@ -3429,18 +3429,11 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
 
-	// The two blocks below write the shared CapeMetaData scratch struct and touch
-	// DotNetCacheDumpCount / g_dotnet_jit, which the compileMethod hook may still
-	// be updating on CLR JIT worker threads while this teardown scan runs.
-	BOOLEAN isDotNetImage = FALSE;
-	BOOLEAN inJitCache = FALSE;
-
-	EnterCriticalSection(&g_dotnet_jit_lock);
-	isDotNetImage = IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT;
-	inJitCache = lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0);
-	LeaveCriticalSection(&g_dotnet_jit_lock);
-
-	if (isDotNetImage)
+	// g_dotnet_jit is a lock-free set (lookup.c); the compileMethod hook may still
+	// be adding to it on CLR JIT worker threads while this teardown scan runs, and
+	// lookup_get is safe against that. The CapeMetaData scratch writes below are
+	// unlocked, as in the rest of the dump paths.
+	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
 	{
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = UNPACKED_PE;
@@ -3450,7 +3443,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
 	}
 
-	if (inJitCache)
+	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
@@ -3464,9 +3457,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
 		{
 			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
-			EnterCriticalSection(&g_dotnet_jit_lock);
-			DotNetCacheDumpCount++;
-			LeaveCriticalSection(&g_dotnet_jit_lock);
+			InterlockedIncrement((LONG volatile *)&DotNetCacheDumpCount);
 		}
 		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
