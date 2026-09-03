@@ -789,7 +789,19 @@ void loq(int index, const char *category, const char *name,
 			} else {
 				bson_append_string( b, g_istr, pname );
 
-				if (pb_n < 64) { pb_names[pb_n] = pname; pb_types[pb_n] = ""; pb_n++; }
+				// protobuf-only type hint (BSON stays untyped here and keeps
+				// its native int/string/binary elements). "i" = bare integer,
+				// "a" = flattened %a/%A array the parser splits on NUL.
+				if (pb_n < 64) {
+					const char *t = "";
+					if (key == 'i' || key == 'I' || key == 'l' || key == 'L')
+						t = "i";
+					else if (key == 'a' || key == 'A')
+						t = "a";
+					pb_names[pb_n] = pname;
+					pb_types[pb_n] = t;
+					pb_n++;
+				}
 			}
 
 			//now ignore the values
