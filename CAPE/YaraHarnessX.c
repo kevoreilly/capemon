@@ -83,6 +83,13 @@ static BOOL ScannerLockInit = FALSE;
 static __declspec(thread) YRX_SCANNER* t_Scanner = NULL;
 static __declspec(thread) int t_Scanning = 0;
 
+// t_Scanner is thread-local, so YaraShutdown() (running on one thread) cannot
+// clear other threads' cached pointers before it destroys the YRX_SCANNER /
+// YRX_RULES they point at. Every scan takes this lock shared for its duration;
+// YaraShutdown() takes it exclusive before destroying anything, which blocks
+// until all in-flight scans on every thread have returned.
+static SRWLOCK ScanShutdownLock = SRWLOCK_INIT;
+
 // Upper bound on the pattern matches materialised per rule hit. Config rules
 // carry only a handful; this just caps a pathological rule.
 #define MAX_RULE_MATCHES 512
@@ -562,12 +569,28 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 		return;
 	}
 
+	// Shared for the whole scan: blocks YaraShutdown() from destroying this
+	// thread's scanner (or the shared Rules) out from under yrx_scanner_scan().
+	AcquireSRWLockShared(&ScanShutdownLock);
+
+	if (!YaraActivated)
+	{
+		ReleaseSRWLockShared(&ScanShutdownLock);
+		return;
+	}
+
 	Scanner = GetThreadScanner();
 	if (!Scanner)
+	{
+		ReleaseSRWLockShared(&ScanShutdownLock);
 		return;
+	}
 
 	if (yrx_scanner_on_matching_rule(Scanner, Callback, CallbackData) != YRX_SUCCESS)
+	{
+		ReleaseSRWLockShared(&ScanShutdownLock);
 		return;
+	}
 
 	t_Scanning = 1;
 	__try
@@ -577,11 +600,13 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		t_Scanning = 0;
+		ReleaseSRWLockShared(&ScanShutdownLock);
 		if (YaraLogging)
 			DebugOutput("YaraScan (%s): exception scanning 0x%p\n", Where, Address);
 		return;
 	}
 	t_Scanning = 0;
+	ReleaseSRWLockShared(&ScanShutdownLock);
 
 	if (Result != YRX_SUCCESS)
 		ScannerError(Result, Where);
@@ -727,6 +752,12 @@ void YaraShutdown()
 
 	YaraActivated = FALSE;
 
+	// Wait for every in-flight YaraScanInternal() (on any thread) to finish
+	// and release its shared hold before destroying the scanners/Rules those
+	// calls (or a not-yet-started one whose thread already cached t_Scanner)
+	// may still be using. See the comment on ScanShutdownLock's declaration.
+	AcquireSRWLockExclusive(&ScanShutdownLock);
+
 	if (ScannerLockInit)
 	{
 		EnterCriticalSection(&ScannerLock);
@@ -751,6 +782,8 @@ void YaraShutdown()
 		yrx_rules_destroy(Rules);
 		Rules = NULL;
 	}
+
+	ReleaseSRWLockExclusive(&ScanShutdownLock);
 
 	// Deliberately NOT calling yrx_finalize(): it tears down process-wide
 	// wasmtime exception-handler state and is unsafe while capemon's own VEH

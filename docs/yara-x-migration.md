@@ -22,7 +22,7 @@ Nothing outside the harness changes: every caller (`hook_clr.c`, `Trace.c`,
 | `CAPE/YaraHarnessX.c` | **new** — YARA-X backend, identical public API |
 | `CAPE/YaraHarness.h` | `#include "yara.h"` is now skipped when `CAPE_USE_YARA_X` is set |
 | `yara-x/include/yara_x.h` | vendored YARA-X C API header (v1.20.0) |
-| `yara-x/lib/` | **empty** — drop the prebuilt static libs here (see below) |
+| `docs/yara-x/bin/{x32,x64}/` | prebuilt `yara_x_capi.dll` + import lib + PDB — this is what `capemon.vcxproj` actually links/loads today (see `docs/yara-x/readme.md`); **Step 1 below (a static lib in `yara-x/lib/`) is an alternative build path that is not currently wired into the project** |
 
 The `yara-x/` layout deliberately mirrors `libyara/` (`include/` + `lib/`).
 
@@ -51,7 +51,13 @@ The `yara-x/` layout deliberately mirrors `libyara/` (`include/` + `lib/`).
 
 ---
 
-## Step 1 — produce the YARA-X static libraries
+## Step 1 (alternative) — produce the YARA-X static libraries
+
+> The project as committed links the **dynamic** `yara_x_capi.dll` prebuilt
+> under `docs/yara-x/bin/{x32,x64}/` (see `docs/yara-x/readme.md` for how
+> those were built). The static-lib path below is kept for reference/rollback
+> to a statically-linked build; it requires redoing Step 2 to point back at
+> `yara-x/lib/yara_xNN.lib` and the transitive system libs it needs.
 
 Requires a Rust toolchain + [`cargo-c`](https://github.com/lu-zero/cargo-c) on a
 machine with the MSVC build tools.
@@ -100,6 +106,13 @@ Notes:
 ---
 
 ## Step 2 — project changes (`capemon.vcxproj`)
+
+> This describes the static-lib wiring matching Step 1 above. The
+> **currently-committed** `Release|x64` block instead links
+> `docs\yara-x\bin\x64\yara_x_capi.dll.lib` (dynamic import lib, no
+> `ntdll`/`userenv`/`bcrypt`/`advapi32`) and has a `PostBuildEvent` that copies
+> `yara_x_capi.dll` next to the built `capemon_x64.dll` so it can be loaded at
+> runtime. Only `Release|x64` is enabled today; `Win32` is not yet wired up.
 
 For each of the four `ItemDefinitionGroup` blocks (Debug/Release × Win32/x64):
 
