@@ -1894,6 +1894,19 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__inout_opt  LPOVERLAPPED lpOverlapped
 );
 
+HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_In_  DWORD FirmwareTableID,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
+HOOKDEF(UINT, WINAPI, EnumSystemFirmwareTables,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
 	IN HANDLE			   TimerHandle,
 	IN PLARGE_INTEGER	   DueTime,
