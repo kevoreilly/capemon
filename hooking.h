@@ -318,3 +318,7 @@ typedef struct _com_hook_t {
 	REFCLSID		rclsid;
 	REFIID			riid;
 } com_hook_t;
+
+#ifndef WIDE_STRING_LIMIT
+#define WIDE_STRING_LIMIT 32768
+#endif

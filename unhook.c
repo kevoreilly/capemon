@@ -500,8 +500,10 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 {
 	hook_disable();
 
+	char *msg = malloc(WIDE_STRING_LIMIT);
+	if (!msg) return 0;
+	
 	while (1) {
-		char msg[MAX_PATH];
 		char *dllname;
 		unsigned int off = 0;
 		int i;
@@ -515,13 +517,18 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 		ctx.ContextFlags = CONTEXT_FULL;
 		GetThreadContext((HANDLE)param, &ctx);
 		dllname = convert_address_to_dll_name_and_offset(ctx.Eip, &off);
-		_snprintf_s(msg, MAX_PATH, _TRUNCATE, "INFO: PID %u thread: %p EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx\n", GetCurrentProcessId(), param, dllname ? dllname : "", off, ctx.Eip, ctx.Eax, ctx.Ebx, ctx.Ecx, ctx.Edx, ctx.Esi, ctx.Edi, ctx.Ebp, ctx.Esp);
+		memset(msg, 0, WIDE_STRING_LIMIT);
+		_snprintf_s(msg, WIDE_STRING_LIMIT, _TRUNCATE, "INFO: PID %u thread: %p EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx\n", GetCurrentProcessId(), param, dllname ? dllname : "", off, ctx.Eip, ctx.Eax, ctx.Ebx, ctx.Ecx, ctx.Edx, ctx.Esi, ctx.Edi, ctx.Ebp, ctx.Esp);
 
 		_operate_on_backtrace(ctx.Eip, ctx.Ebp, NULL, find_capemon_addrs);
 
 		for (i = 0; i < capemonaddrs_num; i++) {
 			char *dllname2 = convert_address_to_dll_name_and_offset(capemonaddrs[i], &off);
-			sprintf(msg + strlen(msg), " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
+			size_t len = strlen(msg);
+			size_t remaining = (len < WIDE_STRING_LIMIT) ? (WIDE_STRING_LIMIT - len) : 0;
+			if (remaining > 1) {
+				_snprintf_s(msg + len, remaining, _TRUNCATE, " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
+			}
 			if (dllname2)
 				free(dllname2);
 		}
@@ -531,6 +538,7 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 		ResumeThread((HANDLE)param);
 		pipe(msg);
 	}
+	free(msg);
 }
 
 int init_watchdog()
