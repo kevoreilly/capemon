@@ -524,7 +524,11 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 
 		for (i = 0; i < capemonaddrs_num; i++) {
 			char *dllname2 = convert_address_to_dll_name_and_offset(capemonaddrs[i], &off);
-			_snprintf_s(msg + strlen(msg), WIDE_STRING_LIMIT - strlen(msg), _TRUNCATE, " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
+			size_t len = strlen(msg);
+			size_t remaining = (len < WIDE_STRING_LIMIT) ? (WIDE_STRING_LIMIT - len) : 0;
+			if (remaining > 1) {
+				_snprintf_s(msg + len, remaining, _TRUNCATE, " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
+			}
 			if (dllname2)
 				free(dllname2);
 		}
