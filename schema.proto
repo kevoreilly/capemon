@@ -1,0 +1,66 @@
+/*
+ * capemon <-> CAPE result-server wire schema (protobuf / nanopb).
+ *
+ * This MUST stay in lock-step with CAPEv2's data/capemon_pb.proto - that copy
+ * is the contract and the source of the generated Python parser
+ * (lib/cuckoo/common/capemon_pb2.py). The only intentional difference is that
+ * CallMessage.arguments / .aux are `repeated bytes` here (and there): capemon
+ * arguments carry raw, non-UTF-8 buffers (%b/%c, registry values, counted
+ * strings) which proto3 `string` cannot hold.
+ *
+ * Regenerate schema.pb.{c,h} after any edit:  scripts/gen-schema.sh
+ */
+syntax = "proto3";
+
+package capemon;
+
+message ArgumentInfo {
+    string name = 1;
+    string type = 2;
+}
+
+// One per API index, emitted the first time that index is logged. Mirrors the
+// BSON "info" frame: tells the parser the api name, category and the ordered
+// argument names so later CallMessages can be zipped against them.
+message InfoMessage {
+    int32 index = 1;
+    string name = 2;
+    string category = 3;
+    repeated ArgumentInfo args = 4;
+}
+
+// One per hooked API call. `arguments` is positional and lines up 1:1 with
+// InfoMessage.args for the same index. is_success / retval are carried in
+// dedicated fields (the BSON stream keeps them as args "0" and "1").
+message CallMessage {
+    int32 index = 1;
+    int32 thread_id = 2;
+    uint64 return_address = 3;        // BSON "R" (main_caller_retaddr)
+    uint64 parent_return_address = 4; // BSON "P" (parent_caller_retaddr)
+    bool is_success = 5;
+    uint64 retval = 6;
+    repeated bytes arguments = 7;
+    uint64 timestamp = 8;            // ticks since monitor start (BSON "t")
+    repeated bytes aux = 9;          // never set by capemon; present for parity
+}
+
+message ProcessMessage {
+    uint64 timestamp = 1;
+    int32 pid = 2;
+    int32 ppid = 3;
+    string module_path = 4;
+    string proc_name = 5;
+}
+
+message DebugMessage {
+    string message = 1;
+}
+
+message HookEvent {
+    oneof payload {
+        InfoMessage info = 1;
+        CallMessage call = 2;
+        ProcessMessage new_process = 3;
+        DebugMessage debug = 4;
+    }
+}

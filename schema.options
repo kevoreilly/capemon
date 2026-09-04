@@ -1,0 +1,22 @@
+# nanopb field options for schema.proto  (see scripts/gen-schema.sh)
+#
+# InfoMessage / ArgumentInfo / ProcessMessage / DebugMessage are transient and
+# small, so they use bounded static storage - no encode callbacks to wire up.
+# Only CallMessage.arguments / .aux are unbounded (raw binary buffers up to
+# large_buffer_log_max), so those stay FT_CALLBACK and are streamed from the
+# wrapper's own scratch arena.
+
+capemon.ArgumentInfo.name           max_size:48
+capemon.ArgumentInfo.type           max_size:8
+
+capemon.InfoMessage.name            max_size:64
+capemon.InfoMessage.category        max_size:32
+capemon.InfoMessage.args            max_count:40
+
+capemon.CallMessage.arguments       type:FT_CALLBACK
+capemon.CallMessage.aux             type:FT_CALLBACK
+
+capemon.ProcessMessage.module_path  max_size:520
+capemon.ProcessMessage.proc_name    max_size:64
+
+capemon.DebugMessage.message        max_size:512

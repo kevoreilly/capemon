@@ -690,6 +690,10 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		if (!g_config.tlsdump && !g_config.interactive)
 			notify_successful_load();
 	}
+	else if (dwReason == DLL_THREAD_DETACH) {
+		extern void TlsThreadCleanup(void);
+		TlsThreadCleanup();
+	}
 	else if(dwReason == DLL_PROCESS_DETACH) {
 		// in production, we shouldn't ever get called in this way since we
 		// unlink ourselves from the module list in the PEB
