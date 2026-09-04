@@ -1692,6 +1692,10 @@ DWORD g_logwatcher_thread_id;
 void log_init(int debug)
 {
 	g_bson_tls_index = TlsAlloc();
+	if (g_bson_tls_index == TLS_OUT_OF_INDEXES) {
+		pipe("CRITICAL:TlsAlloc failed - logging disabled");
+		return;
+	}
 
 	g_buffer = calloc(1, BUFFERSIZE);
 
