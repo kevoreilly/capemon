@@ -172,6 +172,7 @@
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
       <ModuleDefinitionFile>capemon.def</ModuleDefinitionFile>
       <DelayLoadDLLs>kernel32.dll;advapi32.dll;user32.dll;ws2_32.dll;crypt32.dll;shlwapi.dll;ole32.dll;shell32.dll;setupapi.dll</DelayLoadDLLs>
+
     </Link>
     <PreBuildEvent>
       <Command>
@@ -207,6 +208,7 @@
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
       <ModuleDefinitionFile>capemon.def</ModuleDefinitionFile>
       <DelayLoadDLLs>kernel32.dll;advapi32.dll;user32.dll;ws2_32.dll;crypt32.dll;shlwapi.dll;ole32.dll;shell32.dll;setupapi.dll</DelayLoadDLLs>
+
     </Link>
     <PreBuildEvent>
       <Command>
