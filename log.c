@@ -55,7 +55,8 @@ HANDLE g_log_handle;
 static bson g_bson[1];
 static char g_istr[4];
 
-static char logtbl_explained[256] = {0};
+#define MAX_LOG_INDEX 8192
+static char logtbl_explained[MAX_LOG_INDEX] = {0};
 
 #define LOG_ID_PROCESS 0
 #define LOG_ID_THREAD 1
@@ -70,7 +71,13 @@ static char logtbl_explained[256] = {0};
 // must be one larger than the largest log ID
 #define LOG_ID_PREDEFINED_MAX 10
 
+#ifdef _WIN64
+volatile LONG g_log_index = 20;  // 64-bit calls
+#define BSON_ID(idx) ((idx) | 0x40000000)
+#else
 volatile LONG g_log_index = 20;  // index must start after the special IDs (see defines)
+#define BSON_ID(idx) (idx)
+#endif
 
 //
 // Log API
@@ -587,7 +594,7 @@ void loq(int index, const char *category, const char *name,
 		}
 	}
 
-	if (logtbl_explained[index] == 0) {
+	if (index < MAX_LOG_INDEX && logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
@@ -596,7 +603,7 @@ void loq(int index, const char *category, const char *name,
 		va_start(args, fmt);
 
 		bson_init( b );
-		bson_append_int( b, "I", index );
+		bson_append_int( b, "I", BSON_ID(index) );
 		bson_append_string( b, "name", name );
 		bson_append_string( b, "type", "info" );
 		bson_append_string( b, "category", category );
@@ -737,7 +744,7 @@ void loq(int index, const char *category, const char *name,
 	count = 1; key = 0; argnum = 2;
 
 	bson_init( g_bson );
-	bson_append_int( g_bson, "I", index );
+	bson_append_int( g_bson, "I", BSON_ID(index) );
 	hookinfo = hook_info();
 	bson_append_ptr(g_bson, "C", hookinfo->return_address);
 	// return location of malware callsite
