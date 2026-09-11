@@ -559,6 +559,7 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
+	if (!TryEnterCriticalSection(&g_mutex))
 	{
 		int retries = 100;
 		BOOL acquired = FALSE;
