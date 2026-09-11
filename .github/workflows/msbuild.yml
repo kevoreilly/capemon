@@ -5,6 +5,7 @@ on:
     branches: [ "capemon" ]
   pull_request:
     branches: [ "capemon" ]
+  workflow_dispatch:  # Allow manual trigger
 
 env:  
   BUILD_CONFIGURATION: Release
