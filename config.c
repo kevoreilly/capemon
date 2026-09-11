@@ -1474,6 +1474,35 @@ void parse_config_line(char* line)
 	}
 }
 
+//
+// Local equivalent of shlwapi!PathRemoveFileSpec. read_config() runs very early
+// in DllMain, before we have resolved the delay-loaded imports, so it must not
+// be the first thing to touch shlwapi. Same semantics: strips the trailing path
+// component in place, leaves a bare root ("C:\") alone.
+//
+static void strip_filespec(char *path)
+{
+	char *sep, *p;
+
+	if (!path || !*path)
+		return;
+
+	sep = NULL;
+	for (p = path; *p; p++) {
+		if (*p == '\\' || *p == '/')
+			sep = p;
+	}
+
+	if (!sep)
+		return;
+
+	// keep the separator for a root path such as "C:\"
+	if (sep == path || (sep == path + 2 && path[1] == ':'))
+		sep[1] = '\0';
+	else
+		*sep = '\0';
+}
+
 void read_config(void)
 {
 	char buf[32768], config_fname[MAX_PATH];
@@ -1517,7 +1546,7 @@ void read_config(void)
 	// look for the config in monitor directory
 	memset(g_config.analyzer, 0, MAX_PATH);
 	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(g_config.analyzer); // remove filename
+	strip_filespec(g_config.analyzer); // remove filename
 	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
 
 	strcpy(g_config.results, g_config.analyzer);

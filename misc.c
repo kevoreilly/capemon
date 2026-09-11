@@ -1648,15 +1648,23 @@ wchar_t *get_key_path(POBJECT_ATTRIBUTES ObjectAttributes, PKEY_NAME_INFORMATION
 	}
 
 normal:
-	if (!wcsnicmp(keybuf->KeyName, g_hkcu.hkcu_string, g_hkcu.len) && (keybuf->KeyName[g_hkcu.len] == L'\\' || keybuf->KeyName[g_hkcu.len] == L'\0')) {
+	if (!g_hkcu.hkcu_string)
+		hkcu_init();
+
+	{
+	// snapshot: hkcu_init() may publish these from another thread
+	const wchar_t *hkcu_string = g_hkcu.hkcu_string;
+	unsigned int hkcu_len = g_hkcu.len;
+
+	if (hkcu_string && !wcsnicmp(keybuf->KeyName, hkcu_string, hkcu_len) && (keybuf->KeyName[hkcu_len] == L'\\' || keybuf->KeyName[hkcu_len] == L'\0')) {
 		unsigned int ourlen = lstrlenW(L"HKEY_CURRENT_USER");
 		memcpy(keybuf->KeyName, L"HKEY_CURRENT_USER", ourlen * sizeof(WCHAR));
-		memmove(keybuf->KeyName + ourlen, keybuf->KeyName + g_hkcu.len, keybuf->KeyNameLength + (1 * sizeof(WCHAR)) - ((g_hkcu.len) * sizeof(WCHAR)));
-		keybuf->KeyNameLength -= (g_hkcu.len - ourlen) * sizeof(WCHAR);
+		memmove(keybuf->KeyName + ourlen, keybuf->KeyName + hkcu_len, keybuf->KeyNameLength + (1 * sizeof(WCHAR)) - ((hkcu_len) * sizeof(WCHAR)));
+		keybuf->KeyNameLength -= (hkcu_len - ourlen) * sizeof(WCHAR);
 	}
-	else if (!wcsnicmp(keybuf->KeyName, g_hkcu.hkcu_string, g_hkcu.len) && !wcsnicmp(&keybuf->KeyName[g_hkcu.len], L"_Classes", 8)) {
+	else if (hkcu_string && !wcsnicmp(keybuf->KeyName, hkcu_string, hkcu_len) && !wcsnicmp(&keybuf->KeyName[hkcu_len], L"_Classes", 8)) {
 		unsigned int ourlen = lstrlenW(L"HKEY_CURRENT_USER\\Software\\Classes");
-		unsigned int existlen = g_hkcu.len + 8;
+		unsigned int existlen = hkcu_len + 8;
 		memmove(keybuf->KeyName + ourlen, keybuf->KeyName + existlen, keybuf->KeyNameLength + (1 * sizeof(WCHAR)) - (existlen * sizeof(WCHAR)));
 		memcpy(keybuf->KeyName, L"HKEY_CURRENT_USER\\Software\\Classes", ourlen * sizeof(WCHAR));
 		keybuf->KeyNameLength -= (existlen - ourlen) * sizeof(WCHAR);
@@ -1673,6 +1681,7 @@ normal:
 		memcpy(keybuf->KeyName, L"HKEY_USERS", ourlen * sizeof(WCHAR));
 		keybuf->KeyNameLength -= (14 - ourlen) * sizeof(WCHAR);
 	}
+	}
 
 	goto out;
 
@@ -1685,11 +1694,17 @@ out:
 	return keybuf->KeyName;
 }
 
-static PSID GetSID(void)
+//
+// On success the caller owns *userinfo_out and must free() it; the returned SID
+// points into that allocation.
+//
+static PSID GetSID(PTOKEN_USER *userinfo_out)
 {
 	HANDLE token;
 	DWORD retlen;
 	PTOKEN_USER userinfo = NULL;
+
+	*userinfo_out = NULL;
 
 	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_QUERY_SOURCE, &token))
 		return NULL;
@@ -1705,24 +1720,67 @@ static PSID GetSID(void)
 			return NULL;
 		}
 		CloseHandle(token);
+		*userinfo_out = userinfo;
 		return userinfo->User.Sid;
 	}
 	CloseHandle(token);
 	return NULL;
 }
 
+//
+// hkcu_init() may be called from DllMain and lazily from get_key_path() on any
+// thread, so it has to be idempotent. The initializing thread publishes
+// g_hkcu.len first and g_hkcu.hkcu_string last (via an interlocked store, which
+// is a full barrier), because readers use hkcu_string as the "ready" flag.
+//
+// On failure the state is reset so a subsequent call can retry: the SID lookup
+// depends on advapi32, which may not be resolvable yet in an injected process.
+//
+#define HKCU_INIT_NONE		0
+#define HKCU_INIT_RUNNING	1
+#define HKCU_INIT_DONE		2
+
+static volatile LONG g_hkcu_state = HKCU_INIT_NONE;
+
 void hkcu_init(void)
 {
-	PSID sid = GetSID();
-	LPWSTR sidstr;
+	PTOKEN_USER userinfo = NULL;
+	LPWSTR sidstr = NULL;
+	wchar_t *hkcu_string;
+	unsigned int len;
+	PSID sid;
 
-	ConvertSidToStringSidW(sid, &sidstr);
+	if (InterlockedCompareExchange(&g_hkcu_state, HKCU_INIT_RUNNING, HKCU_INIT_NONE) != HKCU_INIT_NONE)
+		return;
 
-	g_hkcu.len = lstrlenW(sidstr) + lstrlenW(L"\\REGISTRY\\USER\\");
-	g_hkcu.hkcu_string = malloc((g_hkcu.len + 1) * sizeof(wchar_t));
-	wcscpy(g_hkcu.hkcu_string, L"\\REGISTRY\\USER\\");
-	wcscat(g_hkcu.hkcu_string, sidstr);
+	sid = GetSID(&userinfo);
+	if (!sid)
+		goto fail;
+
+	if (!ConvertSidToStringSidW(sid, &sidstr) || !sidstr)
+		goto fail;
+
+	len = lstrlenW(sidstr) + lstrlenW(L"\\REGISTRY\\USER\\");
+	hkcu_string = malloc((len + 1) * sizeof(wchar_t));
+	if (!hkcu_string)
+		goto fail;
+
+	wcscpy(hkcu_string, L"\\REGISTRY\\USER\\");
+	wcscat(hkcu_string, sidstr);
+
+	g_hkcu.len = len;
+	InterlockedExchangePointer((PVOID volatile *)&g_hkcu.hkcu_string, hkcu_string);
+	InterlockedExchange(&g_hkcu_state, HKCU_INIT_DONE);
+
 	LocalFree(sidstr);
+	free(userinfo);
+	return;
+
+fail:
+	if (sidstr)
+		LocalFree(sidstr);
+	free(userinfo);
+	InterlockedExchange(&g_hkcu_state, HKCU_INIT_NONE);
 }
 
 extern int process_shutting_down;

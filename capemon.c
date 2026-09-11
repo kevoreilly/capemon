@@ -31,6 +31,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "unhook.h"
 #include "bson.h"
 #include "Shlwapi.h"
+#ifdef _WIN64
+#include <delayimp.h>
+#endif
 
 // Allow debug mode to be turned on at compilation time.
 #ifdef CUCKOODBG
@@ -565,6 +568,136 @@ extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 
+//
+// Returns TRUE if the current process is a WoW64 process (i.e. a 32-bit image
+// hosted by the 64-bit kernel). Valid for both the 32-bit and the 64-bit build
+// of the monitor: ProcessWow64Information yields the PEB32 address, which is
+// non-NULL only under WoW64.
+//
+// NtQueryInformationProcess is resolved at runtime because we do not link
+// against ntdll.lib, and we cannot use the hooked Old_/New_ variants here as
+// this may run before set_hooks().
+//
+static BOOL is_wow64_process(void)
+{
+	static _NtQueryInformationProcess pQueryInfo;
+	ULONG_PTR wow64_peb = 0;
+	ULONG ret_len = 0;
+
+	if (!pQueryInfo) {
+		HMODULE ntdll = GetModuleHandleA("ntdll");
+		if (!ntdll)
+			return FALSE;
+		*(FARPROC *)&pQueryInfo = GetProcAddress(ntdll, "NtQueryInformationProcess");
+		if (!pQueryInfo)
+			return FALSE;
+	}
+
+	if (pQueryInfo(GetCurrentProcess(), ProcessWow64Information, &wow64_peb, sizeof(wow64_peb), &ret_len) < 0)
+		return FALSE;
+
+	return wow64_peb != 0;
+}
+
+#ifdef _WIN64
+//
+// The x64 build delay-loads its high-level dependencies (see DelayLoadDLLs in
+// capemon.vcxproj) so that injection does not fail during import resolution in
+// a process that has not mapped them yet.
+//
+// Delay loading on its own only moves the load to the first call, which may
+// well be from inside one of our own hooks - that re-enters the hooked
+// LoadLibrary/LdrLoadDll path and can run under a loader lock we do not
+// control. So resolve them explicitly here instead. This runs before
+// set_hooks(), which is what makes the LoadLibrary calls below safe.
+//
+// Policy for WoW64 targets: only the modules the monitor itself needs during
+// bring-up are forced in. A WoW64 process normally has no 64-bit modules
+// besides ntdll and the wow64 layer, and force-mapping the full set into it is
+// exactly what the delay-load change is meant to avoid. Anything else stays
+// lazy.
+//
+static const char *g_delay_loaded_dlls[] = {
+	"advapi32.dll",
+	"user32.dll",
+	"ws2_32.dll",
+	"crypt32.dll",
+	"shlwapi.dll",
+	"ole32.dll",
+	"shell32.dll",
+	"setupapi.dll",
+	"oleaut32.dll",
+	"netapi32.dll",
+	"bcrypt.dll",
+};
+
+// needed by hkcu_init() and log_environ() during DllMain
+static const char *g_delay_loaded_dlls_minimal[] = {
+	"advapi32.dll",
+};
+
+static const char *g_delay_load_failures[ARRAYSIZE(g_delay_loaded_dlls)];
+static unsigned int g_delay_load_failure_count;
+
+static void resolve_delay_loaded_dlls(void)
+{
+	const char **dlls;
+	unsigned int count, i;
+
+	if (is_wow64_process()) {
+		dlls = g_delay_loaded_dlls_minimal;
+		count = ARRAYSIZE(g_delay_loaded_dlls_minimal);
+	}
+	else {
+		dlls = g_delay_loaded_dlls;
+		count = ARRAYSIZE(g_delay_loaded_dlls);
+	}
+
+	for (i = 0; i < count; i++) {
+		if (GetModuleHandleA(dlls[i]))
+			continue;
+		if (!LoadLibraryA(dlls[i]) && g_delay_load_failure_count < ARRAYSIZE(g_delay_load_failures))
+			g_delay_load_failures[g_delay_load_failure_count++] = dlls[i];
+	}
+}
+
+//
+// Deferred because this runs before read_config(): DebugOutput() consults
+// g_config to decide between OutputDebugString and the log pipe, so it cannot
+// produce anything useful until the config has been parsed.
+//
+static void report_delay_load_failures(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < g_delay_load_failure_count; i++)
+		DebugOutput("resolve_delay_loaded_dlls: unable to load %s\n", g_delay_load_failures[i]);
+}
+
+//
+// Reported when the delay-load helper cannot satisfy a call. Returning NULL
+// leaves the helper to raise its exception as usual - there is nothing valid to
+// return - but at least the failing module/import ends up in the log instead of
+// surfacing as an opaque crash.
+//
+static FARPROC WINAPI capemon_delayload_failure_hook(unsigned int dliNotify, PDelayLoadInfo pdli)
+{
+	if (dliNotify == dliFailLoadLib)
+		DebugOutput("delay-load: failed to load %s (error %d)\n", pdli->szDll, pdli->dwLastError);
+	else if (dliNotify == dliFailGetProc) {
+		if (pdli->dlp.fImportByName)
+			DebugOutput("delay-load: failed to resolve %s!%s (error %d)\n", pdli->szDll, pdli->dlp.szProcName, pdli->dwLastError);
+		else
+			DebugOutput("delay-load: failed to resolve %s ordinal %d (error %d)\n", pdli->szDll, pdli->dlp.dwOrdinal, pdli->dwLastError);
+	}
+
+	return NULL;
+}
+
+// picked up by delayimp.lib
+ExternC const PfnDliHook __pfnDliFailureHook2 = capemon_delayload_failure_hook;
+#endif
+
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 {
 	lasterror_t lasterror;
@@ -587,6 +720,12 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		g_osverinfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 		GetVersionEx(&g_osverinfo);
 
+#ifdef _WIN64
+		// before anything that touches a delay-loaded import, including the
+		// advapi32 lookup in resolve_runtime_apis() below
+		resolve_delay_loaded_dlls();
+#endif
+
 		resolve_runtime_apis();
 
 		init_private_heap();
@@ -607,6 +746,11 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// read the config settings
 		read_config();
+
+#ifdef _WIN64
+		// deferred from resolve_delay_loaded_dlls(): DebugOutput needs g_config
+		report_delay_load_failures();
+#endif
 
 		if (g_config.standalone) {
 			// initialize these because some hooks behave badly when they are empty
@@ -666,6 +810,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// initialise CAPE
 		CAPE_init();
+
 
 		// adds our own DLL range as well, since the hiding is done later
 		add_all_dlls_to_dll_ranges();

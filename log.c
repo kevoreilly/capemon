@@ -1446,8 +1446,25 @@ void log_hook_restoration(const hook_t *h)
 DWORD g_log_thread_id;
 DWORD g_logwatcher_thread_id;
 
+
+//
+// log_init() one-shot state. Note we deliberately do *not* block a concurrent
+// caller until initialization completes: log_init() can be reached from a hook
+// (see LdrLoadDll in hook_special.c), and spinning there risks deadlocking
+// against the loader lock. Losing a few early records is acceptable - every
+// consumer of g_buffer already handles it being NULL.
+//
+#define LOG_INIT_NONE		0
+#define LOG_INIT_RUNNING	1
+#define LOG_INIT_DONE		2
+
+volatile LONG g_log_initialized = LOG_INIT_NONE;
+
 void log_init(int debug)
 {
+	if (InterlockedCompareExchange(&g_log_initialized, LOG_INIT_RUNNING, LOG_INIT_NONE) != LOG_INIT_NONE)
+		return;
+
 	g_buffer = calloc(1, BUFFERSIZE);
 
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -1460,7 +1477,7 @@ void log_init(int debug)
 		g_log_handle = CreateFileA(g_config.logserver, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 		if (g_log_handle == INVALID_HANDLE_VALUE) {
 			pipe("CRITICAL:Error initializing logging!");
-			return;
+			goto out;
 		}
 	}
 
@@ -1470,7 +1487,7 @@ void log_init(int debug)
 		char* filename = GetResultsPath("API");
 		if (!filename) {
 			pipe("CRITICAL:Error initializing debug logging!");
-			return;
+			goto out;
 		}
 		num_to_string(pid, sizeof(pid), GetCurrentProcessId());
 		strcat(filename, "\\");
@@ -1485,6 +1502,9 @@ void log_init(int debug)
 	log_environ();
 	// flushing here so host can create files / keep timestamps
 	log_flush();
+
+out:
+	InterlockedExchange(&g_log_initialized, LOG_INIT_DONE);
 }
 
 void log_free()
