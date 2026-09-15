@@ -54,7 +54,9 @@ int utf8_strlen_ascii(const char *s, int len)
 		len = (int)strlen(s);
 
 	while (len-- != 0) {
-		ret += utf8_length(*s++);
+		// char is signed on MSVC: without the cast, byte 0xE9 sign-extends
+		// to -23 and is encoded as U+FFE9 instead of U+00E9
+		ret += utf8_length((unsigned char)*s++);
 	}
 	return ret;
 }
