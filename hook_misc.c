@@ -319,7 +319,7 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 		lpOverlapped);
 	LOQ_bool("device", "phbb", "DeviceHandle", hDevice, "IoControlCode", dwIoControlCode,
 		"InBuffer", nInBufferSize, lpInBuffer,
-		"OutBuffer", *lpBytesReturned, lpOutBuffer);
+		"OutBuffer", ret ? *lpBytesReturned : 0, lpOutBuffer);
 
 	if (!g_config.no_stealth && ret && lpOutBuffer)
 		perform_device_fakery(lpOutBuffer, *lpBytesReturned, dwIoControlCode);
@@ -756,8 +756,13 @@ HOOKDEF(NTSTATUS, WINAPI, RtlDecompressBuffer,
 	NTSTATUS ret = Old_RtlDecompressBuffer(CompressionFormat, UncompressedBuffer, UncompressedBufferSize,
 		CompressedBuffer, CompressedBufferSize, FinalUncompressedSize);
 
+	// same condition the dump path below uses: anything else means the
+	// output buffer was not written
+	ULONG logged_size = (NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) ? *FinalUncompressedSize : 0;
+	if (logged_size > UncompressedBufferSize)
+		logged_size = UncompressedBufferSize;
 	LOQ_ntstatus("misc", "pch", "UncompressedBufferAddress", UncompressedBuffer, "UncompressedBuffer",
-		*FinalUncompressedSize, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
+		logged_size, UncompressedBuffer, "UncompressedBufferLength", *FinalUncompressedSize);
 
 	if ((NT_SUCCESS(ret) || ret == STATUS_BAD_COMPRESSION_BUFFER) && (*FinalUncompressedSize > 0)) {
 		if (g_config.unpacker) {
@@ -1300,7 +1305,8 @@ HOOKDEF(LPSTR, WINAPI, lstrcpynA,
 
 	ret = Old_lstrcpynA(lpString1, lpString2, iMaxLength);
 
-	LOQ_nonzero("misc", "u", "String", lpString1);
+	// lpString1 is ANSI; 'u' is the wide-string specifier
+	LOQ_nonzero("misc", "s", "String", lpString1);
 
 	return ret;
 }
@@ -1356,13 +1362,14 @@ HOOKDEF(HRSRC, WINAPI, FindResourceExW,
 
 	wchar_t type_id[8];
 	if (IS_INTRESOURCE(lpType)) {
-		swprintf_s(type_id, sizeof(type_id), L"#%hu", (WORD)lpType);
+		// swprintf_s counts characters, not bytes
+		swprintf_s(type_id, _countof(type_id), L"#%hu", (WORD)lpType);
 		lpType = type_id;
 	}
 
 	wchar_t name_id[8];
 	if (IS_INTRESOURCE(lpName)) {
-		swprintf_s(name_id, sizeof(name_id), L"#%hu", (WORD)lpName);
+		swprintf_s(name_id, _countof(name_id), L"#%hu", (WORD)lpName);
 		lpName = name_id;
 	}
 
