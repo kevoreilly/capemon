@@ -238,6 +238,7 @@ wchar_t *get_matching_unicode_specialname(const wchar_t *path, unsigned int *mat
 void specialname_map_init(void);
 
 char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
+BOOL is_wow64_process(void);
 int is_wow64_fs_redirection_disabled(void);
 
 void set_dll_of_interest(ULONG_PTR BaseAddress);

@@ -56,6 +56,7 @@ _NtQueryVirtualMemory pNtQueryVirtualMemory;
 
 void resolve_runtime_apis(void)
 {
+
 	HMODULE ntdllbase = GetModuleHandle("ntdll");
 
 	if (!ntdllbase)
@@ -1830,6 +1831,20 @@ void specialname_map_init(void)
 
 	g_num_specialnames = idx;
 
+}
+
+BOOL is_wow64_process(void)
+{
+#ifdef _WIN64
+	ULONG_PTR wow64_peb = 0;
+	ULONG ret_len = 0;
+	if (NT_SUCCESS(pNtQueryInformationProcess(GetCurrentProcess(), ProcessWow64Information, &wow64_peb, sizeof(wow64_peb), &ret_len))) {
+		return (wow64_peb != 0);
+	}
+	return FALSE;
+#else
+	return TRUE;
+#endif
 }
 
 int is_wow64_fs_redirection_disabled(void)
