@@ -197,14 +197,12 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(mshtml, CDocument_write),
 
 	// COM object creation hook
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ole32, CoGetObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoGetObject),
+	HOOK(combase, CLSIDFromProgID),
+	HOOK(combase, CLSIDFromProgIDEx),
 
 	// WMI Hooks
 #ifdef _WIN64
@@ -451,9 +449,6 @@ hook_t full_hooks[] = {
 	HOOK(rasapi32, RasValidateEntryNameW),
 	HOOK(rasapi32, RasConnectionNotificationW),
 	HOOK(kernel32, SystemTimeToTzSpecificLocalTime),
-	HOOK(ole32, CLSIDFromProgID),
-	HOOK(ole32, CLSIDFromProgIDEx),
-	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
 	HOOK(kernel32, GetPhysicallyInstalledSystemMemory),
@@ -1079,10 +1074,6 @@ hook_t min_hooks[] = {
 	HOOK(kernel32, CreateRemoteThreadEx),
 
 	HOOK_SPECIAL(clrjit, compileMethod),
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ole32, CoGetObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
@@ -1163,12 +1154,11 @@ hook_t office_hooks[] = {
 	HOOK_NOTAIL(jscript9, JsRunScript, 4),
 	HOOK_SPECIAL(mshtml, CDocument_write),
 	// COM object creation hook
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
+	HOOK(combase, CLSIDFromProgID),
+	HOOK(combase, CLSIDFromProgIDEx),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
@@ -1455,9 +1445,6 @@ hook_t office_hooks[] = {
 	HOOK(rasapi32, RasValidateEntryNameW),
 	HOOK(rasapi32, RasConnectionNotificationW),
 	HOOK(kernel32, SystemTimeToTzSpecificLocalTime),
-	HOOK(ole32, CLSIDFromProgID),
-	HOOK(ole32, CLSIDFromProgIDEx),
-	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
 	HOOK(user32, SystemParametersInfoA),
@@ -1668,9 +1655,6 @@ hook_t ie_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
 
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
 	HOOK_SPECIAL(urlmon, IsValidURL),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
@@ -1742,7 +1726,7 @@ hook_t ie_hooks[] = {
 
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
-	HOOK(ole32, CLSIDFromProgID),
+	HOOK(combase, CLSIDFromProgID),
 	HOOK(advapi32, RegOpenKeyExA),
 	HOOK(advapi32, RegOpenKeyExW),
 	HOOK(ntdll, NtOpenKeyEx),
