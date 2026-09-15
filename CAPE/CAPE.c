@@ -1558,24 +1558,29 @@ BOOL MapFile(HANDLE hFile, unsigned char **Buffer, DWORD* FileSize)
 		return FALSE;
 	}
 
+	// Buffer is unsigned char **: free(Buffer) hands the CRT the address
+	// of the caller's stack slot, not the allocation
 	if (FALSE == ReadFile(hFile, (PVOID)*Buffer, *FileSize, &dwBytesRead, NULL))
 	{
 		ErrorOutput("ReadFile error");
-		free(Buffer);
+		free(*Buffer);
+		*Buffer = NULL;
 		return FALSE;
 	}
 
 	if (dwBytesRead > 0 && dwBytesRead < *FileSize)
 	{
 		ErrorOutput("MapFile: Unexpected size read in");
-		free(Buffer);
+		free(*Buffer);
+		*Buffer = NULL;
 		return FALSE;
 	}
 
 	else if (dwBytesRead == 0)
 	{
 		ErrorOutput("MapFile: No data read from file");
-		free(Buffer);
+		free(*Buffer);
+		*Buffer = NULL;
 		return FALSE;
 	}
 
@@ -1638,6 +1643,7 @@ char* GetName()
 	if (OutputFilename == NULL)
 	{
 		ErrorOutput("GetName: failed to allocate memory for file name string");
+		free(FullPathName);
 		return 0;
 	}
 
@@ -1651,6 +1657,8 @@ char* GetName()
 	if (!random)
 	{
 		ErrorOutput("GetName: failed to obtain a random number");
+		free(OutputFilename);
+		free(FullPathName);
 		return 0;
 	}
 

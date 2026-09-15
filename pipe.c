@@ -202,6 +202,7 @@ int pipe(const char *fmt, ...)
 				fclose(f);
 				ret = 0;
 			}
+			free(filename);
 		}
 	}
 	else {
