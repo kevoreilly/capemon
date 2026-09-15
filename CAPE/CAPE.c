@@ -1150,7 +1150,7 @@ BOOL DropTrackedRegion(PTRACKEDREGION TrackedRegion)
 			else if (!PreviousTrackedRegion)
 			{
 				DebugOutput("DropTrackedRegion: removed region at 0x%p from the head of the tracked region list.\n", TrackedRegion->AllocationBase);
-				TrackedRegionList = NULL;
+				TrackedRegionList = CurrentTrackedRegion->NextTrackedRegion;
 			}
 
 			free(CurrentTrackedRegion);
@@ -3338,7 +3338,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
