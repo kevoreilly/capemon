@@ -1073,9 +1073,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 	}
 
 	if (FileInformation != NULL && FileInformationClass == FileRenameInformation) {
-		wcsncpy(fname, ((FILE_RENAME_INFORMATION*)FileInformation)->FileName, ((FILE_RENAME_INFORMATION*)FileInformation)->FileNameLength/sizeof(WCHAR));
-		wcsncpy(fname + ((FILE_RENAME_INFORMATION*)FileInformation)->FileNameLength/sizeof(WCHAR), L"\0", 1);
-		ensure_absolute_unicode_path(renamepath, fname);
+		FILE_RENAME_INFORMATION *rename_info = (FILE_RENAME_INFORMATION *)FileInformation;
+		ULONG rename_cch = rename_info->FileNameLength / sizeof(WCHAR);
+		// FileNameLength is caller-controlled: bound it by both the reported
+		// structure length and the destination buffer before copying
+		if (fname && Length >= FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) + rename_info->FileNameLength) {
+			if (rename_cch > 32767)
+				rename_cch = 32767;
+			memcpy(fname, rename_info->FileName, rename_cch * sizeof(WCHAR));
+			fname[rename_cch] = L'\0';
+			ensure_absolute_unicode_path(renamepath, fname);
+		}
 	}
 
 	ret = Old_NtSetInformationFile(FileHandle, IoStatusBlock,

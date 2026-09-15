@@ -796,16 +796,23 @@ HOOKDEF(BOOL, WINAPI, InternetSetOptionA,
 }
 
 PCHAR get_ip_list(PIP4_ARRAY server_list) {
-	if (!server_list || server_list->AddrCount)
+	// the guard was inverted: the body only ran for an empty list, which
+	// produced a zero-byte calloc that was then logged as a C string
+	if (!server_list || !server_list->AddrCount)
 		return NULL;
 
-	size_t ip_list_size = server_list->AddrCount * (INET_ADDRSTRLEN + strlen(CRLF));
+	size_t ip_list_size = (size_t)server_list->AddrCount * (INET_ADDRSTRLEN + strlen(CRLF)) + 1;
 	char* ip_list = (char*)calloc(1, ip_list_size);
 	if (ip_list) {
+		size_t offset = 0;
 		for (unsigned int i = 0; i < server_list->AddrCount; i++) {
 			struct in_addr ipAddr;
+			int written;
 			ipAddr.S_un.S_addr = server_list->AddrArray[i];
-			_snprintf_s(ip_list, ip_list_size, _TRUNCATE, "%s\n", inet_ntoa(ipAddr));
+			written = _snprintf_s(ip_list + offset, ip_list_size - offset, _TRUNCATE, "%s\n", inet_ntoa(ipAddr));
+			if (written < 0)
+				break;
+			offset += (size_t)written;
 		}
 		return ip_list;
 	}

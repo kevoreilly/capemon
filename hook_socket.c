@@ -29,14 +29,29 @@ extern BOOL DumpRegion(PVOID Address);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void addr6_to_string(const IN6_ADDR addr, char* string, int max_buffer_size);
 
+#define COMBINED_WSABUF_MAX (64 * 1024 * 1024)
+
 static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 {
 	DWORD i;
-	DWORD size = 0;
+	DWORD size;
+	ULONGLONG total = 0;
 	PUCHAR retbuf;
-	for (i = 0; i < count; i++) {
-		size += buf[i].len;
+
+	// count and len are caller-controlled; a DWORD accumulator wraps and
+	// under-allocates while the copy loop still writes the real total
+	if (buf == NULL) {
+		*outlen = 0;
+		return NULL;
 	}
+	for (i = 0; i < count; i++) {
+		total += buf[i].len;
+	}
+	if (total == 0 || total > COMBINED_WSABUF_MAX) {
+		*outlen = 0;
+		return NULL;
+	}
+	size = (DWORD)total;
 
 	retbuf = malloc(size);
 	if (retbuf == NULL) {
@@ -46,8 +61,13 @@ static PVOID alloc_combined_wsabuf(LPWSABUF buf, DWORD count, DWORD *outlen)
 
 	size = 0;
 	for (i = 0; i < count; i++) {
-		memcpy(&retbuf[size], buf[i].buf, buf[i].len);
-		size += buf[i].len;
+		DWORD chunk = buf[i].len;
+		if (chunk > (DWORD)total - size)
+			chunk = (DWORD)total - size;
+		if (chunk == 0)
+			break;
+		memcpy(&retbuf[size], buf[i].buf, chunk);
+		size += chunk;
 	}
 	*outlen = size;
 	return retbuf;
