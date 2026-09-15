@@ -180,7 +180,9 @@ HOOKDEF(ULONG, WINAPI, EnableTraceEx,
 		snprintf(S_SourceId, sizeof(S_SourceId), "%s", "NULL");
     }
 	ULONG ret = Old_EnableTraceEx(ProviderId,SourceId,TraceHandle,IsEnabled,Level,MatchAnyKeyword,MatchAllKeyword,EnableProperty,EnableFilterDesc);
-	LOQ_zero("Trace","ssxixxxi", "ProviderId", S_ProviderId, "SourceId", S_SourceId, "TraceHandle", TraceHandle, "Enabled", IsEnabled, "Level", Level,
+	// 'x' consumes a LARGE_INTEGER; Level is a UCHAR promoted to int, so
+	// the old format desynchronised every argument after it on x86
+	LOQ_zero("Trace","ssxiixxi", "ProviderId", S_ProviderId, "SourceId", S_SourceId, "TraceHandle", TraceHandle, "Enabled", IsEnabled, "Level", Level,
      "MatchAnyKeyword", MatchAnyKeyword, "MatchAllKeyword", MatchAllKeyword, "EnableProperty", EnableProperty);
 	return ret;
 }

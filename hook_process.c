@@ -649,7 +649,15 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationToken,
 	OUT PULONG ReturnLength OPTIONAL
 ) {
 	NTSTATUS ret = Old_NtQueryInformationToken(TokenHandle, TokenInformationClass, TokenInformation, TokenInformationLength, ReturnLength);
-	LOQ_ntstatus("process", "ib", "TokenInformationClass", TokenInformationClass, "TokenInformation", TokenInformationLength, TokenInformation);
+	// TokenInformationLength is the caller's capacity, not the number of
+	// bytes written, and nothing is written at all on failure
+	ULONG logged_len = 0;
+	if (NT_SUCCESS(ret)) {
+		logged_len = ReturnLength ? *ReturnLength : TokenInformationLength;
+		if (logged_len > TokenInformationLength)
+			logged_len = TokenInformationLength;
+	}
+	LOQ_ntstatus("process", "ib", "TokenInformationClass", TokenInformationClass, "TokenInformation", logged_len, TokenInformation);
 	return ret;
 }
 
@@ -1193,7 +1201,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWow64ReadVirtualMemory64,
 	pid = pid_from_process_handle(ProcessHandle);
 
 	LOQ_ntstatus("process", "pxb", "ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-		"Buffer", NumberOfBytesRead->LowPart, Buffer);
+		"Buffer", NT_SUCCESS(ret) ? NumberOfBytesRead->LowPart : 0, Buffer);
 
 	return ret;
 }
@@ -1248,7 +1256,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
 		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
 			NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
-			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
+			// Length is a byte count; wcsncmp counts characters, so this was
+			// reading twice as far as the string is long
+			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length / sizeof(WCHAR))) ||
 				(g_config.hook_protect && dll_is_hooked(module_name->Buffer))) {
 				// don't allow writes, this will cause memory access violations that are handled in the RtlDispatchException hook
 				OriginalNewAccessProtection = NewAccessProtection;
@@ -1327,7 +1337,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
 		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
 			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
-			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
+			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length / sizeof(WCHAR))) ||
 				(g_config.hook_protect && dll_is_hooked(module_name->Buffer))) {
 				// don't allow writes, this will cause memory access violations that are handled in the RtlDispatchException hook
 				OriginalNewProtect = flNewProtect;
@@ -1458,7 +1468,9 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 	if (NT_SUCCESS(ret)) {
 		switch (StateChange->NewState) {
 		case DbgCreateThreadStateChange:
-			LOQ_ntstatus("process", "iiip", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "StartAddress", StateChange->StateInfo.CreateThread.NewThread.StartAddress);
+			// CLIENT_ID members are ids stored in HANDLE-typed fields, not
+			// handles: resolving them as handles yielded 0 for every record
+			LOQ_ntstatus("process", "iiip", "NewState", StateChange->NewState, "ProcessId", (DWORD)(ULONG_PTR)StateChange->AppClientId.UniqueProcess, "ThreadId", (DWORD)(ULONG_PTR)StateChange->AppClientId.UniqueThread, "StartAddress", StateChange->StateInfo.CreateThread.NewThread.StartAddress);
 			break;
 		case DbgLoadDllStateChange:
 			{
@@ -1466,12 +1478,12 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 
 				path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
 				// we could continue ourselves here and skip notification to the malware of capemon loading
-				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
+				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", (DWORD)(ULONG_PTR)StateChange->AppClientId.UniqueProcess, "ThreadId", (DWORD)(ULONG_PTR)StateChange->AppClientId.UniqueThread, "DllPath", fname);
 				free(fname);
 			}
 			break;
 		default:
-			LOQ_ntstatus("process", "iii", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread));
+			LOQ_ntstatus("process", "iii", "NewState", StateChange->NewState, "ProcessId", (DWORD)(ULONG_PTR)StateChange->AppClientId.UniqueProcess, "ThreadId", (DWORD)(ULONG_PTR)StateChange->AppClientId.UniqueThread);
 		}
 	}
 
@@ -1519,7 +1531,7 @@ HOOKDEF_ALT(BOOL, WINAPI, RtlDispatchException,
 		if (ExceptionRecord && ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ExceptionRecord->ExceptionFlags == 0 &&
 			ExceptionRecord->NumberParameters == 2 && ExceptionRecord->ExceptionInformation[0] == 1) {
 			UNICODE_STRING *module_name = get_module_name((ULONG_PTR)ExceptionRecord->ExceptionInformation[1]);
-			if ((g_config.ntdll_protect && module_name && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
+			if ((g_config.ntdll_protect && module_name && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length / sizeof(WCHAR))) ||
 				(g_config.hook_protect && module_name && dll_is_hooked(module_name->Buffer))) {
 				// if trying to write to protected module, skip the instruction
 				if (!ntdll_protect_logged) {

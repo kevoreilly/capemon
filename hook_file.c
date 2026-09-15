@@ -1020,8 +1020,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryVolumeInformationFile,
 		Length,
 		FsInformationClass
 	);
+	// on failure the driver need not have written FsInformation or set
+	// Information, so the old code logged uninitialised caller memory
 	LOQ_ntstatus("filesystem", "pib", "FileHandle", FileHandle, "FsInformationClass", FsInformationClass,
-		"FsInformation", IoStatusBlock->Information, FsInformation);
+		"FsInformation", (NT_SUCCESS(ret) && IoStatusBlock) ? IoStatusBlock->Information : 0, FsInformation);
 	return ret;
 }
 

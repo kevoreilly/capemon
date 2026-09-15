@@ -284,7 +284,9 @@ static void log_string(const char *str, int length)
 	const char *p = str;
 	int temp_len = length;
 	while (temp_len-- != 0) {
-		pos += utf8_do_encode(*p++, (unsigned char *) &utf8s[pos]);
+		// must match the (unsigned char) widening in utf8_strlen_ascii,
+		// which sized this buffer
+		pos += utf8_do_encode((unsigned char)*p++, (unsigned char *) &utf8s[pos]);
 	}
 
 	ret = bson_append_binary( g_bson, g_istr, BSON_BIN_BINARY, utf8s+4, utf8len );
