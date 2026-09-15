@@ -42,8 +42,6 @@ BOOL YaraActivated, YaraLogging;
 extern PVOID LdrpInvertedFunctionTableSRWLock;
 #endif
 
-static char NewLine[MAX_PATH];
-
 char InternalYara[] =
 	"rule capemon"
 	"{strings:$hash = {d3 b9 46 1d 9a 14 bc 44 a1 61 c3 47 6a 0e 35 90 00 2c 28 81 dc a0 36 dc 2c 92 0c 7c b6 84 39 59}"
@@ -201,11 +199,14 @@ void ParseOptionLine(char* Line, char* Identifier, YR_MATCH* Match, void* user_d
 	if (_strnicmp(Line, "bp", 2) && strncmp(Line, "br", 2) && strncmp(Line, "sysbp", 5))
 		delta += (ULONG_PTR)user_data;
 
+	// was a file-static buffer written by every thread, with an unbounded
+	// sprintf from rule metadata
+	char NewLine[MAX_PATH];
 	memset(NewLine, 0, sizeof(NewLine));
 	if (r)
-		sprintf(NewLine, "%s%c0x%p%s\0", Key, c, (PUCHAR)Match->offset+delta, r);
+		_snprintf(NewLine, sizeof(NewLine) - 1, "%s%c0x%p%s", Key, c, (PUCHAR)Match->offset+delta, r);
 	else
-		sprintf(NewLine, "%s%c0x%p\0", Key, c, (PUCHAR)Match->offset+delta);
+		_snprintf(NewLine, sizeof(NewLine) - 1, "%s%c0x%p", Key, c, (PUCHAR)Match->offset+delta);
 
 	if (r && *(r + 1) == '$')
 		*r = c;
@@ -560,7 +561,9 @@ BOOL YaraInit()
 	BOOL Result = FALSE, RulesCompiled = FALSE;
 	int flags = 0;
 
-	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path)+1);
+	// bound taken from the source: our_dll_path can exceed MAX_PATH
+	strncpy(analyzer_path, our_dll_path, sizeof(analyzer_path) - 1);
+	analyzer_path[sizeof(analyzer_path) - 1] = '\0';
 	if (!g_config.standalone)
 		PathRemoveFileSpec(analyzer_path);
 	PathRemoveFileSpec(analyzer_path);
