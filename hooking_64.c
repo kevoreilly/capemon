@@ -881,8 +881,9 @@ typedef struct _hook_page_arena_t {
 } hook_page_arena_t;
 
 static hook_page_arena_t *g_hook_arenas = NULL;
+static SRWLOCK g_hook_arena_lock = SRWLOCK_INIT;
 
-hook_data_t *alloc_hookdata_near(void *addr)
+static hook_data_t *alloc_hookdata_near_locked(void *addr)
 {
 	hook_page_arena_t *curr = g_hook_arenas;
 	SIZE_T requested_size = sizeof(hook_data_t);
@@ -931,6 +932,26 @@ hook_data_t *alloc_hookdata_near(void *addr)
 	} while (status < 0 && offset <= (512 * 1024 * 1024));
 
 	return NULL;
+}
+
+hook_data_t *alloc_hookdata_near(void *addr)
+{
+	hook_data_t *ret;
+
+	// The arena walk, the NextFreeOffset bump and the g_hook_arenas head
+	// insert are all read-modify-write on shared state, and hook_api runs
+	// on whatever thread the target happened to load a DLL on. Two
+	// concurrent installs could be handed the same slot, so the second
+	// trampoline would overwrite the first.
+	//
+	// Nothing inside the locked region takes the loader lock - the only
+	// call is pNtAllocateVirtualMemory - so this cannot invert against a
+	// thread that is inside the DLL load notification.
+	AcquireSRWLockExclusive(&g_hook_arena_lock);
+	ret = alloc_hookdata_near_locked(addr);
+	ReleaseSRWLockExclusive(&g_hook_arena_lock);
+
+	return ret;
 }
 
 hook_data_t *alloc_hookdata_low()
@@ -999,7 +1020,7 @@ out:
 	return addr;
 }
 
-int hook_api(hook_t *h, int type)
+static int hook_api_install(hook_t *h, int type)
 {
 	DWORD old_protect;
 	int ret = -1;
@@ -1016,11 +1037,6 @@ int hook_api(hook_t *h, int type)
 		/* HOOK_JMP_INDIRECT */{ &hook_api_jmp_indirect, 6 },
 		/* HOOK_PUSH_RETN */{ &hook_api_push_retn, 6 },
 	};
-
-	// is this address already hooked?
-	if (h->is_hooked != 0) {
-		return 0;
-	}
 
 	if (hook_is_excluded(h))
 		return 0;
@@ -1200,6 +1216,29 @@ int hook_api(hook_t *h, int type)
 
 restore_protect:
 	VirtualProtect(addr, hook_types[type].len, old_protect, &old_protect);
+
+	return ret;
+}
+
+int hook_api(hook_t *h, int type)
+{
+	int ret;
+
+	// Claim the hook: is_hooked 0 -> -1 ("install in progress"). This
+	// replaces a plain "if (h->is_hooked != 0) return 0;" at the top of
+	// the body. set_hooks_dll runs from the loader notification callback
+	// and from hook_special.c on arbitrary target threads, so two threads
+	// could both pass that test and install over each other.
+	if (InterlockedCompareExchange((volatile LONG *)&h->is_hooked, -1, 0) != 0)
+		return 0;
+
+	ret = hook_api_install(h, type);
+
+	// The body sets is_hooked to 1 on success. On any other outcome the
+	// claim has to be released, because delay-loaded DLLs rely on a later
+	// set_hooks_dll retrying the install.
+	if (h->is_hooked != 1)
+		InterlockedExchange((volatile LONG *)&h->is_hooked, 0);
 
 	return ret;
 }
