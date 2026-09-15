@@ -152,8 +152,8 @@ static ULONG_PTR get_indirect_target(unsigned char *buf)
 
 static ULONG_PTR get_corresponding_tramp_target(addr_map_t *map, ULONG_PTR addr)
 {
-	unsigned int i = 0;
-	while (map->map[i][1]) {
+	unsigned int i;
+	for (i = 0; i < ARRAYSIZE(map->map) && map->map[i][1]; i++) {
 		if (map->map[i][1] == addr)
 			return map->map[i][0];
 	}
@@ -250,8 +250,11 @@ static int hook_create_trampoline(unsigned char *addr, int len,
 		len -= length;
 		stoleninstrlen += length;
 
+		if (insnidx >= ARRAYSIZE(addrmap.map))
+			goto error;
 		addrmap.map[insnidx][0] = (ULONG_PTR)tramp;
 		addrmap.map[insnidx][1] = (ULONG_PTR)addr;
+		insnidx++;
 
 		// check the type of instruction at this particular address, if it's
 		// a jump or a call instruction, then we have to calculate some fancy
@@ -1152,7 +1155,7 @@ int hook_api(hook_t *h, int type)
 	}
 
 	// check if this is a valid hook type
-	if (type < 0 && type >= ARRAYSIZE(hook_types)) {
+	if (type < 0 || (unsigned int)type >= ARRAYSIZE(hook_types)) {
 		pipe("WARNING: Provided invalid hook type: %d", type);
 		return ret;
 	}
