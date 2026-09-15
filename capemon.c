@@ -561,7 +561,7 @@ void init_private_heap(void)
 #endif
 }
 
-extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock;
+extern CRITICAL_SECTION readfile_critsec, g_writing_log_buffer_mutex, g_interactive_debugger_lock;
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 
@@ -602,7 +602,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		get_our_commandline();
 
-		InitializeCriticalSection(&g_mutex);
 		InitializeCriticalSection(&g_writing_log_buffer_mutex);
 
 		// read the config settings
@@ -689,6 +688,10 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		if (!g_config.tlsdump && !g_config.interactive)
 			notify_successful_load();
+	}
+	else if (dwReason == DLL_THREAD_DETACH) {
+		extern void TlsThreadCleanup(void);
+		TlsThreadCleanup();
 	}
 	else if(dwReason == DLL_PROCESS_DETACH) {
 		// in production, we shouldn't ever get called in this way since we
