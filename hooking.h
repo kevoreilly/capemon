@@ -150,6 +150,13 @@ int ide(_DecodedInst* instruction, void *addr);
 
 hook_data_t *alloc_hookdata_near(void *addr);
 
+// Bounding range of every hook_data_t ever allocated, maintained by
+// alloc_hookdata_near. Lets inside_hook() reject an address without
+// walking the whole hook table.
+extern volatile ULONG_PTR g_hookdata_min;
+extern volatile ULONG_PTR g_hookdata_max;
+void hookdata_range_add(const void *base, size_t size);
+
 int hook_api(hook_t *h, int type);
 
 hook_info_t* hook_info();
