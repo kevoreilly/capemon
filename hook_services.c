@@ -43,7 +43,11 @@ static BOOLEAN servicename_from_handle(SC_HANDLE hService, PWCHAR servicename)
 		SC_HANDLE scmhandle = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT | SC_MANAGER_ENUMERATE_SERVICE);
 		if (scmhandle != NULL) {
 			// appears to work just fine using the service's handle, but let's do it according to spec
-			ret = GetServiceKeyNameW(scmhandle, servconfig->lpDisplayName, servicename, &byteneeded);
+			// byteneeded currently holds a BYTE count from QueryServiceConfigW;
+			// GetServiceKeyNameW expects a CHARACTER capacity for servicename,
+			// which every caller allocates as 0x1000 bytes
+			DWORD cchServiceName = (0x1000 / sizeof(WCHAR)) - 1;
+			ret = GetServiceKeyNameW(scmhandle, servconfig->lpDisplayName, servicename, &cchServiceName);
 			CloseServiceHandle(scmhandle);
 		}
 		else {
@@ -52,6 +56,8 @@ static BOOLEAN servicename_from_handle(SC_HANDLE hService, PWCHAR servicename)
 	}
 	if (!ret)
 		servicename[0] = L'\0';
+
+	free(servconfig);
 
 	set_lasterrors(&lasterror);
 

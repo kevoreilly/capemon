@@ -625,34 +625,66 @@ HOOKDEF_NOTAIL(WINAPI, JsRunScript,
 // based on code by Stephan Chenette and Moti Joseph of Websense, Inc. released under the GPLv3
 // http://securitylabs.websense.com/content/Blogs/3198.aspx
 
+// length in wchars of the L"\r\n||||\r\n" separator
+#define CDOCWRITE_SEP_LEN 8
+#define CDOCWRITE_MAX_CCH (32 * 1024 * 1024)
+
 HOOKDEF(int, WINAPI, CDocument_write,
 	PVOID this,
 	SAFEARRAY *psa
 ) {
 	DWORD i;
+	DWORD elements;
 	PWCHAR buf;
 	int ret = Old_CDocument_write(this, psa);
-	VARIANT *pvars = (VARIANT *)psa->pvData;
-	unsigned int buflen = 0;
-	unsigned int offset = 0;
-	for (i = 0; i < psa->rgsabound[0].cElements; i++) {
-		if (pvars[i].vt == VT_BSTR)
-			buflen += (unsigned int)wcslen((const wchar_t *)pvars[i].pbstrVal) + 8;
+	VARIANT *pvars;
+	ULONGLONG buflen = 0;
+	size_t capacity;
+	size_t offset = 0;
+
+	if (psa == NULL || psa->pvData == NULL)
+		return ret;
+
+	pvars = (VARIANT *)psa->pvData;
+	elements = psa->rgsabound[0].cElements;
+
+	// element count and every BSTR length are attacker-controlled: size the
+	// buffer in 64-bit, cap it, and bound both copies by the real capacity
+	for (i = 0; i < elements; i++) {
+		if (pvars[i].vt == VT_BSTR && pvars[i].pbstrVal)
+			buflen += (ULONGLONG)wcslen((const wchar_t *)pvars[i].pbstrVal) + CDOCWRITE_SEP_LEN;
 	}
-	buf = calloc(1, (buflen + 1) * sizeof(wchar_t));
+	if (buflen == 0 || buflen > CDOCWRITE_MAX_CCH)
+		return ret;
+
+	capacity = (size_t)buflen + 1;
+	buf = calloc(capacity, sizeof(wchar_t));
 	if (buf == NULL)
 		return ret;
 
-	for (i = 0; i < psa->rgsabound[0].cElements; i++) {
-		if (pvars[i].vt == VT_BSTR) {
-			wcscpy(buf + offset, (const wchar_t *)pvars[i].pbstrVal);
-			offset += (unsigned int)wcslen((const wchar_t *)pvars[i].pbstrVal);
-			wcscpy(buf + offset, L"\r\n||||\r\n");
-			offset += 8;
-		}
+	for (i = 0; i < elements; i++) {
+		const wchar_t *src;
+		size_t len;
+		if (pvars[i].vt != VT_BSTR || !pvars[i].pbstrVal)
+			continue;
+		src = (const wchar_t *)pvars[i].pbstrVal;
+		// re-measured here, so clamp against what is actually left
+		len = wcslen(src);
+		if (len > capacity - 1 - offset)
+			len = capacity - 1 - offset;
+		memcpy(buf + offset, src, len * sizeof(wchar_t));
+		offset += len;
+		len = CDOCWRITE_SEP_LEN;
+		if (len > capacity - 1 - offset)
+			len = capacity - 1 - offset;
+		memcpy(buf + offset, L"\r\n||||\r\n", len * sizeof(wchar_t));
+		offset += len;
 	}
+	buf[offset] = L'\0';
 
 	LOQ_ntstatus("browser", "u", "Buffer", buf);
+
+	free(buf);
 
 	return ret;
 }
