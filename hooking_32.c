@@ -582,7 +582,11 @@ hook_data_t *alloc_hookdata_near(void *addr)
 	DWORD oldprot;
 	hook_data_t *ret = calloc(1, sizeof(hook_data_t));
 
+	if (!ret)
+		return NULL;
+
 	VirtualProtect(ret, sizeof(hook_data_t), PAGE_EXECUTE_READWRITE, &oldprot);
+	hookdata_range_add(ret, sizeof(hook_data_t));
 
 	return ret;
 }

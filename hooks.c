@@ -1769,6 +1769,13 @@ hook_t exe_hooks[] = {
 
 BOOL inside_hook(LPVOID Address)
 {
+	// Every hook_data_t lives inside [g_hookdata_min, g_hookdata_max), so
+	// an address outside that cannot be in one. This is called per
+	// backtrace frame per hooked API call and per single-stepped
+	// instruction, against a table of over 1400 entries.
+	if ((ULONG_PTR)Address < g_hookdata_min || (ULONG_PTR)Address >= g_hookdata_max)
+		return FALSE;
+
 	for (unsigned int i = 0; i < hooks_arraysize; i++) {
 		if ((ULONG_PTR)Address >= (ULONG_PTR)(hooks+i)->hookdata && (ULONG_PTR)Address < (ULONG_PTR)((hooks+i)->hookdata + sizeof(hook_data_t)))
 			return TRUE;
