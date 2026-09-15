@@ -1547,6 +1547,7 @@ void log_init(int debug)
 		strcat(filename, pid);
 		strcat(filename, ".log");
 		g_debug_log_handle = CreateFileA(filename, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, 0, NULL);
+		free(filename);
 	}
 
 #ifdef _WIN64

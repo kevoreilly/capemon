@@ -980,9 +980,10 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsA,
 			LOQ_handle("misc", "ss", "ClassGuid", idbuf, "Known", known);
 		else
 			LOQ_handle("misc", "s", "ClassGuid", idbuf);
-
-		set_lasterrors(&lasterror);
 	}
+
+	// was inside the if, so a NULL ClassGuid skipped the restore
+	set_lasterrors(&lasterror);
 	return ret;
 }
 
@@ -997,9 +998,12 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 	char *known;
 	lasterror_t lasterror;
 
+	// the capture has to happen after the original call, otherwise the
+	// restore below overwrites the error the API actually set
+	HDEVINFO ret = Old_SetupDiGetClassDevsW(ClassGuid, Enumerator, hwndParent, Flags);
+
 	get_lasterrors(&lasterror);
 
-	HDEVINFO ret = Old_SetupDiGetClassDevsW(ClassGuid, Enumerator, hwndParent, Flags);
 	if (ClassGuid) {
 		memcpy(&id1, ClassGuid, sizeof(id1));
 		uuid_to_string(id1, idbuf);
@@ -1008,9 +1012,9 @@ HOOKDEF(HDEVINFO, WINAPI, SetupDiGetClassDevsW,
 			LOQ_handle("misc", "ss", "ClassGuid", idbuf, "Known", known);
 		else
 			LOQ_handle("misc", "s", "ClassGuid", idbuf);
-
-		set_lasterrors(&lasterror);
 	}
+
+	set_lasterrors(&lasterror);
 	return ret;
 }
 
@@ -1127,20 +1131,28 @@ HOOKDEF(DWORD, WINAPI, WNetGetProviderNameW,
 
 	LOQ_zero("misc", "iu", "NetType", dwNetType, "ProviderName", ret == NO_ERROR ? tmp : L"");
 
+	lasterror_t lasterrors;
+	BOOL fake_no_network = FALSE;
+
 	// WNNC_NET_RDR2SAMPLE, used for vbox detection
 	if (!g_config.no_stealth && ret && dwNetType == 0x250000) {
-		lasterror_t lasterrors;
-
 		ret = ERROR_NO_NETWORK;
 		lasterrors.Win32Error = ERROR_NO_NETWORK;
 		lasterrors.NtstatusError = STATUS_ENTRYPOINT_NOT_FOUND;
 		lasterrors.Eflags = 0;
+		// the struct was filled in and then never applied, so the fake
+		// ERROR_NO_NETWORK return was contradicted by GetLastError().
+		// Applied after free() below, which can clobber the last error.
+		fake_no_network = TRUE;
 	}
 	else if (ret == NO_ERROR && lpProviderName) {
 		wcscpy(lpProviderName, tmp);
 	}
 
 	free(tmp);
+
+	if (fake_no_network)
+		set_lasterrors(&lasterrors);
 
 	return ret;
 }
