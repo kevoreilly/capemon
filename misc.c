@@ -2404,20 +2404,142 @@ BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 	return FALSE;
 }
 
+//
+// Per-thread path scratch pool. See misc.h for the contract.
+//
+// Four slots covers the deepest observed nesting (NtSetInformationFile takes
+// three at once, and a hook handler can call another helper that takes one).
+// Slots are allocated lazily, so a thread that only ever needs one buffer pays
+// for one. Past four, acquire falls back to the heap and release frees it, so
+// exhaustion degrades to the old behaviour rather than failing.
+//
+// No locking: the pool is per-thread. The claim is still interlocked because a
+// structured exception handler can run on top of a hook on the same thread and
+// would otherwise be able to claim a slot between our test and our set.
+//
+#define PATH_SCRATCH_SLOTS 4
+
+typedef struct _path_scratch_t {
+	void *slot[PATH_SCRATCH_SLOTS];
+	volatile LONG busy[PATH_SCRATCH_SLOTS];
+} path_scratch_t;
+
+static volatile LONG g_scratch_tls_index = (LONG)TLS_OUT_OF_INDEXES;
+
+static path_scratch_t *scratch_context(BOOL create)
+{
+	path_scratch_t *ctx;
+	LONG index = g_scratch_tls_index;
+
+	if (index == (LONG)TLS_OUT_OF_INDEXES) {
+		LONG fresh;
+
+		if (!create)
+			return NULL;
+
+		fresh = (LONG)TlsAlloc();
+		if (fresh == (LONG)TLS_OUT_OF_INDEXES)
+			return NULL;
+		// First thread here wins; anyone who loses gives its spare index back.
+		index = InterlockedCompareExchange(&g_scratch_tls_index, fresh, (LONG)TLS_OUT_OF_INDEXES);
+		if (index == (LONG)TLS_OUT_OF_INDEXES)
+			index = fresh;
+		else
+			TlsFree((DWORD)fresh);
+	}
+
+	ctx = (path_scratch_t *)TlsGetValue((DWORD)index);
+	if (ctx || !create)
+		return ctx;
+
+	ctx = (path_scratch_t *)calloc(1, sizeof(path_scratch_t));
+	if (!ctx)
+		return NULL;
+
+	TlsSetValue((DWORD)index, ctx);
+	return ctx;
+}
+
+void *path_scratch_acquire(void)
+{
+	path_scratch_t *ctx = scratch_context(TRUE);
+	void *buf = NULL;
+	int i;
+
+	if (ctx) {
+		for (i = 0; i < PATH_SCRATCH_SLOTS; i++) {
+			if (InterlockedCompareExchange(&ctx->busy[i], 1, 0) != 0)
+				continue;
+
+			if (!ctx->slot[i]) {
+				ctx->slot[i] = malloc(PATH_SCRATCH_SIZE);
+				if (!ctx->slot[i]) {
+					InterlockedExchange(&ctx->busy[i], 0);
+					break;
+				}
+			}
+
+			buf = ctx->slot[i];
+			break;
+		}
+	}
+
+	// Pool exhausted, or we could not get a context: fall back to the heap.
+	if (!buf)
+		buf = malloc(PATH_SCRATCH_SIZE);
+
+	// Start as an empty string, the way the calloc this replaces did. The rest
+	// of the buffer is deliberately left dirty.
+	if (buf)
+		*(wchar_t *)buf = L'\0';
+
+	return buf;
+}
+
+void path_scratch_release(void *buf)
+{
+	path_scratch_t *ctx;
+	int i;
+
+	if (!buf)
+		return;
+
+	// Never create a context here: a buffer we did not hand out came from the
+	// heap, and creating a pool just to free it would be pointless.
+	ctx = scratch_context(FALSE);
+	if (ctx) {
+		for (i = 0; i < PATH_SCRATCH_SLOTS; i++) {
+			if (ctx->slot[i] == buf) {
+				InterlockedExchange(&ctx->busy[i], 0);
+				return;
+			}
+		}
+	}
+
+	free(buf);
+}
+
+
 BOOLEAN is_image_base_remapped(HMODULE BaseAddress)
 {
 	BOOL remapped = FALSE;
 	wchar_t *filepath = malloc(MAX_PATH * sizeof(wchar_t));
-	GetMappedFileNameW(GetCurrentProcess(), BaseAddress, filepath, MAX_PATH);
+	wchar_t *absolutepath = path_scratch_acquire();
 
-	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+	if (!filepath || !absolutepath) {
+		free(filepath);
+		path_scratch_release(absolutepath);
+		return FALSE;
+	}
+
+	GetMappedFileNameW(GetCurrentProcess(), BaseAddress, filepath, MAX_PATH);
 	ensure_absolute_unicode_path(absolutepath, filepath);
 	free(filepath);
 
 	if (wcsicmp(our_process_path_w, absolutepath))
 		remapped = TRUE;
 
-	free(absolutepath);
+	path_scratch_release(absolutepath);
 	return remapped;
 }
 
@@ -2456,10 +2578,17 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 
 	// get the file path for the mapped section
 	wchar_t *filepath = malloc(MAX_PATH * sizeof(wchar_t));
+	wchar_t *absolutepath = path_scratch_acquire();
+
+	if (!filepath || !absolutepath) {
+		free(filepath);
+		path_scratch_release(absolutepath);
+		return;
+	}
+
 	GetMappedFileNameW(GetCurrentProcess(), *BaseAddress, filepath, MAX_PATH);
 
 	// convert device path to an actual path
-	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
 	ensure_absolute_unicode_path(absolutepath, filepath);
 	free(filepath);
 
@@ -2480,7 +2609,7 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 		}
 	}
 
-	free(absolutepath);
+	path_scratch_release(absolutepath);
 }
 
 void prevent_module_unhooking(PVOID buffer, wchar_t *filename)
