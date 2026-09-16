@@ -285,6 +285,9 @@
     <ClCompile Include="CAPE\InstrCallback.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="profiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="CAPE\AmsiDumper.cpp">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>

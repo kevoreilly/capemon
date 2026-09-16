@@ -1840,6 +1840,34 @@ HOOKDEF(LPSTR, WINAPI, GetCommandLineA,
 	return ret;
 }
 
+HOOKDEF(DWORD, WINAPI, GetEnvironmentVariableA,
+	LPCSTR lpName,
+	LPSTR  lpBuffer,
+	DWORD  nSize
+) {
+	if (lpName) {
+		if (!_stricmp(lpName, "COR_PROFILER") || !_stricmp(lpName, "COR_ENABLE_PROFILING") || !_stricmp(lpName, "CORECLR_PROFILER")) {
+			SetLastError(ERROR_ENVVAR_NOT_FOUND);
+			return 0;
+		}
+	}
+	return Old_GetEnvironmentVariableA(lpName, lpBuffer, nSize);
+}
+
+HOOKDEF(DWORD, WINAPI, GetEnvironmentVariableW,
+	LPCWSTR lpName,
+	LPWSTR  lpBuffer,
+	DWORD   nSize
+) {
+	if (lpName) {
+		if (!_wcsicmp(lpName, L"COR_PROFILER") || !_wcsicmp(lpName, L"COR_ENABLE_PROFILING") || !_wcsicmp(lpName, L"CORECLR_PROFILER")) {
+			SetLastError(ERROR_ENVVAR_NOT_FOUND);
+			return 0;
+		}
+	}
+	return Old_GetEnvironmentVariableW(lpName, lpBuffer, nSize);
+}
+
 HOOKDEF(LPWSTR, WINAPI, GetCommandLineW,
 	void
 ) {
