@@ -52,9 +52,88 @@ static BOOLEAN special_api_triggered;
 static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
-// current to-be-logged API call
-static bson g_bson[1];
-static char g_istr[4];
+// Current to-be-logged API call.
+//
+// The BSON serialization state is per-thread: every hooked API call builds its
+// record in its own buffer, so g_mutex only has to cover the shared bookkeeping
+// (logtbl_explained, last_api_logged, lastlog) rather than the whole of loq().
+//
+// The context is reached through dynamic TLS. Three tempting alternatives are
+// wrong here and are avoided deliberately:
+//   - __declspec(thread): static TLS is resolved by the loader. It works for a
+//     LoadLibrary'd DLL, but capemon is also mapped by hand by
+//     ReflectiveInjectDllViaThread(), where nothing processes the TLS directory.
+//   - TEB NtTib.ArbitraryUserPointer: not a free slot. ntdll's loader stores
+//     the FullDllName pointer there across its NtMapViewOfSection call, and
+//     capemon hooks NtMapViewOfSection, so a hook firing during a module load
+//     would read a PWSTR and write BSON state over the loader's string.
+//   - DLL_THREAD_DETACH cleanup: capemon.c calls hide_module_from_peb() during
+//     DLL_PROCESS_ATTACH, which unlinks the module from all three loader lists,
+//     so DllMain is never called again, and a TLS destructor callback would
+//     never run either.
+//
+// A context is therefore allocated once per thread that logs and is never
+// reclaimed. That is deliberate: it is 40-something bytes, the BSON payload
+// itself is still allocated and released per call by bson_init/bson_destroy,
+// and freeing contexts at teardown would race with threads still inside loq().
+typedef struct _log_context_t {
+	bson bson_obj[1];
+	char istr_buf[4];
+} log_context_t;
+
+static volatile LONG g_log_tls_index = (LONG)TLS_OUT_OF_INDEXES;
+
+static log_context_t *create_log_context(void)
+{
+	log_context_t *ctx;
+	LONG index = g_log_tls_index;
+
+	if (index == (LONG)TLS_OUT_OF_INDEXES) {
+		LONG fresh = (LONG)TlsAlloc();
+		if (fresh == (LONG)TLS_OUT_OF_INDEXES)
+			return NULL;
+		// First thread here wins; anyone who loses gives its spare index back.
+		index = InterlockedCompareExchange(&g_log_tls_index, fresh, (LONG)TLS_OUT_OF_INDEXES);
+		if (index == (LONG)TLS_OUT_OF_INDEXES)
+			index = fresh;
+		else
+			TlsFree((DWORD)fresh);
+	}
+
+	ctx = (log_context_t *)TlsGetValue((DWORD)index);
+	if (ctx)
+		return ctx;
+
+	ctx = (log_context_t *)calloc(1, sizeof(log_context_t));
+	if (!ctx)
+		return NULL;
+
+	TlsSetValue((DWORD)index, ctx);
+	return ctx;
+}
+
+static __inline log_context_t *get_log_context(void)
+{
+	// Plain volatile read rather than an interlocked one: this runs dozens of
+	// times per logged call, and an aligned 32-bit load is atomic on x86/x64.
+	// The only value it can race with is the one-shot index publication, and
+	// reading the stale TLS_OUT_OF_INDEXES just sends us down the slow path,
+	// which redoes the compare-exchange.
+	LONG index = g_log_tls_index;
+	log_context_t *ctx;
+
+	if (index == (LONG)TLS_OUT_OF_INDEXES)
+		return create_log_context();
+
+	ctx = (log_context_t *)TlsGetValue((DWORD)index);
+	return ctx ? ctx : create_log_context();
+}
+
+// Plain parenthesised expressions, not statement expressions: cl.exe has no
+// ({ ... }). Every caller runs underneath loq(), which bails out up front if
+// the context could not be created, so the dereference here is safe.
+#define g_bson (get_log_context()->bson_obj)
+#define g_istr (get_log_context()->istr_buf)
 
 static char logtbl_explained[256] = {0};
 
@@ -547,6 +626,25 @@ DWORD get_last_api(void)
 	return last_api_logged;
 }
 
+// Acquire g_mutex, keeping the historical shape: one cheap attempt first, then
+// a bounded spin, then give up and drop the record rather than block a hooked
+// API for an unbounded time.
+static BOOL loq_lock(void)
+{
+	int retries = 100;
+
+	if (TryEnterCriticalSection(&g_mutex))
+		return TRUE;
+
+	while (retries-- > 0) {
+		if (TryEnterCriticalSection(&g_mutex))
+			return TRUE;
+		SwitchToThread();
+	}
+
+	return FALSE;
+}
+
 void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...)
 {
@@ -566,23 +664,13 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	if (!TryEnterCriticalSection(&g_mutex))
-	{
-		int retries = 100;
-		BOOL acquired = FALSE;
+	// No per-thread buffer means there is nothing we can safely serialize into.
+	if (!get_log_context())
+		goto exit;
 
-		while (retries-- > 0) {
-			if (TryEnterCriticalSection(&g_mutex)) {
-				acquired = TRUE;
-				break;
-			}
-			SwitchToThread();
-		}
-
-		if (!acquired) {
-			goto exit;
-		}
-	}
+	// Shared-state region: logtbl_explained, last_api_logged and lastlog.
+	if (!loq_lock())
+		goto exit;
 
 	if (!special_api_triggered)
 		last_api_logged = API_OTHER;
@@ -739,6 +827,9 @@ void loq(int index, const char *category, const char *name,
 		va_end(args);
 	}
 
+	LeaveCriticalSection(&g_mutex);
+
+	// Everything below until the flush touches only this thread's context.
 	fmt = fmtbak;
 	va_start(args, fmt);
 	count = 1; key = 0; argnum = 2;
@@ -1141,6 +1232,12 @@ buffer_log:
 	bson_append_finish_array( g_bson );
 	bson_finish( g_bson );
 
+	// Shared-state region: the output buffer and the lastlog dedup slot.
+	if (!loq_lock()) {
+		bson_destroy( g_bson );
+		goto exit;
+	}
+
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
 		log_raw_direct(bson_data(g_bson), bson_size(g_bson));
@@ -1173,8 +1270,9 @@ buffer_log:
 		}
 	}
 
-	bson_destroy( g_bson );
 	LeaveCriticalSection(&g_mutex);
+
+	bson_destroy( g_bson );
 exit:
 	if (g_config.force_flush == 2)
 		log_flush();
