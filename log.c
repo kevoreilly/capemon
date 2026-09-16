@@ -70,6 +70,10 @@ static char logtbl_explained[256] = {0};
 // must be one larger than the largest log ID
 #define LOG_ID_PREDEFINED_MAX 10
 
+// The registry path buffers below come out of the path scratch pool, so a
+// slot has to be big enough to hold one.
+C_ASSERT(sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN <= PATH_SCRATCH_SIZE);
+
 volatile LONG g_log_index = 20;  // index must start after the special IDs (see defines)
 
 //
@@ -803,12 +807,12 @@ void loq(int index, const char *category, const char *name,
 		}
 		else if (key == 'F') {
 			const wchar_t *s = va_arg(args, const wchar_t *);
-			wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+			wchar_t *absolutepath = path_scratch_acquire();
 			if (s == NULL) s = L"";
 			if (absolutepath) {
 				ensure_absolute_unicode_path(absolutepath, s);
 				log_wstring(absolutepath, -1);
-				free(absolutepath);
+				path_scratch_release(absolutepath);
 			}
 			else {
 				log_wstring(L"", -1);
@@ -900,54 +904,54 @@ void loq(int index, const char *category, const char *name,
 			HKEY reg = va_arg(args, HKEY);
 			const char *s = va_arg(args, const char *);
 			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			PKEY_NAME_INFORMATION keybuf = path_scratch_acquire();
 
-			log_wstring(get_full_key_pathA(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
+			log_wstring(keybuf ? get_full_key_pathA(reg, s, keybuf, allocsize) : L"", -1);
+			path_scratch_release(keybuf);
 		}
 		else if (key == 'E') {
 			HKEY reg = va_arg(args, HKEY);
 			const wchar_t *s = va_arg(args, const wchar_t *);
 			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			PKEY_NAME_INFORMATION keybuf = path_scratch_acquire();
 
-			log_wstring(get_full_key_pathW(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
+			log_wstring(keybuf ? get_full_key_pathW(reg, s, keybuf, allocsize) : L"", -1);
+			path_scratch_release(keybuf);
 		}
 		else if (key == 'K') {
 			OBJECT_ATTRIBUTES *obj = va_arg(args, OBJECT_ATTRIBUTES *);
 			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			PKEY_NAME_INFORMATION keybuf = path_scratch_acquire();
 
-			log_wstring(get_key_path(obj, keybuf, allocsize), -1);
-			free(keybuf);
+			log_wstring(keybuf ? get_key_path(obj, keybuf, allocsize) : L"", -1);
+			path_scratch_release(keybuf);
 		}
 		else if (key == 'k') {
 			HKEY reg = va_arg(args, HKEY);
 			const PUNICODE_STRING s = va_arg(args, const PUNICODE_STRING);
 			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			PKEY_NAME_INFORMATION keybuf = path_scratch_acquire();
 
-			log_wstring(get_full_keyvalue_pathUS(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
+			log_wstring(keybuf ? get_full_keyvalue_pathUS(reg, s, keybuf, allocsize) : L"", -1);
+			path_scratch_release(keybuf);
 		}
 		else if (key == 'v') {
 			HKEY reg = va_arg(args, HKEY);
 			const char *s = va_arg(args, const char *);
 			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			PKEY_NAME_INFORMATION keybuf = path_scratch_acquire();
 
-			log_wstring(get_full_keyvalue_pathA(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
+			log_wstring(keybuf ? get_full_keyvalue_pathA(reg, s, keybuf, allocsize) : L"", -1);
+			path_scratch_release(keybuf);
 		}
 		else if (key == 'V') {
 			HKEY reg = va_arg(args, HKEY);
 			const wchar_t *s = va_arg(args, const wchar_t *);
 			unsigned int allocsize = sizeof(KEY_NAME_INFORMATION) + MAX_KEY_BUFLEN;
-			PKEY_NAME_INFORMATION keybuf = malloc(allocsize);
+			PKEY_NAME_INFORMATION keybuf = path_scratch_acquire();
 
-			log_wstring(get_full_keyvalue_pathW(reg, s, keybuf, allocsize), -1);
-			free(keybuf);
+			log_wstring(keybuf ? get_full_keyvalue_pathW(reg, s, keybuf, allocsize) : L"", -1);
+			path_scratch_release(keybuf);
 		}
 		else if (key == 'o') {
 			UNICODE_STRING *str = va_arg(args, UNICODE_STRING *);
@@ -965,13 +969,13 @@ void loq(int index, const char *category, const char *name,
 			}
 			else {
 				wchar_t path[MAX_PATH_PLUS_TOLERANCE];
-				wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+				wchar_t *absolutepath = path_scratch_acquire();
 				if (absolutepath) {
 					path_from_object_attributes(obj, path, MAX_PATH_PLUS_TOLERANCE);
 
 					ensure_absolute_unicode_path(absolutepath, path);
 					log_wstring(absolutepath, -1);
-					free(absolutepath);
+					path_scratch_release(absolutepath);
 				}
 				else {
 					log_wstring(L"", -1);
