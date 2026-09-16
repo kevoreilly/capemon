@@ -357,6 +357,7 @@ struct _g_config {
 	int go_hooks;
 	int watchdog;
 	int watchdog_interval;
+	int log_format;
 };
 
 extern struct _g_config g_config;
