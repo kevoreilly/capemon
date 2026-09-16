@@ -87,11 +87,11 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 	}
 	else if (!g_config.tlsdump && !called_by_hook()) {
 		if (g_config.file_of_interest && g_config.suspend_logging) {
-			wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
+			wchar_t *absolutename = path_scratch_acquire();
 			ensure_absolute_unicode_path(absolutename, library.Buffer);
 			if (!wcsicmp(absolutename, g_config.file_of_interest))
 				g_config.suspend_logging = FALSE;
-			free(absolutename);
+			path_scratch_release(absolutename);
 		}
 
 		if (library.Buffer[1] != L':') {

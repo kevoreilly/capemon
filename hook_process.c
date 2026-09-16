@@ -1462,12 +1462,12 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 			break;
 		case DbgLoadDllStateChange:
 			{
-				wchar_t *fname = calloc(32768, sizeof(wchar_t));
+				wchar_t *fname = path_scratch_acquire();
 
 				path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
 				// we could continue ourselves here and skip notification to the malware of capemon loading
 				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
-				free(fname);
+				path_scratch_release(fname);
 			}
 			break;
 		default:
