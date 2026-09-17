@@ -1410,6 +1410,11 @@ void parse_config_line(char* line)
 			else
 				DebugOutput("Scans/dumps while loader lock held disabled.\n");
 		}
+		else if (!stricmp(key, "loaderlock-settle")) {
+			g_config.loaderlock_settle = value[0] == '1';
+			if (g_config.loaderlock_settle)
+				DebugOutput("Loader-lock settle (yield in loader hooks) enabled.\n");
+		}
 		else if (!stricmp(key, "syscall")) {
 			g_config.syscall = value[0] == '1';
 			if (g_config.syscall)
