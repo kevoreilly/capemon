@@ -1370,16 +1370,13 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	}
 	else
 	{
-		if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
-			TrackedRegion->PagesDumped = TRUE;
-
 		if (TraceIsRunning)
 			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
 
-	if (g_config.yarascan && (!TrackedRegion->PagesDumped || (g_config.dump_limit && DumpCount >= g_config.dump_limit)))
+	if (g_config.yarascan)
 		YaraScan(Address, Size);
 }
 
@@ -2969,7 +2966,7 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	BOOL RetVal = FALSE;
@@ -3097,7 +3094,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (!Size)
@@ -3134,7 +3131,7 @@ BOOL DumpRegion(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	PVOID AllocationBase = GetAllocationBase(Address);
@@ -3203,7 +3200,7 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3227,7 +3224,7 @@ BOOL DumpRange(PVOID Address, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -3267,7 +3264,7 @@ int DumpPE(PVOID Buffer)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3299,7 +3296,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
