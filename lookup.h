@@ -30,7 +30,7 @@ typedef struct _lookup_internal_t {
 typedef struct _entry_t {
 	struct _entry_t *next;
 	ULONG_PTR id;
-	unsigned int size;
+	ULONG_PTR size;	// pointer-sized so data[] starts pointer-aligned (x64: offset 24, not 20)
 	unsigned char data[0];
 } entry_t;
 
