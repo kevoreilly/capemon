@@ -56,7 +56,12 @@ HANDLE g_log_handle;
 static bson g_bson[1];
 static char g_istr[4];
 
-static char logtbl_explained[256] = {0};
+// One slot per distinct LOQ call site. _index (log.h) starts after the
+// predefined IDs and is incremented once per site that actually runs, so
+// the bound is the number of LOQ sites in the tree (~750), not 256.
+// Overflowing this array wrote into g_log_index/g_bson/g_istr below it.
+#define LOGTBL_EXPLAINED_MAX 4096
+static char logtbl_explained[LOGTBL_EXPLAINED_MAX] = {0};
 
 #define LOG_ID_PROCESS 0
 #define LOG_ID_THREAD 1
@@ -594,7 +599,7 @@ void loq(int index, const char *category, const char *name,
 		}
 	}
 
-	if (logtbl_explained[index] == 0) {
+	if (index >= 0 && index < LOGTBL_EXPLAINED_MAX && logtbl_explained[index] == 0) {
 		const char * pname;
 		bson b[1];
 
