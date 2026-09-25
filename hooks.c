@@ -33,6 +33,7 @@ extern PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
+extern BOOL is_64bit_os;
 
 struct _g_config g_config;
 volatile int dummy_val;
@@ -900,7 +901,7 @@ hook_t native_hooks[] = {
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
 	HOOK(ntdll, NtQueryFullAttributesFile),
-	HOOK(ntdll, NtCreateFile),
+	//HOOK(ntdll, NtCreateFile),
 	HOOK(ntdll, NtOpenFile),
 	HOOK(ntdll, NtReadFile),
 	HOOK(ntdll, NtWriteFile),
@@ -913,25 +914,25 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtCreateDirectoryObject),
 	HOOK(ntdll, NtQueryDirectoryObject),
 
-	// Native Registry Hooks
-	HOOK(ntdll, NtCreateKey),
-	HOOK(ntdll, NtOpenKey),
-	HOOK(ntdll, NtOpenKeyEx),
-	HOOK(ntdll, NtRenameKey),
-	HOOK(ntdll, NtReplaceKey),
-	HOOK(ntdll, NtEnumerateKey),
-	HOOK(ntdll, NtEnumerateValueKey),
-	HOOK(ntdll, NtSetValueKey),
-	HOOK(ntdll, NtQueryValueKey),
-	HOOK(ntdll, NtQueryMultipleValueKey),
-	HOOK(ntdll, NtDeleteKey),
-	HOOK(ntdll, NtDeleteValueKey),
-	HOOK(ntdll, NtLoadKey),
-	HOOK(ntdll, NtLoadKey2),
-	HOOK(ntdll, NtLoadKeyEx),
-	HOOK(ntdll, NtQueryKey),
-	HOOK(ntdll, NtSaveKey),
-	HOOK(ntdll, NtSaveKeyEx),
+// Native Registry Hooks
+//	HOOK(ntdll, NtCreateKey),
+//	HOOK(ntdll, NtOpenKey),
+//	HOOK(ntdll, NtOpenKeyEx),
+//	HOOK(ntdll, NtRenameKey),
+//	HOOK(ntdll, NtReplaceKey),
+//	HOOK(ntdll, NtEnumerateKey),
+//	HOOK(ntdll, NtEnumerateValueKey),
+//	HOOK(ntdll, NtSetValueKey),
+//	HOOK(ntdll, NtQueryValueKey),
+//	HOOK(ntdll, NtQueryMultipleValueKey),
+//	HOOK(ntdll, NtDeleteKey),
+//	HOOK(ntdll, NtDeleteValueKey),
+//	HOOK(ntdll, NtLoadKey),
+//	HOOK(ntdll, NtLoadKey2),
+//	HOOK(ntdll, NtLoadKeyEx),
+//	HOOK(ntdll, NtQueryKey),
+//	HOOK(ntdll, NtSaveKey),
+//	HOOK(ntdll, NtSaveKeyEx),
 
 	// Sync Hooks
 	HOOK(ntdll, NtCreateMutant),
@@ -1028,7 +1029,6 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtQueryPerformanceCounter),
 	HOOK(ntdll, NtDelayExecution),
 	HOOK(ntdll, NtWaitForSingleObject),
-	HOOK(ntdll, NtWaitForMultipleObjects),
 	HOOK_SPECIAL(ntdll, NtQuerySystemTime),
 	HOOK(ntdll, NtSetTimer),
 	HOOK(ntdll, NtSetTimerEx),
@@ -2114,7 +2114,10 @@ void set_hooks()
 
 	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
 
-	set_hooks_exe();
+#ifdef _WIN64
+	if (!is_64bit_os || !is_wow64_process())
+#endif
+		set_hooks_exe();
 
 	hook_enable();
 }
