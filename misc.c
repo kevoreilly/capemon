@@ -2413,9 +2413,23 @@ BOOLEAN is_address_in_ntdll(ULONG_PTR address)
 // for one. Past four, acquire falls back to the heap and release frees it, so
 // exhaustion degrades to the old behaviour rather than failing.
 //
-// No locking: the pool is per-thread. The claim is still interlocked because a
-// structured exception handler can run on top of a hook on the same thread and
-// would otherwise be able to claim a slot between our test and our set.
+// Pools live in a lookup table keyed by thread id. Not TLS: TlsGetValue()
+// clears the thread's last error on every call, and several hooks release
+// after the original API has set it. Not hook_info_t either: hook_info() can
+// return the shared static tmphookinfo, and some hooks memcpy the whole
+// hook_info_t back after the original call.
+//
+// Entries are never removed - DLL_THREAD_DETACH does not reach us once the
+// module is unlinked from the PEB - so a thread handed a recycled thread id
+// inherits the previous owner's slots. That bounds the table by distinct
+// thread ids rather than by threads created. A slot whose owner died holding
+// it just stays busy.
+//
+// No locking: an entry is only touched by the one live thread whose id it
+// carries, and lookup_add() publishes it with a CAS. The claim is still
+// interlocked because a structured exception handler can run on top of a hook
+// on the same thread and would otherwise be able to claim a slot between our
+// test and our set.
 //
 #define PATH_SCRATCH_SLOTS 4
 
@@ -2424,40 +2438,14 @@ typedef struct _path_scratch_t {
 	volatile LONG busy[PATH_SCRATCH_SLOTS];
 } path_scratch_t;
 
-static volatile LONG g_scratch_tls_index = (LONG)TLS_OUT_OF_INDEXES;
+static lookup_t g_path_scratch;
 
 static path_scratch_t *scratch_context(BOOL create)
 {
-	path_scratch_t *ctx;
-	LONG index = g_scratch_tls_index;
+	if (create)
+		return LOOKUP_THREAD(&g_path_scratch, path_scratch_t);
 
-	if (index == (LONG)TLS_OUT_OF_INDEXES) {
-		LONG fresh;
-
-		if (!create)
-			return NULL;
-
-		fresh = (LONG)TlsAlloc();
-		if (fresh == (LONG)TLS_OUT_OF_INDEXES)
-			return NULL;
-		// First thread here wins; anyone who loses gives its spare index back.
-		index = InterlockedCompareExchange(&g_scratch_tls_index, fresh, (LONG)TLS_OUT_OF_INDEXES);
-		if (index == (LONG)TLS_OUT_OF_INDEXES)
-			index = fresh;
-		else
-			TlsFree((DWORD)fresh);
-	}
-
-	ctx = (path_scratch_t *)TlsGetValue((DWORD)index);
-	if (ctx || !create)
-		return ctx;
-
-	ctx = (path_scratch_t *)calloc(1, sizeof(path_scratch_t));
-	if (!ctx)
-		return NULL;
-
-	TlsSetValue((DWORD)index, ctx);
-	return ctx;
+	return (path_scratch_t *)lookup_get(&g_path_scratch, (ULONG_PTR)GetCurrentThreadId(), NULL);
 }
 
 void *path_scratch_acquire(void)
