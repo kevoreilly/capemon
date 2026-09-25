@@ -123,6 +123,9 @@ void parse_config_line(char* line)
 		else if (!strcmp(key, "first-process")) {
 			g_config.first_process = value[0] == '1';
 		}
+		else if (!strcmp(key, "loaded-process-identity")) {
+			g_config.loaded_process_identity = value[0] == '1';
+		}
 		else if (!strcmp(key, "startup-time")) {
 			g_config.startup_time = atoi(value);
 		}
