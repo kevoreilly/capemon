@@ -2444,9 +2444,13 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 	// prevent hook evasion via mapping system libraries (e.g. ntdll.dll) from disk
 	// this still won't stop reading the file using NtReadFile and mapping it manually
 	wchar_t *whitelist[] = {
+#ifdef _WIN64
+		L"C:\\Windows\\System32\\ntdll.dll",
+		L"C:\\Windows\\sysnative\\ntdll.dll",
+#else
 		L"C:\\Windows\\System32\\ntdll.dll",
 		L"C:\\Windows\\SysWOW64\\ntdll.dll",
-		L"C:\\Windows\\sysnative\\ntdll.dll",
+#endif
 		NULL
 	};
 
