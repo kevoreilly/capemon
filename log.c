@@ -58,8 +58,8 @@ HANDLE g_log_handle;
 // record in its own buffer, so g_mutex only has to cover the shared bookkeeping
 // (logtbl_explained, last_api_logged, lastlog) rather than the whole of loq().
 //
-// The context is reached through dynamic TLS. Three tempting alternatives are
-// wrong here and are avoided deliberately:
+// The contexts live in a lookup table keyed by thread id (LOOKUP_THREAD), the
+// same scheme hook_info() uses for g_hook_info. The alternatives do not fit:
 //   - __declspec(thread): static TLS is resolved by the loader. It works for a
 //     LoadLibrary'd DLL, but capemon is also mapped by hand by
 //     ReflectiveInjectDllViaThread(), where nothing processes the TLS directory.
@@ -67,73 +67,38 @@ HANDLE g_log_handle;
 //     the FullDllName pointer there across its NtMapViewOfSection call, and
 //     capemon hooks NtMapViewOfSection, so a hook firing during a module load
 //     would read a PWSTR and write BSON state over the loader's string.
-//   - DLL_THREAD_DETACH cleanup: capemon.c calls hide_module_from_peb() during
-//     DLL_PROCESS_ATTACH, which unlinks the module from all three loader lists,
-//     so DllMain is never called again, and a TLS destructor callback would
-//     never run either.
+//   - TlsAlloc/TlsGetValue: what LOOKUP_THREAD was added to replace. It also
+//     uses up a process TLS index, and TlsGetValue() clears the thread's last
+//     error on every successful call.
 //
-// A context is therefore allocated once per thread that logs and is never
-// reclaimed. That is deliberate: it is 40-something bytes, the BSON payload
-// itself is still allocated and released per call by bson_init/bson_destroy,
-// and freeing contexts at teardown would race with threads still inside loq().
+// Nothing runs at thread exit: capemon.c calls hide_module_from_peb() during
+// DLL_PROCESS_ATTACH, which unlinks the module from the loader lists, so
+// DllMain never sees DLL_THREAD_DETACH. Contexts are therefore never freed.
+// When Windows gives a dead thread's id to a new thread, the new thread
+// inherits that context. That is safe: loq() starts every record with
+// bson_init(), which zeroes the whole bson struct (a record the dead thread
+// left half-built only leaks its buffer), and istr_buf is scratch.
+// Retained memory is bounded by the number of distinct thread ids that have
+// logged, at sizeof(log_context_t) each (312 bytes on x64, 168 on x86).
 typedef struct _log_context_t {
 	bson bson_obj[1];
 	char istr_buf[4];
 } log_context_t;
 
-static volatile LONG g_log_tls_index = (LONG)TLS_OUT_OF_INDEXES;
-
-static log_context_t *create_log_context(void)
-{
-	log_context_t *ctx;
-	LONG index = g_log_tls_index;
-
-	if (index == (LONG)TLS_OUT_OF_INDEXES) {
-		LONG fresh = (LONG)TlsAlloc();
-		if (fresh == (LONG)TLS_OUT_OF_INDEXES)
-			return NULL;
-		// First thread here wins; anyone who loses gives its spare index back.
-		index = InterlockedCompareExchange(&g_log_tls_index, fresh, (LONG)TLS_OUT_OF_INDEXES);
-		if (index == (LONG)TLS_OUT_OF_INDEXES)
-			index = fresh;
-		else
-			TlsFree((DWORD)fresh);
-	}
-
-	ctx = (log_context_t *)TlsGetValue((DWORD)index);
-	if (ctx)
-		return ctx;
-
-	ctx = (log_context_t *)calloc(1, sizeof(log_context_t));
-	if (!ctx)
-		return NULL;
-
-	TlsSetValue((DWORD)index, ctx);
-	return ctx;
-}
+static lookup_t g_log_contexts;
 
 static __inline log_context_t *get_log_context(void)
 {
-	// Plain volatile read rather than an interlocked one: this runs dozens of
-	// times per logged call, and an aligned 32-bit load is atomic on x86/x64.
-	// The only value it can race with is the one-shot index publication, and
-	// reading the stale TLS_OUT_OF_INDEXES just sends us down the slow path,
-	// which redoes the compare-exchange.
-	LONG index = g_log_tls_index;
-	log_context_t *ctx;
-
-	if (index == (LONG)TLS_OUT_OF_INDEXES)
-		return create_log_context();
-
-	ctx = (log_context_t *)TlsGetValue((DWORD)index);
-	return ctx ? ctx : create_log_context();
+	return LOOKUP_THREAD(&g_log_contexts, log_context_t);
 }
 
-// Plain parenthesised expressions, not statement expressions: cl.exe has no
-// ({ ... }). Every caller runs underneath loq(), which bails out up front if
-// the context could not be created, so the dereference here is safe.
-#define g_bson (get_log_context()->bson_obj)
-#define g_istr (get_log_context()->istr_buf)
+// g_bson and g_istr refer to a local named ctx. Each function that serializes
+// fetches it once with get_log_context(), so a record costs one table walk in
+// loq() plus one per helper call, not one per field. loq() gives up before
+// serializing anything if get_log_context() returns NULL, and entries are never
+// removed, so the helpers' lookups always find the entry loq() created.
+#define g_bson (ctx->bson_obj)
+#define g_istr (ctx->istr_buf)
 
 static char logtbl_explained[256] = {0};
 
@@ -322,11 +287,13 @@ static int bson_append_ptr(bson *b, const char *name, ULONG_PTR ptr)
 
 static void log_int32(int value)
 {
+	log_context_t *ctx = get_log_context();
 	bson_append_int( g_bson, g_istr, value );
 }
 
 static void log_int64(int64_t value)
 {
+	log_context_t *ctx = get_log_context();
 	bson_append_long(g_bson, g_istr, value);
 }
 
@@ -340,6 +307,7 @@ static void log_ptr(void *value)
 
 static void log_string(const char *str, int length)
 {
+	log_context_t *ctx = get_log_context();
 	int ret;
 	char stack_buf[2048];
 	char *utf8s = stack_buf;
@@ -385,6 +353,7 @@ static void log_string(const char *str, int length)
 
 static void log_wstring(const wchar_t *str, int length)
 {
+	log_context_t *ctx = get_log_context();
 	int ret;
 	char stack_buf[2048];
 	char *utf8s = stack_buf;
@@ -568,6 +537,7 @@ static void log_variant(VARIANT* var) {
 }
 
 static void log_argv(int argc, const char ** argv) {
+	log_context_t *ctx = get_log_context();
 	int i;
 
 	bson_append_start_array( g_bson, g_istr );
@@ -580,6 +550,7 @@ static void log_argv(int argc, const char ** argv) {
 }
 
 static void log_wargv(int argc, const wchar_t ** argv) {
+	log_context_t *ctx = get_log_context();
 	int i;
 
 	bson_append_start_array( g_bson, g_istr );
@@ -593,6 +564,7 @@ static void log_wargv(int argc, const wchar_t ** argv) {
 }
 
 static void log_buffer(const char *buf, size_t length) {
+	log_context_t *ctx = get_log_context();
 	size_t trunclength = min((unsigned int)length, (unsigned int)buffer_log_max);
 
 	if (buf == NULL) {
@@ -603,6 +575,7 @@ static void log_buffer(const char *buf, size_t length) {
 }
 
 static void log_large_buffer(const char *buf, size_t length) {
+	log_context_t *ctx = get_log_context();
 	size_t trunclength = min((unsigned int)length, (unsigned int)large_buffer_log_max);
 
 	if (buf == NULL) {
@@ -656,6 +629,7 @@ void loq(int index, const char *category, const char *name,
 	unsigned int compare_offset = 0;
 	lasterror_t lasterror;
 	hook_info_t *hookinfo;
+	log_context_t *ctx;
 
 	if (index >= LOG_ID_PREDEFINED_MAX && g_config.suspend_logging)
 		return;
@@ -665,7 +639,8 @@ void loq(int index, const char *category, const char *name,
 	hook_disable();
 
 	// No per-thread buffer means there is nothing we can safely serialize into.
-	if (!get_log_context())
+	ctx = get_log_context();
+	if (!ctx)
 		goto exit;
 
 	// Shared-state region: logtbl_explained, last_api_logged and lastlog.
