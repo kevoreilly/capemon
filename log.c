@@ -52,9 +52,53 @@ static BOOLEAN special_api_triggered;
 static BOOLEAN delete_last_log;
 HANDLE g_log_handle;
 
-// current to-be-logged API call
-static bson g_bson[1];
-static char g_istr[4];
+// Current to-be-logged API call.
+//
+// The BSON serialization state is per-thread: every hooked API call builds its
+// record in its own buffer, so g_mutex only has to cover the shared bookkeeping
+// (logtbl_explained, last_api_logged, lastlog) rather than the whole of loq().
+//
+// The contexts live in a lookup table keyed by thread id (LOOKUP_THREAD), the
+// same scheme hook_info() uses for g_hook_info. The alternatives do not fit:
+//   - __declspec(thread): static TLS is resolved by the loader. It works for a
+//     LoadLibrary'd DLL, but capemon is also mapped by hand by
+//     ReflectiveInjectDllViaThread(), where nothing processes the TLS directory.
+//   - TEB NtTib.ArbitraryUserPointer: not a free slot. ntdll's loader stores
+//     the FullDllName pointer there across its NtMapViewOfSection call, and
+//     capemon hooks NtMapViewOfSection, so a hook firing during a module load
+//     would read a PWSTR and write BSON state over the loader's string.
+//   - TlsAlloc/TlsGetValue: what LOOKUP_THREAD was added to replace. It also
+//     uses up a process TLS index, and TlsGetValue() clears the thread's last
+//     error on every successful call.
+//
+// Nothing runs at thread exit: capemon.c calls hide_module_from_peb() during
+// DLL_PROCESS_ATTACH, which unlinks the module from the loader lists, so
+// DllMain never sees DLL_THREAD_DETACH. Contexts are therefore never freed.
+// When Windows gives a dead thread's id to a new thread, the new thread
+// inherits that context. That is safe: loq() starts every record with
+// bson_init(), which zeroes the whole bson struct (a record the dead thread
+// left half-built only leaks its buffer), and istr_buf is scratch.
+// Retained memory is bounded by the number of distinct thread ids that have
+// logged, at sizeof(log_context_t) each (312 bytes on x64, 168 on x86).
+typedef struct _log_context_t {
+	bson bson_obj[1];
+	char istr_buf[4];
+} log_context_t;
+
+static lookup_t g_log_contexts;
+
+static __inline log_context_t *get_log_context(void)
+{
+	return LOOKUP_THREAD(&g_log_contexts, log_context_t);
+}
+
+// g_bson and g_istr refer to a local named ctx. Each function that serializes
+// fetches it once with get_log_context(), so a record costs one table walk in
+// loq() plus one per helper call, not one per field. loq() gives up before
+// serializing anything if get_log_context() returns NULL, and entries are never
+// removed, so the helpers' lookups always find the entry loq() created.
+#define g_bson (ctx->bson_obj)
+#define g_istr (ctx->istr_buf)
 
 static char logtbl_explained[256] = {0};
 
@@ -243,11 +287,13 @@ static int bson_append_ptr(bson *b, const char *name, ULONG_PTR ptr)
 
 static void log_int32(int value)
 {
+	log_context_t *ctx = get_log_context();
 	bson_append_int( g_bson, g_istr, value );
 }
 
 static void log_int64(int64_t value)
 {
+	log_context_t *ctx = get_log_context();
 	bson_append_long(g_bson, g_istr, value);
 }
 
@@ -261,6 +307,7 @@ static void log_ptr(void *value)
 
 static void log_string(const char *str, int length)
 {
+	log_context_t *ctx = get_log_context();
 	int ret;
 	char stack_buf[2048];
 	char *utf8s = stack_buf;
@@ -306,6 +353,7 @@ static void log_string(const char *str, int length)
 
 static void log_wstring(const wchar_t *str, int length)
 {
+	log_context_t *ctx = get_log_context();
 	int ret;
 	char stack_buf[2048];
 	char *utf8s = stack_buf;
@@ -489,6 +537,7 @@ static void log_variant(VARIANT* var) {
 }
 
 static void log_argv(int argc, const char ** argv) {
+	log_context_t *ctx = get_log_context();
 	int i;
 
 	bson_append_start_array( g_bson, g_istr );
@@ -501,6 +550,7 @@ static void log_argv(int argc, const char ** argv) {
 }
 
 static void log_wargv(int argc, const wchar_t ** argv) {
+	log_context_t *ctx = get_log_context();
 	int i;
 
 	bson_append_start_array( g_bson, g_istr );
@@ -514,6 +564,7 @@ static void log_wargv(int argc, const wchar_t ** argv) {
 }
 
 static void log_buffer(const char *buf, size_t length) {
+	log_context_t *ctx = get_log_context();
 	size_t trunclength = min((unsigned int)length, (unsigned int)buffer_log_max);
 
 	if (buf == NULL) {
@@ -524,6 +575,7 @@ static void log_buffer(const char *buf, size_t length) {
 }
 
 static void log_large_buffer(const char *buf, size_t length) {
+	log_context_t *ctx = get_log_context();
 	size_t trunclength = min((unsigned int)length, (unsigned int)large_buffer_log_max);
 
 	if (buf == NULL) {
@@ -547,6 +599,25 @@ DWORD get_last_api(void)
 	return last_api_logged;
 }
 
+// Acquire g_mutex, keeping the historical shape: one cheap attempt first, then
+// a bounded spin, then give up and drop the record rather than block a hooked
+// API for an unbounded time.
+static BOOL loq_lock(void)
+{
+	int retries = 100;
+
+	if (TryEnterCriticalSection(&g_mutex))
+		return TRUE;
+
+	while (retries-- > 0) {
+		if (TryEnterCriticalSection(&g_mutex))
+			return TRUE;
+		SwitchToThread();
+	}
+
+	return FALSE;
+}
+
 void loq(int index, const char *category, const char *name,
 	int is_success, ULONG_PTR return_value, const char *fmt, ...)
 {
@@ -558,6 +629,7 @@ void loq(int index, const char *category, const char *name,
 	unsigned int compare_offset = 0;
 	lasterror_t lasterror;
 	hook_info_t *hookinfo;
+	log_context_t *ctx;
 
 	if (index >= LOG_ID_PREDEFINED_MAX && g_config.suspend_logging)
 		return;
@@ -566,23 +638,14 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
-	if (!TryEnterCriticalSection(&g_mutex))
-	{
-		int retries = 100;
-		BOOL acquired = FALSE;
+	// No per-thread buffer means there is nothing we can safely serialize into.
+	ctx = get_log_context();
+	if (!ctx)
+		goto exit;
 
-		while (retries-- > 0) {
-			if (TryEnterCriticalSection(&g_mutex)) {
-				acquired = TRUE;
-				break;
-			}
-			SwitchToThread();
-		}
-
-		if (!acquired) {
-			goto exit;
-		}
-	}
+	// Shared-state region: logtbl_explained, last_api_logged and lastlog.
+	if (!loq_lock())
+		goto exit;
 
 	if (!special_api_triggered)
 		last_api_logged = API_OTHER;
@@ -739,6 +802,9 @@ void loq(int index, const char *category, const char *name,
 		va_end(args);
 	}
 
+	LeaveCriticalSection(&g_mutex);
+
+	// Everything below until the flush touches only this thread's context.
 	fmt = fmtbak;
 	va_start(args, fmt);
 	count = 1; key = 0; argnum = 2;
@@ -1141,6 +1207,12 @@ buffer_log:
 	bson_append_finish_array( g_bson );
 	bson_finish( g_bson );
 
+	// Shared-state region: the output buffer and the lastlog dedup slot.
+	if (!loq_lock()) {
+		bson_destroy( g_bson );
+		goto exit;
+	}
+
 	if (index == LOG_ID_PROCESS || index == LOG_ID_THREAD || index == LOG_ID_ENVIRON) {
 		// don't hold back any of our critical notifications -- these *must* be flushed in log_init()
 		log_raw_direct(bson_data(g_bson), bson_size(g_bson));
@@ -1173,8 +1245,9 @@ buffer_log:
 		}
 	}
 
-	bson_destroy( g_bson );
 	LeaveCriticalSection(&g_mutex);
+
+	bson_destroy( g_bson );
 exit:
 	if (g_config.force_flush == 2)
 		log_flush();
