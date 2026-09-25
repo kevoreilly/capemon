@@ -32,30 +32,18 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_STACK_SLOTS 512
 #define SLOTS_BEFORE 255
 #define EST_LINE 80
-#define INITIAL_CAPACITY 16
-#define MAX_ENTRIES ((BUFFER_SIZE - 16) / sizeof(MBIEntry))
 #define PAGE_SIZE 4096
 #define OUTPUT_BUFFER_SIZE 2048
 // Addresses served by one RD request. Bounds the reply well inside BUFFER_SIZE; CAPEsolo
 // splits a larger set across requests.
 #define MAX_READ_ENTRIES 512
+// Regions served by one PM request. An entry is at most 51 characters (an 18-character base,
+// a 20-digit size and a 10-character protection), so a full page formats to ~52 KB worst case
+// and stays inside InteractiveDebuggerPipe's BUFFER_SIZE with the status field on the end.
+#define REGIONS_PER_PAGE 1024
 #define CHUNKSIZE 16
 
 // Structure for MBI entry
-typedef struct 
-{
-	uintptr_t  BaseAddress;
-	SIZE_T RegionSize;
-	DWORD Protect;
-} MBIEntry;
-
-typedef struct 
-{
-	MBIEntry* data;
-	size_t size;
-	size_t capacity;
-} MBIEntryArray;
-
 typedef const char* (*CmdHandler)(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
 
 typedef struct 
@@ -77,8 +65,6 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 char* InteractiveDebuggerPipe(_In_ LPCTSTR lpOutputString, ...);
 char* DumpMemoryView(HANDLE hProcess, PCONTEXT ctx, ULONG_PTR RequestedAddr, int numLines);
 char* GetStackWindowView(HANDLE hProcess, PCONTEXT ctx, int numSlots);
-void PushBack(MBIEntryArray* array, MBIEntry entry);
-void FreeArray(MBIEntryArray* array);
 static BOOL SetRegister(PCONTEXT Context, char* RegString, PVOID Target);
 uint32_t GetPageChecksum(HANDLE hProcess, uintptr_t Address);
 BOOL InteractiveTrace(struct _EXCEPTION_POINTERS* ExceptionInfo);
@@ -592,45 +578,6 @@ char* RetrievePage(HANDLE hProcess, uintptr_t Address, uintptr_t* OutBase) {
 	return hexPage;
 }
 
-// Helper functions for dynamic array
-static MBIEntryArray CreateArray(void)
-{
-	MBIEntryArray array =
-	{
-		.data = (MBIEntry*)malloc(INITIAL_CAPACITY * sizeof(MBIEntry)),
-		.size = 0,
-		.capacity = INITIAL_CAPACITY,
-	};
-	return array;
-}
-
-void PushBack(MBIEntryArray* array, MBIEntry entry)
-{
-	if (array->size >= MAX_ENTRIES) return;
-
-	if (array->size + 1 >= array->capacity)
-	{
-		size_t newCap = array->capacity * 2;
-		if (newCap > MAX_ENTRIES) newCap = MAX_ENTRIES;
-
-		MBIEntry* p = realloc(array->data, newCap * sizeof(MBIEntry));
-		if (!p) return;
-
-		array->data = p;
-		array->capacity = newCap;
-	}
-
-	array->data[array->size++] = entry;
-}
-
-void FreeArray(MBIEntryArray* array)
-{
-	free(array->data);
-	array->data = NULL;
-	array->size = 0;
-	array->capacity = 0;
-}
-
 static BOOL SetRegister(PCONTEXT Context, char* RegString, PVOID Target)
 {
 	if (!Context || !RegString)
@@ -759,46 +706,73 @@ const char* HandleInstructionPage(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 	}
 }
 
+// One page of the memory map: `<page>||<entries>||MORE` or `...||END`, where each entry is
+// `0x<base>,<size>,0x<protect>` and entries are joined by a single '|'.
+//
+// The whole map used to go in one reply, which lost the tail of a fragmented process twice
+// over: the array it was collected into capped out around 2770 regions, and the formatted
+// payload was _TRUNCATE'd by InteractiveDebuggerPipe's 65 KB buffer at roughly 2300,
+// whichever came first. Nothing said so, and CAPEsolo cannot tell a region that is gone from
+// one that was cut off - which matters now that it diffs successive maps to report
+// allocations. Paging also made that collection array dead, so it is gone.
+//
+// The page is echoed back so a reply from an abandoned sequence can be recognised, and the
+// walk restarts for each page rather than caching the array: only the breaking thread is
+// halted, so the map is no more stable across one walk than across several.
 const char* HandlePageMap(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
 {
 	MEMORY_BASIC_INFORMATION mbi;
-	MBIEntryArray entries = CreateArray();
 	PBYTE address = NULL;
+	int Page = (data && *data) ? atoi(data) : 0;
 
-	while (VirtualQueryEx(GetCurrentProcess(), (LPCVOID)address, &mbi, sizeof(mbi)) == sizeof(mbi)) 
+	if (Page < 0)
+		Page = 0;
+
+	size_t Cap = REGIONS_PER_PAGE * 64 + 1;
+	char* Payload = (char*)malloc(Cap);
+	if (!Payload)
+		return InteractiveDebuggerPipe("Failed with memory allocation.\n");
+
+	*Payload = '\0';
+	int Skip = Page * REGIONS_PER_PAGE;
+	int Index = 0;
+	int Count = 0;
+	int Offset = 0;
+	BOOL HasMore = FALSE;
+
+	while (VirtualQueryEx(GetCurrentProcess(), (LPCVOID)address, &mbi, sizeof(mbi)) == sizeof(mbi))
 	{
-		MBIEntry entry = { (uintptr_t)mbi.BaseAddress, mbi.RegionSize, mbi.Protect };
-		PushBack(&entries, entry);
-		address = (PBYTE)mbi.BaseAddress + mbi.RegionSize;
-	}
+		PBYTE Next = (PBYTE)mbi.BaseAddress + mbi.RegionSize;
 
-	const char* Command = NULL;
+		// A region of zero size, or one that does not move the cursor forward, would walk
+		// this loop forever.
+		if (Next <= address)
+			break;
 
-	if (entries.size > 0) 
-	{
-		size_t cap = entries.size * 64 + 1;
-		char* payload = malloc(cap);
-		if (payload) 
+		if (Index++ >= Skip)
 		{
-			char* p = payload;
-			for (size_t i = 0; i < entries.size; ++i)
+			if (Count == REGIONS_PER_PAGE)
 			{
-				int n = sprintf(p, "0x%Ix,%Iu,0x%x", entries.data[i].BaseAddress, entries.data[i].RegionSize, entries.data[i].Protect);
-				p += n;
-				if (i + 1 < entries.size) *p++ = '|';
+				HasMore = TRUE;
+				break;
 			}
 
-			*p = '\0';
-			Command = InteractiveDebuggerPipe("%s\n", payload);
-			free(payload);
+			Offset += sprintf(Payload + Offset, "%s0x%Ix,%Iu,0x%x", Count ? "|" : "",
+				(uintptr_t)mbi.BaseAddress, mbi.RegionSize, mbi.Protect);
+			Count++;
 		}
+
+		address = Next;
 	}
-	else 
+
+	if (!Count && !Page)
 	{
+		free(Payload);
 		return InteractiveDebuggerPipe("Failed with no memory regions found.\n");
 	}
 
-	FreeArray(&entries);
+	const char* Command = InteractiveDebuggerPipe("%d||%s||%s\n", Page, Payload, HasMore ? "MORE" : "END");
+	free(Payload);
 	return Command;
 }
 
