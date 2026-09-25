@@ -34,8 +34,6 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
-#define PE_HEADER_LIMIT 0x200
-
 //**************************************************************************************
 void ScyllaInit(HANDLE hProcess)
 //**************************************************************************************
