@@ -324,3 +324,7 @@ typedef struct _com_hook_t {
 	REFCLSID		rclsid;
 	REFIID			riid;
 } com_hook_t;
+
+BOOL IsHookViaWbemLocator(void);
+void SetHookViaWbemLocator(BOOL val);
+#define bHookViaWbemLocator IsHookViaWbemLocator()
