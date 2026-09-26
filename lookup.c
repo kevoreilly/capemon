@@ -19,6 +19,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ntapi.h"
 #include "lookup.h"
 
+// Payloads hold pointers (hook_info_t, file_record_t, SOFTBP, ...), so they must start pointer-aligned
+C_ASSERT(FIELD_OFFSET(entry_t, data) % sizeof(void *) == 0);
+
 void lookup_free(lookup_t *d)
 {
 	entry_t *p = (entry_t *)d->root;
@@ -33,6 +36,8 @@ void lookup_free(lookup_t *d)
 void *lookup_add(lookup_t *d, ULONG_PTR id, unsigned int size)
 {
 	entry_t *t = (entry_t *) calloc(1, sizeof(entry_t) + size);
+	if (t == NULL)
+		return NULL;
 	memset(t, 0, sizeof(*t));
 	t->id = id;
 	t->size = size;
@@ -49,7 +54,7 @@ void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size)
 		if (p->id == id) {
 			void *data;
 			if (size != NULL)
-				*size = p->size;
+				*size = (unsigned int)p->size;
 			data = p->data;
 			return data;
 		}
@@ -59,10 +64,8 @@ void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size)
 
 void *lookup_get_or_create(lookup_t *d, ULONG_PTR id, unsigned int size) {
 	void *p = lookup_get(d, id, NULL);
-	if (p == NULL) {
-		p = lookup_add(d, id, size);
-		memset(p, 0, size);
-	}
+	if (p == NULL)
+		p = lookup_add(d, id, size);	// already zeroed (calloc); NULL if the allocation failed
 	return p;
 }
 
