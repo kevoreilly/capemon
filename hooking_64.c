@@ -918,7 +918,9 @@ hook_data_t *alloc_hookdata_near(void *addr)
 						(PVOID volatile *)&curr->NextFreeOffset,
 						(PVOID)(free_offset + requested_size),
 						(PVOID)free_offset) == free_offset) {
-					return (hook_data_t *)((PBYTE)curr->BaseAddress + free_offset);
+					hook_data_t *allocated = (hook_data_t *)((PBYTE)curr->BaseAddress + free_offset);
+					hookdata_range_add(allocated, requested_size);
+					return allocated;
 				}
 			}
 		}
@@ -952,6 +954,7 @@ hook_data_t *alloc_hookdata_near(void *addr)
 				new_arena->next = (hook_page_arena_t *)g_hook_arenas;
 			} while (InterlockedCompareExchangePointer((PVOID volatile *)&g_hook_arenas, new_arena, new_arena->next) != new_arena->next);
 			
+			hookdata_range_add(allocated, requested_size);
 			return allocated;
 		}
 		offset += 0x10000;
@@ -969,8 +972,10 @@ hook_data_t *alloc_hookdata_low()
 
 	do {
 		status = pNtAllocateVirtualMemory(GetCurrentProcess(), (PVOID)&BaseAddress, 0, &RegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-		if (status >= 0)
+		if (status >= 0) {
+			hookdata_range_add(BaseAddress, sizeof(hook_data_t));
 			return (hook_data_t *)BaseAddress;
+		}
 		BaseAddress += offset;
 	} while (status < 0);
 
