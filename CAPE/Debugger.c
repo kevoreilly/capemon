@@ -28,6 +28,9 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Debugger.h"
 #include "Unpacker.h"
 
+// Forward declaration for Go breakpoint handler (defined in hook_go.c)
+extern BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo);
+
 #define PIPEBUFSIZE 512
 
 typedef struct _INJECT_STRUCT {
@@ -520,6 +523,9 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	*(PBYTE)Address = *pInsByte;
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+
+	// Execute custom Go breakpoint callback if it matches our list
+	GoBreakpointHandler(Address, ExceptionInfo);
 
 	SoftwareBreakpointCallback(ExceptionInfo);
 
