@@ -149,3 +149,6 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | Option | Value Type | Description |
 | :--- | :--- | :--- |
 | `wowmon` | Boolean | Enable Heaven's Gate monitoring in wow64 processes |
+| `jit-trace-all` | Boolean | Enable verbose per-method JIT logging instead of high-signal triggers only (default: 0). |
+| `dotnet-heal` | Boolean | Enable in-memory Scylla PE header and BSJB metadata healing for anti-dumped .NET binaries (default: 0). |
+| `dotnet-nload` | Boolean | Enable interception and dumping of reflectively loaded in-memory .NET assemblies (default: 0). |

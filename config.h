@@ -330,6 +330,9 @@ struct _g_config {
 	char *str[MAX_PATH];
 
 	int trace_all;
+	int jit_trace_all;
+	int dotnet_heal;
+	int dotnet_nload;
 	int step_out;
 	int file_offsets;
 	int no_logs;

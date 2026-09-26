@@ -159,6 +159,33 @@ extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 extern lookup_t g_dotnet_jit;
+
+dotnet_module_cache_t g_dotnet_modules[1024] = {0};
+int g_dotnet_modules_count = 0;
+
+void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize) {
+	if (g_dotnet_modules_count >= 1024) return;
+	// Prevent duplicate caching
+	for (int i = 0; i < g_dotnet_modules_count; i++) {
+		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
+			return;
+		}
+	}
+	g_dotnet_modules[g_dotnet_modules_count].ModuleBase = ModuleBase;
+	g_dotnet_modules[g_dotnet_modules_count].MetadataRVA = MetadataRVA;
+	g_dotnet_modules[g_dotnet_modules_count].MetadataSize = MetadataSize;
+	g_dotnet_modules_count++;
+	DebugOutput("CacheDotNetModule: Cached module base 0x%p (Metadata RVA 0x%x, Size 0x%x).\n", (PVOID)ModuleBase, MetadataRVA, MetadataSize);
+}
+
+dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase) {
+	for (int i = 0; i < g_dotnet_modules_count; i++) {
+		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
+			return &g_dotnet_modules[i];
+		}
+	}
+	return NULL;
+}
 extern char* StringsFile;
 extern HANDLE Strings;
 
@@ -829,7 +856,7 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	}
 
 
-	if (!FunctionAddress && ModuleBase == GetModuleHandle("clr"))
+	if (!FunctionAddress && (ModuleBase == GetModuleHandle("clr") || ModuleBase == GetModuleHandle("mscorwks") || ModuleBase == GetModuleHandle("coreclr")))
 		return GetCLRAddress(ModuleBase, FunctionName);
 
 	if (!FunctionAddress && ModuleBase == GetModuleHandle("clrjit"))
@@ -3431,19 +3458,25 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
 
+	// g_dotnet_jit is a lock-free set (lookup.c) - lookup_get is safe against the
+	// compileMethod hook adding to it concurrently. g_jit_dump_lock serialises the
+	// CapeMetaData scratch writes and the DotNetCacheDumpCount counter below
+	// against that hook, which shares both.
 	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
 	{
-		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
-
+		EnterCriticalSection(&g_jit_dump_lock);
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = UNPACKED_PE;
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
+		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
+		LeaveCriticalSection(&g_jit_dump_lock);
 	}
 
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
+		EnterCriticalSection(&g_jit_dump_lock);
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
 #ifdef _WIN64
@@ -3462,6 +3495,7 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
 		else if (!g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
+		LeaveCriticalSection(&g_jit_dump_lock);
 	}
 }
 
