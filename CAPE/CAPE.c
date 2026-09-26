@@ -3821,8 +3821,10 @@ void CAPE_post_init()
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 			
 			// Dynamic Go symbol recovery & tracing (Inspired by GoReSym/ExtremeDumper concept)
-			extern void GoRecoverSymbols();
-			GoRecoverSymbols();
+			if (g_config.go_hooks) {
+				extern void GoRecoverSymbols();
+				GoRecoverSymbols();
+			}
 		}
 	}
 #ifdef DEBUG_COMMENTS

@@ -1463,6 +1463,11 @@ void parse_config_line(char* line)
 			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);
 		}
+		else if (!stricmp(key, "go-hooks") || !stricmp(key, "go_hooks")) {
+			g_config.go_hooks = value[0] == '1';
+			if (g_config.go_hooks)
+				DebugOutput("Config: Go symbol recovery and breakpoint hooks enabled.\n");
+		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
 			if (!pid && !stricmp(value, "explorer"))
@@ -1511,6 +1516,7 @@ void read_config(void)
 	g_config.spoofed_cpu_count = SPOOFED_CPU_CORE_NUM;
 	g_config.syscall = 1;
 	g_config.sleep_skip_seconds = 10;
+	g_config.go_hooks = 1;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 

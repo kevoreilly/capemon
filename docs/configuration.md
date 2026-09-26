@@ -132,6 +132,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `file-offsets` | Boolean | Interpret breakpoints as file offsets instead of RVAs. |
 | `loaderlock` | Boolean | Allow scans/dumps while the Loader Lock is held. |
 | `snaps` | Boolean | Enable Windows Loader Snaps output (LdrSnap). |
+| `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, and breakpoint tracing (enabled by default). |
 
 ## Target Specific
 
