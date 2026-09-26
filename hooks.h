@@ -4241,4 +4241,7 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 	_Out_    PVOID        result
 );
 
+BOOL IsAmsiActive(void);
+void SetAmsiActive(BOOL val);
+
 #include "hook_vbscript.h"
