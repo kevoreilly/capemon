@@ -1888,32 +1888,43 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesA,
 }
 
 HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
-	_In_	LPCWSTR  lpDevice,
-	_In_	DWORD  iDevNum,
-	_Out_   PDISPLAY_DEVICEW lpDisplayDevice,
-	_In_	DWORD  dwFlags
+	_In_opt_ LPCWSTR          lpDevice,
+	_In_     DWORD            iDevNum,
+	_Inout_  PDISPLAY_DEVICEW lpDisplayDevice,
+	_In_     DWORD            dwFlags
 ) {
-	const wchar_t* keywords[] = {
+	static const wchar_t* keywords[] = {
 		L"microsoft hyper-v video",
 		L"virtual",
 		L"vmware",
 		L"standard vga graphics adapter",
-		L"microsoft basic display adapter"
+		L"microsoft basic display adapter",
+		L"virtualbox",
+		L"vbox",
+		L"qemu",
+		L"citrix"
 	};
-	int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
-
-	const wchar_t replacement[] = L"NVIDIA GeForce RTX 3060";
+	const int keywords_size = sizeof(keywords) / sizeof(keywords[0]);
+	static const wchar_t replacement_string[] = L"NVIDIA GeForce RTX 3060";
+	static const wchar_t replacement_id[] = L"PCI\\VEN_10DE&DEV_2504&SUBSYS_88371458&REV_A1";
 
 	BOOL ret = Old_EnumDisplayDevicesW(lpDevice, iDevNum, lpDisplayDevice, dwFlags);
-	if (!g_config.no_stealth && ret && lpDisplayDevice) {
+
+	if (!g_config.no_stealth && ret && lpDisplayDevice && lpDisplayDevice->cb >= sizeof(DISPLAY_DEVICEW)) {
+		// Ensure DeviceString is null-terminated before scanning it
+		lpDisplayDevice->DeviceString[_countof(lpDisplayDevice->DeviceString) - 1] = L'\0';
+
 		for (int i = 0; i < keywords_size; i++) {
 			if (wcsistr(lpDisplayDevice->DeviceString, keywords[i]) != NULL) {
-				swprintf(lpDisplayDevice->DeviceString, wcslen(replacement) + 1, replacement);
+				wcscpy_s(lpDisplayDevice->DeviceString, _countof(lpDisplayDevice->DeviceString), replacement_string);
+				wcscpy_s(lpDisplayDevice->DeviceID, _countof(lpDisplayDevice->DeviceID), replacement_id);
+				DebugOutput("EnumDisplayDevicesW: Spoofed virtual machine graphics adapter to %S.\n", replacement_string);
 				break;
 			}
 		}
 	}
-	LOQ_bool("misc", "u", "DeviceString", lpDisplayDevice->DeviceString);
+
+	LOQ_bool("windows", "uiu", "Device", lpDevice, "DevNum", iDevNum, "DeviceString", lpDisplayDevice->DeviceString);
 	return ret;
 }
 
