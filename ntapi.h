@@ -62,6 +62,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define Suspended 5
 #define OptionShutdownSystem 6
 // NTSTATUS
+#ifndef STATUS_SUCCESS
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
+#endif
+#ifndef STATUS_BUFFER_OVERFLOW
+#define STATUS_BUFFER_OVERFLOW ((NTSTATUS)0x80000005L)
+#endif
+#ifndef STATUS_BUFFER_TOO_SMALL
+#define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
+#endif
 #define STATUS_INFO_LENGTH_MISMATCH  0xc0000004
 #define STATUS_CONFLICTING_ADDRESSES 0xc0000018
 #define STATUS_OBJECT_NAME_NOT_FOUND 0xc0000034
