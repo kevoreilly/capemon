@@ -296,6 +296,9 @@ struct _g_config {
 	// Enable Windows Loader snaps output
 	int snaps;
 
+	// Enable WOW64 monitor
+	int wowmon;
+
 	char *break_on_apiname;
 	char *break_on_modname;
 	char break_on_return[MAX_PATH];

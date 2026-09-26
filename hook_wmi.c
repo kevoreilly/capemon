@@ -3,6 +3,7 @@
 #include "misc.h"
 #include "config.h"
 #include "hooks.h"
+#include "lookup.h"
 #include <Wbemidl.h>
 
 enum {
@@ -27,49 +28,20 @@ typedef struct {
 	int last_seen_fake_class;
 } wmi_thread_context_t;
 
-extern DWORD g_wmi_tracker_tls_index;
-
-// Fallback context if TLS allocation fails (shared across threads as last resort)
+static lookup_t g_wmi_tracker_lookup;
 static wmi_thread_context_t g_wmi_fallback_context = {0};
 
-static wmi_thread_context_t* GetWmiThreadContext(void) {
-	wmi_thread_context_t* pCtx = NULL;
-	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
-		pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
-		if (!pCtx) {
-			pCtx = (wmi_thread_context_t*)calloc(1, sizeof(wmi_thread_context_t));
-			if (pCtx) {
-				TlsSetValue(g_wmi_tracker_tls_index, pCtx);
-			} else {
-				// calloc failed - use fallback (not thread-safe but prevents crash)
-				pCtx = &g_wmi_fallback_context;
-			}
-		}
-	} else {
-		// TLS not initialized - use fallback
-		pCtx = &g_wmi_fallback_context;
-	}
-	return pCtx;
+static inline wmi_thread_context_t* GetWmiThreadContext(void) {
+	wmi_thread_context_t* pCtx = (wmi_thread_context_t*)LOOKUP_THREAD(&g_wmi_tracker_lookup, wmi_thread_context_t);
+	return pCtx ? pCtx : &g_wmi_fallback_context;
 }
 
-// Accessor macros: GetWmiThreadContext now guaranteed to return non-NULL
 #define g_last_seen_disk_query (GetWmiThreadContext()->last_seen_disk_query)
 #define g_last_seen_physicalmemory (GetWmiThreadContext()->last_seen_physicalmemory)
 #define g_last_seen_fake_class (GetWmiThreadContext()->last_seen_fake_class)
 
-void TlsWmiThreadCleanup(void) {
-	if (g_wmi_tracker_tls_index != TLS_OUT_OF_INDEXES) {
-		wmi_thread_context_t* pCtx = (wmi_thread_context_t*)TlsGetValue(g_wmi_tracker_tls_index);
-		if (pCtx) {
-			free(pCtx);
-			TlsSetValue(g_wmi_tracker_tls_index, NULL);
-		}
-	}
-}
-
 void SpoofWmiData(const void* pObject, const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
 	int pointer_idx = (pObject != NULL) ? (int)(((ULONG_PTR)pObject >> 4) % 3) : 0;
-
 	if (g_config.no_stealth)
 		return;
 
@@ -103,21 +75,17 @@ void SpoofWmiData(const void* pObject, const wchar_t* szClassName, const wchar_t
 		// Logic for BSTR fakery specific to an exact szClassName
 		//
 		else if (!_wcsicmp(szClassName, L"Win32_LogicalDisk") && !_wcsicmp(wszName, L"Size")) {
-			if (g_last_seen_disk_query) {
-				unsigned long long lSize = wcstoull(pVal->bstrVal, NULL, 10);
-				if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
-					SysFreeString(pVal->bstrVal);
-					pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
-				}
+			unsigned long long lSize = wcstoull(pVal->bstrVal, NULL, 10);
+			if (lSize < SPOOFED_DISK_SIZE - RECOVERY_PARTITION_SIZE) {
+				SysFreeString(pVal->bstrVal);
+				pVal->bstrVal = SysAllocString(WIDE_DISK_LOGICAL_SIZE);
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_PhysicalMemory") && !_wcsicmp(wszName, L"Capacity")) {
-			if (g_last_seen_physicalmemory) {
-				unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
-				if (actualMemory < SPOOFED_RAM) {
-					SysFreeString(pVal->bstrVal);
-					pVal->bstrVal = SysAllocString(WIDE_SPOOFED_RAM);
-				}
+			unsigned long long actualMemory = wcstoull(pVal->bstrVal, NULL, 10);
+			if (actualMemory < SPOOFED_RAM) {
+				SysFreeString(pVal->bstrVal);
+				pVal->bstrVal = SysAllocString(WIDE_SPOOFED_RAM);
 			}
 		}
 		else if (!_wcsicmp(wszName, L"DeviceID") && g_last_seen_fake_class != WMI_FAKE_CLASS_NONE) {
@@ -402,6 +370,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
+<<<<<<< HEAD
 	HRESULT ret;
 	BSTR queryToExecute = (BSTR)strQuery;
 	g_last_seen_disk_query = 0;
@@ -482,6 +451,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
 	_In_	IWbemContext	*pCtx,
 	_In_	IWbemObjectSink	*pResponseHandler
 ) {
+<<<<<<< HEAD
 	HRESULT ret;
 	BSTR queryToExecute = (BSTR)strQuery;
 	g_last_seen_disk_query = 0;

@@ -146,3 +146,9 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `interactive` | Boolean | Enable interactive desktop mode. |
 | `pdf` | Boolean | Enable specific hooks/behavior for Adobe Reader. |
 | `standalone` | Boolean | Run in standalone mode (no Cuckoo pipe). |
+
+## Beta Testing
+
+| Option | Value Type | Description |
+| :--- | :--- | :--- |
+| `wowmon` | Boolean | Enable Heaven's Gate monitoring in wow64 processes |

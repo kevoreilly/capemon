@@ -288,20 +288,11 @@ BOOL DropSectionView(PINJECTIONSECTIONVIEW SectionView)
 		{
 			// Unlink this from the list and free the memory
 			if (PreviousSectionView && CurrentSectionView->NextSectionView)
-			{
 				PreviousSectionView->NextSectionView = CurrentSectionView->NextSectionView;
-				DebugOutput("DropSectionView: removed a view from section view list.\n");
-			}
 			else if (PreviousSectionView && CurrentSectionView->NextSectionView == NULL)
-			{
 				PreviousSectionView->NextSectionView = NULL;
-				DebugOutput("DropSectionView: removed the view from the end of the section view list.\n");
-			}
 			else if (!PreviousSectionView)
-			{
 				SectionViewList = NULL;
-				DebugOutput("DropSectionView: removed the head of the section view list.\n");
-			}
 
 			free(CurrentSectionView);
 

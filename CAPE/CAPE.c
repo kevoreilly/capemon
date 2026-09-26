@@ -19,6 +19,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #define _CRT_RAND_S
 #define MD5LEN			  16
+#define SHA256LEN		  32
 
 #define MAX_PRETRAMP_SIZE 320
 #define MAX_TRAMP_SIZE 128
@@ -50,6 +51,11 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\pipe.h"
 #include "..\config.h"
 #include "..\lookup.h"
+
+#ifndef _WIN64
+#include "HeavensGate.h"
+#endif
+
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -1315,6 +1321,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 				DebugOutput("ProcessTrackedRegion: Updated entropy for tracked region at 0x%p: %e (from %e)", Address, Entropy, TrackedRegion->Entropy);
 			else
 				DebugOutput("ProcessTrackedRegion: Entropy for tracked region at 0x%p: %e", Address, Entropy);
+			TrackedRegion->Entropy = Entropy;
 		}
 #ifdef DEBUG_COMMENTS
 		else
@@ -1349,9 +1356,6 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		else
 			DebugOutput("ProcessTrackedRegion: Interesting region at 0x%p mapped as %ws, dumping", Address, ModulePath);
 	}
-
-	if (Entropy)
-		TrackedRegion->Entropy = Entropy;
 
 	if (!CapeMetaData->DumpType)
 		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
@@ -1674,7 +1678,7 @@ char* GetTempName()
 }
 
 //**************************************************************************************
-BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffer)
+BOOL GetMD5(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 //**************************************************************************************
 {
 	DWORD i;
@@ -1717,8 +1721,56 @@ BOOL GetHash(unsigned char* Buffer, unsigned int Size, char* OutputFilenameBuffe
 
 	for (i = 0; i < cbHash; i++)
 	{
-		PrintHexBytes(OutputFilenameBuffer, MD5Hash, MD5LEN);
+		PrintHexBytes(OutputBuffer, MD5Hash, MD5LEN);
 	}
+
+	return 1;
+}
+
+//**************************************************************************************
+BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
+//**************************************************************************************
+{
+	DWORD i;
+	HCRYPTPROV hProv = 0;
+	HCRYPTHASH hHash = 0;
+	DWORD cbHash = SHA256LEN;
+	BYTE Hash[SHA256LEN];
+
+	if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+	{
+		ErrorOutput("CryptAcquireContext failed");
+		return 0;
+	}
+
+	if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash))
+	{
+		ErrorOutput("CryptCreateHash failed");
+		CryptReleaseContext(hProv, 0);
+		return 0;
+	}
+
+	if (!CryptHashData(hHash, Buffer, Size, 0))
+	{
+		ErrorOutput("CryptHashData failed");
+		CryptReleaseContext(hProv, 0);
+		CryptDestroyHash(hHash);
+		return 0;
+	}
+
+	if (!CryptGetHashParam(hHash, HP_HASHVAL, Hash, &cbHash, 0))
+	{
+		ErrorOutput("CryptGetHashParam failed");
+	}
+
+	CryptDestroyHash(hHash);
+	CryptReleaseContext(hProv, 0);
+
+	for (i = 0; i < cbHash; i++)
+	{
+		sprintf(OutputBuffer + (i * 2), "%02x", Hash[i]);
+	}
+	OutputBuffer[cbHash * 2] = '\0';
 
 	return 1;
 }
@@ -2919,7 +2971,7 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	BOOL RetVal = FALSE;
@@ -3047,7 +3099,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (!Size)
@@ -3084,7 +3136,7 @@ BOOL DumpRegion(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	PVOID AllocationBase = GetAllocationBase(Address);
@@ -3153,7 +3205,7 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3177,7 +3229,7 @@ BOOL DumpRange(PVOID Address, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -3217,7 +3269,7 @@ int DumpPE(PVOID Buffer)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3249,7 +3301,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
@@ -3709,6 +3761,52 @@ static void EnableLoaderSnaps()
 #endif
 }
 
+void LoadWowMonitor()
+{
+	char capemon_x64Path[MAX_PATH] = "", capemon_x64Name[] = "capemon_x64.dll";
+
+#ifdef STANDALONE
+
+#ifndef _WIN64
+    memset(capemon_x64Path, 0, MAX_PATH);
+
+    strncpy_s(capemon_x64Path, MAX_PATH, capemon_x64Name, strlen(capemon_x64Name)+1);
+
+	uint64_t capemon_x64 = LoadLibrary64(capemon_x64Path);
+	if (capemon_x64)
+		DebugOutput("LoadWowMonitor: Successfully loaded capemon_x64: 0x%p\n", capemon_x64);
+    else
+		DebugOutput("LoadWowMonitor: Failed to load capemon_x64.\n");
+#else
+#endif
+
+#else
+
+#ifndef _WIN64
+    // Get path to 64-bit monitor
+	memset(capemon_x64Path, 0, MAX_PATH);
+    strncpy_s(capemon_x64Path, MAX_PATH, g_config.analyzer, strlen(g_config.analyzer)+1);
+
+	if (strlen(capemon_x64Path) + strlen("\\dll\\") + strlen(capemon_x64Name) >= MAX_PATH)
+	{
+		DebugOutput("LoadWowMonitor: Error, monitor directory path too long.\n");
+		return;
+	}
+
+    PathAppend(capemon_x64Path, "\\dll\\");
+    PathAppend(capemon_x64Path, capemon_x64Name);
+
+	uint64_t capemon_x64 = LoadLibrary64(capemon_x64Path);
+
+	if (capemon_x64)
+		DebugOutput("LoadWowMonitor: Successfully loaded capemon_x64: 0x%p\n", capemon_x64);
+    else
+		DebugOutput("LoadWowMonitor: Failed to load capemon_x64.\n");
+#endif
+
+#endif
+}
+
 void CAPE_post_init()
 {
 	if (g_config.syscall && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
@@ -3732,6 +3830,11 @@ void CAPE_post_init()
 
 	// Restore headers in case of IAT patching
 	RestoreHeaders();
+
+#ifndef _WIN64
+	if (g_config.wowmon)
+		LoadWowMonitor();
+#endif
 }
 
 void CAPE_init()

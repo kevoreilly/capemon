@@ -1894,6 +1894,19 @@ HOOKDEF(BOOL, WINAPI, DeviceIoControl,
 	__inout_opt  LPOVERLAPPED lpOverlapped
 );
 
+HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_In_  DWORD FirmwareTableID,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
+HOOKDEF(UINT, WINAPI, EnumSystemFirmwareTables,
+	_In_  DWORD FirmwareTableProviderSignature,
+	_Out_ PVOID FirmwareTableBuffer,
+	_In_  DWORD BufferSize
+);
+
 HOOKDEF(NTSTATUS, WINAPI, NtSetTimer,
 	IN HANDLE			   TimerHandle,
 	IN PLARGE_INTEGER	   DueTime,
@@ -4210,9 +4223,5 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD HeaderSum,
 	_Out_ PDWORD CheckSum
 );
-
-extern DWORD g_wmi_tls_index;
-#define bHookViaWbemLocator ((BOOL)(ULONG_PTR)TlsGetValue(g_wmi_tls_index))
-#define SetHookViaWbemLocator(val) TlsSetValue(g_wmi_tls_index, (PVOID)(ULONG_PTR)(val))
 
 #include "hook_vbscript.h"
