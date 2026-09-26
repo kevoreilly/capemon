@@ -36,6 +36,9 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_ENTRIES ((BUFFER_SIZE - 16) / sizeof(MBIEntry))
 #define PAGE_SIZE 4096
 #define OUTPUT_BUFFER_SIZE 2048
+// Addresses served by one RD request. Bounds the reply well inside BUFFER_SIZE; CAPEsolo
+// splits a larger set across requests.
+#define MAX_READ_ENTRIES 512
 #define CHUNKSIZE 16
 
 // Structure for MBI entry
@@ -81,6 +84,10 @@ uint32_t GetPageChecksum(HANDLE hProcess, uintptr_t Address);
 BOOL InteractiveTrace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 void InitCommands(void);
 const char* DispatchCommand(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* Command);
+const char* HandleCallStack(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
+const char* HandleReadPointers(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
+const char* HandleThreadInspect(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
+const char* FormatRegisters(PCONTEXT Context);
 void RegisterCommand(const char* name, CmdHandler func);
 
 static CONTEXT LastContext;
@@ -176,6 +183,59 @@ const char* DispatchCommand(struct _EXCEPTION_POINTERS* ExceptionInfo, const cha
 }
 
 
+// Splits a leading "<id>:<purpose>|" request tag off a command payload, in place, and
+// advances *data past it. CAPEsolo correlates responses by this tag instead of guessing
+// from the response length, which could not tell a 4-byte pointer read from a 4-byte
+// panel dump. An untagged payload yields an empty tag.
+static const char* SplitTag(char** data)
+{
+	char* Cursor = *data;
+	if (!Cursor || !*Cursor)
+		return "";
+
+	char* Rest = strchr(Cursor, '|');
+	if (!Rest)
+		return "";
+
+	*Rest++ = '\0';
+	*data = Rest;
+	return Cursor;
+}
+
+
+// Decodes one debug register's type and length out of DR7. The address in DR0-3 says
+// nothing about whether a breakpoint is an execute breakpoint or a data watch, nor how wide
+// it is, so listing breakpoints without this cannot tell them apart.
+// R/W: 00 execute, 01 write, 10 I/O, 11 read/write.  LEN: 00 = 1, 01 = 2, 10 = 8, 11 = 4.
+static void DescribeBreakpoint(ULONG_PTR Dr7, int Index, const char** Type, int* Size)
+{
+	unsigned int Rw = (unsigned int)((Dr7 >> (16 + Index * 4)) & 0x3);
+	unsigned int Len = (unsigned int)((Dr7 >> (18 + Index * 4)) & 0x3);
+
+	switch (Rw)
+	{
+		case 1:  *Type = "w";  break;
+		case 2:  *Type = "io"; break;
+		case 3:  *Type = "rw"; break;
+		default: *Type = "x";  break;
+	}
+
+	switch (Len)
+	{
+		case 1:  *Size = 2; break;
+		case 2:  *Size = 8; break;
+		case 3:  *Size = 4; break;
+		default: *Size = 1; break;
+	}
+}
+
+// Whether the local or global enable bit for `Index` is set in DR7.
+static BOOL BreakpointEnabled(ULONG_PTR Dr7, int Index)
+{
+	return (Dr7 >> (Index * 2)) & 0x3 ? TRUE : FALSE;
+}
+
+
 static BOOL ParseHex(const char* input, ULONG_PTR* output)
 {
 	int base = 16;
@@ -211,7 +271,6 @@ char* InteractiveDebuggerPipe(_In_ LPCTSTR lpOutputString, ...)
 
 	memset(DebuggerLine, 0, sizeof(DebuggerLine));
 	memset(TempBuffer, 0, sizeof(TempBuffer));
-	memset(DebuggerCommand, 0, sizeof(DebuggerCommand));
 
 	_vsnprintf_s(TempBuffer, BUFFER_SIZE, _TRUNCATE, lpOutputString, args);
 	_snprintf_s(DebuggerLine, BUFFER_SIZE, _TRUNCATE, "BREAK:%s", TempBuffer);
@@ -226,6 +285,13 @@ char* InteractiveDebuggerPipe(_In_ LPCTSTR lpOutputString, ...)
 	}
 
 	int Length = (int)strlen(DebuggerLine);
+
+	// Cleared only now, not before the format above: DebuggerCommand still holds the command
+	// being handled, and callers pass pointers into it as varargs (HandleInstructionPage and
+	// HandleMemoryDump pass the request tag SplitTag carved out of it, error paths echo the
+	// payload). Clearing it first blanked those %s arguments, so every tagged reply came back
+	// with an empty tag and CAPEsolo discarded it as unsolicited.
+	memset(DebuggerCommand, 0, sizeof(DebuggerCommand));
 
 	BOOL Success = CallNamedPipe(SOLO_PIPE, DebuggerLine, Length, DebuggerCommand, BUFFER_SIZE, (unsigned long*)&BytesRead, NMPWAIT_WAIT_FOREVER);
 	DWORD Error = GetLastError();
@@ -249,7 +315,9 @@ char* InteractiveDebuggerPipe(_In_ LPCTSTR lpOutputString, ...)
 	return DebuggerCommand;
 }
 
-char* OutputRegisters(PCONTEXT Context)
+// Formats into a static buffer without sending, so a caller composing a larger payload
+// (thread inspection) can reuse it. OutputRegisters stays the send-it-now wrapper.
+const char* FormatRegisters(PCONTEXT Context)
 {
 	static char OutputBuffer[OUTPUT_BUFFER_SIZE];
 	memset(OutputBuffer, 0, sizeof(OutputBuffer));
@@ -359,7 +427,12 @@ char* OutputRegisters(PCONTEXT Context)
 	}
 #endif
 
-	return InteractiveDebuggerPipe("%s\n", OutputBuffer);
+	return OutputBuffer;
+}
+
+char* OutputRegisters(PCONTEXT Context)
+{
+	return InteractiveDebuggerPipe("%s\n", FormatRegisters(Context));
 }
 
 
@@ -657,16 +730,18 @@ const char* HandleInstructionPage(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 	SIZE_T rd = 0;
 	unsigned char probe = 0;
 	HANDLE DebuggerProcessHandle = GetCurrentProcess();
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
 
-	if (data && *data) {
-		if (!ParseHex(data, &RequestedAddr)) 
+	if (Payload && *Payload) {
+		if (!ParseHex(Payload, &RequestedAddr)) 
 		{
-			return InteractiveDebuggerPipe("Failed with invalid instruction address: %s", data);
+			return InteractiveDebuggerPipe("Failed with invalid instruction address: %s", Payload);
 		}
 
 		if (!ReadProcessMemory(DebuggerProcessHandle, (LPCVOID)RequestedAddr, &probe, 1, &rd) || rd != 1)
 		{
-			return InteractiveDebuggerPipe("%p|UNREADABLE", (PVOID)(RequestedAddr & ~((ULONG_PTR)PAGE_SIZE - 1)));
+			return InteractiveDebuggerPipe("%p|%s|UNREADABLE", (PVOID)(RequestedAddr & ~((ULONG_PTR)PAGE_SIZE - 1)), Tag);
 		}
 	}
 
@@ -674,13 +749,13 @@ const char* HandleInstructionPage(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 	char* InstructionPage = RetrievePage(DebuggerProcessHandle, RequestedAddr, &PageBase);
 	if (InstructionPage)
 	{
-		const char* Command = InteractiveDebuggerPipe("%p|%s", (PVOID)PageBase, InstructionPage);
+		const char* Command = InteractiveDebuggerPipe("%p|%s|%s", (PVOID)PageBase, Tag, InstructionPage);
 		free(InstructionPage);
 		return Command;
 	}
 	else
 	{
-		return InteractiveDebuggerPipe("%p|NODATA", (PVOID)PageBase);
+		return InteractiveDebuggerPipe("%p|%s|NODATA", (PVOID)PageBase, Tag);
 	}
 }
 
@@ -816,14 +891,16 @@ const char* HandleMemoryDump(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 	SIZE_T BytesRead = 0;
 	unsigned char Probe = 0;
 	HANDLE ProcessHandle = GetCurrentProcess();
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
 
-	if (data && *data)
+	if (Payload && *Payload)
 	{
-		char* SizeSep = strchr(data, '|');
+		char* SizeSep = strchr(Payload, '|');
 		if (SizeSep) *SizeSep++ = '\0';
 
-		if (!ParseHex(data, &RequestedAddr))
-			return InteractiveDebuggerPipe("Failed with invalid dump address: %s\n", data);
+		if (!ParseHex(Payload, &RequestedAddr))
+			return InteractiveDebuggerPipe("Failed with invalid dump address: %s\n", Payload);
 
 		if (SizeSep && *SizeSep)
 		{
@@ -840,14 +917,14 @@ const char* HandleMemoryDump(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 			if (!ReadProcessMemory(ProcessHandle, (LPCVOID)RequestedAddr, Buffer, RequestedSize, &BytesRead) || BytesRead != RequestedSize)
 			{
 				free(Buffer);
-				return InteractiveDebuggerPipe("0x%p|Failed with unreadable memory\n", (PVOID)RequestedAddr);
+				return InteractiveDebuggerPipe("0x%p|%s|Failed with unreadable memory\n", (PVOID)RequestedAddr, Tag);
 			}
 
 			char* HexOutput = (char*)malloc(RequestedSize * 2 + 1);
 			if (!HexOutput)
 			{
 				free(Buffer);
-				return InteractiveDebuggerPipe("0x%p|Failed with hex formatting.\n", (PVOID)RequestedAddr);
+				return InteractiveDebuggerPipe("0x%p|%s|Failed with hex formatting.\n", (PVOID)RequestedAddr, Tag);
 			}
 
 			for (SIZE_T I = 0; I < RequestedSize; ++I)
@@ -855,7 +932,7 @@ const char* HandleMemoryDump(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 				sprintf(HexOutput + I * 2, "%02X", Buffer[I]);
 			}
 
-			const char* Command = InteractiveDebuggerPipe("0x%p|%s\n", (PVOID)RequestedAddr, HexOutput);
+			const char* Command = InteractiveDebuggerPipe("0x%p|%s|%s\n", (PVOID)RequestedAddr, Tag, HexOutput);
 			free(HexOutput);
 			free(Buffer);
 			return Command;
@@ -863,19 +940,79 @@ const char* HandleMemoryDump(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 
 		if (!ReadProcessMemory(ProcessHandle, (LPCVOID)RequestedAddr, &Probe, 1, &BytesRead) || BytesRead != 1)
 		{
-			return InteractiveDebuggerPipe("0x%p|Failed with unreadable dump address\n", (PVOID)RequestedAddr);
+			return InteractiveDebuggerPipe("0x%p|%s|Failed with unreadable dump address\n", (PVOID)RequestedAddr, Tag);
 		}
 	}
 
 	char* MemDump = DumpMemoryView(ProcessHandle, ExceptionInfo->ContextRecord, RequestedAddr, MAX_LINES);
 	if (MemDump)
 	{
-		const char* Command = InteractiveDebuggerPipe("0x%p|%s\n", (PVOID)RequestedAddr, MemDump);
+		const char* Command = InteractiveDebuggerPipe("0x%p|%s|%s\n", (PVOID)RequestedAddr, Tag, MemDump);
 		free(MemDump);
 		return Command;
 	}
 
 	return InteractiveDebuggerPipe("Failed to dump memory.\n");
+}
+
+
+// Reads one pointer from each of a comma-separated list of addresses, in a single round trip.
+//
+// CAPEsolo names indirect calls in the disassembly view by reading the import slot each one
+// goes through. Doing that with one MD per slot cost ~110ms each - the command loop below
+// sleeps 100ms between commands - so a window's worth of calls took seconds and could not be
+// resolved on every break. Batching makes it one reply.
+//
+// Addresses that cannot be read are left out of the reply rather than given a sentinel, so
+// the caller learns which failed by their absence and nothing has to be parsed to find out.
+const char* HandleReadPointers(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	HANDLE ProcessHandle = GetCurrentProcess();
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
+
+	if (!Payload || !*Payload)
+		return InteractiveDebuggerPipe("Failed with no addresses to read.\n");
+
+	// Per entry: two pointers as %p, a comma between them and a separator before the next.
+	size_t Cap = MAX_READ_ENTRIES * (sizeof(PVOID) * 4 + 4) + 1;
+	char* Output = (char*)malloc(Cap);
+	if (!Output)
+		return InteractiveDebuggerPipe("Failed with memory allocation.\n");
+
+	*Output = '\0';
+	int Count = 0;
+	int Offset = 0;
+	char* Cursor = Payload;
+
+	while (Cursor && *Cursor && Count < MAX_READ_ENTRIES)
+	{
+		// ParseHex rejects trailing input, so each address has to be terminated in place
+		// before it is parsed.
+		char* Next = strchr(Cursor, ',');
+		if (Next)
+			*Next++ = '\0';
+
+		ULONG_PTR Address = 0;
+		if (ParseHex(Cursor, &Address))
+		{
+			ULONG_PTR Value = 0;
+			SIZE_T BytesRead = 0;
+
+			if (ReadProcessMemory(ProcessHandle, (LPCVOID)Address, &Value, sizeof(Value), &BytesRead)
+				&& BytesRead == sizeof(Value))
+			{
+				Offset += sprintf(Output + Offset, "%s%p,%p", Count ? "|" : "", (PVOID)Address, (PVOID)Value);
+				Count++;
+			}
+		}
+
+		Cursor = Next;
+	}
+
+	const char* Command = InteractiveDebuggerPipe("%s|%s\n", Tag, Output);
+	free(Output);
+	return Command;
 }
 
 
@@ -894,11 +1031,221 @@ const char* HandleStackView(struct _EXCEPTION_POINTERS* ExceptionInfo, const cha
 	return InteractiveDebuggerPipe("Failed to dump stack view.\n");
 }
 
+// Walks the call stack from the break context and reports one entry per frame as
+// "index,returnAddress,framePointer,callSiteBytes", joined by '|'.
+//
+// x64 uses the unwind data via RtlLookupFunctionEntry/RtlVirtualUnwind, the same approach as
+// our_stackwalk in hooking_64.c, falling back to popping a return address off the stack for
+// frames with no unwind info - which is what shellcode and hand-written stubs look like.
+// x86 has no unwind tables, so it follows the EBP chain.
+//
+// callSiteBytes is up to CALLSITE_BYTES of memory ending at the return address, so the
+// frontend can decode backwards to find the CALL that made the frame without a round trip
+// per frame. Frames are best effort: anything unreadable ends the walk and what was found
+// so far is returned, rather than losing the whole stack to one bad frame.
+#define MAX_STACK_FRAMES 32
+#define CALLSITE_BYTES 16
+
+static BOOL ReadPointer(HANDLE ProcessHandle, ULONG_PTR Address, ULONG_PTR* Value)
+{
+	SIZE_T BytesRead = 0;
+	return ReadProcessMemory(ProcessHandle, (LPCVOID)Address, Value, sizeof(*Value), &BytesRead)
+		&& BytesRead == sizeof(*Value);
+}
+
+static int AppendFrame(char* Output, int Offset, int Index, ULONG_PTR ReturnAddress, ULONG_PTR FramePointer)
+{
+	HANDLE ProcessHandle = GetCurrentProcess();
+	unsigned char Bytes[CALLSITE_BYTES];
+	SIZE_T BytesRead = 0;
+	int Written = sprintf(Output + Offset, "%d,%p,%p,", Index, (PVOID)ReturnAddress, (PVOID)FramePointer);
+
+	// The call instruction ends where the frame returns to, so read backwards from there.
+	if (ReturnAddress > CALLSITE_BYTES
+		&& ReadProcessMemory(ProcessHandle, (LPCVOID)(ReturnAddress - CALLSITE_BYTES), Bytes, CALLSITE_BYTES, &BytesRead)
+		&& BytesRead == CALLSITE_BYTES)
+	{
+		for (SIZE_T i = 0; i < CALLSITE_BYTES; ++i)
+			Written += sprintf(Output + Offset + Written, "%02X", Bytes[i]);
+	}
+
+	Written += sprintf(Output + Offset + Written, "|");
+	return Written;
+}
+
+// Walks frames from an arbitrary context into Output, returning the frame count. Split out
+// of HandleCallStack so a suspended thread's captured context can be walked the same way as
+// the break context.
+static int WalkCallStack(PCONTEXT StartContext, char* Output, size_t BufSize)
+{
+	HANDLE ProcessHandle = GetCurrentProcess();
+	int Frames = 0;
+	int Offset = 0;
+
+	(void)BufSize;
+	__try
+	{
+#ifdef _WIN64
+		CONTEXT Context = *StartContext;
+		while (Frames < MAX_STACK_FRAMES && Context.Rip)
+		{
+			DWORD64 ImageBase = 0;
+			PVOID HandlerData = NULL;
+			ULONG_PTR EstablisherFrame = 0;
+			KNONVOLATILE_CONTEXT_POINTERS NvContext;
+			PRUNTIME_FUNCTION RunFunction = RtlLookupFunctionEntry(Context.Rip, &ImageBase, NULL);
+
+			Offset += AppendFrame(Output, Offset, Frames, (ULONG_PTR)Context.Rip, (ULONG_PTR)Context.Rsp);
+			Frames++;
+
+			memset(&NvContext, 0, sizeof(NvContext));
+			if (RunFunction == NULL)
+			{
+				// No unwind data: treat the top of the stack as a return address.
+				ULONG_PTR ReturnAddress = 0;
+				if (!ReadPointer(ProcessHandle, (ULONG_PTR)Context.Rsp, &ReturnAddress) || !ReturnAddress)
+					break;
+
+				Context.Rip = ReturnAddress;
+				Context.Rsp += sizeof(ULONG_PTR);
+			}
+			else
+			{
+				RtlVirtualUnwind(UNW_FLAG_NHANDLER, ImageBase, Context.Rip, RunFunction, &Context,
+					&HandlerData, &EstablisherFrame, &NvContext);
+			}
+		}
+#else
+		ULONG_PTR Frame = (ULONG_PTR)StartContext->Ebp;
+
+		Offset += AppendFrame(Output, Offset, Frames, (ULONG_PTR)StartContext->Eip, (ULONG_PTR)StartContext->Esp);
+		Frames++;
+
+		while (Frames < MAX_STACK_FRAMES && Frame)
+		{
+			ULONG_PTR ReturnAddress = 0;
+			ULONG_PTR NextFrame = 0;
+			if (!ReadPointer(ProcessHandle, Frame + sizeof(ULONG_PTR), &ReturnAddress) || !ReturnAddress)
+				break;
+
+			Offset += AppendFrame(Output, Offset, Frames, ReturnAddress, Frame);
+			Frames++;
+
+			// The chain must ascend, or a corrupt or hostile frame pointer loops forever.
+			if (!ReadPointer(ProcessHandle, Frame, &NextFrame) || NextFrame <= Frame)
+				break;
+
+			Frame = NextFrame;
+		}
+#endif
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		// Unwinding can fault on non-standard stacks; keep whatever was resolved.
+	}
+
+	if (Offset > 0 && Output[Offset - 1] == '|')
+		Output[Offset - 1] = 0;
+
+	return Frames;
+}
+
+const char* HandleCallStack(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	size_t BufSize = MAX_STACK_FRAMES * (48 + CALLSITE_BYTES * 2) + 1;
+	char* Output = (char*)malloc(BufSize);
+	if (!Output)
+		return InteractiveDebuggerPipe("Failed to allocate memory.\n");
+
+	if (!WalkCallStack(ExceptionInfo->ContextRecord, Output, BufSize))
+	{
+		free(Output);
+		return InteractiveDebuggerPipe("Failed to walk the call stack.\n");
+	}
+
+	const char* Command = InteractiveDebuggerPipe("%s\n", Output);
+	free(Output);
+	return Command;
+}
+
+// Snapshots another thread: registers, stack window and call stack from one suspension, so
+// the three views describe the same instant. Other threads keep running during a break, so
+// reading a live context would give a torn picture.
+//
+// The thread is resumed before anything is formatted - it is held only for GetThreadContext.
+const char* HandleThreadInspect(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	DWORD ThreadId = 0;
+	CONTEXT Context;
+	HANDLE ThreadHandle = NULL;
+	char* Frames = NULL;
+	char* StackView = NULL;
+	const char* Command = NULL;
+	size_t FramesSize = MAX_STACK_FRAMES * (48 + CALLSITE_BYTES * 2) + 1;
+
+	if (!data || !*data)
+		return InteractiveDebuggerPipe("Failed with missing thread id.\n");
+
+	ThreadId = (DWORD)strtoul(data, NULL, 0);
+	if (!ThreadId)
+		return InteractiveDebuggerPipe("Failed with invalid thread id: %s\n", data);
+
+	if (ThreadId == GetCurrentThreadId())
+		return InteractiveDebuggerPipe("Failed: thread %lu is the halted thread.\n", ThreadId);
+
+	ThreadHandle = OpenThread(THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME | THREAD_QUERY_INFORMATION, FALSE, ThreadId);
+	if (!ThreadHandle)
+		return InteractiveDebuggerPipe("Failed to open thread %lu.\n", ThreadId);
+
+	memset(&Context, 0, sizeof(Context));
+	Context.ContextFlags = CONTEXT_FULL;
+
+	if (SuspendThread(ThreadHandle) == (DWORD)-1)
+	{
+		CloseHandle(ThreadHandle);
+		return InteractiveDebuggerPipe("Failed to suspend thread %lu.\n", ThreadId);
+	}
+
+	if (!GetThreadContext(ThreadHandle, &Context))
+	{
+		ResumeThread(ThreadHandle);
+		CloseHandle(ThreadHandle);
+		return InteractiveDebuggerPipe("Failed to read the context of thread %lu.\n", ThreadId);
+	}
+
+	ResumeThread(ThreadHandle);
+	CloseHandle(ThreadHandle);
+
+	Frames = (char*)malloc(FramesSize);
+	if (Frames)
+	{
+		memset(Frames, 0, FramesSize);
+		WalkCallStack(&Context, Frames, FramesSize);
+	}
+
+	StackView = GetStackWindowView(GetCurrentProcess(), &Context, MAX_LINES);
+
+	// Section markers rather than another delimiter: the register dump, the stack view and
+	// the frame list each already use commas and pipes internally.
+	Command = InteractiveDebuggerPipe("[TID]\n%lu\n[REGS]\n%s\n[STACK]\n%s\n[FRAMES]\n%s\n",
+		ThreadId,
+		FormatRegisters(&Context),
+		StackView ? StackView : "",
+		Frames ? Frames : "");
+
+	if (StackView)
+		free(StackView);
+	if (Frames)
+		free(Frames);
+
+	return Command;
+}
+
 const char* HandleListBreakpoints(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
 {
 	CONTEXT* ctx = ExceptionInfo->ContextRecord;
 	int len = 0;
-	const int MaxPerLine = 32;
+	const int MaxPerLine = 48;
 	const int MaxEntries = 4;
 
 
@@ -917,11 +1264,18 @@ const char* HandleListBreakpoints(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 		(ULONG_PTR)ctx->Dr3
 	};
 
+	ULONG_PTR Dr7 = (ULONG_PTR)ctx->Dr7;
 	for (int i = 0; i < 4; ++i)
 	{
-		if (dr[i])
+		// Require both: DR7's enable bit, because a cleared breakpoint can leave a stale
+		// address behind in DR0-3, and a non-zero address, because an enable bit can be
+		// set on a register that holds none. Either test alone reports phantoms.
+		if (BreakpointEnabled(Dr7, i) && dr[i])
 		{
-			len += sprintf(Output + len, "%d,%p|", i, (PVOID)dr[i]);
+			const char* Type = "x";
+			int Size = 1;
+			DescribeBreakpoint(Dr7, i, &Type, &Size);
+			len += sprintf(Output + len, "%d,%p,%s,%d|", i, (PVOID)dr[i], Type, Size);
 		}
 	}
 
@@ -1174,8 +1528,50 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 	
 	*Sep = '\0';
 	const char* RegStr = Input;
-	const char* AddrStr = Sep + 1;
+	char* AddrStr = Sep + 1;
 	int Register = -1;
+
+	// Optional trailing fields: <slot>|<addr>[|<type>[|<size>]]. Absent means an execute
+	// breakpoint, which is what every caller sent before data watches existed.
+	char* TypeStr = strchr(AddrStr, '|');
+	char* SizeStr = NULL;
+	if (TypeStr)
+	{
+		*TypeStr++ = '\0';
+		SizeStr = strchr(TypeStr, '|');
+		if (SizeStr) *SizeStr++ = '\0';
+	}
+
+	DWORD BpType = BP_EXEC;
+	int BpSize = 0;
+	if (TypeStr && *TypeStr)
+	{
+		if (!strcmp(TypeStr, "x"))
+			BpType = BP_EXEC;
+		else if (!strcmp(TypeStr, "w"))
+			BpType = BP_WRITE;
+		else if (!strcmp(TypeStr, "rw"))
+			BpType = BP_READWRITE;
+		else
+			return InteractiveDebuggerPipe("Failed with invalid breakpoint type: %s\n", TypeStr);
+	}
+
+	if (SizeStr && *SizeStr)
+	{
+		char* SizeEnd = NULL;
+		long ParsedSize = strtol(SizeStr, &SizeEnd, 0);
+		if (SizeEnd == SizeStr || *SizeEnd != '\0' ||
+			(ParsedSize != 1 && ParsedSize != 2 && ParsedSize != 4 && ParsedSize != 8))
+			return InteractiveDebuggerPipe("Failed with invalid breakpoint size: %s\n", SizeStr);
+
+		BpSize = (int)ParsedSize;
+	}
+
+	// A data watch needs a width; execute breakpoints must keep LEN at 1 byte.
+	if (BpType != BP_EXEC && BpSize == 0)
+		BpSize = 1;
+	else if (BpType == BP_EXEC)
+		BpSize = 0;
 
 	if (strcmp(RegStr, "next") != 0)
 	{
@@ -1195,7 +1591,7 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 	ULONG_PTR BpAddress = (ULONG_PTR)addr;
 	if (Register == -1)
 	{
-		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)BpAddress, BP_EXEC, 0, InteractiveBreakpointCallback))
+		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, BpSize, (BYTE*)BpAddress, BpType, 0, InteractiveBreakpointCallback))
 		{
 			return InteractiveDebuggerPipe("Breakpoint %d set at 0x%p\n", StepOverRegister, (PVOID)BpAddress);
 		}
@@ -1206,7 +1602,7 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 	}
 	else
 	{
-		if (ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, Register, 0, (BYTE*)BpAddress, BP_EXEC, 0, InteractiveBreakpointCallback))
+		if (ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, Register, BpSize, (BYTE*)BpAddress, BpType, 0, InteractiveBreakpointCallback))
 		{
 			return InteractiveDebuggerPipe("Breakpoint %d set at 0x%p\n", Register, (PVOID)BpAddress);
 		}
@@ -1571,7 +1967,10 @@ void InitCommands(void)
 	RegisterCommand("OU", HandleStepOut);
 	RegisterCommand("SK", HandleStackView);
 	RegisterCommand("MD", HandleMemoryDump);
+	RegisterCommand("RD", HandleReadPointers);
 	RegisterCommand("LB", HandleListBreakpoints);
+	RegisterCommand("CS", HandleCallStack);
+	RegisterCommand("TI", HandleThreadInspect);
 	RegisterCommand("FL", HandleFlagMod);
 	RegisterCommand("RU", HandleRunUntil);
 	RegisterCommand("TH", HandleListThreads);
