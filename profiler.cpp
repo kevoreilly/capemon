@@ -11,6 +11,7 @@ extern "C" {
     extern unsigned int DotNetCacheDumpCount;
     extern lookup_t g_dotnet_jit;
     extern struct _g_config g_config;
+    extern CRITICAL_SECTION g_jit_dump_lock;
 }
 
 // Global profiler CLSID: {F39DABDF-BA6B-41E8-AB2A-16BE2E111005}
@@ -128,12 +129,17 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
         DebugOutput("CorProfiler JIT: %S.%S (Size: 0x%x)\n", className, methodName, cbMethodSize);
         // We reuse the existing CAPE meta logging that hook_clr uses.
         // We can't do Native break-on-jit easily from here because the Native code hasn't been generated yet (this is JITCompilationStarted).
-        // But we can dump the IL bytecode.
+        // But we can dump the IL bytecode under g_jit_dump_lock to protect CapeMetaData.
+        EnterCriticalSection(&g_jit_dump_lock);
         if (DotNetCacheDumpCount < g_config.jit_dumps) {
-            SetCapeMetaData(0, 0, NULL, (PVOID)pMethodHeader); // Use 0 for dump type, or define a new one if necessary.
+            CapeMetaData->ModulePath = NULL;
+            CapeMetaData->DumpType = 0;
+            CapeMetaData->TypeString = ".NET Profiler MSIL bytecode";
+            CapeMetaData->Address = (PVOID)pMethodHeader;
             DumpMemoryRaw((PVOID)pMethodHeader, (SIZE_T)cbMethodSize);
-            InterlockedIncrement(&DotNetCacheDumpCount);
+            DotNetCacheDumpCount++;
         }
+        LeaveCriticalSection(&g_jit_dump_lock);
     }
 
     return S_OK;
