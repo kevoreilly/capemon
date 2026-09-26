@@ -40,6 +40,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define CUCKOODBG 0
 #endif
 
+#define WIDE_STRING_LIMIT 32768
+
 char *our_process_path;
 char *our_process_name;
 char *our_dll_path;
