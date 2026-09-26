@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <tlhelp32.h>
 #include <ncrypt.h>
 #include "hook_trace.h"
+#include "lookup.h"
 #include <Wbemidl.h>
 
 #pragma comment(lib, "wbemuuid.lib")
@@ -1331,7 +1332,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 HOOKDEF(HRESULT, WINAPI, WMI_Next,
 	_In_		PVOID	_this,
 	_In_		LONG	lFlags,
-	_Out_		BSTR	wszName,
+	_Out_		BSTR	*strName,
 	_Out_		VARIANT	*pVal,
 	_Out_opt_	CIMTYPE	*pType,
 	_Out_opt_	LONG	*plFlavor
@@ -4223,5 +4224,13 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD HeaderSum,
 	_Out_ PDWORD CheckSum
 );
+
+void InitWmiSpoofStrings(void);
+
+// Per-thread "hooking via IWbemLocator" flag. Uses the lock-free lookup table
+// (LOOKUP_THREAD idiom) instead of TLS, matching the SafeLookup convention.
+extern lookup_t g_wmi_locator_lookup;
+#define bHookViaWbemLocator (*(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL))
+#define SetHookViaWbemLocator(val) (bHookViaWbemLocator = (BOOL)(val))
 
 #include "hook_vbscript.h"

@@ -75,6 +75,13 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `fake-rdtsc` | Boolean | Enable fake RDTSC (Read Time-Stamp Counter) results. |
 | `nop-rdtscp` | Boolean | NOP (No Operation) the RDTSCP instruction. |
 | `cpu-count` | Integer | Spoof the number of CPU cores (default: 4). |
+| `wmi-board-vendor` | String | Spoof the motherboard manufacturer returned via WMI Win32_BaseBoard queries (default: "ASUSTeK COMPUTER INC."). |
+| `wmi-board-product` | String | Spoof the motherboard product model returned via WMI Win32_BaseBoard queries (default: "PRIME Z390-A"). |
+| `wmi-board-serial` | String | Spoof the motherboard serial number returned via WMI Win32_BaseBoard queries (default: "190442345001294"). |
+| `wmi-disk-model` | String | Spoof the physical disk drive model returned via WMI Win32_DiskDrive queries (default: "Samsung SSD 860 EVO 500GB"). |
+| `wmi-disk-serial` | String | Spoof the physical disk drive serial number returned via WMI Win32_DiskDrive queries (default: "S3Y1NX0K412941X"). |
+| `wmi-bios-vendor` | String | Spoof the BIOS manufacturer returned via WMI Win32_BIOS queries (default: "American Megatrends Inc."). |
+| `wmi-bios-serial` | String | Spoof the BIOS serial number returned via WMI Win32_BIOS queries (default: "System Serial Number"). |
 | `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code (enabled by default). |
 | `ntdll-unhook` | Boolean | Enable protection against `ntdll` unhooking (via `NtReadFile`). |
 | `ntdll-remap` | Boolean | Enable `ntdll` remapping protection. |
