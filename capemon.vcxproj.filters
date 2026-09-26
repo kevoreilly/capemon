@@ -282,6 +282,9 @@
     <ClCompile Include="CAPE\YaraHarness.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
+    <ClCompile Include="CAPE\YaraHarnessX.c">
+      <Filter>Source Files\CAPE</Filter>
+    </ClCompile>
     <ClCompile Include="CAPE\InstrCallback.c">
       <Filter>Source Files\CAPE</Filter>
     </ClCompile>
