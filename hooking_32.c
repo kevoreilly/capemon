@@ -607,7 +607,7 @@ static ULONG_PTR get_short_rel_target(unsigned char *buf)
 	return 0;
 }
 
-int hook_api(hook_t *h, int type)
+static int hook_api_install(hook_t *h, int type)
 {
 	unsigned char *addr;
 	int ret = -1;
@@ -641,11 +641,6 @@ int hook_api(hook_t *h, int type)
 		/* HOOK_HOTPATCH_JMP_INDIRECT */{ &hook_api_hotpatch_jmp_indirect, 8, 0},
 		/* HOOK_SAFEST */{ &hook_api_safest, 2, 5},
 	};
-
-	// is this address already hooked?
-	if (h->is_hooked != 0) {
-		return 0;
-	}
 
 	if (hook_is_excluded(h))
 		return 0;
@@ -851,7 +846,8 @@ int hook_api(hook_t *h, int type)
 		if (type != HOOK_SAFEST) {
 			VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
 			DebugOutput("hook_api: Trampoline creation failed for %s, retrying with HOOK_SAFEST\n", h->funcname);
-			return hook_api(h, HOOK_SAFEST);
+			// already holding the claim, go straight to the body
+			return hook_api_install(h, HOOK_SAFEST);
 		}
 		pipe("WARNING:Unable to create trampoline for %z, hook type %d", h->funcname, type);
 		goto restore_protect;
@@ -878,6 +874,29 @@ int hook_api(hook_t *h, int type)
 
 restore_protect:
 	VirtualProtect(addr - hook_types[type].offset, hook_types[type].offset + hook_types[type].len, old_protect, &old_protect);
+
+	return ret;
+}
+
+int hook_api(hook_t *h, int type)
+{
+	int ret;
+
+	// Claim the hook: is_hooked 0 -> -1 ("install in progress"). This
+	// replaces a plain "if (h->is_hooked != 0) return 0;" at the top of
+	// the body. set_hooks_dll runs from the loader notification callback
+	// and from hook_special.c on arbitrary target threads, so two threads
+	// could both pass that test and install over each other.
+	if (InterlockedCompareExchange((volatile LONG *)&h->is_hooked, -1, 0) != 0)
+		return 0;
+
+	ret = hook_api_install(h, type);
+
+	// The body sets is_hooked to 1 on success. On any other outcome the
+	// claim has to be released, because delay-loaded DLLs rely on a later
+	// set_hooks_dll retrying the install.
+	if (h->is_hooked != 1)
+		InterlockedExchange((volatile LONG *)&h->is_hooked, 0);
 
 	return ret;
 }
