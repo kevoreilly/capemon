@@ -712,7 +712,9 @@ HOOKDEF(HANDLE, WINAPI, CreateThread,
 	char *module_name = NULL, *function_name = NULL;
 
 	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)lpStartAddress, &DllRVA);
-	function_name = GetExportNameByAddress((PVOID)*lpStartAddress);
+	// lpStartAddress is the start address, not a pointer to it; the old
+	// code dereferenced the thread's first instruction bytes
+	function_name = GetExportNameByAddress((PVOID)lpStartAddress);
 	disable_sleep_skip();
 
 	ret = Old_CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress, lpParameter, dwCreationFlags | CREATE_SUSPENDED, lpThreadId);
@@ -871,7 +873,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserThread,
 		StartAddress, StartParameter, ThreadHandle, ClientId);
 
 	if (NT_SUCCESS(ret) && ClientId && ThreadHandle) {
-		DWORD tid = tid_from_thread_handle(ThreadHandle);
+		DWORD tid = tid_from_thread_handle(*ThreadHandle);
 		if (pid != GetCurrentProcessId()) {
 			CreateRemoteThreadHandler(pid);
 			ProcessMessage(pid, 0);
