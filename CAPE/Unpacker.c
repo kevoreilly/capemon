@@ -25,8 +25,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\alloc.h"
 #include "..\config.h"
 
-#define PE_HEADER_LIMIT 0x200
-
 #define MAX_PRETRAMP_SIZE 320
 #define MAX_TRAMP_SIZE 128
 
@@ -314,8 +312,6 @@ void FreeHandler(PVOID BaseAddress)
 
 	if (TrackedRegion == NULL)
 		return;
-
-	DebugOutput("FreeHandler: Address: 0x%p.\n", BaseAddress);
 
 	hook_disable();
 

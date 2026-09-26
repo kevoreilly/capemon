@@ -52,6 +52,11 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\config.h"
 #include "..\lookup.h"
 
+#ifndef _WIN64
+#include "HeavensGate.h"
+#endif
+
+
 #pragma comment(lib, "Shlwapi.lib")
 
 typedef union _UNWIND_CODE {
@@ -2966,7 +2971,7 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	BOOL RetVal = FALSE;
@@ -3094,7 +3099,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (!Size)
@@ -3131,7 +3136,7 @@ BOOL DumpRegion(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	PVOID AllocationBase = GetAllocationBase(Address);
@@ -3200,7 +3205,7 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3224,7 +3229,7 @@ BOOL DumpRange(PVOID Address, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -3264,7 +3269,7 @@ int DumpPE(PVOID Buffer)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3296,7 +3301,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
@@ -3756,6 +3761,52 @@ static void EnableLoaderSnaps()
 #endif
 }
 
+void LoadWowMonitor()
+{
+	char capemon_x64Path[MAX_PATH] = "", capemon_x64Name[] = "capemon_x64.dll";
+
+#ifdef STANDALONE
+
+#ifndef _WIN64
+    memset(capemon_x64Path, 0, MAX_PATH);
+
+    strncpy_s(capemon_x64Path, MAX_PATH, capemon_x64Name, strlen(capemon_x64Name)+1);
+
+	uint64_t capemon_x64 = LoadLibrary64(capemon_x64Path);
+	if (capemon_x64)
+		DebugOutput("LoadWowMonitor: Successfully loaded capemon_x64: 0x%p\n", capemon_x64);
+    else
+		DebugOutput("LoadWowMonitor: Failed to load capemon_x64.\n");
+#else
+#endif
+
+#else
+
+#ifndef _WIN64
+    // Get path to 64-bit monitor
+	memset(capemon_x64Path, 0, MAX_PATH);
+    strncpy_s(capemon_x64Path, MAX_PATH, g_config.analyzer, strlen(g_config.analyzer)+1);
+
+	if (strlen(capemon_x64Path) + strlen("\\dll\\") + strlen(capemon_x64Name) >= MAX_PATH)
+	{
+		DebugOutput("LoadWowMonitor: Error, monitor directory path too long.\n");
+		return;
+	}
+
+    PathAppend(capemon_x64Path, "\\dll\\");
+    PathAppend(capemon_x64Path, capemon_x64Name);
+
+	uint64_t capemon_x64 = LoadLibrary64(capemon_x64Path);
+
+	if (capemon_x64)
+		DebugOutput("LoadWowMonitor: Successfully loaded capemon_x64: 0x%p\n", capemon_x64);
+    else
+		DebugOutput("LoadWowMonitor: Failed to load capemon_x64.\n");
+#endif
+
+#endif
+}
+
 void CAPE_post_init()
 {
 	if (g_config.syscall && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
@@ -3779,6 +3830,11 @@ void CAPE_post_init()
 
 	// Restore headers in case of IAT patching
 	RestoreHeaders();
+
+#ifndef _WIN64
+	if (g_config.wowmon)
+		LoadWowMonitor();
+#endif
 }
 
 void CAPE_init()
