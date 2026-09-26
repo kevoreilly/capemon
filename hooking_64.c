@@ -911,6 +911,7 @@ hook_data_t *alloc_hookdata_near(void *addr)
 			if (curr->NextFreeOffset + requested_size <= curr->CommittedSize) {
 				hook_data_t *allocated = (hook_data_t *)((PBYTE)curr->BaseAddress + curr->NextFreeOffset);
 				curr->NextFreeOffset += requested_size;
+				hookdata_range_add(allocated, requested_size);
 				return allocated;
 			}
 		}
@@ -942,6 +943,7 @@ hook_data_t *alloc_hookdata_near(void *addr)
 			
 			hook_data_t *allocated = (hook_data_t *)((PBYTE)new_arena->BaseAddress + new_arena->NextFreeOffset);
 			new_arena->NextFreeOffset += requested_size;
+			hookdata_range_add(allocated, requested_size);
 			return allocated;
 		}
 		offset += 0x10000;
@@ -959,8 +961,10 @@ hook_data_t *alloc_hookdata_low()
 
 	do {
 		status = pNtAllocateVirtualMemory(GetCurrentProcess(), (PVOID)&BaseAddress, 0, &RegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-		if (status >= 0)
+		if (status >= 0) {
+			hookdata_range_add(BaseAddress, sizeof(hook_data_t));
 			return (hook_data_t *)BaseAddress;
+		}
 		BaseAddress += offset;
 	} while (status < 0);
 
