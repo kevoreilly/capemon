@@ -1516,7 +1516,7 @@ void read_config(void)
 	g_config.spoofed_cpu_count = SPOOFED_CPU_CORE_NUM;
 	g_config.syscall = 1;
 	g_config.sleep_skip_seconds = 10;
-	g_config.go_hooks = 1;
+	g_config.go_hooks = 0;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
