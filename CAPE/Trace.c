@@ -1477,7 +1477,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		FlipCarryFlag(ExceptionInfo->ContextRecord);
 		DebuggerOutput("ActionDispatcher: flipping Carry flag.\n");
 	}
-	else if (!strnicmp(Action, "Jmp", 3))
+	else if (!strnicmp(Action, "Jmp", 3) || !strnicmp(Action, "Jump", 4))
 	{
 		if (!Target && !strnicmp(DecodedInstruction.mnemonic.p, "j", 1))	// force an existing (conditional) jump
 		{
@@ -1529,7 +1529,7 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 		else
 			DebuggerOutput("ActionDispatcher: Cannot set count - target value missing.\n");
     }
-	else if (!strnicmp(Action, "Skip", 4))
+	else if (!strnicmp(Action, "Skip", 4) || !strnicmp(Action, "Skp", 3))
 	{
 		// We want the skipped instruction to appear in the trace
 		TraceOutput(CIP, DecodedInstruction);

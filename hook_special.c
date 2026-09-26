@@ -363,10 +363,15 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 
 	get_lasterrors(&lasterror);
 
-	if (!pCoTaskMemFree)
-		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
-	if (!pProgIDFromCLSID)
-		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
+	if (!pCoTaskMemFree || !pProgIDFromCLSID) {
+		HMODULE hCombase = GetModuleHandle("combase");
+		if (hCombase) {
+			if (!pCoTaskMemFree)
+				pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(hCombase, "CoTaskMemFree");
+			if (!pProgIDFromCLSID)
+				pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(hCombase, "ProgIDFromCLSID");
+		}
+	}
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 		memcpy(&id1, rclsid, sizeof(id1));
@@ -390,11 +395,12 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 
 	get_lasterrors(&lasterror);
 
-	pProgIDFromCLSID(&id1, &resolv);
+	if (pProgIDFromCLSID)
+		pProgIDFromCLSID(&id1, &resolv);
 
 	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", dwClsContext, "riid", idbuf2, "ProgID", resolv);
 
-	if (resolv)
+	if (resolv && pCoTaskMemFree)
 		pCoTaskMemFree(resolv);
 
 	set_lasterrors(&lasterror);
@@ -419,10 +425,15 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 	get_lasterrors(&lasterror);
 
-	if (!pCoTaskMemFree)
-		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
-	if (!pProgIDFromCLSID)
-		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
+	if (!pCoTaskMemFree || !pProgIDFromCLSID) {
+		HMODULE hCombase = GetModuleHandle("combase");
+		if (hCombase) {
+			if (!pCoTaskMemFree)
+				pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(hCombase, "CoTaskMemFree");
+			if (!pProgIDFromCLSID)
+				pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(hCombase, "ProgIDFromCLSID");
+		}
+	}
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 			memcpy(&id1, rclsid, sizeof(id1));
@@ -448,8 +459,9 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 		LOQ_hresult("com", "shuu", "rclsid", idbuf1, "ClsContext", dwClsContext, "ServerName", pServerInfo ? pServerInfo->pwszName : NULL, "ProgID", resolv);
 
-		if (resolv)
+		if (resolv && pCoTaskMemFree)
 			pCoTaskMemFree(resolv);
+
 		set_lasterrors(&lasterror);
 	}
 
@@ -474,10 +486,15 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	get_lasterrors(&lasterror);
 
-	if (!pCoTaskMemFree)
-		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
-	if (!pProgIDFromCLSID)
-		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
+	if (!pCoTaskMemFree || !pProgIDFromCLSID) {
+		HMODULE hCombase = GetModuleHandle("combase");
+		if (hCombase) {
+			if (!pCoTaskMemFree)
+				pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(hCombase, "CoTaskMemFree");
+			if (!pProgIDFromCLSID)
+				pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(hCombase, "ProgIDFromCLSID");
+		}
+	}
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 		memcpy(&id1, rclsid, sizeof(id1));
@@ -511,7 +528,7 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", dwClsContext, "riid", idbuf2, "ProgID", resolv);
 
-	if (resolv)
+	if (resolv && pCoTaskMemFree)
 		pCoTaskMemFree(resolv);
 
 	set_lasterrors(&lasterror);

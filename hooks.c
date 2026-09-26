@@ -33,6 +33,7 @@ extern PVOID GetAddressByYara(HMODULE ModuleBase, PCHAR FunctionName);
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern DWORD GetTimeStamp(LPVOID Address);
+extern BOOL is_64bit_os;
 
 struct _g_config g_config;
 volatile int dummy_val;
@@ -200,14 +201,12 @@ hook_t full_hooks[] = {
 	HOOK_SPECIAL(mshtml, CDocument_write),
 
 	// COM object creation hook
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ole32, CoGetObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoGetObject),
+	HOOK(combase, CLSIDFromProgID),
+	HOOK(combase, CLSIDFromProgIDEx),
 
 	// WMI Hooks
 #ifdef _WIN64
@@ -454,9 +453,6 @@ hook_t full_hooks[] = {
 	HOOK(rasapi32, RasValidateEntryNameW),
 	HOOK(rasapi32, RasConnectionNotificationW),
 	HOOK(kernel32, SystemTimeToTzSpecificLocalTime),
-	HOOK(ole32, CLSIDFromProgID),
-	HOOK(ole32, CLSIDFromProgIDEx),
-	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
 	HOOK(kernel32, GetPhysicallyInstalledSystemMemory),
@@ -908,7 +904,7 @@ hook_t native_hooks[] = {
 	// File Hooks
 	HOOK(ntdll, NtQueryAttributesFile),
 	HOOK(ntdll, NtQueryFullAttributesFile),
-	HOOK(ntdll, NtCreateFile),
+	//HOOK(ntdll, NtCreateFile),
 	HOOK(ntdll, NtOpenFile),
 	HOOK(ntdll, NtReadFile),
 	HOOK(ntdll, NtWriteFile),
@@ -921,25 +917,25 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtCreateDirectoryObject),
 	HOOK(ntdll, NtQueryDirectoryObject),
 
-	// Native Registry Hooks
-	HOOK(ntdll, NtCreateKey),
-	HOOK(ntdll, NtOpenKey),
-	HOOK(ntdll, NtOpenKeyEx),
-	HOOK(ntdll, NtRenameKey),
-	HOOK(ntdll, NtReplaceKey),
-	HOOK(ntdll, NtEnumerateKey),
-	HOOK(ntdll, NtEnumerateValueKey),
-	HOOK(ntdll, NtSetValueKey),
-	HOOK(ntdll, NtQueryValueKey),
-	HOOK(ntdll, NtQueryMultipleValueKey),
-	HOOK(ntdll, NtDeleteKey),
-	HOOK(ntdll, NtDeleteValueKey),
-	HOOK(ntdll, NtLoadKey),
-	HOOK(ntdll, NtLoadKey2),
-	HOOK(ntdll, NtLoadKeyEx),
-	HOOK(ntdll, NtQueryKey),
-	HOOK(ntdll, NtSaveKey),
-	HOOK(ntdll, NtSaveKeyEx),
+// Native Registry Hooks
+//	HOOK(ntdll, NtCreateKey),
+//	HOOK(ntdll, NtOpenKey),
+//	HOOK(ntdll, NtOpenKeyEx),
+//	HOOK(ntdll, NtRenameKey),
+//	HOOK(ntdll, NtReplaceKey),
+//	HOOK(ntdll, NtEnumerateKey),
+//	HOOK(ntdll, NtEnumerateValueKey),
+//	HOOK(ntdll, NtSetValueKey),
+//	HOOK(ntdll, NtQueryValueKey),
+//	HOOK(ntdll, NtQueryMultipleValueKey),
+//	HOOK(ntdll, NtDeleteKey),
+//	HOOK(ntdll, NtDeleteValueKey),
+//	HOOK(ntdll, NtLoadKey),
+//	HOOK(ntdll, NtLoadKey2),
+//	HOOK(ntdll, NtLoadKeyEx),
+//	HOOK(ntdll, NtQueryKey),
+//	HOOK(ntdll, NtSaveKey),
+//	HOOK(ntdll, NtSaveKeyEx),
 
 	// Sync Hooks
 	HOOK(ntdll, NtCreateMutant),
@@ -1036,7 +1032,6 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtQueryPerformanceCounter),
 	HOOK(ntdll, NtDelayExecution),
 	HOOK(ntdll, NtWaitForSingleObject),
-	HOOK(ntdll, NtWaitForMultipleObjects),
 	HOOK_SPECIAL(ntdll, NtQuerySystemTime),
 	HOOK(ntdll, NtSetTimer),
 	HOOK(ntdll, NtSetTimerEx),
@@ -1085,10 +1080,6 @@ hook_t min_hooks[] = {
 	HOOK_SPECIAL(clr, nLoadImage),
 	HOOK_SPECIAL(mscorwks, nLoadImage),
 	HOOK_SPECIAL(coreclr, nLoadImage),
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
-	HOOK_SPECIAL(ole32, CoGetObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
@@ -1169,12 +1160,11 @@ hook_t office_hooks[] = {
 	HOOK_NOTAIL(jscript9, JsRunScript, 4),
 	HOOK_SPECIAL(mshtml, CDocument_write),
 	// COM object creation hook
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
 	HOOK_SPECIAL(combase, CoGetClassObject),
+	HOOK(combase, CLSIDFromProgID),
+	HOOK(combase, CLSIDFromProgIDEx),
 	HOOK_NOTAIL_ALT(ntdll, RtlDispatchException, 2),
 	HOOK_NOTAIL(ntdll, NtRaiseException, 3),
 	// lowest variant of MoveFile()
@@ -1461,9 +1451,6 @@ hook_t office_hooks[] = {
 	HOOK(rasapi32, RasValidateEntryNameW),
 	HOOK(rasapi32, RasConnectionNotificationW),
 	HOOK(kernel32, SystemTimeToTzSpecificLocalTime),
-	HOOK(ole32, CLSIDFromProgID),
-	HOOK(ole32, CLSIDFromProgIDEx),
-	//HOOK(ole32, OleConvertOLESTREAMToIStorage),
 	HOOK(kernel32, GlobalMemoryStatus),
 	HOOK(kernel32, GlobalMemoryStatusEx),
 	HOOK(user32, SystemParametersInfoA),
@@ -1674,9 +1661,6 @@ hook_t ie_hooks[] = {
 	HOOK_SPECIAL(ntdll, NtCreateUserProcess),
 	HOOK_SPECIAL(kernel32, CreateProcessInternalW),
 
-	HOOK_SPECIAL(ole32, CoCreateInstance),
-	HOOK_SPECIAL(ole32, CoCreateInstanceEx),
-	HOOK_SPECIAL(ole32, CoGetClassObject),
 	HOOK_SPECIAL(urlmon, IsValidURL),
 	HOOK_SPECIAL(combase, CoCreateInstance),
 	HOOK_SPECIAL(combase, CoCreateInstanceEx),
@@ -1748,7 +1732,7 @@ hook_t ie_hooks[] = {
 
 	HOOK(urlmon, URLDownloadToFileW),
 	HOOK(urlmon, URLDownloadToCacheFileW),
-	HOOK(ole32, CLSIDFromProgID),
+	HOOK(combase, CLSIDFromProgID),
 	HOOK(advapi32, RegOpenKeyExA),
 	HOOK(advapi32, RegOpenKeyExW),
 	HOOK(ntdll, NtOpenKeyEx),
@@ -2136,7 +2120,10 @@ void set_hooks()
 
 	DebugOutput("Hooked %d out of %d functions\n", Hooked, hooks_arraysize);
 
-	set_hooks_exe();
+#ifdef _WIN64
+	if (!is_64bit_os || !is_wow64_process())
+#endif
+		set_hooks_exe();
 
 	hook_enable();
 }

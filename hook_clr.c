@@ -1,7 +1,7 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include "hooking.h"
-#include <psapi.h>
-#pragma comment(lib, "version.lib")
 #include "log.h"
 #include "pipe.h"
 #include "misc.h"
@@ -13,7 +13,7 @@
 //#define DEBUG_COMMENTS
 
 // Minimum MSIL bytecode size threshold to scan/dump.
-// This filters out trivial methods (such as simple getters, setters, constructors,
+// This filters out trivial methods (such as simple getters, setters, constructors, 
 // and boilerplate framework methods) to prevent output spam and improve performance.
 #define MIN_MSIL_SIZE_THRESHOLD 32
 
@@ -21,61 +21,17 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 
-// Standard CLR metadata types from corhdr.h
-typedef ULONG mdToken;
-typedef mdToken mdTypeDef;
-typedef mdToken mdMethodDef;
-typedef mdToken mdTypeRef;
-typedef const unsigned char* PCCOR_SIGNATURE;
-
-// Opaque COM interface definition for IMetaDataImport (read-only metadata queries)
-// We define a compact, opaque vtable structure to preserve offsets cleanly
-typedef struct IMetaDataImportVtbl IMetaDataImportVtbl;
-
-typedef struct IMetaDataImport {
-    IMetaDataImportVtbl* lpVtbl;
-} IMetaDataImport;
-
-struct IMetaDataImportVtbl {
-    // IUnknown methods (0-2)
-    HRESULT (STDMETHODCALLTYPE *QueryInterface)(IMetaDataImport* This, REFIID riid, void** ppvObject);
-    ULONG (STDMETHODCALLTYPE *AddRef)(IMetaDataImport* This);
-    ULONG (STDMETHODCALLTYPE *Release)(IMetaDataImport* This);
-
-    // Preceding IMetaDataImport methods (3-27) declared as opaque pointers to preserve vtable layout offsets cleanly
-    PVOID CloseEnum;             // void CloseEnum(HCORENUM hEnum)
-    PVOID CountEnum;             // HRESULT CountEnum(HCORENUM hEnum, ULONG* pulCount)
-    PVOID ResetEnum;             // HRESULT ResetEnum(HCORENUM hEnum, ULONG ulPos)
-    PVOID EnumTypeDefs;          // HRESULT EnumTypeDefs(HCORENUM* phEnum, mdTypeDef rTypeDefs[], ULONG cMax, ULONG* pcTypeDefs)
-    PVOID EnumInterfaceImpls;    // HRESULT EnumInterfaceImpls(HCORENUM* phEnum, mdTypeDef td, mdInterfaceImpl rImpls[], ULONG cMax, ULONG* pcImpls)
-    PVOID EnumTypeRefs;          // HRESULT EnumTypeRefs(HCORENUM* phEnum, mdTypeRef rTypeRefs[], ULONG cMax, ULONG* pcTypeRefs)
-    PVOID FindTypeDefByName;     // HRESULT FindTypeDefByName(LPCWSTR szTypeDef, mdToken tkEnclosingClass, mdTypeDef* ptd)
-    PVOID GetScopeProps;         // HRESULT GetScopeProps(LPWSTR szName, ULONG cchName, ULONG* pchName, GUID* pmvid)
-    PVOID GetModuleFromScope;    // HRESULT GetModuleFromScope(mdModule* pmd)
-    PVOID GetTypeDefProps;       // HRESULT GetTypeDefProps(mdTypeDef td, LPWSTR szTypeDef, ULONG cchTypeDef, ULONG* pchTypeDef, DWORD* pdwTypeDefFlags, mdToken* ptkExtends)
-    PVOID GetInterfaceImplProps; // HRESULT GetInterfaceImplProps(mdInterfaceImpl ii, mdTypeDef* pclass, mdToken* ptkIface)
-    PVOID GetTypeRefProps;       // HRESULT GetTypeRefProps(mdTypeRef tr, mdToken* ptkResolutionScope, LPWSTR szName, ULONG cchName, ULONG* pchName)
-    PVOID ResolveTypeRef;        // HRESULT ResolveTypeRef(mdTypeRef tr, REFIID riid, IUnknown** ppIScope, mdTypeDef* ptd)
-    PVOID EnumMembers;           // HRESULT EnumMembers(HCORENUM* phEnum, mdTypeDef cl, mdToken rMembers[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumMembersWithName;   // HRESULT EnumMembersWithName(HCORENUM* phEnum, mdTypeDef cl, LPCWSTR szName, mdToken rMembers[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumMethods;           // HRESULT EnumMethods(HCORENUM* phEnum, mdTypeDef cl, mdMethodDef rMethods[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumMethodsWithName;   // HRESULT EnumMethodsWithName(HCORENUM* phEnum, mdTypeDef cl, LPCWSTR szName, mdMethodDef rMethods[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumFields;            // HRESULT EnumFields(HCORENUM* phEnum, mdTypeDef cl, mdFieldDef rFields[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumFieldsWithName;    // HRESULT EnumFieldsWithName(HCORENUM* phEnum, mdTypeDef cl, LPCWSTR szName, mdFieldDef rFields[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumParams;            // HRESULT EnumParams(HCORENUM* phEnum, mdMethodDef mb, mdParamDef rParams[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumMemberRefs;        // HRESULT EnumMemberRefs(HCORENUM* phEnum, mdToken tkParent, mdMemberRef rMemberRefs[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumMethodImpls;       // HRESULT EnumMethodImpls(HCORENUM* phEnum, mdTypeDef td, mdMethodDef rMethodBody[], mdMethodDef rMethodDecl[], ULONG cMax, ULONG* pcTokens)
-    PVOID EnumPermissionSets;    // HRESULT EnumPermissionSets(HCORENUM* phEnum, mdToken tk, DWORD dwActions, mdPermission rPermission[], ULONG cMax, ULONG* pcTokens)
-    PVOID FindMember;            // HRESULT FindMember(mdTypeDef cl, LPCWSTR szName, PCCOR_SIGNATURE pvSigBlob, ULONG cbSigBlob, mdToken* pmember)
-    PVOID FindMethod;            // HRESULT FindMethod(mdTypeDef cl, LPCWSTR szName, PCCOR_SIGNATURE pvSigBlob, ULONG cbSigBlob, mdMethodDef* pmb)
-    PVOID FindField;             // HRESULT FindField(mdTypeDef cl, LPCWSTR szName, PCCOR_SIGNATURE pvSigBlob, ULONG cbSigBlob, mdFieldDef* pfd)
-    PVOID FindMemberRef;         // HRESULT FindMemberRef(mdToken tkParent, LPCWSTR szName, PCCOR_SIGNATURE pvSigBlob, ULONG cbSigBlob, mdMemberRef* pmr)
-
-    // The specific method we actually call (28)
-    HRESULT (STDMETHODCALLTYPE *GetMethodProps)(IMetaDataImport* This, mdMethodDef mb, mdTypeDef* pClass, LPWSTR szMethod, ULONG cchMethod, ULONG* pchMethod, DWORD* pdwAttr, PCCOR_SIGNATURE* ppvSigBlob, ULONG* pcbSigBlob, ULONG* pulCodeRVA, DWORD* pdwImplFlags);
-};
-
+// Lock-free set of JIT native-code allocation bases (see lookup.c). The
+// compileMethod hook runs on CLR JIT worker threads concurrently; membership is
+// recorded with LOOKUP_MARK_SEEN and read with lookup_get, both of which are
+// safe without external locking. Entries are never removed.
 lookup_t g_dotnet_jit;
+
+// Serialises the .NET JIT *dump* path against itself across concurrent CLR JIT
+// worker threads and the teardown scan (DumpInterestingRegions): the jit_dumps
+// counter check+bump and the writes to the shared CapeMetaData scratch struct.
+// g_dotnet_jit above is lock-free and is NOT covered by this. Init in DllMain.
+CRITICAL_SECTION g_jit_dump_lock;
 
 // The CORINFO_METHOD_INFO structure is passed to compileMethod by the CLR JIT engine.
 // The first four fields are extremely stable and consistent across all .NET versions.
@@ -86,127 +42,398 @@ typedef struct {
     unsigned int          ILCodeSize;  // size of the decrypted MSIL bytecode in bytes
 } CORINFO_METHOD_INFO_REDUCED;
 
-#ifdef _WIN64
-typedef const char* (__stdcall *fnGetMethodName)(PVOID _this, PVOID ftn, const char** moduleName);
-typedef HRESULT (__stdcall *fnGetModuleMetadata)(PVOID _this, PVOID scope, DWORD dwOpenFlags, REFIID riid, IUnknown** ppOut);
+// These ICorJitInfo methods are plain virtuals (no __stdcall qualifier), so on
+// x86 they are __thiscall (this in ECX); on x64 there is a single convention.
+// The name accessor differs by runtime, hence four shapes:
+//
+//   Framework (clr.dll), METHOD_NAME_ABI_FRAMEWORK_V2:
+//     const char* getMethodName(CORINFO_METHOD_HANDLE ftn, const char** moduleName)
+//   .NET Core 2.1 ... .NET 2.2, METHOD_NAME_ABI_CORE_V3:
+//     const char* getMethodNameFromMetadata(CORINFO_METHOD_HANDLE ftn,
+//         const char** className, const char** namespaceName)
+//   .NET Core 3.1 ... .NET 8, METHOD_NAME_ABI_CORE_V4:
+//     const char* getMethodNameFromMetadata(CORINFO_METHOD_HANDLE ftn,
+//         const char** className, const char** namespaceName,
+//         const char** enclosingClassName)
+//   .NET 9+, METHOD_NAME_ABI_CORE_V5 (adds maxEnclosingClassNames):
+//     ...same, plus  size_t maxEnclosingClassNames
+typedef enum {
+	METHOD_NAME_ABI_NONE = 0,
+	METHOD_NAME_ABI_FRAMEWORK_V2,
+	METHOD_NAME_ABI_CORE_V3,
+	METHOD_NAME_ABI_CORE_V4,
+	METHOD_NAME_ABI_CORE_V5
+} method_name_abi_t;
+
+#if defined(_M_IX86)
+typedef const char* (__fastcall *fnGetMethodName_v2)(PVOID _this, PVOID dummy, PVOID ftn, const char** moduleName);
+typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v3)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName);
+typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
+typedef const char* (__fastcall *fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID dummy, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #else
-typedef const char* (__fastcall *fnGetMethodName)(PVOID _ecx, PVOID _edx, PVOID ftn, const char** moduleName);
-typedef HRESULT (__fastcall *fnGetModuleMetadata)(PVOID _ecx, PVOID _edx, PVOID scope, DWORD dwOpenFlags, REFIID riid, IUnknown** ppOut);
+typedef const char* (*fnGetMethodName_v2)(PVOID _this, PVOID ftn, const char** moduleName);
+typedef const char* (*fnGetMethodNameFromMetadata_v3)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName);
+typedef const char* (*fnGetMethodNameFromMetadata_v4)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName);
+typedef const char* (*fnGetMethodNameFromMetadata_v5)(PVOID _this, PVOID ftn, const char** className, const char** namespaceName, const char** enclosingClassName, size_t maxEnclosingClassNames);
 #endif
 
-// Safe helper to resolve Class and Method metadata names dynamically
-static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** moduleName) {
-    const char* name = NULL;
-    if (!compHnd || !ftn)
-        return NULL;
+// --- .NET runtime identification ----------------------------------------------
+// getMethodName() sits at a version-dependent offset in the ICorJitInfo vtable
+// that the runtime deliberately reorders on every JIT-EE interface revision
+// (.NET Framework 2.0/4.x, .NET Core, .NET 5-9...). There is no offset that is
+// correct across runtimes, so we never call a hard-coded slot blindly: we
+// identify the running CLR once and look the slot up in GetMethodNameSlot()
+// below. Unknown layout => name resolution is skipped and nothing else changes.
+typedef enum {
+	DOTNET_RT_UNKNOWN = 0,
+	DOTNET_RT_FRAMEWORK,   // clr.dll (4.x) / mscorwks.dll (2.0-3.5)
+	DOTNET_RT_CORE         // coreclr.dll (.NET Core / 5+)
+} dotnet_runtime_t;
 
-    __try {
-        PVOID* vtable = *(PVOID**)compHnd;
-        if (vtable && vtable[0]) {
-            fnGetMethodName getMethodName = (fnGetMethodName)vtable[0];
-#ifdef _WIN64
-            name = getMethodName(compHnd, ftn, moduleName);
+static dotnet_runtime_t g_dotnet_runtime = DOTNET_RT_UNKNOWN;
+static char g_dotnet_version[64] = {0};   // best-effort, taken from the module directory
+static int  g_dotnet_major = 0;           // major version parsed from the above (Core only)
+static int  g_dotnet_minor = 0;           // minor version parsed from the above (Core only)
+static int  g_getmethodname_slot = -1;    // -1 => unknown layout, name resolution disabled
+static method_name_abi_t g_method_name_abi = METHOD_NAME_ABI_NONE;
+static BOOL g_dotnet_runtime_resolved = FALSE;
+
+// Resolves the ICorJitInfo vtable index of the name accessor for the detected
+// runtime and the ABI to call it with. Returns -1 (and *abi = NONE) when the
+// layout is not known for certain: the JIT-EE interface is reordered on every
+// major .NET release, so an index MUST be verified for that exact release
+// before being enabled here - either by counting the "...override;" method
+// declarations in that branch's src/coreclr/inc/icorjitinfoimpl_generated.h,
+// or with `dps poi(@comp)` in a debugger against the real binary. A wrong index
+// is still rejected by the output validation in SafeGetMethodName(), but -1
+// avoids the call (and its cost) entirely.
+static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_name_abi_t *abi)
+{
+	*abi = METHOD_NAME_ABI_NONE;
+
+	// getMethodName / getMethodNameFromMetadata ICorJitInfo vtable slot.
+	// Indices are based on real shipping binary verification.
+	switch (rt) {
+	case DOTNET_RT_CORE:
+		switch (major) {
+		case 1:
+			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+			return 105; // CoreCLR 1.1.x
+		case 2:
+			if (minor == 0) {
+				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+				return 106; // CoreCLR 2.0.x
+			} else {
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 114; // CoreCLR 2.1.x, 2.2.x
+			}
+		case 3:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 118; // CoreCLR 3.0.x / 3.1.x
+		case 5:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 113; // .NET 5.0
+		case 6:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 115; // .NET 6.0
+		case 7:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 117; // .NET 7.0
+		case 8:
+			*abi = METHOD_NAME_ABI_CORE_V4;
+			return 115; // .NET 8.0
+		case 9:
+			*abi = METHOD_NAME_ABI_CORE_V5;
+			return 120; // .NET 9.0
+		case 10:
+			*abi = METHOD_NAME_ABI_CORE_V5;
+			return 122; // .NET 10.0
+		case 11:
+			*abi = METHOD_NAME_ABI_CORE_V5;
+			return 123; // .NET 11.0
+		default:
+			return -1;
+		}
+	case DOTNET_RT_FRAMEWORK:
+		switch (major) {
+		case 1:
+			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+			return 105; // .NET Framework 1.1 (x86, based on SSCLI/Rotor corjit.h layout)
+		case 2:
+			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+#if defined(_M_AMD64) || defined(_M_X64)
+			return 16;  // amd64 slot
 #else
-            name = getMethodName(compHnd, NULL, ftn, moduleName);
+			return 110; // x86 slot
 #endif
-
-            if (name != NULL) {
-                char c = name[0];
-                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.' || c == '<' || c == '?')) {
-                    name = NULL;
-                }
-            }
-
-            if (name != NULL && moduleName && *moduleName) {
-                char c = (*moduleName)[0];
-                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '.' || c == '<' || c == '?')) {
-                    *moduleName = NULL;
-                }
-            }
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        name = NULL;
-    }
-    return name;
+		case 4:
+			switch (minor) {
+			case 0:
+				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+				return 101; // .NET 4.0 - 4.5.2
+			case 6:
+				*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
+				return 102; // .NET 4.6 - 4.6.2
+			case 7:
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 106; // .NET 4.7 - 4.7.2
+			case 8:
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 113; // .NET 4.8 - 4.8.1
+			default:
+				// Fallback to 113 (.NET 4.8) as default
+				*abi = METHOD_NAME_ABI_CORE_V3;
+				return 113;
+			}
+		default:
+			return -1;
+		}
+	default:
+		return -1;
+	}
 }
 
-// In-Memory Version Fingerprinting for JIT offsets
-static void GetDotNetVTableOffsets(HMODULE hClrModule, int* out_getModuleMetadata_idx, int* out_getMethodDefFromMethod_idx) {
-    // Structural Defaults
-    *out_getModuleMetadata_idx = 40;     
-    *out_getMethodDefFromMethod_idx = 113;
-    
-    if (!hClrModule) return;
-    
-    HRSRC hResInfo = FindResourceW(hClrModule, MAKEINTRESOURCEW(1), (LPCWSTR)16); // 16 == RT_VERSION
-    if (!hResInfo) return;
-    
-    HGLOBAL hResData = LoadResource(hClrModule, hResInfo);
-    if (!hResData) return;
-    
-    PVOID pData = LockResource(hResData);
-    if (!pData) return;
-    
-    DWORD dwResSize = SizeofResource(hClrModule, hResInfo);
-    if (dwResSize == 0) return;
-    
-    PVOID pAlloc = malloc(dwResSize);
-    if (!pAlloc) return;
-    
-    memcpy(pAlloc, pData, dwResSize);
-    
-    VS_FIXEDFILEINFO* pFixedInfo = NULL;
-    UINT puLen = 0;
-    
-    // Natively query from RAM mapped array. Zero disk I/O.
-    if (VerQueryValueW(pAlloc, L"\\", (LPVOID*)&pFixedInfo, &puLen) && pFixedInfo != NULL) {
-        DWORD major = HIWORD(pFixedInfo->dwFileVersionMS);
-        DWORD minor = LOWORD(pFixedInfo->dwFileVersionMS);
-        DWORD build = HIWORD(pFixedInfo->dwFileVersionLS);
-        
-        if (major == 2) {
-            *out_getMethodDefFromMethod_idx = 86;
-        } else if (major == 4 && build < 30319) {
-            *out_getMethodDefFromMethod_idx = 86;
-        } else if (major == 4 && build >= 30319) {
-            *out_getModuleMetadata_idx = 42; 
-            *out_getMethodDefFromMethod_idx = 113;
-        } else if (major >= 5) {
-            *out_getModuleMetadata_idx = 40;
-            *out_getMethodDefFromMethod_idx = 115;
-        }
-    }
-    
-    free(pAlloc);
+#ifndef HIWORD
+#define HIWORD(l) ((WORD)((((DWORD_PTR)(l)) >> 16) & 0xffff))
+#endif
+#ifndef LOWORD
+#define LOWORD(l) ((WORD)(((DWORD_PTR)(l)) & 0xffff))
+#endif
+
+typedef struct {
+	DWORD dwSignature;
+	DWORD dwStrucVersion;
+	DWORD dwFileVersionMS;
+	DWORD dwFileVersionLS;
+	DWORD dwProductVersionMS;
+	DWORD dwProductVersionLS;
+	DWORD dwFileFlagsMask;
+	DWORD dwFileFlags;
+	DWORD dwFileOS;
+	DWORD dwFileType;
+	DWORD dwFileSubtype;
+	DWORD dwFileDateMS;
+	DWORD dwFileDateLS;
+} VS_FIXEDFILEINFO_LOCAL;
+
+static void GetDllVersion(HMODULE hMod, int* major, int* minor)
+{
+	*major = 0;
+	*minor = 0;
+
+	if (!hMod)
+		return;
+
+	__try {
+		// RT_VERSION is (LPCSTR)16, VS_VERSION_INFO is (LPCSTR)1
+		HRSRC hRes = FindResourceA(hMod, (LPCSTR)1, (LPCSTR)16);
+		if (hRes) {
+			HGLOBAL hGlobal = LoadResource(hMod, hRes);
+			if (hGlobal) {
+				LPVOID pData = LockResource(hGlobal);
+				DWORD dwSize = SizeofResource(hMod, hRes);
+				if (pData && dwSize >= sizeof(VS_FIXEDFILEINFO_LOCAL)) {
+					DWORD* pDword = (DWORD*)pData;
+					DWORD* pLimit = (DWORD*)((BYTE*)pData + dwSize - sizeof(VS_FIXEDFILEINFO_LOCAL));
+					while (pDword < pLimit) {
+						if (*pDword == 0xFEEF04BD) { // VS_FFI_SIGNATURE
+							VS_FIXEDFILEINFO_LOCAL* pFileInfo = (VS_FIXEDFILEINFO_LOCAL*)pDword;
+							*major = HIWORD(pFileInfo->dwFileVersionMS);
+							*minor = LOWORD(pFileInfo->dwFileVersionMS);
+							break;
+						}
+						pDword++;
+					}
+				}
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		// Squelch any exceptions
+	}
 }
 
-// Queries IMetaDataImport directly from the CLR compileMethod context
-static IMetaDataImport* GetIMetaDataImport(PVOID compHnd, PVOID scope, int getModuleMetadata_idx) {
-    IMetaDataImport* pImport = NULL;
-    if (!compHnd || !scope)
-        return NULL;
+static void ResolveDotNetRuntime(void)
+{
+	HMODULE hMod = NULL;
 
-    __try {
-        PVOID* vtable = *(PVOID**)compHnd;
-        if (vtable && vtable[getModuleMetadata_idx]) {
-            fnGetModuleMetadata getModuleMetadata = (fnGetModuleMetadata)vtable[getModuleMetadata_idx];
-            // IID_IMetaDataImport GUID = { 0x7dac2ecc, 0xd030, 0x11d2, { 0x85, 0x9d, 0x00, 0xc0, 0x4f, 0x68, 0x32, 0x8b } }
-            GUID iid_import = { 0x7dac2ecc, 0xd030, 0x11d2, { 0x85, 0x9d, 0x00, 0xc0, 0x4f, 0x68, 0x32, 0x8b } };
-#ifdef _WIN64
-            HRESULT hr = getModuleMetadata(compHnd, scope, 0, &iid_import, (IUnknown**)&pImport);
+	// First-writer-wins, no lock: resolution is idempotent (every JIT thread
+	// derives the same runtime/version/slot from the loaded CLR), so a race just
+	// repeats identical work and identical writes. g_dotnet_runtime_resolved is
+	// published last, after the slot/ABI it gates on.
+	if (g_dotnet_runtime_resolved)
+		return;
+
+	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL)
+		g_dotnet_runtime = DOTNET_RT_CORE;
+	else if ((hMod = GetModuleHandleA("clr.dll")) != NULL || (hMod = GetModuleHandleA("mscorwks.dll")) != NULL)
+		g_dotnet_runtime = DOTNET_RT_FRAMEWORK;
+
+	// Both runtimes ship inside a version-named directory
+	// (...\Framework64\v4.0.30319\clr.dll, ...\Microsoft.NETCore.App\8.0.11\coreclr.dll),
+	// which is a hooked-API-free way to get a usable version token.
+	if (hMod) {
+		char path[MAX_PATH];
+		DWORD len = GetModuleFileNameA(hMod, path, MAX_PATH);
+		if (len > 0 && len < MAX_PATH) {
+			char *end = strrchr(path, '\\');
+			if (end) {
+				*end = '\0';
+				char *dir = strrchr(path, '\\');
+				if (dir) {
+					strncpy(g_dotnet_version, dir + 1, sizeof(g_dotnet_version) - 1);
+					g_dotnet_version[sizeof(g_dotnet_version) - 1] = '\0';
+				}
+			}
+		}
+	}
+
+	if (hMod) {
+		GetDllVersion(hMod, &g_dotnet_major, &g_dotnet_minor);
+	}
+
+	// Fallback to directory-name parsing if GetDllVersion didn't resolve version
+	if (g_dotnet_major == 0 && g_dotnet_version[0]) {
+		int major = 0, minor = 0;
+		// Skip leading 'v' if present (e.g. "v4.0.30319")
+		const char* verStr = g_dotnet_version;
+		if (verStr[0] == 'v' || verStr[0] == 'V') verStr++;
+		if (sscanf(verStr, "%d.%d", &major, &minor) == 2) {
+			g_dotnet_major = major;
+			g_dotnet_minor = minor;
+		} else if (sscanf(verStr, "%d", &major) == 1) {
+			g_dotnet_major = major;
+			g_dotnet_minor = 0;
+		}
+	}
+
+	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, g_dotnet_minor, &g_method_name_abi);
+	g_dotnet_runtime_resolved = TRUE;
+
+	DebugOutput("compileMethod: .NET runtime = %s %d.%d (%s, name accessor vtable slot %d)\n",
+		g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
+		g_dotnet_runtime == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown",
+		g_dotnet_major, g_dotnet_minor,
+		g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
+}
+
+// Bounded, fault-tolerant check that s is a readable, NUL-terminated string
+// (within 256 bytes) that plausibly looks like a managed type/method identifier.
+// Rejects anything a stray/mis-typed vtable call is likely to hand back.
+static BOOLEAN IsPlausibleName(const char* s)
+{
+	if (!s || our_isbadreadptr(s, 1))
+		return FALSE;
+
+	__try {
+		char c0 = s[0];
+		if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') ||
+		      c0 == '_' || c0 == '.' || c0 == '<' || c0 == '?'))
+			return FALSE;
+
+		for (size_t i = 1; i < 256; i++) {
+			if (s[i] == '\0')
+				return TRUE;
+		}
+		if (s[255] == '\0')
+			return TRUE;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		return FALSE;
+	}
+	return FALSE;
+}
+
+// Resolves the managed method name (return value) and, for the CoreCLR ABIs, the
+// class and namespace via out-params. Every path is guarded: unknown slot/ABI,
+// unreadable pointers and a faulting call all yield NULL with the out-params
+// cleared. Never invokes a hard-coded slot without a verified GetMethodNameSlot()
+// entry for the running runtime.
+static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** className, const char** namespaceName)
+{
+	const char* name = NULL;
+
+	if (className)
+		*className = NULL;
+	if (namespaceName)
+		*namespaceName = NULL;
+
+	if (!compHnd || !ftn || g_getmethodname_slot < 0 || g_method_name_abi == METHOD_NAME_ABI_NONE)
+		return NULL;
+
+	if (!g_dotnet_runtime_resolved || our_isbadreadptr(compHnd, sizeof(PVOID)) || our_isbadreadptr(ftn, sizeof(PVOID)))
+		return NULL;
+
+	__try {
+		PVOID* vtable = *(PVOID**)compHnd;
+		PVOID slotfn = (vtable && !our_isbadreadptr(vtable, (ULONG)((g_getmethodname_slot + 1) * sizeof(PVOID))))
+			? vtable[g_getmethodname_slot] : NULL;
+
+		if (slotfn && !our_isbadreadptr(slotfn, 1)) {
+			const char* enclosing = NULL;
+
+#if defined(_M_IX86)
+			switch (g_method_name_abi) {
+			case METHOD_NAME_ABI_FRAMEWORK_V2:
+				// className receives the combined "Namespace.Class" string.
+				name = ((fnGetMethodName_v2)slotfn)(compHnd, NULL, ftn, className);
+				break;
+			case METHOD_NAME_ABI_CORE_V3:
+				name = ((fnGetMethodNameFromMetadata_v3)slotfn)(compHnd, NULL, ftn, className, namespaceName);
+				break;
+			case METHOD_NAME_ABI_CORE_V4:
+				name = ((fnGetMethodNameFromMetadata_v4)slotfn)(compHnd, NULL, ftn, className, namespaceName, &enclosing);
+				break;
+			case METHOD_NAME_ABI_CORE_V5:
+				name = ((fnGetMethodNameFromMetadata_v5)slotfn)(compHnd, NULL, ftn, className, namespaceName, &enclosing, 0);
+				break;
+			default:
+				name = NULL;
+				break;
+			}
 #else
-            HRESULT hr = getModuleMetadata(compHnd, NULL, scope, 0, &iid_import, (IUnknown**)&pImport);
+			switch (g_method_name_abi) {
+			case METHOD_NAME_ABI_FRAMEWORK_V2:
+				// className receives the combined "Namespace.Class" string.
+				name = ((fnGetMethodName_v2)slotfn)(compHnd, ftn, className);
+				break;
+			case METHOD_NAME_ABI_CORE_V3:
+				name = ((fnGetMethodNameFromMetadata_v3)slotfn)(compHnd, ftn, className, namespaceName);
+				break;
+			case METHOD_NAME_ABI_CORE_V4:
+				name = ((fnGetMethodNameFromMetadata_v4)slotfn)(compHnd, ftn, className, namespaceName, &enclosing);
+				break;
+			case METHOD_NAME_ABI_CORE_V5:
+				name = ((fnGetMethodNameFromMetadata_v5)slotfn)(compHnd, ftn, className, namespaceName, &enclosing, 0);
+				break;
+			default:
+				name = NULL;
+				break;
+			}
 #endif
-            if (FAILED(hr)) {
-                pImport = NULL;
-            }
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        pImport = NULL;
-    }
-    return pImport;
+
+			if (name && !IsPlausibleName(name))
+				name = NULL;
+			if (name && className && *className && !IsPlausibleName(*className))
+				*className = NULL;
+			if (name && namespaceName && *namespaceName && !IsPlausibleName(*namespaceName))
+				*namespaceName = NULL;
+			if (!name) {
+				if (className)
+					*className = NULL;
+				if (namespaceName)
+					*namespaceName = NULL;
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		name = NULL;
+		if (className)
+			*className = NULL;
+		if (namespaceName)
+			*namespaceName = NULL;
+	}
+	return name;
 }
 
 HOOKDEF(int, WINAPI, compileMethod,
@@ -218,20 +445,26 @@ HOOKDEF(int, WINAPI, compileMethod,
 	uint32_t*		nativeSizeOfCode
 )
 {
-	CORINFO_METHOD_INFO_REDUCED *info = (CORINFO_METHOD_INFO_REDUCED *)methodInfo;
+	CORINFO_METHOD_INFO_REDUCED *info = NULL;
+	if (methodInfo && !our_isbadreadptr(methodInfo, sizeof(CORINFO_METHOD_INFO_REDUCED))) {
+		info = (CORINFO_METHOD_INFO_REDUCED *)methodInfo;
+	}
+
 	int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
-		PVOID AllocationBase = GetAllocationBase(*entryAddress);
-		if (AllocationBase && !lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0))
-			lookup_add(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0);
+		ResolveDotNetRuntime();
 
 		const char* className = NULL;
-		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className);
+		const char* namespaceName = NULL;
+		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className, &namespaceName);
 
 		if (methodName != NULL) {
 			if (g_config.jit_trace_all) {
-				LOQ_void("dotnet", "ss", "Class", className ? className : "UnknownClass", "Method", methodName);
-				DebugOutput("compileMethod: Translated .NET JIT API: %s.%s\n", className ? className : "UnknownClass", methodName);
+				LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
+					"Class", className ? className : "UnknownClass", "Method", methodName);
+				DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
+					namespaceName ? namespaceName : "", namespaceName ? "." : "",
+					className ? className : "UnknownClass", methodName);
 			}
 
 			// High-Signal Callstack Correlation Alerts
@@ -258,107 +491,48 @@ HOOKDEF(int, WINAPI, compileMethod,
 			}
 		}
 
-		if (g_config.yarascan)
-		{
-			// Scan JIT compiled native assembly code
-#ifdef DEBUG_COMMENTS
-			YaraScan(*entryAddress, *nativeSizeOfCode);
-#else
-			SilentYaraScan(*entryAddress, *nativeSizeOfCode);
-#endif
+		PVOID nativeCode = NULL;
+		uint32_t nativeCodeSize = 0;
 
-			// Scan original, decrypted intermediate MSIL bytecode (only if above size threshold)
-			if (info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD) {
+		if (entryAddress && !our_isbadreadptr(entryAddress, sizeof(PVOID))) {
+			nativeCode = *entryAddress;
+		}
+		if (nativeSizeOfCode && !our_isbadreadptr(nativeSizeOfCode, sizeof(uint32_t))) {
+			nativeCodeSize = *nativeSizeOfCode;
+		}
+
+		if (nativeCode && nativeCodeSize > 0 && !our_isbadreadptr(nativeCode, nativeCodeSize)) {
+			PVOID AllocationBase = GetAllocationBase(nativeCode);
+			if (AllocationBase)
+				LOOKUP_MARK_SEEN(&g_dotnet_jit, AllocationBase);
+
+			if (g_config.yarascan)
+			{
+				// Scan JIT compiled native assembly code
 #ifdef DEBUG_COMMENTS
-				YaraScan(info->ILCode, info->ILCodeSize);
+				YaraScan(nativeCode, nativeCodeSize);
 #else
-				SilentYaraScan(info->ILCode, info->ILCodeSize);
+				SilentYaraScan(nativeCode, nativeCodeSize);
 #endif
 			}
 		}
 
-		// Unified Metadata & Decrypted MSIL JIT Assembly Rebuilder Dumper
-		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD) {
-			if (DotNetCacheDumpCount < g_config.jit_dumps) {
-				int getModuleMetadata_idx = 40;
-				int getMethodDefFromMethod_idx = 113;
-
-				// Dynamically extract the CLR module version footprint in-memory using .rsrc block
-				PVOID AllocationBase = GetAllocationBase(*entryAddress);
-				if (AllocationBase != NULL) {
-					char moduleNamePath[MAX_PATH] = {0};
-					if (GetMappedFileNameA(GetCurrentProcess(), AllocationBase, moduleNamePath, MAX_PATH)) {
-						// Translate device path or simply resolve handle via name isolate
-						HMODULE hClrModule = GetModuleHandleA("clr.dll");
-						if (!hClrModule) hClrModule = GetModuleHandleA("coreclr.dll");
-						if (!hClrModule) hClrModule = GetModuleHandleA("mscorwks.dll");
-						
-						if (hClrModule) {
-							GetDotNetVTableOffsets(hClrModule, &getModuleMetadata_idx, &getMethodDefFromMethod_idx);
-						}
-					}
-				}
-
-				IMetaDataImport* pImport = GetIMetaDataImport(compHnd, info->scope, getModuleMetadata_idx);
-				if (pImport && pImport->lpVtbl && pImport->lpVtbl->GetMethodProps) {
-					// Retrieve the clean metadata properties for this method directly from the CLR
-					mdTypeDef classToken = 0;
-					wchar_t wszMethodName[256] = {0};
-					ULONG methodLen = 0;
-					DWORD dwAttr = 0;
-					PCCOR_SIGNATURE pvSig = NULL;
-					ULONG cbSig = 0;
-					ULONG rva = 0;
-					DWORD dwImplFlags = 0;
-
-					mdMethodDef mbToken = 0;
-					
-					// Resolve the method token safely using dynamically mapped ICorJitInfo::getMethodDefFromMethod
-					PVOID* jitVtable = *(PVOID**)compHnd;
-					if (jitVtable && jitVtable[getMethodDefFromMethod_idx]) {
-#ifdef _WIN64
-						typedef mdMethodDef (__stdcall *fnGetMethodDefFromMethod)(PVOID _this, PVOID ftn);
-						fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[getMethodDefFromMethod_idx];
-						
-						__try {
-							mbToken = getMethodDef(compHnd, info->ftn);
+		if (g_config.yarascan && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize))
+		{
+			// Scan original, decrypted intermediate MSIL bytecode (only if above size threshold)
+#ifdef DEBUG_COMMENTS
+			YaraScan(info->ILCode, info->ILCodeSize);
 #else
-						// x86 fastcall resolution
-						typedef mdMethodDef (__fastcall *fnGetMethodDefFromMethod)(PVOID _ecx, PVOID _edx, PVOID ftn);
-						fnGetMethodDefFromMethod getMethodDef = (fnGetMethodDefFromMethod)jitVtable[getMethodDefFromMethod_idx];
-						
-						__try {
-							mbToken = getMethodDef(compHnd, NULL, info->ftn);
+			SilentYaraScan(info->ILCode, info->ILCodeSize);
 #endif
-							
-							// A safely evaluated .NET Method token MUST possess the 0x06 Method identifier in its MSB
-							if ((mbToken & 0xFF000000) != 0x06000000) {
-								mbToken = 0; // Abort: The VTable index mapped an unrelated API
-							}
-						} __except (EXCEPTION_EXECUTE_HANDLER) {
-							mbToken = 0; // Abort
-						}
-					}
-					
-					if (mbToken != 0) {
+		}
 
-					__try {
-						HRESULT hr = pImport->lpVtbl->GetMethodProps(pImport, mbToken, &classToken, wszMethodName, 256, &methodLen, &dwAttr, &pvSig, &cbSig, &rva, &dwImplFlags);
-						if (SUCCEEDED(hr)) {
-							// Log resolved metadata properties cleanly into CAPE database
-							DebugOutput("compileMethod: CLR COM Metadata resolved method '%ws' (Token 0x%x, RVA 0x%x).\n", wszMethodName, mbToken, rva);
-
-							// We do not cache Method RVA as Metadata RVA here anymore.
-							// ScyllaHarness will robustly locate the IMAGE_COR20_HEADER natively.
-						}
-					}
-					__except (EXCEPTION_EXECUTE_HANDLER) {
-						DebugOutput("compileMethod: Exception occurred querying CLR COM metadata properties.\n");
-					}
-					}
-				}
-
-				// Dump the pristine, fully decrypted MSIL bytecode payload
+		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize)) {
+			// Held across the whole sequence so the jit_dumps counter and the
+			// shared CapeMetaData scratch fields stay consistent against other
+			// JIT threads and the teardown scan. Runs at most jit_dumps times.
+			EnterCriticalSection(&g_jit_dump_lock);
+			if (DotNetCacheDumpCount < g_config.jit_dumps) {
 				CapeMetaData->ModulePath = NULL;
 				CapeMetaData->DumpType = 0;
 				CapeMetaData->TypeString = ".NET JIT MSIL bytecode";
@@ -367,11 +541,12 @@ HOOKDEF(int, WINAPI, compileMethod,
 				DotNetCacheDumpCount++;
 				DebugOutput("compileMethod: Dumped decrypted .NET JIT MSIL bytecode at 0x%p (size 0x%x).\n", info->ILCode, info->ILCodeSize);
 			}
+			LeaveCriticalSection(&g_jit_dump_lock);
 		}
 
-		if (g_config.break_on_jit) {
+		if (g_config.break_on_jit && nativeCode) {
 			unsigned int Register;
-			if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, *entryAddress, BP_EXEC, 1, BreakpointCallback))
+			if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, nativeCode, BP_EXEC, 1, BreakpointCallback))
 				DebugOutput("compileMethod: set JIT native breakpoint.\n");
 			else
 				DebugOutput("compileMethod: failed to set JIT native breakpoint.\n");
@@ -379,6 +554,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 	}
 	return ret;
 }
+
 
 #ifdef _WIN64
 #define ARRAY_LENGTH_OFFSET 8
@@ -393,21 +569,22 @@ HOOKDEF(PVOID, WINAPI, nLoadImage,
 	_In_opt_ PVOID        pAppDomain,
 	_Inout_  PVOID*       pAssembly
 ) {
-	if (pArrayObject != NULL && g_config.procdump) {
+	if (pArrayObject != NULL && g_config.procdump && g_config.dotnet_nload) {
 		__try {
 			PDWORD pLength = (PDWORD)((PBYTE)pArrayObject + ARRAY_LENGTH_OFFSET);
 			PBYTE pRawData = (PBYTE)pArrayObject + ARRAY_DATA_OFFSET;
 
 			if (pLength && *pLength > 0 && IsAddressAccessible(pRawData)) {
 				DebugOutput("nLoadImage: Intercepted in-memory assembly byte array loading of size %u at 0x%p (Inspired by ExtremeDumper)\n", *pLength, pRawData);
-				
-				// Set metadata for reflective assembly load
+
+				EnterCriticalSection(&g_jit_dump_lock);
 				CapeMetaData->ModulePath = NULL;
 				CapeMetaData->DumpType = 0;
 				CapeMetaData->TypeString = ".NET Reflective Load PE";
 				CapeMetaData->Address = pRawData;
-				
+
 				DumpMemoryRaw(pRawData, (SIZE_T)*pLength);
+				LeaveCriticalSection(&g_jit_dump_lock);
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {

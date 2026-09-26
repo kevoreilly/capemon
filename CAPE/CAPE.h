@@ -96,6 +96,12 @@ extern int g_dotnet_modules_count;
 void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize);
 dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase);
 
+// Defined in hook_clr.c, initialised in DllMain. Serialises the .NET JIT dump
+// path - the compileMethod hook and DumpInterestingRegions() below - which share
+// the DotNetCacheDumpCount counter and the CapeMetaData scratch struct. The
+// g_dotnet_jit lookup set is lock-free and is not covered by this.
+extern CRITICAL_SECTION g_jit_dump_lock;
+
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
 
@@ -117,7 +123,7 @@ PVOID CallingModule;
 //
 #define STATUS_BAD_COMPRESSION_BUFFER	((NTSTATUS)0xC0000242L)
 
-#define	PE_HEADER_LIMIT		0x200	// Range to look for PE header within candidate buffer
+#define	PE_HEADER_LIMIT		0x300	// Range to look for PE header within candidate buffer
 
 #define SIZE_OF_LARGEST_IMAGE ((ULONG)0x77000000)
 

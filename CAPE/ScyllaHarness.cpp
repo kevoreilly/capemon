@@ -34,8 +34,6 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
-#define PE_HEADER_LIMIT 0x200
-
 //**************************************************************************************
 void ScyllaInit(HANDLE hProcess)
 //**************************************************************************************
@@ -485,7 +483,9 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 	ProcessAccessHelp::setCurrentProcessAsTarget();
 
 	// Surgically heal zeroed/mangled PE headers and CLR directories in-memory right before Scylla is called
-	HealDotNetPEHeaders(Buffer);
+	if (g_config.dotnet_heal) {
+		HealDotNetPEHeaders(Buffer);
+	}
 
 	DebugOutput("DumpPE: Instantiating PeParser with address: 0x%p.\n", Buffer);
 

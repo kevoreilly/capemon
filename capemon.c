@@ -561,7 +561,7 @@ void init_private_heap(void)
 #endif
 }
 
-extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock;
+extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock, g_jit_dump_lock;
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 
@@ -638,6 +638,20 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 			add_protected_pid(pids[i]);
 		}
 
+#ifdef _WIN64
+		if (is_64bit_os || is_wow64_process()) {
+			log_init(g_config.debug || g_config.standalone);
+			init_sleep_skip(g_config.first_process);
+			init_startup_time(g_config.startup_time);
+			InitializeCriticalSection(&readfile_critsec);
+			add_all_dlls_to_dll_ranges();
+			set_hooks();
+			g_dll_main_complete = TRUE;
+			set_lasterrors(&lasterror);
+			return TRUE;
+		}
+#endif
+
 		hkcu_init();
 
 		// initialize the log file
@@ -661,6 +675,7 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// initialize misc critical sections
 		InitializeCriticalSection(&readfile_critsec);
+		InitializeCriticalSection(&g_jit_dump_lock);
 		if (g_config.idbg)
 			InitializeCriticalSection(&g_interactive_debugger_lock);
 
