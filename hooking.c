@@ -44,6 +44,43 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 static lookup_t g_hook_info;
 static lookup_t g_force_hook_threads;
 
+volatile ULONG_PTR g_hookdata_min = (ULONG_PTR)-1;
+volatile ULONG_PTR g_hookdata_max = 0;
+
+// Widen the bounding range to cover [base, base+size). The range only ever
+// grows, and it is widened here, at allocation time, which is strictly
+// before the block is published into the hook table. A concurrent reader
+// therefore cannot observe an address inside a live hook_data_t while the
+// range still excludes it. Widening at install time instead would leave
+// exactly that window open.
+void hookdata_range_add(const void *base, size_t size)
+{
+	ULONG_PTR lo = (ULONG_PTR)base;
+	ULONG_PTR hi = lo + size;
+	ULONG_PTR cur;
+
+	if (!base)
+		return;
+
+	cur = g_hookdata_min;
+	while (lo < cur) {
+		ULONG_PTR prev = (ULONG_PTR)InterlockedCompareExchangePointer(
+			(PVOID volatile *)&g_hookdata_min, (PVOID)lo, (PVOID)cur);
+		if (prev == cur)
+			break;
+		cur = prev;
+	}
+
+	cur = g_hookdata_max;
+	while (hi > cur) {
+		ULONG_PTR prev = (ULONG_PTR)InterlockedCompareExchangePointer(
+			(PVOID volatile *)&g_hookdata_max, (PVOID)hi, (PVOID)cur);
+		if (prev == cur)
+			break;
+		cur = prev;
+	}
+}
+
 extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointOnReturn(PVOID Address);
@@ -242,7 +279,9 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 		for (i = 0; i < ARRAYSIZE(g_config.base_on_apiname); i++) {
 			if (!g_config.base_on_apiname[i])
 				break;
-			if (!__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.base_on_apiname[i])) {
+			// stricmp first: __called_by_hook walks the stack, and this loop
+			// runs once per configured base-on-API name
+			if (!stricmp(h->funcname, g_config.base_on_apiname[i]) && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer)) {
 				DebugOutput("Base-on-API: %s call detected in thread %d, main_caller_retaddr 0x%p.\n", g_config.base_on_apiname[i], GetCurrentThreadId(), main_caller_retaddr);
 				AllocationBase = GetHookCallerBase();
 				if (AllocationBase) {
@@ -284,7 +323,9 @@ void api_dispatch(hook_t *h, hook_info_t *hookinfo)
 	}
 
 
-	if (g_config.debugger && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer) && !stricmp(h->funcname, g_config.break_on_return)) {
+	// break_on_return_set gates this: without it the stack walk ran on
+	// every hooked call only to be discarded by a stricmp against ""
+	if (g_config.debugger && g_config.break_on_return_set && !stricmp(h->funcname, g_config.break_on_return) && !__called_by_hook(hookinfo->stack_pointer, hookinfo->frame_pointer)) {
 		DebugOutput("Break-on-return: %s call detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
 		if (main_caller_retaddr && !is_in_dll_range(main_caller_retaddr))
 			BreakpointOnReturn((PVOID)main_caller_retaddr);
