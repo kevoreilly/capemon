@@ -1944,14 +1944,12 @@ HOOKDEF(ULONG, __fastcall, vDbgPrintExWithPrefixInternal,
 	__in  BOOLEAN HandleBreakpoint
 ) {
 	UCHAR Buffer[512];
-	size_t cb = strlen(Prefix);
-	strcpy(Buffer, Prefix);
-	cb = _vsnprintf(Buffer + cb, sizeof(Buffer) - cb, Format, arglist) + cb;
+	size_t cb;
 
-	if (cb == -1) {
-		cb = sizeof(Buffer);
-		Buffer[sizeof(Buffer) - 1] = '\n';
-	}
+	strncpy_s((char *)Buffer, sizeof(Buffer), Prefix ? Prefix : "", _TRUNCATE);
+	cb = strlen((char *)Buffer);
+	if (_vsnprintf_s((char *)Buffer + cb, sizeof(Buffer) - cb, _TRUNCATE, Format, arglist) < 0)
+		Buffer[sizeof(Buffer) - 1] = '\0';
 
 	DebugOutput("%s", Buffer);
 

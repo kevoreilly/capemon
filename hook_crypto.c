@@ -225,6 +225,8 @@ HOOKDEF(BOOL, WINAPI, CryptEncryptMessage,
 	return ret;
 }
 
+#define HASH_MESSAGE_MAX (64 * 1024 * 1024)
+
 HOOKDEF(BOOL, WINAPI, CryptHashMessage,
 	_In_		 PCRYPT_HASH_MESSAGE_PARA pHashPara,
 	_In_		 BOOL fDetachedHash,
@@ -241,18 +243,34 @@ HOOKDEF(BOOL, WINAPI, CryptHashMessage,
 	BOOL ret;
 	uint8_t *mem;
 
-	for (i = 0; i < cToBeHashed; i++) {
-		length += rgcbToBeHashed[i];
-	}
-
-	mem = malloc(length);
-	if(mem != NULL) {
-		unsigned int off = 0;
-		for (i = 0, off = 0; i < cToBeHashed; i++) {
-			memcpy(mem + off, rgpbToBeHashed[i], rgcbToBeHashed[i]);
-			off += rgcbToBeHashed[i];
+	// cToBeHashed and the element lengths are caller-controlled: accumulate
+	// in 64-bit so the total cannot wrap the allocation size
+	ULONGLONG total = 0;
+	if (rgcbToBeHashed != NULL && rgpbToBeHashed != NULL) {
+		for (i = 0; i < cToBeHashed; i++) {
+			total += rgcbToBeHashed[i];
 		}
 	}
+	if (total > HASH_MESSAGE_MAX)
+		total = 0;
+	length = (DWORD)total;
+
+	mem = length ? malloc(length) : NULL;
+	if(mem != NULL) {
+		DWORD off = 0;
+		for (i = 0; i < cToBeHashed; i++) {
+			DWORD chunk = rgcbToBeHashed[i];
+			if (chunk > length - off)
+				chunk = length - off;
+			if (chunk == 0)
+				break;
+			memcpy(mem + off, rgpbToBeHashed[i], chunk);
+			off += chunk;
+		}
+		length = off;
+	}
+	else
+		length = 0;
 
 	ret = Old_CryptHashMessage(pHashPara, fDetachedHash, cToBeHashed,
 		rgpbToBeHashed, rgcbToBeHashed, pbHashedBlob, pcbHashedBlob,
