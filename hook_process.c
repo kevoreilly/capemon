@@ -791,7 +791,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateSection,
 
 	path_from_handle(FileHandle, FileName, UNICODE_STRING_MAX_BYTES);
 
-	LOQ_ntstatus("process", "PhopF", "SectionHandle", SectionHandle,  "DesiredAccess", DesiredAccess, "ObjectAttributes", ObjectAttributes ? ObjectAttributes->ObjectName : NULL, "FileHandle", FileHandle, "FileName", FileName);
+	LOQ_ntstatus("process", "PhopipF", "SectionHandle", SectionHandle, "DesiredAccess", DesiredAccess, "ObjectAttributes", ObjectAttributes ? ObjectAttributes->ObjectName : NULL, "SectionPageProtection", SectionPageProtection, "AllocationAttributes", AllocationAttributes, "FileHandle", FileHandle, "FileName", FileName);
 
 	if (NT_SUCCESS(ret) && FileHandle && (DesiredAccess & SECTION_MAP_WRITE))
 		file_write(FileHandle);
@@ -844,13 +844,41 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 	NTSTATUS ret = Old_NtMapViewOfSection(SectionHandle, ProcessHandle, BaseAddress, ZeroBits, CommitSize, SectionOffset, ViewSize, InheritDisposition, AllocationType, Win32Protect);
 
 	DWORD pid = pid_from_process_handle(ProcessHandle);
-	UNICODE_STRING *module_name = get_module_name((ULONG_PTR)*BaseAddress);
+	UNICODE_STRING *module_name = NULL;
+	UNICODE_STRING dynamic_module_name;
+	wchar_t basename_buffer[MAX_PATH];
+	wchar_t *filepath = NULL;
+	wchar_t *absolutepath = NULL;
+
+	if (NT_SUCCESS(ret) && BaseAddress && *BaseAddress) {
+		module_name = get_module_name((ULONG_PTR)*BaseAddress);
+		if (!module_name) {
+			filepath = malloc(MAX_PATH * sizeof(wchar_t));
+			if (filepath) {
+				if (GetMappedFileNameW(GetCurrentProcess(), *BaseAddress, filepath, MAX_PATH)) {
+					absolutepath = malloc(32768 * sizeof(wchar_t));
+					if (absolutepath) {
+						ensure_absolute_unicode_path(absolutepath, filepath);
+						wchar_t *basename = get_dll_basename(absolutepath);
+						if (basename) {
+							wcsncpy(basename_buffer, basename, MAX_PATH - 1);
+							basename_buffer[MAX_PATH - 1] = L'\0';
+							dynamic_module_name.Buffer = basename_buffer;
+							dynamic_module_name.Length = wcslen(basename_buffer) * sizeof(wchar_t);
+							dynamic_module_name.MaximumLength = dynamic_module_name.Length + sizeof(wchar_t);
+							module_name = &dynamic_module_name;
+						}
+					}
+				}
+			}
+		}
+	}
 
 	if (!module_name)
 		LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
 			"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 	else
-		LOQ_ntstatus("process", "ppPspPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+		LOQ_ntstatus("process", "ppPopPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
 			"ModuleName", module_name, "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
@@ -863,6 +891,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY)
 			prevent_module_reloading(BaseAddress);
 	}
+
+	if (filepath) free(filepath);
+	if (absolutepath) free(absolutepath);
 
 	return ret;
 }
@@ -882,8 +913,42 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 		AllocationType, Win32Protect, Parameters, ParameterCount);
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 
-	LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
-	"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	UNICODE_STRING *module_name = NULL;
+	UNICODE_STRING dynamic_module_name;
+	wchar_t basename_buffer[MAX_PATH];
+	wchar_t *filepath = NULL;
+	wchar_t *absolutepath = NULL;
+
+	if (NT_SUCCESS(ret) && BaseAddress && *BaseAddress) {
+		module_name = get_module_name((ULONG_PTR)*BaseAddress);
+		if (!module_name) {
+			filepath = malloc(MAX_PATH * sizeof(wchar_t));
+			if (filepath) {
+				if (GetMappedFileNameW(GetCurrentProcess(), *BaseAddress, filepath, MAX_PATH)) {
+					absolutepath = malloc(32768 * sizeof(wchar_t));
+					if (absolutepath) {
+						ensure_absolute_unicode_path(absolutepath, filepath);
+						wchar_t *basename = get_dll_basename(absolutepath);
+						if (basename) {
+							wcsncpy(basename_buffer, basename, MAX_PATH - 1);
+							basename_buffer[MAX_PATH - 1] = L'\0';
+							dynamic_module_name.Buffer = basename_buffer;
+							dynamic_module_name.Length = wcslen(basename_buffer) * sizeof(wchar_t);
+							dynamic_module_name.MaximumLength = dynamic_module_name.Length + sizeof(wchar_t);
+							module_name = &dynamic_module_name;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (!module_name)
+		LOQ_ntstatus("process", "ppPpPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+			"SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+	else
+		LOQ_ntstatus("process", "ppPopPhs", "SectionHandle", SectionHandle,"ProcessHandle", ProcessHandle, "BaseAddress", BaseAddress,
+			"ModuleName", module_name, "SectionOffset", SectionOffset, "ViewSize", ViewSize, "Win32Protect", Win32Protect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
 	if (NT_SUCCESS(ret)) {
 		if (g_config.injection)
@@ -896,6 +961,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 			prevent_module_reloading(BaseAddress);
 		}
 	}
+
+	if (filepath) free(filepath);
+	if (absolutepath) free(absolutepath);
+
 	return ret;
 }
 
@@ -1242,8 +1311,34 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	MEMORY_BASIC_INFORMATION meminfo;
 	DWORD OriginalNewAccessProtection = 0;
 	UNICODE_STRING *module_name = NULL;
-	if (BaseAddress)
+	UNICODE_STRING dynamic_module_name;
+	wchar_t basename_buffer[MAX_PATH];
+	wchar_t *filepath = NULL;
+	wchar_t *absolutepath = NULL;
+
+	if (BaseAddress && *BaseAddress) {
 		module_name = get_module_name((ULONG_PTR)*BaseAddress);
+		if (!module_name) {
+			filepath = malloc(MAX_PATH * sizeof(wchar_t));
+			if (filepath) {
+				if (GetMappedFileNameW(GetCurrentProcess(), *BaseAddress, filepath, MAX_PATH)) {
+					absolutepath = malloc(32768 * sizeof(wchar_t));
+					if (absolutepath) {
+						ensure_absolute_unicode_path(absolutepath, filepath);
+						wchar_t *basename = get_dll_basename(absolutepath);
+						if (basename) {
+							wcsncpy(basename_buffer, basename, MAX_PATH - 1);
+							basename_buffer[MAX_PATH - 1] = L'\0';
+							dynamic_module_name.Buffer = basename_buffer;
+							dynamic_module_name.Length = wcslen(basename_buffer) * sizeof(wchar_t);
+							dynamic_module_name.MaximumLength = dynamic_module_name.Length + sizeof(wchar_t);
+							module_name = &dynamic_module_name;
+						}
+					}
+				}
+			}
+		}
+	}
 
 	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
 		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
@@ -1309,6 +1404,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 			"NumberOfBytesProtected", NumberOfBytesToProtect, "MemoryType", meminfo.Type, "NewAccessProtection", NewAccessProtection,
 			"OldAccessProtection", OldAccessProtection, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
 
+	if (filepath) free(filepath);
+	if (absolutepath) free(absolutepath);
+
 	return ret;
 }
 
@@ -1322,7 +1420,35 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	BOOL ret;
 	MEMORY_BASIC_INFORMATION meminfo;
 	DWORD OriginalNewProtect = 0;
-	UNICODE_STRING *module_name = get_module_name((ULONG_PTR)lpAddress);
+	UNICODE_STRING *module_name = NULL;
+	UNICODE_STRING dynamic_module_name;
+	wchar_t basename_buffer[MAX_PATH];
+	wchar_t *filepath = NULL;
+	wchar_t *absolutepath = NULL;
+
+	if (lpAddress) {
+		module_name = get_module_name((ULONG_PTR)lpAddress);
+		if (!module_name) {
+			filepath = malloc(MAX_PATH * sizeof(wchar_t));
+			if (filepath) {
+				if (GetMappedFileNameW(GetCurrentProcess(), lpAddress, filepath, MAX_PATH)) {
+					absolutepath = malloc(32768 * sizeof(wchar_t));
+					if (absolutepath) {
+						ensure_absolute_unicode_path(absolutepath, filepath);
+						wchar_t *basename = get_dll_basename(absolutepath);
+						if (basename) {
+							wcsncpy(basename_buffer, basename, MAX_PATH - 1);
+							basename_buffer[MAX_PATH - 1] = L'\0';
+							dynamic_module_name.Buffer = basename_buffer;
+							dynamic_module_name.Length = wcslen(basename_buffer) * sizeof(wchar_t);
+							dynamic_module_name.MaximumLength = dynamic_module_name.Length + sizeof(wchar_t);
+							module_name = &dynamic_module_name;
+						}
+					}
+				}
+			}
+		}
+	}
 
 	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
 		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
@@ -1385,6 +1511,9 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	else
 		LOQ_bool("process", "ppphhHs", "ProcessHandle", hProcess, "Address", lpAddress, "Size", dwSize, "MemType", meminfo.Type, 
 			"Protection", flNewProtect, "OldProtection", lpflOldProtect, "StackPivoted", is_stack_pivoted() ? "yes" : "no");
+
+	if (filepath) free(filepath);
+	if (absolutepath) free(absolutepath);
 
 	return ret;
 }
