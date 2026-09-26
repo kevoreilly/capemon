@@ -40,7 +40,7 @@ BOOL ContainsNamespace(const wchar_t* resource, const wchar_t* target) {
 	return FALSE;
 }
 
-__declspec(thread) BOOL bHookViaWbemLocator;
+#include "hooks.h"
 HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
 	_In_	PVOID			_this,
 	_In_	const BSTR		strNetworkResource,
@@ -63,9 +63,9 @@ HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
 		ContainsNamespace(strNetworkResource, L"ROOT\\Microsoft\\Windows\\TaskScheduler")
 	)) 
 	{
-		bHookViaWbemLocator = TRUE;
+		SetHookViaWbemLocator(TRUE);
 		set_com_hooks(NULL, NULL, *ppNamespace);
-		bHookViaWbemLocator = FALSE;
+		SetHookViaWbemLocator(FALSE);
 	}
 
 	LOQ_hresult("com", "uu", "NetworkResource", strNetworkResource, "User", strUser);
