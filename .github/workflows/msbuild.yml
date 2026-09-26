@@ -9,24 +9,30 @@ on:
 env:  
   BUILD_CONFIGURATION: Release
   SOLUTION_FILE_PATH: capemon.sln
+  # v141 (VS2017) is not installed on any supported runner image. The projects
+  # still declare v141 so local VS2017 builds are unaffected; this overrides it
+  # for CI only. v142 is present on both windows-2022 and windows-2025.
+  PLATFORM_TOOLSET: v142
 
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86
             platform: Win32
+            artifact_path: Release/capemon.dll
           - arch: x64
             platform: x64
+            artifact_path: x64/Release/capemon_x64.dll
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.1
+      uses: microsoft/setup-msbuild@v2
       with: 
        msbuild-architecture: ${{ matrix.arch }}
 
@@ -36,18 +42,13 @@ jobs:
 
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ matrix.platform }} ${{env.SOLUTION_FILE_PATH}}
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ matrix.platform }} /p:PlatformToolset=${{env.PLATFORM_TOOLSET}} ${{env.SOLUTION_FILE_PATH}}
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: capemon_release_${{ matrix.arch }}
-        path: D:\a\capemon\capemon\Release\capemon.dll
-        if-no-files-found: ignore
-    - uses: actions/upload-artifact@v3
-      with:
-        name: capemon_release_${{ matrix.arch }}
-        path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
-        if-no-files-found: ignore
+        path: ${{ matrix.artifact_path }}
+        if-no-files-found: error
 
   publish:
     if: github.event_name == 'push'
@@ -59,9 +60,9 @@ jobs:
         The rolling release triggered on \`${{ github.ref_name }}\`. [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
         " > ${{ github.workspace }}-release-body.md
 
-    - uses: actions/download-artifact@v4.1.7
+    - uses: actions/download-artifact@v4
 
-    - uses: softprops/action-gh-release@v1
+    - uses: softprops/action-gh-release@v2
       with:
         tag_name: rolling
         files: |
