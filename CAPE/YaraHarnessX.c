@@ -45,6 +45,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "YaraHarness.h"
 #include "..\config.h"
 #include "..\alloc.h"
+#include "..\lookup.h"
 
 #include "yara_x.h"
 
@@ -69,21 +70,17 @@ static char NewLine[MAX_PATH];
 
 // --- per-thread scanner state ------------------------------------------------
 // YRX_SCANNER is not thread-safe and is stateful across a scan, so each thread
-// gets its own, lazily created from the shared YRX_RULES. A registry lets
-// YaraShutdown() destroy them before the rules (required ordering).
-typedef struct _ScannerNode {
+// gets its own, lazily created from the shared YRX_RULES.
+// Thread contexts are stored in a lock-free lookup table (LOOKUP_THREAD),
+// avoiding static TLS (__declspec(thread)) crashes and eliminating locks.
+typedef struct {
 	YRX_SCANNER* Scanner;
-	struct _ScannerNode* Next;
-} ScannerNode;
+	int Scanning;
+} ThreadScannerContext;
 
-static ScannerNode* ScannerList = NULL;
-static CRITICAL_SECTION ScannerLock;
-static BOOL ScannerLockInit = FALSE;
+static lookup_t g_yrx_scanners;
 
-static __declspec(thread) YRX_SCANNER* t_Scanner = NULL;
-static __declspec(thread) int t_Scanning = 0;
-
-// t_Scanner is thread-local, so YaraShutdown() (running on one thread) cannot
+// Scanner contexts are thread-local via lookup_t, so YaraShutdown() (running on one thread) cannot
 // clear other threads' cached pointers before it destroys the YRX_SCANNER /
 // YRX_RULES they point at. Every scan takes this lock shared for its duration;
 // YaraShutdown() takes it exclusive before destroying anything, which blocks
@@ -512,13 +509,17 @@ static void AddressRuleCallback(const struct YRX_RULE* Rule, void* user_data)
 
 // --- scanner lifecycle -------------------------------------------------------
 
-static YRX_SCANNER* GetThreadScanner(void)
+static ThreadScannerContext* GetThreadScannerContext(void)
 {
+	ThreadScannerContext* ctx;
 	YRX_SCANNER* s;
-	ScannerNode* node;
 
-	if (t_Scanner)
-		return t_Scanner;
+	ctx = (ThreadScannerContext*)LOOKUP_THREAD(&g_yrx_scanners, ThreadScannerContext);
+	if (!ctx)
+		return NULL;
+
+	if (ctx->Scanner)
+		return ctx;
 	if (!Rules)
 		return NULL;
 
@@ -533,35 +534,22 @@ static YRX_SCANNER* GetThreadScanner(void)
 	if (g_config.yara_timeout > 0)
 		yrx_scanner_set_timeout(s, (uint64_t)g_config.yara_timeout);
 
-	node = (ScannerNode*)calloc(1, sizeof(ScannerNode));
-	if (node && ScannerLockInit)
-	{
-		node->Scanner = s;
-		EnterCriticalSection(&ScannerLock);
-		node->Next = ScannerList;
-		ScannerList = node;
-		LeaveCriticalSection(&ScannerLock);
-	}
-	else if (node)
-	{
-		free(node);
-	}
-
-	t_Scanner = s;
-	return s;
+	ctx->Scanner = s;
+	return ctx;
 }
 
 // --- public API ------------------------------------------------------------
 
 static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callback, void* CallbackData, const char* Where)
 {
-	YRX_SCANNER* Scanner;
+	ThreadScannerContext* ctx;
 	enum YRX_RESULT Result = YRX_SUCCESS;
 
 	if (!YaraActivated || !Size)
 		return;
 
-	if (t_Scanning)
+	ctx = (ThreadScannerContext*)lookup_get(&g_yrx_scanners, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (ctx && ctx->Scanning)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("YaraScan (%s): re-entrant scan on same thread skipped\n", Where);
@@ -579,33 +567,33 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 		return;
 	}
 
-	Scanner = GetThreadScanner();
-	if (!Scanner)
+	ctx = GetThreadScannerContext();
+	if (!ctx || !ctx->Scanner)
 	{
 		ReleaseSRWLockShared(&ScanShutdownLock);
 		return;
 	}
 
-	if (yrx_scanner_on_matching_rule(Scanner, Callback, CallbackData) != YRX_SUCCESS)
+	if (yrx_scanner_on_matching_rule(ctx->Scanner, Callback, CallbackData) != YRX_SUCCESS)
 	{
 		ReleaseSRWLockShared(&ScanShutdownLock);
 		return;
 	}
 
-	t_Scanning = 1;
+	ctx->Scanning = 1;
 	__try
 	{
-		Result = yrx_scanner_scan(Scanner, (const uint8_t*)Address, (size_t)Size);
+		Result = yrx_scanner_scan(ctx->Scanner, (const uint8_t*)Address, (size_t)Size);
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
-		t_Scanning = 0;
+		ctx->Scanning = 0;
 		ReleaseSRWLockShared(&ScanShutdownLock);
 		if (YaraLogging)
 			DebugOutput("YaraScan (%s): exception scanning 0x%p\n", Where, Address);
 		return;
 	}
-	t_Scanning = 0;
+	ctx->Scanning = 0;
 	ReleaseSRWLockShared(&ScanShutdownLock);
 
 	if (Result != YRX_SUCCESS)
@@ -748,34 +736,27 @@ BOOL ScanForRulesCanary(PVOID Address, SIZE_T Size)
 
 void YaraShutdown()
 {
-	ScannerNode* node;
+	entry_t* entry;
 
 	YaraActivated = FALSE;
 
 	// Wait for every in-flight YaraScanInternal() (on any thread) to finish
-	// and release its shared hold before destroying the scanners/Rules those
-	// calls (or a not-yet-started one whose thread already cached t_Scanner)
-	// may still be using. See the comment on ScanShutdownLock's declaration.
+	// and release its shared hold before destroying the scanners/Rules.
 	AcquireSRWLockExclusive(&ScanShutdownLock);
 
-	if (ScannerLockInit)
+	entry = (entry_t*)InterlockedExchangePointer((PVOID volatile*)&g_yrx_scanners.root, NULL);
+	while (entry)
 	{
-		EnterCriticalSection(&ScannerLock);
-		node = ScannerList;
-		ScannerList = NULL;
-		LeaveCriticalSection(&ScannerLock);
-
-		while (node)
+		entry_t* next = entry->next;
+		ThreadScannerContext* ctx = (ThreadScannerContext*)entry->data;
+		if (ctx && ctx->Scanner)
 		{
-			ScannerNode* next = node->Next;
-			if (node->Scanner)
-				yrx_scanner_destroy(node->Scanner);
-			free(node);
-			node = next;
+			yrx_scanner_destroy(ctx->Scanner);
+			ctx->Scanner = NULL;
 		}
+		free(entry);
+		entry = next;
 	}
-
-	t_Scanner = NULL;
 
 	if (Rules)
 	{
@@ -831,12 +812,6 @@ BOOL YaraInit()
 	char analyzer_path[MAX_PATH], yara_dir[MAX_PATH], file_name[MAX_PATH], compiled_rules[MAX_PATH];
 	uint32_t compiler_flags = YRX_RELAXED_RE_SYNTAX | YRX_ENABLE_CONDITION_OPTIMIZATION;
 	enum YRX_RESULT rc;
-
-	if (!ScannerLockInit)
-	{
-		InitializeCriticalSection(&ScannerLock);
-		ScannerLockInit = TRUE;
-	}
 
 	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path) + 1);
 	if (!g_config.standalone)

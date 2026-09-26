@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 
 extern char* GetResultsPath(char* FolderName);
+extern BOOL is_64bit_os;
 
 // the size of the logging buffer
 #define BUFFERSIZE 16 * 1024 * 1024
@@ -70,7 +71,13 @@ static char logtbl_explained[256] = {0};
 // must be one larger than the largest log ID
 #define LOG_ID_PREDEFINED_MAX 10
 
+#ifdef _WIN64
+volatile LONG g_log_index = 20;  // 64-bit calls
+#define BSON_ID(idx) ((idx) | 0x40000000)
+#else
 volatile LONG g_log_index = 20;  // index must start after the special IDs (see defines)
+#define BSON_ID(idx) (idx)
+#endif
 
 //
 // Log API
@@ -559,6 +566,7 @@ void loq(int index, const char *category, const char *name,
 
 	hook_disable();
 
+	if (!TryEnterCriticalSection(&g_mutex))
 	{
 		int retries = 100;
 		BOOL acquired = FALSE;
@@ -595,7 +603,7 @@ void loq(int index, const char *category, const char *name,
 		va_start(args, fmt);
 
 		bson_init( b );
-		bson_append_int( b, "I", index );
+		bson_append_int( b, "I", BSON_ID(index) );
 		bson_append_string( b, "name", name );
 		bson_append_string( b, "type", "info" );
 		bson_append_string( b, "category", category );
@@ -736,7 +744,7 @@ void loq(int index, const char *category, const char *name,
 	count = 1; key = 0; argnum = 2;
 
 	bson_init( g_bson );
-	bson_append_int( g_bson, "I", index );
+	bson_append_int( g_bson, "I", BSON_ID(index) );
 	hookinfo = hook_info();
 	bson_append_ptr(g_bson, "C", hookinfo->return_address);
 	// return location of malware callsite
@@ -1441,15 +1449,61 @@ void log_hook_restoration(const hook_t *h)
 		"UnhookType", "restored");
 }
 
+static void derive_map_name(const char *pipe_path, char *out, size_t out_len)
+{
+    size_t i, n;
+    if (!pipe_path) pipe_path = "";
+    n = strlen(pipe_path);
+    if (n >= out_len) n = out_len - 1;
+    for (i = 0; i < n; i++)
+        out[i] = (pipe_path[i] == '\\') ? '_' : pipe_path[i];
+    out[i] = '\0';
+}
 
 DWORD g_log_thread_id;
 DWORD g_logwatcher_thread_id;
+static HANDLE g_handle_mapping;
 
 void log_init(int debug)
 {
 	g_buffer = calloc(1, BUFFERSIZE);
 
 	g_log_flush = CreateEvent(NULL, FALSE, FALSE, NULL);
+
+	UINT64 *g_mapped_handle = NULL;
+
+	if (g_config.wowmon) {
+		char map_name[256];
+		derive_map_name(g_config.logserver, map_name, sizeof(map_name));
+		g_handle_mapping = CreateFileMapping(
+			INVALID_HANDLE_VALUE,
+			NULL,
+			PAGE_READWRITE,
+			0,
+			sizeof(HANDLE),
+			map_name);
+
+		if (!g_handle_mapping) {
+			pipe("INFO: CreateFileMapping failed: %lu", GetLastError());
+			g_handle_mapping = OpenFileMapping(FILE_MAP_ALL_ACCESS, FALSE, map_name);
+			if (!g_handle_mapping) {
+				pipe("CRITICAL: OpenFileMapping failed: %lu", GetLastError());
+			}
+		}
+
+		g_mapped_handle = (UINT64*)MapViewOfFile(
+			g_handle_mapping,
+			FILE_MAP_ALL_ACCESS,
+			0,
+			0,
+			sizeof(UINT64));
+
+		if (!g_mapped_handle) {
+			pipe("CRITICAL: MapViewOfFile failed: %lu", GetLastError());
+			CloseHandle(g_handle_mapping);
+			g_handle_mapping = NULL;
+		}
+	}
 
 	if (debug != 0) {
 		g_sock = DEBUG_SOCKET;
@@ -1458,9 +1512,26 @@ void log_init(int debug)
 		g_sock = INVALID_SOCKET;
 		g_log_handle = CreateFileA(g_config.logserver, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 		if (g_log_handle == INVALID_HANDLE_VALUE) {
-			pipe("CRITICAL:Error initializing logging!");
+#ifdef _WIN64
+			if (GetLastError() == ERROR_PIPE_BUSY && g_mapped_handle && *g_mapped_handle) {
+				g_log_handle = (HANDLE)(ULONG_PTR)*g_mapped_handle;
+				pipe("INFO: g_log_handle set to 0x%x", g_log_handle);
+			}
+			else {
+				pipe("CRITICAL:Error initializing log handle\n");
+				return;
+			}
+#else
+			pipe("CRITICAL:Error initializing log handle\n");
 			return;
+#endif
 		}
+#ifndef _WIN64
+		else if (g_mapped_handle) {
+			*g_mapped_handle = (UINT64)(ULONG_PTR)g_log_handle;
+			pipe("INFO: g_log_handle created: 0x%x\n", g_log_handle);
+		}
+#endif
 	}
 
 	// will happen when we're in debug mode
@@ -1477,6 +1548,11 @@ void log_init(int debug)
 		strcat(filename, ".log");
 		g_debug_log_handle = CreateFileA(filename, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, 0, NULL);
 	}
+
+#ifdef _WIN64
+	if (is_64bit_os && is_wow64_process())
+		return;
+#endif
 
 	announce_netlog();
 	log_new_process();
