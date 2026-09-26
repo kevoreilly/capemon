@@ -65,6 +65,63 @@ Integration of YARA for in-memory scanning
 ## Engineering & Documentation Mandates
 - **Always update `@docs/configuration.md`:** Whenever a new configurable option is introduced to the engine (such as `log-format`, `sleep-skip-seconds`, etc.), you must immediately append its documentation details to the appropriate table inside the configuration reference document to ensure the user and the system documentation are fully up-to-date.
 
+## Source Control Workflow
+
+### Isolated Checkouts for Review and Testing
+
+`capemon` uses the fork convention: `origin` is your own fork, `upstream` is
+`kevoreilly/capemon`, and the default branch is `capemon` (not `master`).
+Reviewing someone's PR or testing a branch therefore means juggling two
+remotes, and doing it with `git checkout` in your working clone risks the
+uncommitted work most clones carry.
+
+Use `.gemini/skills/capemon-developer/scripts/agent_worktree.py`, a wrapper
+around `git worktree` that handles the remote and PR plumbing. It is Python
+standard library only - no virtualenv, no dependencies, and it does not care
+that this is a C project.
+
+```bash
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py new --pr 123
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py new --branch some-topic-branch
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py new --from upstream/capemon --name scratch
+
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py list
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py path pr123
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py update pr123
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py remove pr123
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py cleanup
+python .gemini/skills/capemon-developer/scripts/agent_worktree.py info
+```
+
+Behaviour relevant to this fork layout:
+
+* The canonical repository is read from `upstream` when it exists, so
+  `new --pr <id>` queries `kevoreilly/capemon` rather than your fork.
+* `new --pr` asks `gh` which fork the head branch lives in and fetches from
+  the matching remote, or straight from the fork URL when no remote matches.
+* `new --branch` tries `origin`, then `upstream`, then any other remote, and
+  reports which one supplied the branch. Force one with `--remote`.
+* Worktrees default to `~/.cache/agent-worktrees/capemon/<name>`; override
+  with `--base-dir`, `--path` or `$AGENT_WORKTREE_DIR`.
+* Only worktrees the tool created are ever removed - they are tagged inside
+  the repository's git admin directory, so `git status` stays clean and a
+  hand-made `git worktree add` is never touched by `cleanup`.
+* `remove` and `cleanup` refuse to discard uncommitted changes or unpushed
+  commits, and the main worktree can never be removed. `--force` overrides.
+
+Add `--json` to any command for scripted use. `gh` is required only for
+`--pr`.
+
+> The same script is maintained in the CAPEv2 repository as
+> `utils/agent_worktree.py`; keep the two copies in sync when changing it.
+
+### Building a Worktree
+
+A worktree is a full checkout, so the MSBuild commands in the next section
+work unchanged inside one - point the solution path at the worktree instead
+of your main clone. Build output stays in the worktree and disappears with
+it.
+
 ## Build & Compilation Guide
 
 ### 1. Locating MSBuild

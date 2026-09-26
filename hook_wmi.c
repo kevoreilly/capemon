@@ -12,11 +12,14 @@ extern void set_com_hooks(REFCLSID rclsid, REFIID riid, PVOID pComObject);
 static lookup_t g_wmi_locator_lookup;
 
 BOOL IsHookViaWbemLocator(void) {
-	return *(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL);
+	BOOL *p = (BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL);
+	return p ? *p : FALSE;
 }
 
 void SetHookViaWbemLocator(BOOL val) {
-	*(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL) = val;
+	BOOL *p = (BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL);
+	if (p)
+		*p = val;
 }
 
 HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
