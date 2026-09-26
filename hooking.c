@@ -57,13 +57,28 @@ void hookdata_range_add(const void *base, size_t size)
 {
 	ULONG_PTR lo = (ULONG_PTR)base;
 	ULONG_PTR hi = lo + size;
+	ULONG_PTR cur;
 
 	if (!base)
 		return;
-	if (lo < g_hookdata_min)
-		g_hookdata_min = lo;
-	if (hi > g_hookdata_max)
-		g_hookdata_max = hi;
+
+	cur = g_hookdata_min;
+	while (lo < cur) {
+		ULONG_PTR prev = (ULONG_PTR)InterlockedCompareExchangePointer(
+			(PVOID volatile *)&g_hookdata_min, (PVOID)lo, (PVOID)cur);
+		if (prev == cur)
+			break;
+		cur = prev;
+	}
+
+	cur = g_hookdata_max;
+	while (hi > cur) {
+		ULONG_PTR prev = (ULONG_PTR)InterlockedCompareExchangePointer(
+			(PVOID volatile *)&g_hookdata_max, (PVOID)hi, (PVOID)cur);
+		if (prev == cur)
+			break;
+		cur = prev;
+	}
 }
 
 extern BOOL inside_hook(LPVOID Address);
