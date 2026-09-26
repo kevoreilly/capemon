@@ -35,11 +35,13 @@ CHAR DebuggerLine[BUFFER_SIZE];
 CHAR StringsLine[BUFFER_SIZE], *StringsFile;
 
 extern char* GetResultsPath(char* FolderName);
+extern BOOL is_wow64_process(void);
+extern BOOL is_64bit_os;
+extern BOOL StopTrace;
 extern struct CapeMetadata *CapeMetaData;
 extern ULONG_PTR base_of_dll_of_interest;
 HANDLE DebuggerLog, Strings;
 extern SIZE_T LastWriteLength;
-extern BOOL StopTrace;
 
 //**************************************************************************************
 void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
@@ -56,6 +58,11 @@ void OutputString(_In_ LPCTSTR lpOutputString, va_list args)
 	else
 	{
 		memset(PipeBuffer, 0, sizeof(PipeBuffer));
+#ifdef _WIN64
+		if (is_64bit_os && is_wow64_process())
+			_sntprintf_s(PipeBuffer, BUFFER_SIZE, _TRUNCATE, "DEBUG:%u_x64: %s", GetCurrentProcessId(), DebugBuffer);
+		else
+#endif
 		_sntprintf_s(PipeBuffer, BUFFER_SIZE, _TRUNCATE, "DEBUG:%u: %s", GetCurrentProcessId(), DebugBuffer);
 		pipe(PipeBuffer, strlen(PipeBuffer));
 	}

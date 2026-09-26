@@ -111,7 +111,7 @@ PVOID CallingModule;
 //
 #define STATUS_BAD_COMPRESSION_BUFFER	((NTSTATUS)0xC0000242L)
 
-#define	PE_HEADER_LIMIT		0x200	// Range to look for PE header within candidate buffer
+#define	PE_HEADER_LIMIT		0x300	// Range to look for PE header within candidate buffer
 
 #define SIZE_OF_LARGEST_IMAGE ((ULONG)0x77000000)
 
