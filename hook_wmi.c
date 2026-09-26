@@ -1,6 +1,8 @@
 #include "log.h"
 #include "misc.h"
 #include "config.h"
+#include "hooks.h"
+#include "lookup.h"
 #include <Wbemidl.h>
 
 static WCHAR g_wmi_board_vendor[128];
@@ -19,6 +21,30 @@ void InitWmiSpoofStrings(void) {
 	MultiByteToWideChar(CP_ACP, 0, g_config.disk_serial, -1, g_wmi_disk_serial, _countof(g_wmi_disk_serial));
 	MultiByteToWideChar(CP_ACP, 0, g_config.bios_vendor, -1, g_wmi_bios_vendor, _countof(g_wmi_bios_vendor));
 	MultiByteToWideChar(CP_ACP, 0, g_config.bios_serial, -1, g_wmi_bios_serial, _countof(g_wmi_bios_serial));
+}
+
+extern void set_com_hooks(REFCLSID rclsid, REFIID riid, PVOID pComObject);
+
+HOOKDEF(HRESULT, WINAPI, IEnumWbemClassObject_Next,
+	_In_  IEnumWbemClassObject *This,
+	_In_  long                 lTimeout,
+	_In_  ULONG                uCount,
+	_Out_ IWbemClassObject     **apObjects,
+	_Out_ ULONG                *puReturned
+) {
+	HRESULT ret = Old_IEnumWbemClassObject_Next(This, lTimeout, uCount, apObjects, puReturned);
+
+	if (ret == S_OK && apObjects != NULL && puReturned != NULL) {
+		for (ULONG i = 0; i < *puReturned; i++) {
+			if (apObjects[i] != NULL) {
+				SetHookViaWbemLocator(TRUE);
+				set_com_hooks(NULL, NULL, apObjects[i]);
+				SetHookViaWbemLocator(FALSE);
+			}
+		}
+	}
+
+	return ret;
 }
 
 void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
@@ -262,9 +288,16 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
-	HRESULT ret = 0;
+	HRESULT ret = Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
+
+	if (ret == S_OK && ppEnum && *ppEnum) {
+		SetHookViaWbemLocator(TRUE);
+		set_com_hooks(NULL, NULL, *ppEnum);
+		SetHookViaWbemLocator(FALSE);
+	}
+
 	LOQ_hresult("system", "uu", "Query", strQuery, "QueryLanguage", strQueryLanguage);
-	return Old_WMI_ExecQuery(_this, strQueryLanguage, strQuery, lFlags, pCtx, ppEnum);
+	return ret;
 }
 
 HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
@@ -349,9 +382,16 @@ HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnum,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
-	HRESULT ret = 0;
+	HRESULT ret = Old_WMI_CreateInstanceEnum(_this, strFilter, lFlags, pCtx, ppEnum);
+	
+	if (ret == S_OK && ppEnum && *ppEnum) {
+		SetHookViaWbemLocator(TRUE);
+		set_com_hooks(NULL, NULL, *ppEnum);
+		SetHookViaWbemLocator(FALSE);
+	}
+
 	LOQ_hresult("system", "u", "QueryClass", strFilter);
-	return Old_WMI_CreateInstanceEnum(_this, strFilter, lFlags, pCtx, ppEnum);
+	return ret;
 }
 
 HOOKDEF(HRESULT, WINAPI, WMI_CreateInstanceEnumAsync,
