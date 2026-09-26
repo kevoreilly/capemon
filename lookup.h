@@ -19,6 +19,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <windows.h>
 
+#define LOOKUP_SHARED(table, type) ((type *)lookup_get_or_create((table), 1, sizeof(type)))	// Idiom 1: shared singleton state, replaces a critical-section-guarded global
+#define LOOKUP_THREAD(table, type) ((type *)lookup_get_or_create((table), (ULONG_PTR)GetCurrentThreadId(), sizeof(type)))	// Idiom 2: per-thread state, replaces TlsAlloc/TlsGetValue/TlsSetValue
+#define LOOKUP_MARK_SEEN(table, id) do { if (!lookup_get((table), (ULONG_PTR)(id), NULL)) lookup_add((table), (ULONG_PTR)(id), 0); } while (0)	// Idiom 3: mark seen / dedup by arbitrary key, no payload
+
 typedef struct _lookup_internal_t {
 	void *root;
 } lookup_t;
@@ -26,10 +30,11 @@ typedef struct _lookup_internal_t {
 typedef struct _entry_t {
 	struct _entry_t *next;
 	ULONG_PTR id;
-	unsigned int size;
+	ULONG_PTR size;	// pointer-sized so data[] starts pointer-aligned (x64: offset 24, not 20)
 	unsigned char data[0];
 } entry_t;
 
 void *lookup_add(lookup_t *d, ULONG_PTR id, unsigned int size);
 void *lookup_get(lookup_t *d, ULONG_PTR id, unsigned int *size);
+void *lookup_get_or_create(lookup_t *d, ULONG_PTR id, unsigned int size);
 void lookup_del(lookup_t *d, ULONG_PTR id);
