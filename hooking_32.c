@@ -811,7 +811,7 @@ int hook_api(hook_t *h, int type)
 		addr += 4;
 
 	// check if this is a valid hook type
-	if (type < 0 && type >= ARRAYSIZE(hook_types)) {
+	if (type < 0 || (unsigned int)type >= ARRAYSIZE(hook_types)) {
 		pipe("WARNING: Provided invalid hook type: %d", type);
 		return ret;
 	}

@@ -221,7 +221,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
@@ -243,7 +243,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 						//break;
 					}
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 
 				if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
 				{
@@ -558,7 +558,7 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 		return SectionBasedFileSize;
 	}
 
-	for (unsigned int SectionIndex = NumberOfSections-1; SectionIndex >= 0; SectionIndex--)
+	for (unsigned int SectionIndex = NumberOfSections; SectionIndex-- > 0;)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput
