@@ -62,6 +62,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define Suspended 5
 #define OptionShutdownSystem 6
 // NTSTATUS
+#define STATUS_INFO_LENGTH_MISMATCH  0xc0000004
 #ifndef STATUS_SUCCESS
 #define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
 #endif
@@ -71,7 +72,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef STATUS_BUFFER_TOO_SMALL
 #define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
 #endif
-#define STATUS_INFO_LENGTH_MISMATCH  0xc0000004
+#ifndef STATUS_NO_MORE_ENTRIES
+#define STATUS_NO_MORE_ENTRIES ((NTSTATUS)0x8000001AL)
+#endif
 #define STATUS_CONFLICTING_ADDRESSES 0xc0000018
 #define STATUS_OBJECT_NAME_NOT_FOUND 0xc0000034
 #define STATUS_INVALID_DEVICE_REQUEST 0xc0000010
@@ -139,6 +142,14 @@ typedef struct addrinfoW {
   struct addrinfoW  *ai_next;
 } ADDRINFOW, *PADDRINFOW;
 #endif
+
+
+typedef struct _KEY_BASIC_INFORMATION {
+    LARGE_INTEGER LastWriteTime;
+    ULONG TitleIndex;
+    ULONG NameLength;
+    WCHAR Name[1];
+} KEY_BASIC_INFORMATION, *PKEY_BASIC_INFORMATION;
 
 typedef enum _KEY_INFORMATION_CLASS {
   KeyBasicInformation			= 0,

@@ -19,19 +19,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include "ntapi.h"
 
-#define STATUS_NO_MORE_ENTRIES ((NTSTATUS)0x8000001AL)
 #include "hooking.h"
 #include "log.h"
 #include "pipe.h"
 #include "misc.h"
 #include "config.h"
-
-typedef struct _KEY_BASIC_INFORMATION {
-	LARGE_INTEGER LastWriteTime;
-	ULONG TitleIndex;
-	ULONG NameLength;
-	WCHAR Name[1];
-} KEY_BASIC_INFORMATION, *PKEY_BASIC_INFORMATION;
 
 static BOOLEAN UnicodeStringContains(PUNICODE_STRING ustr, PCWSTR sub) {
 	if (!ustr || !ustr->Buffer || ustr->Length == 0 || !sub) return FALSE;
@@ -136,10 +128,6 @@ HOOKDEF(NTSTATUS, WINAPI, NtOpenKeyEx,
 		"ObjectAttributes", ObjectAttributes, "ret", ret);
 	return ret;
 }
-
-static NTSTATUS Hook_NtCreateKeyTransacted_body(PHANDLE KeyHandle) { return STATUS_SUCCESS; }
-static NTSTATUS Hook_NtOpenKeyTransacted_body(PHANDLE KeyHandle) { return STATUS_SUCCESS; }
-static NTSTATUS Hook_NtOpenKeyTransactedEx_body(PHANDLE KeyHandle) { return STATUS_SUCCESS; }
 
 HOOKDEF(NTSTATUS, WINAPI, NtRenameKey,
 	__in  HANDLE KeyHandle,
