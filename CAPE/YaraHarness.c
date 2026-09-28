@@ -28,6 +28,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
+extern void GoRecoverSymbols(PVOID ImageBase);
 extern BOOL remove_dll_range(ULONG_PTR addr);
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 extern void parse_config_line(char* line);
@@ -91,7 +92,11 @@ char InternalYara[] =
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule WMI_GetObjectAsync"
 	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
-	"condition:uint16(0) == 0x5a4d and any of them}";
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule golang"
+	"{meta:cape_options = \"go-hooks=1\""
+	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) (04|08) [3] 00}"
+	"condition:(uint16(0) == 0x5a4d or (uint32(0x3c) < 0x1000 and uint32(uint32(0x3c)) == 0x00004550)) and $pclntab and uint32(@pclntab + 8) > 0 and uint32(@pclntab + 8) < 500000}";
 
 void ScannerError(int Error)
 {
@@ -233,7 +238,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
-			BOOL SetBreakpoints = FALSE, DoDumpRegion = FALSE;
+			BOOL SetBreakpoints = FALSE, SetGoHooks = FALSE, DoDumpRegion = FALSE;
 			YR_MATCH* Match;
 			YR_STRING* String;
 			YR_META* Meta;
@@ -278,6 +283,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						}
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
 							SetBreakpoints = TRUE;
+						if (!_strnicmp(OptionLine, "go-hooks", 8) || !_strnicmp(OptionLine, "go_hooks", 8))
+							SetGoHooks = TRUE;
 						if (!_stricmp("dump", OptionLine))
 						{
 							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
@@ -325,6 +332,9 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 
 			if (DebuggerInitialised && SetBreakpoints)
 				SetInitialBreakpoints(user_data);
+
+			if (DebuggerInitialised && SetGoHooks)
+				GoRecoverSymbols(user_data);
 
 			return CALLBACK_CONTINUE;
 	}

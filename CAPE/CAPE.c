@@ -3822,8 +3822,8 @@ void CAPE_post_init()
 			
 			// Dynamic Go symbol recovery & tracing (Inspired by GoReSym/ExtremeDumper concept)
 			if (g_config.go_hooks) {
-				extern void GoRecoverSymbols();
-				GoRecoverSymbols();
+				extern void GoRecoverSymbols(PVOID ImageBase);
+				GoRecoverSymbols(GetModuleHandle(NULL));
 			}
 		}
 	}

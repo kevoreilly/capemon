@@ -28,10 +28,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Debugger.h"
 #include "Unpacker.h"
 
-// Forward declaration for Go breakpoint handler (defined in hook_go.c)
-// Returns: 0 = not a Go breakpoint, 1 = persistent Go entry hook (re-arm), 2 = one-shot Go return hook
-extern int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo);
-
 #define PIPEBUFSIZE 512
 
 typedef struct _INJECT_STRUCT {
@@ -542,25 +538,10 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
-	// Execute custom Go breakpoint callback if it matches our list
-	int GoBPStatus = GoBreakpointHandler(Address, ExceptionInfo);
-	if (GoBPStatus == 1)
-	{
-		SoftBP->ThreadId = GetCurrentThreadId();
-		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
-			SoftBPSingleStepHandler = SingleStepHandler;
-		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
-		return TRUE;
-	}
-	else if (GoBPStatus == 2)
-	{
-		SoftBP->ThreadId = 0;
-		return TRUE;
-	}
+	if (SoftBP->Callback)
+		((SOFTWARE_BREAKPOINT_HANDLER)SoftBP->Callback)(ExceptionInfo);
 
-	SoftwareBreakpointCallback(ExceptionInfo);
-
-	if (g_config.softbpmode)
+	if (g_config.softbpmode && lookup_get(&SoftBPs, (ULONG_PTR)Address, 0))
 	{
 		SoftBP->ThreadId = GetCurrentThreadId();
 		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
@@ -2227,7 +2208,7 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 }
 
 //**************************************************************************************
-BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address, PVOID Callback)
 //**************************************************************************************
 {
 	DWORD OldProtect;
@@ -2265,6 +2246,8 @@ BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 
 	SoftBP->InstructionByte = InsByte;
 	SoftBP->Length = lde(Address);
+	SoftBP->Callback = Callback;
+	SoftBP->ThreadId = 0;
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);

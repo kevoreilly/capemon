@@ -22,12 +22,9 @@ do { \
 #define GO_VER_118     3
 #define GO_VER_120     4
 
-#define GO_BP_NOT_OURS   0
-#define GO_BP_PERSISTENT 1
-#define GO_BP_ONESHOT    2
-
 // Table of hooked Go functions keyed by function entry address
 static lookup_t g_go_hook_table = {0};
+static lookup_t g_go_recovered_pclntab = {0};
 
 typedef struct _GO_HOOK_ENTRY {
     PVOID Address;
@@ -47,13 +44,13 @@ static lookup_t g_go_tls_return_table = {0};
 static int g_go_detected_version = GO_VER_UNKNOWN;
 static BOOL g_go_uses_regabi = FALSE;
 
-extern PVOID ImageBase;
 extern lookup_t SoftBPs;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL IsAddressAccessible(PVOID Address);
-extern BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
-extern BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
+extern BOOL IsAddressExecutable(PVOID Address);
 extern BOOL addr_in_our_dll_range(PVOID Address, ULONG_PTR Addr);
+
+BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 
 // Sanitize strings before passing to DebugOutput (which forwards through pipe() format parsing)
 static void SanitizeForDebug(char* dst, size_t dstSize, const char* src, size_t srcLen) {
@@ -322,7 +319,7 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                         // Under Stack ABI, return value n (int) is at [SP_on_entry + 5*ptrSize]
                         tlsState->bytesReadSlot = g_go_uses_regabi ? NULL : (PVOID)&pStack[5];
 
-                        SetSoftwareBreakpoint(&SoftBPs, retAddr);
+                        SetSoftwareBreakpoint(&SoftBPs, retAddr, GoBreakpointHandler);
                     }
                 }
             }
@@ -422,9 +419,13 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     return TRUE;
 }
 
-// Global dispatcher to route software breakpoint exceptions securely to hook_go.c
-// Returns: GO_BP_NOT_OURS (0), GO_BP_PERSISTENT (1), or GO_BP_ONESHOT (2)
-int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo) {
+// Software breakpoint callback registered via SetSoftwareBreakpoint for Go hooks
+BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
+    if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord)
+        return FALSE;
+
+    PVOID Address = ExceptionInfo->ExceptionRecord->ExceptionAddress;
+
     // 1. Intercept temporary TLS Read return breakpoints (keyed by returnAddress across goroutine thread migrations)
     GO_TLS_RETURN_STATE* tlsState = (GO_TLS_RETURN_STATE*)lookup_get(&g_go_tls_return_table, (ULONG_PTR)Address, NULL);
     if (tlsState && tlsState->returnAddress == Address) {
@@ -473,7 +474,7 @@ int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo
         if (!lookup_get(&g_go_hook_table, (ULONG_PTR)Address, NULL)) {
             lookup_del(&SoftBPs, (ULONG_PTR)Address);
         }
-        return GO_BP_ONESHOT;
+        return TRUE;
     }
 
     // 2. Intercept persistent function entry software breakpoints
@@ -485,10 +486,10 @@ int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo
         bpInfo.Callback = GoBreakpointCallback;
 
         GoBreakpointCallback(&bpInfo, ExceptionInfo);
-        return GO_BP_PERSISTENT;
+        return TRUE;
     }
 
-    return GO_BP_NOT_OURS;
+    return FALSE;
 }
 
 // Sets an active internal software breakpoint hook (0xCC) on a recovered Go function address
@@ -503,7 +504,8 @@ static void GoSetFunctionHook(PVOID funcAddress, const char* funcName) {
     char safeFuncName[160];
     SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
 
-    if (SetSoftwareBreakpoint(&SoftBPs, funcAddress)) {
+    if (SetSoftwareBreakpoint(&SoftBPs, funcAddress, GoBreakpointHandler)) {
+        g_config.softbpmode = 1;
         GO_HOOK_ENTRY* hookEntry = (GO_HOOK_ENTRY*)lookup_add(&g_go_hook_table, (ULONG_PTR)funcAddress, sizeof(GO_HOOK_ENTRY));
         if (hookEntry) {
             hookEntry->Address = funcAddress;
@@ -774,14 +776,17 @@ static BOOL ShouldHookGoFunction(const char* funcName) {
 }
 
 // Core Go symbol discovery and runtime instrumentation entry point
-void GoRecoverSymbols() {
+void GoRecoverSymbols(PVOID ImageBase) {
+    if (!ImageBase)
+        ImageBase = GetModuleHandle(NULL);
+
     __try {
         PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)ImageBase;
-        if (!pDos || pDos->e_magic != IMAGE_DOS_SIGNATURE)
+        if (!pDos || !IsAddressAccessible(pDos) || pDos->e_lfanew <= 0 || pDos->e_lfanew > 0x1000)
             return;
 
         PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((PBYTE)ImageBase + pDos->e_lfanew);
-        if (!pNt || pNt->Signature != IMAGE_NT_SIGNATURE)
+        if (!pNt || !IsAddressAccessible(pNt) || pNt->Signature != IMAGE_NT_SIGNATURE)
             return;
 
         PIMAGE_SECTION_HEADER pSec = IMAGE_FIRST_SECTION(pNt);
@@ -789,17 +794,15 @@ void GoRecoverSymbols() {
         PBYTE buildinfo = NULL;
         int detectedVer = GO_VER_UNKNOWN;
         ULONG_PTR textSectionVA = 0;
-        DWORD textSectionSize = 0;
         PBYTE pImageEnd = (PBYTE)ImageBase + pNt->OptionalHeader.SizeOfImage;
 
-        // 1. Locate .text section bounds and scan read-only/data sections for pclntab
+        // 1. Locate primary executable section bounds and scan read-only/data sections for pclntab
         for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
             char secName[9] = {0};
             memcpy(secName, pSec[i].Name, 8);
 
-            if (textSectionVA == 0 && (strcmp(secName, ".text") == 0 || (pSec[i].Characteristics & IMAGE_SCN_CNT_CODE))) {
+            if (textSectionVA == 0 && (strcmp(secName, ".text") == 0 || (pSec[i].Characteristics & (IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE)))) {
                 textSectionVA = (ULONG_PTR)ImageBase + pSec[i].VirtualAddress;
-                textSectionSize = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
             }
 
             if (!pclntab && (strstr(secName, ".rdata") || strstr(secName, ".rodata") || strstr(secName, "pclntab") || strstr(secName, ".data"))) {
@@ -812,7 +815,7 @@ void GoRecoverSymbols() {
             }
         }
 
-        // Fallback: if sections were renamed by a packer/obfuscator, scan any readable section
+        // Fallback: if sections were renamed by a packer/obfuscator (e.g. UPX0), scan any readable section
         if (!pclntab) {
             for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
                 if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
@@ -826,10 +829,11 @@ void GoRecoverSymbols() {
             }
         }
 
-        // Fast Exit if this is not a Go binary
-        if (!pclntab) {
+        // Fast Exit if this is not a Go binary or if this pclntab has already been processed
+        if (!pclntab || lookup_get(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, NULL)) {
             return;
         }
+        lookup_add(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, sizeof(ULONG_PTR));
 
         g_go_detected_version = detectedVer;
         BYTE ptrSize = pclntab[7];
@@ -856,13 +860,13 @@ void GoRecoverSymbols() {
             nfunc = ReadHeaderWord(pclntab, 0, ptrSize);
             nfiles = ReadHeaderWord(pclntab, 1, ptrSize);
             uint64_t hdrTextStart = ReadHeaderWord(pclntab, 2, ptrSize);
-            if (textSectionVA != 0) {
-                textStart = textSectionVA;
-            } else if (hdrTextStart != 0) {
+            if (hdrTextStart != 0) {
                 if (hdrTextStart >= (ULONG_PTR)ImageBase && hdrTextStart < (ULONG_PTR)pImageEnd)
                     textStart = (ULONG_PTR)hdrTextStart;
                 else if (hdrTextStart >= preferredBase && hdrTextStart < preferredBase + pNt->OptionalHeader.SizeOfImage)
                     textStart = (ULONG_PTR)ImageBase + ((ULONG_PTR)hdrTextStart - preferredBase);
+            } else if (textSectionVA != 0) {
+                textStart = textSectionVA;
             }
             funcnametab = pclntab + ReadHeaderWord(pclntab, 3, ptrSize);
             cutab       = pclntab + ReadHeaderWord(pclntab, 4, ptrSize);
@@ -892,10 +896,10 @@ void GoRecoverSymbols() {
             }
         }
 
-        DebugOutput("GoRecoverSymbols: Dynamic Go binary detected! Version: %d, Functions: %llu, PtrSize: %d, RegABI: %d, TextStart: 0x%p\n",
-                    detectedVer, (unsigned long long)nfunc, (int)ptrSize, (int)g_go_uses_regabi, (PVOID)textStart);
+        DebugOutput("GoRecoverSymbols: Dynamic Go binary detected at 0x%p! Version: %d, Functions: %llu, PtrSize: %d, RegABI: %d, TextStart: 0x%p\n",
+                    ImageBase, detectedVer, (unsigned long long)nfunc, (int)ptrSize, (int)g_go_uses_regabi, (PVOID)textStart);
 
-        // 2. Parsed BuildInfo scanner: Scan .data, .rdata, or .rodata sections for buildinfo magic
+        // 2. Parsed BuildInfo scanner: Scan .data, .rdata, or .rodata sections (or fallback readable sections) for buildinfo magic
         const char buildinfoMagic[] = "\xff Go buildinf:";
         for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
             char secName[9] = {0};
@@ -910,6 +914,22 @@ void GoRecoverSymbols() {
                     if (buildinfo) {
                         GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart));
                         break;
+                    }
+                }
+            }
+        }
+
+        if (!buildinfo) {
+            for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
+                if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
+                    PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
+                    DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
+                    if (IsAddressAccessible(pStart)) {
+                        buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
+                        if (buildinfo) {
+                            GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart));
+                            break;
+                        }
                     }
                 }
             }
@@ -953,7 +973,7 @@ void GoRecoverSymbols() {
                     continue;
             }
 
-            if (textSectionVA != 0 && (funcAddress < textSectionVA || funcAddress >= textSectionVA + textSectionSize)) {
+            if (funcAddress < (ULONG_PTR)ImageBase || funcAddress >= (ULONG_PTR)pImageEnd || !IsAddressExecutable((PVOID)funcAddress)) {
                 continue;
             }
 

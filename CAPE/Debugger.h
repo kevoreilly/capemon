@@ -93,10 +93,12 @@ typedef struct SoftBP
 {
 	BYTE			InstructionByte;
 	unsigned int	Length;
+	LPVOID			Callback;
 	DWORD			ThreadId;
 } SOFTBP, *PSOFTBP;
 
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);
+typedef BOOL (cdecl *SOFTWARE_BREAKPOINT_HANDLER)(struct _EXCEPTION_POINTERS*);
 typedef BOOL (cdecl *GUARD_PAGE_HANDLER)(struct _EXCEPTION_POINTERS*);
 typedef BOOL (cdecl *SAMPLE_HANDLER)(struct _EXCEPTION_POINTERS*);
 
@@ -136,7 +138,7 @@ BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, int* Register, int Size
 BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
-BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address, PVOID Callback);
 
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);
