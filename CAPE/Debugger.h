@@ -93,6 +93,7 @@ typedef struct SoftBP
 {
 	BYTE			InstructionByte;
 	unsigned int	Length;
+	DWORD			ThreadId;
 } SOFTBP, *PSOFTBP;
 
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);

@@ -149,11 +149,20 @@ static PBYTE ScanSectionForBytes(PBYTE pStart, DWORD Size, PBYTE pPattern, DWORD
     return NULL;
 }
 
+// Helper to read pointer-sized integer from pclntab header offsets
+static uint64_t ReadHeaderWord(PBYTE pHeader, DWORD wordIndex, BYTE ptrSize) {
+    if (ptrSize == 4) {
+        return *(uint32_t*)(pHeader + 8 + wordIndex * 4);
+    } else {
+        return *(uint64_t*)(pHeader + 8 + wordIndex * 8);
+    }
+}
+
 // Safely scan a memory section for the Go pclntab magic header
 static PBYTE ScanSectionForPclntab(PBYTE pStart, DWORD Size, int* pOutVer) {
-    if (Size < 16 || !pStart) return NULL;
+    if (Size < 64 || !pStart) return NULL;
     __try {
-        for (PBYTE p = pStart; p <= pStart + Size - 16; p++) {
+        for (PBYTE p = pStart; p <= pStart + Size - 64; p++) {
             DWORD Magic = *(PDWORD)p;
             int ver = GO_VER_UNKNOWN;
 
@@ -173,9 +182,11 @@ static PBYTE ScanSectionForPclntab(PBYTE pStart, DWORD Size, int* pOutVer) {
                 if (p[4] == 0 && p[5] == 0 &&
                     (p[6] == 1 || p[6] == 2 || p[6] == 4) &&
                     (p[7] == 4 || p[7] == 8)) {
-
-                    if (pOutVer) *pOutVer = ver;
-                    return p;
+                    uint64_t nfunc = ReadHeaderWord(p, 0, p[7]);
+                    if (nfunc > 0 && nfunc < 500000) {
+                        if (pOutVer) *pOutVer = ver;
+                        return p;
+                    }
                 }
             }
         }
@@ -208,13 +219,27 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
         funcName = hookEntry->Name;
     }
 
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    hook_info_t* hookinfo = hook_info();
+    ULONG_PTR savedRetAddr = hookinfo ? hookinfo->return_address : 0;
+    ULONG_PTR savedMainCaller = hookinfo ? hookinfo->main_caller_retaddr : 0;
+
+    if (hookinfo) {
+        hookinfo->return_address = (ULONG_PTR)pBreakpointInfo->Address;
+#ifdef _WIN64
+        PULONG_PTR pSp = (PULONG_PTR)ctx->Rsp;
+#else
+        PULONG_PTR pSp = (PULONG_PTR)ctx->Esp;
+#endif
+        if (IsAddressAccessible(pSp))
+            hookinfo->main_caller_retaddr = pSp[0];
+    }
+
     char safeFuncName[160];
     SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
 
     LOQ_string("go_trace", "s", "Function", funcName);
     DebugOutput("Go Trace: Intercepted Execution of Go Function: %s at 0x%p\n", safeFuncName, pBreakpointInfo->Address);
-
-    PCONTEXT ctx = ExceptionInfo->ContextRecord;
 
     // Dynamic argument tracing based on ABI (RegABI on x64 vs. Stack ABI)
     __try {
@@ -389,6 +414,11 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
         DebugOutput("Go Trace: Exception occurred resolving Go function arguments.\n");
     }
 
+    if (hookinfo) {
+        hookinfo->return_address = savedRetAddr;
+        hookinfo->main_caller_retaddr = savedMainCaller;
+    }
+
     return TRUE;
 }
 
@@ -398,6 +428,14 @@ int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo
     // 1. Intercept temporary TLS Read return breakpoints (keyed by returnAddress across goroutine thread migrations)
     GO_TLS_RETURN_STATE* tlsState = (GO_TLS_RETURN_STATE*)lookup_get(&g_go_tls_return_table, (ULONG_PTR)Address, NULL);
     if (tlsState && tlsState->returnAddress == Address) {
+        hook_info_t* hookinfo = hook_info();
+        ULONG_PTR savedRetAddr = hookinfo ? hookinfo->return_address : 0;
+        ULONG_PTR savedMainCaller = hookinfo ? hookinfo->main_caller_retaddr : 0;
+        if (hookinfo) {
+            hookinfo->return_address = (ULONG_PTR)Address;
+            hookinfo->main_caller_retaddr = (ULONG_PTR)Address;
+        }
+
         __try {
             ULONG_PTR bytesRead = 0;
 #ifdef _WIN64
@@ -422,9 +460,16 @@ int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo
             DebugOutput("Go Trace: Exception occurred resolving Go tls.Read return.\n");
         }
 
+        if (hookinfo) {
+            hookinfo->return_address = savedRetAddr;
+            hookinfo->main_caller_retaddr = savedMainCaller;
+        }
+
         // SoftwareBreakpointHandler already restored the original instruction byte at Address;
-        // remove the one-shot return breakpoint from SoftBPs (unless it is also a persistent hook).
-        lookup_del(&g_go_tls_return_table, (ULONG_PTR)Address);
+        // clear the state for reuse and remove the one-shot return breakpoint from SoftBPs.
+        tlsState->returnAddress = NULL;
+        tlsState->readBuffer = NULL;
+        tlsState->bytesReadSlot = NULL;
         if (!lookup_get(&g_go_hook_table, (ULONG_PTR)Address, NULL)) {
             lookup_del(&SoftBPs, (ULONG_PTR)Address);
         }
@@ -607,15 +652,6 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size) {
     }
 }
 
-// Helper to read pointer-sized integer from pclntab header offsets
-static uint64_t ReadHeaderWord(PBYTE pHeader, DWORD wordIndex, BYTE ptrSize) {
-    if (ptrSize == 4) {
-        return *(uint32_t*)(pHeader + 8 + wordIndex * 4);
-    } else {
-        return *(uint64_t*)(pHeader + 8 + wordIndex * 8);
-    }
-}
-
 // Filter for high-signal Go functions/methods, skipping ABI wrappers, package initializers, and closures
 static BOOL ShouldHookGoFunction(const char* funcName) {
     if (!funcName || *funcName == '\0')
@@ -761,7 +797,7 @@ void GoRecoverSymbols() {
             char secName[9] = {0};
             memcpy(secName, pSec[i].Name, 8);
 
-            if (memcmp(secName, ".text", 5) == 0 || (textSectionVA == 0 && (pSec[i].Characteristics & IMAGE_SCN_CNT_CODE))) {
+            if (textSectionVA == 0 && (strcmp(secName, ".text") == 0 || (pSec[i].Characteristics & IMAGE_SCN_CNT_CODE))) {
                 textSectionVA = (ULONG_PTR)ImageBase + pSec[i].VirtualAddress;
                 textSectionSize = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
             }
@@ -772,6 +808,20 @@ void GoRecoverSymbols() {
 
                 if (IsAddressAccessible(pStart)) {
                     pclntab = ScanSectionForPclntab(pStart, size, &detectedVer);
+                }
+            }
+        }
+
+        // Fallback: if sections were renamed by a packer/obfuscator, scan any readable section
+        if (!pclntab) {
+            for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
+                if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
+                    PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
+                    DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
+                    if (IsAddressAccessible(pStart)) {
+                        pclntab = ScanSectionForPclntab(pStart, size, &detectedVer);
+                        if (pclntab) break;
+                    }
                 }
             }
         }

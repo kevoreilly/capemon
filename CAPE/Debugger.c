@@ -442,7 +442,9 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
 	PVOID CIP;
+	DWORD CurrentThreadId = GetCurrentThreadId();
 	BOOL Restored = FALSE;
+	BOOL OtherPending = FALSE;
 
 #ifdef _WIN64
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
@@ -460,7 +462,9 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		Address = (PBYTE)Entry->id;
 		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
 
-		if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress - (ULONG_PTR)Address <= 0x10 && SoftBP->InstructionByte == *Address)
+		if (!Restored &&
+			(SoftBP->ThreadId == CurrentThreadId || (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress - (ULONG_PTR)Address <= 0x10) &&
+			IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
 		{
 			DWORD OldProtect;
 			if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
@@ -473,36 +477,16 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p\n", Address);
 #endif
 			*(PBYTE)Address = 0xCC;
+			SoftBP->ThreadId = 0;
 
 			VirtualProtect(Address, 1, OldProtect, &OldProtect);
 			Restored = TRUE;
-
-			break;
+		}
+		else if (SoftBP->ThreadId != 0 && SoftBP->ThreadId != CurrentThreadId)
+		{
+			OtherPending = TRUE;
 		}
 		Entry = Next;
-	}
-
-	if (!Restored)
-	{
-		Entry = SoftBPs.root;
-		while (Entry != NULL)
-		{
-			Next = Entry->next;
-			Address = (PBYTE)Entry->id;
-			PSOFTBP SoftBP = (PSOFTBP)Entry->data;
-
-			if (IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
-			{
-				DWORD OldProtect;
-				if (VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
-				{
-					*(PBYTE)Address = 0xCC;
-					VirtualProtect(Address, 1, OldProtect, &OldProtect);
-				}
-				break;
-			}
-			Entry = Next;
-		}
 	}
 
 	if (SoftBPSingleStepHandler)
@@ -511,8 +495,14 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		SoftBPSingleStepHandler = NULL;
 		Handler(ExceptionInfo);
 	}
+	else if (OtherPending)
+	{
+		ExceptionInfo->ContextRecord->EFlags &= ~FL_TF;
+	}
 	else
+	{
 		ClearSingleStepMode(ExceptionInfo->ContextRecord);
+	}
 
 	return TRUE;
 }
@@ -531,16 +521,16 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (InsByte != 0xCC)
 		return FALSE;
 
-	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
+	PSOFTBP SoftBP = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
 
-	if (!pInsByte)
+	if (!SoftBP)
 	{
 		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction byte for 0x%p", Address);
 		return FALSE;
 	}
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SoftwareBreakpointHandler: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
+	DebugOutput("SoftwareBreakpointHandler: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);
 #endif
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
@@ -548,7 +538,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return FALSE;
 	}
 
-	*(PBYTE)Address = *pInsByte;
+	*(PBYTE)Address = SoftBP->InstructionByte;
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
@@ -556,6 +546,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	int GoBPStatus = GoBreakpointHandler(Address, ExceptionInfo);
 	if (GoBPStatus == 1)
 	{
+		SoftBP->ThreadId = GetCurrentThreadId();
 		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
 			SoftBPSingleStepHandler = SingleStepHandler;
 		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
@@ -563,6 +554,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 	else if (GoBPStatus == 2)
 	{
+		SoftBP->ThreadId = 0;
 		return TRUE;
 	}
 
@@ -570,6 +562,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (g_config.softbpmode)
 	{
+		SoftBP->ThreadId = GetCurrentThreadId();
 		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
 			SoftBPSingleStepHandler = SingleStepHandler;
 		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
@@ -675,6 +668,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		{
 			if (SingleStepHandler)
 				SingleStepHandler(ExceptionInfo);
+			else if (SoftBPs.root != NULL)
+				RestoreSoftwareBreakpoint(ExceptionInfo);
 			else
 			{
 				// Unhandled single-step exception, pass it on
