@@ -29,7 +29,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "Unpacker.h"
 
 // Forward declaration for Go breakpoint handler (defined in hook_go.c)
-extern BOOL GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo);
+// Returns: 0 = not a Go breakpoint, 1 = persistent Go entry hook (re-arm), 2 = one-shot Go return hook
+extern int GoBreakpointHandler(PVOID Address, struct _EXCEPTION_POINTERS* ExceptionInfo);
 
 #define PIPEBUFSIZE 512
 
@@ -441,6 +442,7 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
 	PVOID CIP;
+	BOOL Restored = FALSE;
 
 #ifdef _WIN64
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
@@ -473,10 +475,34 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			*(PBYTE)Address = 0xCC;
 
 			VirtualProtect(Address, 1, OldProtect, &OldProtect);
+			Restored = TRUE;
 
 			break;
 		}
 		Entry = Next;
+	}
+
+	if (!Restored)
+	{
+		Entry = SoftBPs.root;
+		while (Entry != NULL)
+		{
+			Next = Entry->next;
+			Address = (PBYTE)Entry->id;
+			PSOFTBP SoftBP = (PSOFTBP)Entry->data;
+
+			if (IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
+			{
+				DWORD OldProtect;
+				if (VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+				{
+					*(PBYTE)Address = 0xCC;
+					VirtualProtect(Address, 1, OldProtect, &OldProtect);
+				}
+				break;
+			}
+			Entry = Next;
+		}
 	}
 
 	if (SoftBPSingleStepHandler)
@@ -485,6 +511,8 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		SoftBPSingleStepHandler = NULL;
 		Handler(ExceptionInfo);
 	}
+	else
+		ClearSingleStepMode(ExceptionInfo->ContextRecord);
 
 	return TRUE;
 }
@@ -525,13 +553,24 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
 	// Execute custom Go breakpoint callback if it matches our list
-	GoBreakpointHandler(Address, ExceptionInfo);
+	int GoBPStatus = GoBreakpointHandler(Address, ExceptionInfo);
+	if (GoBPStatus == 1)
+	{
+		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
+			SoftBPSingleStepHandler = SingleStepHandler;
+		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
+		return TRUE;
+	}
+	else if (GoBPStatus == 2)
+	{
+		return TRUE;
+	}
 
 	SoftwareBreakpointCallback(ExceptionInfo);
 
 	if (g_config.softbpmode)
 	{
-		if (SingleStepHandler)
+		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
 			SoftBPSingleStepHandler = SingleStepHandler;
 		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
 	}
@@ -631,14 +670,6 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 				break;
 
-		PTHREADBREAKPOINTS CurrentThreadBreakpoints  = GetThreadBreakpoints(CurrentThreadId);
-
-		if (CurrentThreadBreakpoints == NULL)
-		{
-			DebugOutput("CAPEExceptionFilter: Breakpoint %d not registered (address 0x%p thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId);
-			return EXCEPTION_CONTINUE_SEARCH;
-		}
-
 		// If not it's a single-step
 		if (bp == NUMBER_OF_DEBUG_REGISTERS)
 		{
@@ -655,6 +686,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			teb->LastErrorValue = saved_error;
 
 			return EXCEPTION_CONTINUE_EXECUTION;
+		}
+
+		PTHREADBREAKPOINTS CurrentThreadBreakpoints = GetThreadBreakpoints(CurrentThreadId);
+
+		if (CurrentThreadBreakpoints == NULL)
+		{
+			DebugOutput("CAPEExceptionFilter: Breakpoint %d not registered (address 0x%p thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId);
+			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
 		if (TrapIndex)
