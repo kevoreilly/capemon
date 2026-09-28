@@ -1245,7 +1245,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	if (BaseAddress)
 		module_name = get_module_name((ULONG_PTR)*BaseAddress);
 
-	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
+	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
 		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
 			NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
@@ -1324,7 +1324,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	DWORD OriginalNewProtect = 0;
 	UNICODE_STRING *module_name = get_module_name((ULONG_PTR)lpAddress);
 
-	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
+	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
 		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
 			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||

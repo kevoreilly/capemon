@@ -1044,7 +1044,7 @@ void loq(int index, const char *category, const char *name,
 					bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY,
 						(const char *)data, 0);
 				}
-				else if ((type == 'r' && size < 2) || (type == 'R' && size < 4))
+				else if ((key == 'r' && size < 2) || (key == 'R' && size < 4))
 					goto buffer_log;
 				// ascii strings
 				else if (key == 'r') {
@@ -1078,9 +1078,10 @@ void loq(int index, const char *category, const char *name,
 							}
 						}
 						else {
-							p[x] = data[i];
+							p[x++] = data[i];
 						}
 					}
+					p[x] = '\0';
 					len = (int)strnlen(p, size + (strcnt * 4));
 					log_string(p, len);
 					free(p);
@@ -1118,9 +1119,10 @@ void loq(int index, const char *category, const char *name,
 							}
 						}
 						else {
-							p[x] = data[i];
+							p[x++] = wdata[i];
 						}
 					}
+					p[x] = L'\0';
 					len = (int)wcsnlen(p, (size/sizeof(wchar_t)) + (strcnt * 4));
 					log_wstring(p, len);
 					free(p);
@@ -1217,7 +1219,7 @@ static int get_registry_string(HKEY hKey, char *subkey, char *value, char *outbu
 {
 	HKEY outkey;
 	DWORD regtype;
-	DWORD outlen;
+	DWORD outlen = insize;
 	LONG ret;
 
 	memset(outbuf, 0, insize);
