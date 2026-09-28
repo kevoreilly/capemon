@@ -88,12 +88,13 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
 		}
 		else if (*fmt == 'F') {
 			const wchar_t *s = va_arg(args, const wchar_t *);
-			wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+			wchar_t *absolutepath;
 			if (s == NULL) return -1;
+			absolutepath = path_scratch_acquire();
 			if (absolutepath) {
 				ensure_absolute_unicode_path(absolutepath, s);
 				ret += _pipe_unicode(&out, absolutepath, lstrlenW(absolutepath));
-				free(absolutepath);
+				path_scratch_release(absolutepath);
 			}
 			else {
 				return -1;
@@ -127,14 +128,14 @@ static int _pipe_sprintf(char *out, const char *fmt, va_list args)
 
 			if(obj == NULL || obj->ObjectName == NULL) return -1;
 
-			absolutepath = malloc(32768 * sizeof(wchar_t));
+			absolutepath = path_scratch_acquire();
 			if (absolutepath) {
 				path_from_object_attributes(obj, path, (unsigned int)MAX_PATH_PLUS_TOLERANCE);
 
 				ensure_absolute_unicode_path(absolutepath, path);
 
 				ret += _pipe_unicode(&out, absolutepath, lstrlenW(absolutepath));
-				free(absolutepath);
+				path_scratch_release(absolutepath);
 			}
 			else {
 				ret += _pipe_unicode(&out, L"", 0);
