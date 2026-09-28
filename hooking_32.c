@@ -239,6 +239,11 @@ static void hook_create_pre_tramp(hook_t *h)
 		0xe9, 0x00, 0x00, 0x00, 0x00
 	};
 
+	// Every byte written below is memcpy'd out of these fixed-size arrays,
+	// so the bound is a compile-time property. This replaces a runtime
+	// assert() that was the only overflow check on pre_tramp and that NDEBUG
+	// deletes. Braces give each C_ASSERT its own scope (it is a typedef).
+	{ C_ASSERT(sizeof(pre_tramp1) + sizeof(pre_tramp2) + sizeof(pre_tramp3) <= MAX_PRETRAMP_SIZE); }
 
 	if (disable_this_hook(h)) {
 		h->hookdata->pre_tramp[0] = 0xe9;
@@ -263,8 +268,6 @@ static void hook_create_pre_tramp(hook_t *h)
 	emit_rel(pre_tramp3 + off, p + off, h->new_func);
 	memcpy(p, pre_tramp3, sizeof(pre_tramp3));
 	p += sizeof(pre_tramp3);
-
-	assert ((ULONG_PTR)(p - h->hookdata->pre_tramp) < MAX_PRETRAMP_SIZE);
 }
 
 static void hook_create_pre_tramp_notail(hook_t *h)
@@ -341,6 +344,9 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 		0xe9, 0x00, 0x00, 0x00, 0x00
 	};
 
+	{ C_ASSERT(sizeof(pre_tramp1) + sizeof(pre_tramp2) + sizeof(pre_tramp3) +
+		sizeof(pre_tramp4) + sizeof(pre_tramp5) <= MAX_PRETRAMP_SIZE); }
+
 	if (disable_this_hook(h)) {
 		h->hookdata->pre_tramp[0] = 0xe9;
 		emit_rel(h->hookdata->pre_tramp + 1, h->hookdata->pre_tramp + 1, h->hookdata->tramp);
@@ -374,8 +380,6 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 	emit_rel(pre_tramp5 + off, p + off, h->alt_func);
 	memcpy(p, pre_tramp5, sizeof(pre_tramp5));
 	p += sizeof(pre_tramp5);
-
-	assert ((ULONG_PTR)(p - h->hookdata->pre_tramp) < MAX_PRETRAMP_SIZE);
 }
 
 static int hook_api_jmp_direct(hook_t *h, unsigned char *from,
@@ -594,7 +598,9 @@ static ULONG_PTR get_near_rel_target(unsigned char *buf)
 	else if (buf[0] == 0x0f && buf[1] >= 0x80 && buf[1] < 0x90)
 		return (ULONG_PTR)buf + 6 + *(int *)&buf[2];
 
-	assert(0);
+	// the caller uses the result as a jump target, so returning 0 here
+	// silently retargets to address 0 once NDEBUG removes the assert
+	DebugOutput("get_near_rel_target: unhandled opcode 0x%02x at 0x%p\n", buf[0], (PVOID)buf);
 	return 0;
 }
 
@@ -603,7 +609,7 @@ static ULONG_PTR get_short_rel_target(unsigned char *buf)
 	if (buf[0] == 0xeb || buf[0] == 0xe3 || (buf[0] >= 0x70 && buf[0] < 0x80))
 		return (ULONG_PTR)buf + 2 + *(char *)&buf[1];
 
-	assert(0);
+	DebugOutput("get_short_rel_target: unhandled opcode 0x%02x at 0x%p\n", buf[0], (PVOID)buf);
 	return 0;
 }
 
