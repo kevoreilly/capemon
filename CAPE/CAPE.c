@@ -1155,7 +1155,7 @@ BOOL DropTrackedRegion(PTRACKEDREGION TrackedRegion)
 			else if (!PreviousTrackedRegion)
 			{
 				DebugOutput("DropTrackedRegion: removed region at 0x%p from the head of the tracked region list.\n", TrackedRegion->AllocationBase);
-				TrackedRegionList = CurrentTrackedRegion->NextTrackedRegion;
+				TrackedRegionList = NULL;
 			}
 
 			free(CurrentTrackedRegion);
