@@ -86,12 +86,20 @@ capemon has one established way of doing each of the following. New code MUST pl
 - NEVER modify `SoftwareBreakpointHandler`, `SoftwareBreakpointCallback`, `SingleStepHandler` or `CAPEExceptionFilter` to dispatch a feature. Doing so hijacks every other debugger consumer (traces, YARA `bp` options, syscall breakpoints).
 - Single-step state is per thread; do not overwrite the global `SingleStepHandler` to service a feature.
 
-### E. Design review checklist (answer before writing code)
+### E. Behaviour log: one `LOQ_*` call per API call or breakpoint hit
+- Every hook or breakpoint emits at most ONE `LOQ_*` record per hit. Gather every relevant field first (function name, arguments, buffers, resolved names), then emit them together in a single call with a multi-field format string (e.g. `"sSS"`).
+- Do NOT log a generic "function called" record and then one record per parameter. Unreadable arguments are logged as empty or zero-length values inside the same record.
+- A call that spans entry and return (e.g. output buffers) logs once, at the point where the data is available (usually on return). Stay silent at entry.
+- Bulk metadata (module info, file lists, dependency trees) is one record per object, not one per item. Filter out noise (stdlib, dependencies already listed elsewhere) and cap the size.
+- `DebugOutput` goes to the debug log, not the behaviour log, but it should not emit per-item floods either.
+
+### F. Design review checklist (answer before writing code)
 1. Does an existing mechanism already do this? Check `YaraScan` callers, `YaraCallback` options, `SetBreakpoint*`, tracked regions, `DumpRegion`.
 2. Does it work on a UPX-packed sample? On a non-PE (shellcode) region?
 3. Are addresses passed as arguments rather than read from globals?
 4. Does it modify a shared handler? If yes, redesign.
 5. Is it gated by a config option and documented in `docs/configuration.md`?
+6. Does each hit produce at most one behaviour log record?
 
 ### Case study: Go hooking (kevoreilly review, PR #181)
 - **Rejected:** `GoRecoverSymbols(GetModuleHandle(NULL))` called from `CAPE_post_init()`, a hand-written C pclntab scanner, and `GoBreakpointHandler` dispatched from `SoftwareBreakpointHandler` for every software breakpoint. Missed all UPX-packed Go samples.
