@@ -5,7 +5,7 @@ description: Expert capability for navigating, modifying, and extending the cape
 
 # Capemon Skills
 
-`capemon` is a sophisticated monitoring and instrumentation engine designed for malware analysis, configuration extraction, and payload recovery. It acts as the core injection component for the CAPEv2 sandbox.
+`capemon` is a monitoring and instrumentation engine designed for malware analysis, configuration extraction, and payload recovery. It acts as the core injection component for the CAPEv2 sandbox.
 
 ## Core Capabilities
 
@@ -21,7 +21,7 @@ description: Expert capability for navigating, modifying, and extending the cape
 - **Scripting Engines:** Specific hooks for VBScript and other language runtimes.
 
 ### 2. Debugging & Tracing
-`capemon` implements a powerful in-process debugger independent of Windows debugging interfaces, but harnessing the capabilities of the processor:
+`capemon` implements an in-process debugger independent of Windows debugging interfaces, but harnessing the capabilities of the processor:
 - **Hardware breakpoints:** Four breakpoints bp0-bp3 that can be set on execute, read or write
 - **Software breakpoints:** Unlimited INT3 or 'CC' breakpoints overwriting instruction byte
 - **Single-step:** Tracing allows instruction-level capture enhanced with configurable step-over, trace-length, register changes, function names, strings & more
@@ -31,12 +31,12 @@ description: Expert capability for navigating, modifying, and extending the cape
 - **Stealth:** Debugger does not rely upon Windows interface and thus evades detection by a slew of interface-related indicators, with additional stealth from hook-based protections
 
 ### 3. Automated Unpacking
-'capemon' implements a powerful unpacking engine using a combination of techniques
+'capemon' implements an unpacking engine using a combination of techniques
 - **Memory region tracking:** Regions of memory revealed through indicators of execution, allocation or protection are tracked
 - **Early capture:** Multiple possible triggers allow payload capture at earliest moment often resulting in working unpacked samples
-- **Injection capture:**: Strong coverage of injection techniques for inter-process payload capture
+- **Injection capture:** Strong coverage of injection techniques for inter-process payload capture
 - **PE unmapping:** Integrated Scylla engine allows capture of memory or file-mapped PE images in memory
-- **Shellcode dumping:** Shellcode * non-PE regions equally captured as payloads
+- **Shellcode dumping:** Shellcode & non-PE regions equally captured as payloads
 - **Import Reconstruction:** Repairing Import Address Tables (IAT) to create functional dumped executables.
 - **AMSI Dumping:** Intercepting and dumping buffers passed to the Antimalware Scan Interface (AMSI).
 
@@ -48,7 +48,7 @@ Automated Static & Dynamic malware configuration extraction relies on 'capemon' 
 ### 5. YARA integration
 Integration of YARA for in-memory scanning
 - **Dynamic configuration:** Sandbox configuration such as hooking exclusions or options implemented during detonation
-- **Debugger programming:** Precise dydnamic breakpoint address resolution using YARA signatures & cape-specific metadata
+- **Debugger programming:** Precise dynamic breakpoint address resolution using YARA signatures & cape-specific metadata
 - **Unpacking engine integration:** Dynamic scanning of all memory regions prior to unpacking capture
 - **Function resolution:** Allows dynamic address resolution for APIs or functions for hooking or other purposes
 
@@ -61,6 +61,49 @@ Integration of YARA for in-memory scanning
     - `libyara` for pattern matching.
     - `Scylla` for PE reconstruction.
     - `bson` for data serialization.
+
+## Architectural Idioms (MANDATORY - read before designing any feature)
+
+capemon has one established way of doing each of the following. New code MUST plug into these paths; parallel mechanisms will be rejected in review.
+
+### A. Detection = YARA, not C scanners
+- Byte-pattern, magic-value or header detection is a YARA rule. Monitor-wide detections go in the built-in `InternalYara[]` string (`CAPE/YaraHarness.c`); family/config detections go in the analyzer yara directory.
+- Do NOT write `for (p = start; p < end; p++) if (*(DWORD*)p == MAGIC)` loops. Express header validation in the rule condition (`uint32(@s[i] + N)`, `for any i in (1..#s) : (...)`).
+
+### B. Where detection runs = the unpacking engine's region scans
+- `CAPE_post_init()` runs BEFORE unpacking. Anything packed (UPX, crypters, shellcode loaders) is not yet visible there.
+- `YaraScan(Address, Size)` is already invoked on the initial image (`CAPE.c`), on tracked regions when they are executed or change protection (`ProcessTrackedRegion` etc. in `CAPE.c`), and on debugger-driven scans (`Trace.c`). A rule added to the rule set fires on all of these automatically.
+- Never tie a feature to the `ImageBase` global or `GetModuleHandle(NULL)` alone.
+
+### C. Action dispatch = `cape_options` metadata
+- A rule triggers behaviour via `meta: cape_options = "..."`. `YaraCallback` parses it with `user_data` = base of the scanned region, and `ParseOptionLine` resolves `$string` references to match addresses.
+- A new action is a new keyword handled in `YaraCallback`, which calls the feature with an explicit address (region base and/or `base + Match->offset`).
+- Features take the base address as a parameter: no globals, and no re-discovery of what YARA has already located.
+- Regions are re-scanned; expect repeated hits on the same region and make features idempotent (dedup by address).
+
+### D. Debugger ownership
+- Each breakpoint owns its handler: `SetBreakpoint(..., Callback)` for hardware breakpoints, `SetSoftwareBreakpoint(BPs, Address, Callback)` for INT3.
+- NEVER modify `SoftwareBreakpointHandler`, `SoftwareBreakpointCallback`, `SingleStepHandler` or `CAPEExceptionFilter` to dispatch a feature. Doing so hijacks every other debugger consumer (traces, YARA `bp` options, syscall breakpoints).
+- Single-step state is per thread; do not overwrite the global `SingleStepHandler` to service a feature.
+
+### E. Behaviour log: one `LOQ_*` call per API call or breakpoint hit
+- Every hook or breakpoint emits at most ONE `LOQ_*` record per hit. Gather every relevant field first (function name, arguments, buffers, resolved names), then emit them together in a single call with a multi-field format string (e.g. `"sSS"`).
+- Do NOT log a generic "function called" record and then one record per parameter. Unreadable arguments are logged as empty or zero-length values inside the same record.
+- A call that spans entry and return (e.g. output buffers) logs once, at the point where the data is available (usually on return). Stay silent at entry.
+- Bulk metadata (module info, file lists, dependency trees) is one record per object, not one per item. Filter out noise (stdlib, dependencies already listed elsewhere) and cap the size.
+- `DebugOutput` goes to the debug log, not the behaviour log, but it should not emit per-item floods either.
+
+### F. Design review checklist (answer before writing code)
+1. Does an existing mechanism already do this? Check `YaraScan` callers, `YaraCallback` options, `SetBreakpoint*`, tracked regions, `DumpRegion`.
+2. Does it work on a UPX-packed sample? On a non-PE (shellcode) region?
+3. Are addresses passed as arguments rather than read from globals?
+4. Does it modify a shared handler? If yes, redesign.
+5. Is it gated by a config option and documented in `docs/configuration.md`?
+6. Does each hit produce at most one behaviour log record?
+
+### Case study: Go hooking (kevoreilly review, PR #181)
+- **Rejected:** `GoRecoverSymbols(GetModuleHandle(NULL))` called from `CAPE_post_init()`, a hand-written C pclntab scanner, and `GoBreakpointHandler` dispatched from `SoftwareBreakpointHandler` for every software breakpoint. Missed all UPX-packed Go samples.
+- **Accepted:** `rule golang` in `InternalYara` -> `cape_options = "golang"` -> `YaraCallback` -> `GoRecoverSymbols(base, ...)`; Go hooks registered with `SetSoftwareBreakpoint(..., GoBreakpointHandler)`.
 
 ## Engineering & Documentation Mandates
 - **Always update `@docs/configuration.md`:** Whenever a new configurable option is introduced to the engine (such as `log-format`, `sleep-skip-seconds`, etc.), you must immediately append its documentation details to the appropriate table inside the configuration reference document to ensure the user and the system documentation are fully up-to-date.
@@ -80,6 +123,7 @@ Integration of YARA for in-memory scanning
 >    Ensure the local base branch and working branches are strictly in sync with `upstream/capemon` (`kevoreilly/capemon`).
 > 2. **Resolve All Conflicts**: If any conflicts arise when merging upstream changes into an active branch or worktree, inspect each conflicting file, resolve all conflicts thoroughly, and verify that the resulting code compiles cleanly for both Win32 and x64. Never leave conflict markers or unresolved states.
 > 3. **Sync Before PR & Finalization**: Before pushing commits or finalizing PR branches, fetch and merge `upstream/capemon` again to guarantee clean, fast-forwardable or conflict-free integration.
+> 4. **Maintainer Commits First on Shared PRs**: Maintainers (e.g. kevoreilly) push directly to PR head branches. Before applying review fixes, fetch the PR head (`agent_worktree.py update <name>` or `git pull --ff-only`) and confirm the maintainer's latest commit is in your branch. Never force-push over a PR head; never start fixes on a head that predates the maintainer's push.
 
 ### Isolated Checkouts for Review and Testing
 
