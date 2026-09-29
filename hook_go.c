@@ -30,6 +30,7 @@ static lookup_t g_go_recovered_pclntab = {0};
 // Per-pclntab (per Go module) state, persisted across repeated GoRecoverSymbols() calls
 typedef struct _GO_MODULE_INFO {
     int GoMinor;            // minor version from buildinfo ("go1.N"), -1 if unknown
+    BOOL NoRegAbiExp;       // buildinfo version carries " X:...noregabi*" (GOEXPERIMENT disabled the register ABI)
     BOOL RegAbi;            // resolved ABI for this module
     BOOL AbiResolved;
 } GO_MODULE_INFO;
@@ -792,6 +793,28 @@ static int GoParseMinorVersion(const char* Version) {
     return digits ? minor : -1;
 }
 
+// True if the version string carries a GOEXPERIMENT list (" X:a,b,c") that disables any register ABI
+// component. The linker appends " X:" + GOEXPERIMENT to runtime.buildVersion (Go 1.17+), and every
+// noregabi* token (noregabi, noregabiargs, noregabiwrappers, noregabig, noregabireflect, noregabidefer)
+// forces regabiargs off through the buildcfg dependency check.
+static BOOL GoVersionHasNoRegAbi(const char* Version) {
+    if (!Version)
+        return FALSE;
+    const char* p = strstr(Version, " X:");
+    if (!p)
+        return FALSE;
+    p += 3;
+    while (*p && *p != ' ') {
+        if (strncmp(p, "noregabi", 8) == 0)
+            return TRUE;
+        while (*p && *p != ',' && *p != ' ')
+            p++;
+        if (*p == ',')
+            p++;
+    }
+    return FALSE;
+}
+
 // Filter for high-signal Go functions/methods, skipping ABI wrappers, package initializers, and closures
 static BOOL ShouldHookGoFunction(const char* funcName) {
     if (!funcName || *funcName == '\0')
@@ -987,6 +1010,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
             if (!modInfo)
                 return;
             modInfo->GoMinor = -1;
+            modInfo->NoRegAbiExp = FALSE;
             modInfo->RegAbi = FALSE;
             modInfo->AbiResolved = FALSE;
         }
@@ -1086,8 +1110,10 @@ void GoRecoverSymbols(PVOID ImageBase) {
             }
         }
 
-        if (!alreadyProcessed)
+        if (!alreadyProcessed) {
             modInfo->GoMinor = GoParseMinorVersion(buildVersion);
+            modInfo->NoRegAbiExp = GoVersionHasNoRegAbi(buildVersion);
+        }
 
         // 3. Recover source file paths from the Line Table
         if (!alreadyProcessed && filetab && nfiles > 0) {
@@ -1166,25 +1192,31 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
         // 5. Resolve the argument ABI for this module before arming any hook.
         //    386: always stack ABI (Go never enabled the register ABI on 386).
-        //    amd64: Go 1.2-1.16 stack ABI, Go 1.17+ register ABI. Go 1.16 and 1.17 share pclntab magic
-        //    0xFFFFFFFA, so the pclntab format alone cannot separate them; resolve in order:
-        //      a) runtime.spillArgs/unspillArgs present in pclntab -> register ABI
-        //      b) buildinfo version go1.17+                        -> register ABI
-        //      c) pclntab format 1.18+ (0xFFFFFFF0/0xFFFFFFF1)     -> register ABI
-        //      d) otherwise                                        -> stack ABI
+        //    amd64: Go 1.2-1.16 stack ABI; Go 1.17+ register ABI by default; Go 1.19+ register ABI always
+        //    (buildcfg regabiAlwaysOn). Go 1.17/1.18 could disable it with GOEXPERIMENT=noregabi*.
+        //    Go 1.16 and 1.17 share pclntab magic 0xFFFFFFFA. Resolve in order:
+        //      a) buildinfo " X:noregabi*" on go1.17/1.18                  -> stack ABI
+        //      b) pclntab format 1.18+ (0xFFFFFFF0/0xFFFFFFF1)             -> register ABI
+        //      c) format 1.16/1.17 and runtime.spillArgs/unspillArgs present -> register ABI
+        //         (in 1.17 these exist only under GOEXPERIMENT_regabireflect; 1.16 never has them.
+        //          Not used for 1.18+, where they are unconditional)
+        //      d) format 1.16/1.17 and buildinfo version go1.17+           -> register ABI
+        //      e) otherwise                                                -> stack ABI
         if (!modInfo->AbiResolved) {
             const char* reason = "386 stack ABI";
             BOOL regabi = FALSE;
 #ifdef _WIN64
-            if (hasSpillArgs) {
-                regabi = TRUE;
-                reason = "runtime.spillArgs present";
-            } else if (modInfo->GoMinor >= 17) {
-                regabi = TRUE;
-                reason = "buildinfo version >= go1.17";
+            if (modInfo->NoRegAbiExp && modInfo->GoMinor >= 17 && modInfo->GoMinor <= 18) {
+                reason = "buildinfo GOEXPERIMENT noregabi";
             } else if (detectedVer >= GO_VER_118) {
                 regabi = TRUE;
                 reason = "pclntab format >= Go 1.18";
+            } else if (detectedVer == GO_VER_116 && hasSpillArgs) {
+                regabi = TRUE;
+                reason = "runtime.spillArgs present";
+            } else if (detectedVer == GO_VER_116 && modInfo->GoMinor >= 17) {
+                regabi = TRUE;
+                reason = "buildinfo version >= go1.17";
             } else {
                 reason = (modInfo->GoMinor >= 0) ? "buildinfo version < go1.17" : "pclntab format < Go 1.18, no register ABI markers";
             }
