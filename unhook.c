@@ -468,12 +468,22 @@ int procname_watch_init()
 DWORD g_watchdog_thread_id;
 
 #ifndef _WIN64
-static ULONG_PTR capemonaddrs[60];
+// Maximum number of return addresses the watchdog collects per backtrace.
+#define WATCHDOG_MAX_FRAMES 60
+
+// Watchdog report buffer. The register header line is up to ~200 bytes plus the module
+// name, so the previous MAX_PATH (260) buffer left room for only one or two backtrace
+// frames. Each frame adds " <module>+<off>(0x<addr>)" (up to 22 bytes plus the module
+// name); 4 * MAX_PATH holds the header plus a few dozen typical frames.
+// Anything beyond that is truncated by _snprintf_s.
+#define WATCHDOG_MSG_SIZE (4 * MAX_PATH)
+
+static ULONG_PTR capemonaddrs[WATCHDOG_MAX_FRAMES];
 static int capemonaddrs_num;
 
 static int find_capemon_addrs(void *unused, ULONG_PTR addr)
 {
-	if (capemonaddrs_num < 60)
+	if (capemonaddrs_num < WATCHDOG_MAX_FRAMES)
 		capemonaddrs[capemonaddrs_num++] = addr;
 	return 0;
 }
@@ -501,7 +511,7 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 	hook_disable();
 
 	while (1) {
-		char msg[1024];
+		char msg[WATCHDOG_MSG_SIZE];
 		char *dllname;
 		unsigned int off = 0;
 		int i;
@@ -521,11 +531,9 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 
 		for (i = 0; i < capemonaddrs_num; i++) {
 			char *dllname2 = convert_address_to_dll_name_and_offset(capemonaddrs[i], &off);
-			size_t len = strlen(msg);
-			size_t remaining = (len < sizeof(msg)) ? (sizeof(msg) - len) : 0;
-			if (remaining > 1) {
-				_snprintf_s(msg + len, remaining, _TRUNCATE, " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
-			}
+			size_t len = strnlen(msg, sizeof(msg));
+			if (len + 1 < sizeof(msg))	// room left for at least one character + terminator
+				_snprintf_s(msg + len, sizeof(msg) - len, _TRUNCATE, " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
 			if (dllname2)
 				free(dllname2);
 		}
