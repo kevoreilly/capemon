@@ -169,22 +169,6 @@ static BOOL IsPEFile(PVOID pBase) {
     return FALSE;
 }
 
-// Safely scan a memory section for a specific byte pattern
-static PBYTE ScanSectionForBytes(PBYTE pStart, DWORD Size, PBYTE pPattern, DWORD PatternSize) {
-    if (Size < PatternSize || !pStart || !pPattern) return NULL;
-    __try {
-        for (PBYTE p = pStart; p <= pStart + Size - PatternSize; p++) {
-            if (memcmp(p, pPattern, PatternSize) == 0) {
-                return p;
-            }
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return NULL;
-    }
-    return NULL;
-}
-
 // Helper to read pointer-sized integer from pclntab header offsets
 static uint64_t ReadHeaderWord(PBYTE pHeader, DWORD wordIndex, BYTE ptrSize) {
     if (ptrSize == 4) {
@@ -194,44 +178,31 @@ static uint64_t ReadHeaderWord(PBYTE pHeader, DWORD wordIndex, BYTE ptrSize) {
     }
 }
 
-// Safely scan a memory section for the Go pclntab magic header
-static PBYTE ScanSectionForPclntab(PBYTE pStart, DWORD Size, int* pOutVer) {
-    if (Size < 64 || !pStart) return NULL;
+// Validate a pclntab header located by the internal 'golang' YARA rule (runtime/symtab.go layout) and return
+// its GO_VER_* format, or GO_VER_UNKNOWN. YARA does the searching; this only rejects spurious matches.
+int GoPclntabVersion(PBYTE p) {
+    int ver = GO_VER_UNKNOWN;
     __try {
-        PBYTE pAligned = (PBYTE)(((ULONG_PTR)pStart + 3) & ~(ULONG_PTR)3);
-        for (PBYTE p = pAligned; p <= pStart + Size - 64; p += 4) {
-            DWORD Magic = *(PDWORD)p;
-            int ver = GO_VER_UNKNOWN;
-
-            if (Magic == 0xFFFFFFF1) {
-                ver = GO_VER_120;
-            } else if (Magic == 0xFFFFFFF0) {
-                ver = GO_VER_118;
-            } else if (Magic == 0xFFFFFFFA) {
-                ver = GO_VER_116;
-            } else if (Magic == 0xFFFFFFFB) {
-                ver = GO_VER_12;
-            }
-
-            if (ver != GO_VER_UNKNOWN) {
-                // Header validation per runtime/symtab.go:
-                // byte 4, 5 == 0, byte 6 is minLC (1, 2, or 4), byte 7 is ptrSize (4 or 8)
-                if (p[4] == 0 && p[5] == 0 &&
-                    (p[6] == 1 || p[6] == 2 || p[6] == 4) &&
-                    (p[7] == 4 || p[7] == 8)) {
-                    uint64_t nfunc = ReadHeaderWord(p, 0, p[7]);
-                    if (nfunc > 0 && nfunc < 500000) {
-                        if (pOutVer) *pOutVer = ver;
-                        return p;
-                    }
-                }
-            }
+        if (!p || ((ULONG_PTR)p & 3) || !IsAddressAccessible(p) || !IsAddressAccessible(p + 63))
+            return GO_VER_UNKNOWN;
+        switch (*(PDWORD)p) {
+            case 0xFFFFFFF1: ver = GO_VER_120; break;
+            case 0xFFFFFFF0: ver = GO_VER_118; break;
+            case 0xFFFFFFFA: ver = GO_VER_116; break;
+            case 0xFFFFFFFB: ver = GO_VER_12;  break;
+            default: return GO_VER_UNKNOWN;
         }
+        // byte 4, 5 == 0, byte 6 is minLC (1, 2 or 4), byte 7 is ptrSize (4 or 8)
+        if (p[4] || p[5] || !(p[6] == 1 || p[6] == 2 || p[6] == 4) || !(p[7] == 4 || p[7] == 8))
+            return GO_VER_UNKNOWN;
+        uint64_t nfunc = ReadHeaderWord(p, 0, p[7]);
+        if (nfunc == 0 || nfunc >= 500000)
+            return GO_VER_UNKNOWN;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
-        return NULL;
+        return GO_VER_UNKNOWN;
     }
-    return NULL;
+    return ver;
 }
 
 // Go string argument validation for single-record LOQ calls: unreadable/implausible strings log as empty
@@ -1172,69 +1143,67 @@ static BOOL ShouldHookGoFunction(const char* funcName) {
     return FALSE;
 }
 
-// Core Go symbol discovery and runtime instrumentation entry point
-void GoRecoverSymbols(PVOID ImageBase) {
-    if (!ImageBase)
-        ImageBase = GetModuleHandle(NULL);
+// Detections from the CAPE_init YARA scan arrive before InitialiseDebugger (CAPE_post_init); they are queued
+// here and instrumented by GoProcessPending() once the debugger is up. Keyed by pclntab address.
+typedef struct _GO_PENDING {
+    PVOID RegionBase;
+    PBYTE Pclntab;
+    PBYTE Buildinfo;
+    volatile LONG Done;
+} GO_PENDING;
+static lookup_t g_go_pending = {0};
 
+// Go symbol recovery and runtime instrumentation for one Go module located by the internal 'golang' YARA rule.
+// RegionBase: base of the scanned region (YaraCallback user_data). Pclntab: $pclntab match. Buildinfo: $buildinfo
+// match or NULL. No memory scanning is done here: the unpacking engine's region scans feed this via YARA.
+void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
+    int detectedVer = GoPclntabVersion(Pclntab);
+    if (!RegionBase || detectedVer == GO_VER_UNKNOWN)
+        return;
+
+    if (!DebuggerInitialised) {
+        GO_PENDING* pend = (GO_PENDING*)lookup_get(&g_go_pending, (ULONG_PTR)Pclntab, NULL);
+        if (!pend)
+            pend = (GO_PENDING*)lookup_add(&g_go_pending, (ULONG_PTR)Pclntab, sizeof(GO_PENDING));
+        if (pend) {
+            pend->RegionBase = RegionBase;
+            pend->Pclntab = Pclntab;
+            pend->Buildinfo = Buildinfo;
+        }
+        DebugOutput("GoRecoverSymbols: Go module at 0x%p queued until debugger initialisation.\n", RegionBase);
+        return;
+    }
+
+    PVOID ImageBase = RegionBase;
+    PBYTE pclntab = Pclntab;
+    PBYTE buildinfo = Buildinfo;
     GO_HOOK_CANDIDATE* candidates = NULL;
 
     __try {
+        // The PE header is optional: it only refines the text start and the preferred base used to relocate
+        // pre-1.18 absolute function table entries. Without it the region bounds come from the allocation.
+        PIMAGE_NT_HEADERS pNt = NULL;
         PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)ImageBase;
-        if (!pDos || !IsAddressAccessible(pDos) || pDos->e_lfanew <= 0 || pDos->e_lfanew > 0x1000)
-            return;
-
-        PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((PBYTE)ImageBase + pDos->e_lfanew);
-        if (!pNt || !IsAddressAccessible(pNt) || pNt->Signature != IMAGE_NT_SIGNATURE)
-            return;
-
-        PIMAGE_SECTION_HEADER pSec = IMAGE_FIRST_SECTION(pNt);
-        PBYTE pclntab = NULL;
-        PBYTE buildinfo = NULL;
-        int detectedVer = GO_VER_UNKNOWN;
-        ULONG_PTR textSectionVA = 0;
-        PBYTE pImageEnd = (PBYTE)ImageBase + pNt->OptionalHeader.SizeOfImage;
-
-        // 1. Locate primary executable section bounds and scan read-only/data sections for pclntab
-        for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
-            char secName[9] = {0};
-            memcpy(secName, pSec[i].Name, 8);
-
-            if (textSectionVA == 0 && (strcmp(secName, ".text") == 0 || (pSec[i].Characteristics & (IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE)))) {
-                textSectionVA = (ULONG_PTR)ImageBase + pSec[i].VirtualAddress;
-            }
-
-            if (!pclntab && (strstr(secName, ".rdata") || strstr(secName, ".rodata") || strstr(secName, "pclntab") || strstr(secName, ".data"))) {
-                PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
-                DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
-
-                if (IsAddressAccessible(pStart)) {
-                    pclntab = ScanSectionForPclntab(pStart, size, &detectedVer);
-                }
-            }
+        if (IsAddressAccessible(pDos) && pDos->e_lfanew > 0 && pDos->e_lfanew < 0x1000) {
+            PIMAGE_NT_HEADERS pHdr = (PIMAGE_NT_HEADERS)((PBYTE)ImageBase + pDos->e_lfanew);
+            if (IsAddressAccessible(pHdr) && pHdr->Signature == IMAGE_NT_SIGNATURE)
+                pNt = pHdr;
         }
+        ULONG_PTR sizeOfImage = pNt ? (ULONG_PTR)pNt->OptionalHeader.SizeOfImage : (ULONG_PTR)GetAccessibleSize(ImageBase);
+        ULONG_PTR preferredBase = pNt ? (ULONG_PTR)pNt->OptionalHeader.ImageBase : (ULONG_PTR)ImageBase;
+        PBYTE pImageEnd = (PBYTE)ImageBase + sizeOfImage;
+        if (!sizeOfImage || pclntab < (PBYTE)ImageBase || pclntab + 64 > pImageEnd)
+            return;
 
-        // Fallback: if sections were renamed by a packer/obfuscator (e.g. UPX0), scan the remaining readable sections
-        if (!pclntab) {
-            for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
+        ULONG_PTR textSectionVA = 0;
+        if (pNt) {
+            PIMAGE_SECTION_HEADER pSec = IMAGE_FIRST_SECTION(pNt);
+            for (WORD i = 0; i < pNt->FileHeader.NumberOfSections && !textSectionVA; i++) {
                 char secName[9] = {0};
                 memcpy(secName, pSec[i].Name, 8);
-                if (strstr(secName, ".rdata") || strstr(secName, ".rodata") || strstr(secName, "pclntab") || strstr(secName, ".data"))
-                    continue;   // already scanned above
-                if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
-                    PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
-                    DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
-                    if (IsAddressAccessible(pStart)) {
-                        pclntab = ScanSectionForPclntab(pStart, size, &detectedVer);
-                        if (pclntab) break;
-                    }
-                }
+                if (strcmp(secName, ".text") == 0 || (pSec[i].Characteristics & (IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE)))
+                    textSectionVA = (ULONG_PTR)ImageBase + pSec[i].VirtualAddress;
             }
-        }
-
-        // Fast Exit if this is not a Go binary
-        if (!pclntab) {
-            return;
         }
 
         // Metadata (buildinfo, file paths) is logged once per pclntab; the function walk always runs so
@@ -1261,7 +1230,6 @@ void GoRecoverSymbols(PVOID ImageBase) {
         PBYTE functab = NULL;
         PBYTE funcdata = NULL;
         DWORD functabFieldSize = (detectedVer >= GO_VER_118) ? 4 : (DWORD)ptrSize;
-        ULONG_PTR preferredBase = (ULONG_PTR)pNt->OptionalHeader.ImageBase;
         ULONG_PTR textStart = textSectionVA ? textSectionVA : (ULONG_PTR)ImageBase;
 
         if (detectedVer == GO_VER_118 || detectedVer == GO_VER_120) {
@@ -1271,7 +1239,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
             if (hdrTextStart != 0) {
                 if (hdrTextStart >= (ULONG_PTR)ImageBase && hdrTextStart < (ULONG_PTR)pImageEnd)
                     textStart = (ULONG_PTR)hdrTextStart;
-                else if (hdrTextStart >= preferredBase && hdrTextStart < preferredBase + pNt->OptionalHeader.SizeOfImage)
+                else if (hdrTextStart >= preferredBase && hdrTextStart < preferredBase + sizeOfImage)
                     textStart = (ULONG_PTR)ImageBase + ((ULONG_PTR)hdrTextStart - preferredBase);
             } else if (textSectionVA != 0) {
                 textStart = textSectionVA;
@@ -1311,40 +1279,10 @@ void GoRecoverSymbols(PVOID ImageBase) {
         const char* modinfo = NULL;
         int modinfoLen = 0;
 
-        // 2. Parsed BuildInfo scanner: Scan .data, .rdata, or .rodata sections (or fallback readable sections) for buildinfo magic
-        const char buildinfoMagic[] = "\xff Go buildinf:";
-        for (WORD i = 0; !alreadyProcessed && i < pNt->FileHeader.NumberOfSections; i++) {
-            char secName[9] = {0};
-            memcpy(secName, pSec[i].Name, 8);
-
-            if (strstr(secName, ".data") || strstr(secName, ".rdata") || strstr(secName, ".rodata") || strstr(secName, "buildinfo")) {
-                PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
-                DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
-
-                if (IsAddressAccessible(pStart)) {
-                    buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
-                    if (buildinfo) {
-                        GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion), &modinfo, &modinfoLen);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!alreadyProcessed && !buildinfo) {
-            for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
-                if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
-                    PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
-                    DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
-                    if (IsAddressAccessible(pStart)) {
-                        buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
-                        if (buildinfo) {
-                            GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion), &modinfo, &modinfoLen);
-                            break;
-                        }
-                    }
-                }
-            }
+        // 2. BuildInfo located by the same YARA rule ($buildinfo): no section scanning
+        if (!alreadyProcessed && buildinfo && buildinfo >= (PBYTE)ImageBase && buildinfo + 32 <= pImageEnd) {
+            ULONG_PTR avail = (ULONG_PTR)(pImageEnd - buildinfo);
+            GoParseBuildInfo(buildinfo, (DWORD)(avail > 0x100000 ? 0x100000 : avail), buildVersion, sizeof(buildVersion), &modinfo, &modinfoLen);
         }
 
         if (!alreadyProcessed) {
@@ -1382,7 +1320,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
             modInfo->ImageEnd = pImageEnd;
             modInfo->ImageBase = (ULONG_PTR)ImageBase;
             modInfo->PreferredBase = preferredBase;
-            modInfo->SizeOfImage = pNt->OptionalHeader.SizeOfImage;
+            modInfo->SizeOfImage = sizeOfImage;
             modInfo->TextStart = textStart;
             MemoryBarrier();
             modInfo->FuncTabValid = TRUE;
@@ -1417,7 +1355,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
             } else {
                 if (funcEntryOff >= (ULONG_PTR)ImageBase && funcEntryOff < (ULONG_PTR)pImageEnd)
                     funcAddress = funcEntryOff;
-                else if (funcEntryOff >= preferredBase && funcEntryOff < preferredBase + pNt->OptionalHeader.SizeOfImage)
+                else if (funcEntryOff >= preferredBase && funcEntryOff < preferredBase + sizeOfImage)
                     funcAddress = (ULONG_PTR)ImageBase + (funcEntryOff - preferredBase);
                 else
                     continue;
@@ -1504,4 +1442,14 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
     if (candidates)
         free(candidates);
+}
+
+// Called from CAPE_post_init once the debugger is initialised: instrument Go modules detected by the
+// init-time YARA scan. No scanning here; entries were produced by YaraCallback.
+void GoProcessPending(void) {
+    for (entry_t* e = (entry_t*)g_go_pending.root; e != NULL; e = e->next) {
+        GO_PENDING* pend = (GO_PENDING*)e->data;
+        if (InterlockedExchange(&pend->Done, 1) == 0)
+            GoRecoverSymbols(pend->RegionBase, pend->Pclntab, pend->Buildinfo);
+    }
 }

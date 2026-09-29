@@ -3820,10 +3820,11 @@ void CAPE_post_init()
 		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name)) {
 			SetInitialBreakpoints(GetModuleHandle(NULL));
 			
-			// Dynamic Go symbol recovery & tracing (Inspired by GoReSym/ExtremeDumper concept)
+			// Go modules found by the init-time YARA scan (internal 'golang' rule) are instrumented now that the
+			// debugger is up; later (e.g. unpacked) modules are handled directly from YaraCallback
 			if (g_config.go_hooks) {
-				extern void GoRecoverSymbols(PVOID ImageBase);
-				GoRecoverSymbols(GetModuleHandle(NULL));
+				extern void GoProcessPending(void);
+				GoProcessPending();
 			}
 		}
 	}
