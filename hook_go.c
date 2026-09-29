@@ -33,6 +33,14 @@ typedef struct _GO_MODULE_INFO {
     BOOL NoRegAbiExp;       // buildinfo version carries " X:...noregabi*" (GOEXPERIMENT disabled the register ABI)
     BOOL RegAbi;            // resolved ABI for this module
     BOOL AbiResolved;
+    // Function table snapshot for PC -> Go function name resolution (GoFuncNameForPC)
+    BOOL FuncTabValid;
+    int Version;            // GO_VER_* pclntab format
+    BYTE PtrSize;
+    DWORD FieldSize;        // functab field width: 4 (Go 1.18+) or ptrSize
+    uint64_t NFunc;
+    PBYTE Pclntab, Functab, Funcdata, Funcnametab, ImageEnd;
+    ULONG_PTR ImageBase, PreferredBase, SizeOfImage, TextStart;
 } GO_MODULE_INFO;
 
 // Candidate hooks collected during the function walk; hooks are armed only after the module ABI is resolved
@@ -76,6 +84,7 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL IsAddressAccessible(PVOID Address);
 extern BOOL IsAddressExecutable(PVOID Address);
 extern BOOL addr_in_our_dll_range(PVOID Address, ULONG_PTR Addr);
+extern PCHAR GetExportDirectory(PVOID Address);
 
 BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
 static void GoTlsAddPending(GO_TLS_RETURN_STATE* tlsState, PVOID retAddr, ULONG_PTR entrySP, PVOID readBuffer, PVOID bytesReadSlot, BOOL regAbi);
@@ -234,6 +243,125 @@ static void LogGoString(const char* label, PVOID pStrData, ULONG_PTR length) {
     }
 }
 
+// Absolute entry address of functab[i] for a recorded module (0 if it cannot be mapped into the image)
+static ULONG_PTR GoFunctabEntryAddr(GO_MODULE_INFO* m, uint64_t i, ULONG_PTR* structOff) {
+    ULONG_PTR off, so = 0;
+    if (m->FieldSize == 4) {
+        uint32_t* p = (uint32_t*)(m->Functab + 2 * i * 4);
+        if (!IsAddressAccessible(p)) return 0;
+        off = p[0];
+        so = p[1];
+    } else {
+        uint64_t* p = (uint64_t*)(m->Functab + 2 * i * 8);
+        if (!IsAddressAccessible(p)) return 0;
+        off = (ULONG_PTR)p[0];
+        so = (ULONG_PTR)p[1];
+    }
+    if (structOff)
+        *structOff = so;
+    if (m->Version >= GO_VER_118)
+        return m->TextStart + off;
+    if (off >= m->ImageBase && off < m->ImageBase + m->SizeOfImage)
+        return off;
+    if (off >= m->PreferredBase && off < m->PreferredBase + m->SizeOfImage)
+        return m->ImageBase + (off - m->PreferredBase);
+    return 0;
+}
+
+// Resolve a code address to the containing Go function name using the functab of any recorded Go module.
+// functab is sorted by entry PC, so this is a binary search. Returns a pointer into funcnametab or NULL.
+static const char* GoFuncNameForPC(ULONG_PTR pc) {
+    __try {
+        for (entry_t* e = (entry_t*)g_go_recovered_pclntab.root; e != NULL; e = e->next) {
+            GO_MODULE_INFO* m = (GO_MODULE_INFO*)e->data;
+            if (!m->FuncTabValid || pc < m->ImageBase || pc >= (ULONG_PTR)m->ImageEnd || m->NFunc == 0)
+                continue;
+
+            uint64_t lo = 0, hi = m->NFunc;     // find last i with entry(i) <= pc
+            while (hi - lo > 1) {
+                uint64_t mid = lo + (hi - lo) / 2;
+                ULONG_PTR a = GoFunctabEntryAddr(m, mid, NULL);
+                if (a && a <= pc)
+                    lo = mid;
+                else
+                    hi = mid;
+            }
+
+            ULONG_PTR structOff = 0;
+            ULONG_PTR entry = GoFunctabEntryAddr(m, lo, &structOff);
+            if (!entry || entry > pc)
+                continue;
+            // functab[nfunc] is the end-of-text sentinel in every pclntab format, so lo + 1 is always readable
+            ULONG_PTR next = GoFunctabEntryAddr(m, lo + 1, NULL);
+            if (next && pc >= next)
+                continue;
+
+            PBYTE pFuncData = m->Funcdata + structOff;
+            DWORD sz0 = (m->Version >= GO_VER_118) ? 4 : (DWORD)m->PtrSize;
+            if (pFuncData < m->Pclntab || (pFuncData + sz0 + 4) > m->ImageEnd || !IsAddressAccessible(pFuncData + sz0))
+                continue;
+            PBYTE pName = m->Funcnametab + *(uint32_t*)(pFuncData + sz0);
+            if (pName < m->Pclntab || pName >= m->ImageEnd || !IsAddressAccessible(pName) || *pName == '\0')
+                continue;
+            return (const char*)pName;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return NULL;
+}
+
+// TRUE if capemon has an active inline hook for an API of this name (in any DLL), i.e. the call is
+// already visible in the behaviour log and does not need to be reported again from the Go side
+extern hook_t* hooks;
+extern SIZE_T hooks_arraysize;
+static BOOL GoApiIsHooked(const char* name) {
+    if (!hooks || !name)
+        return FALSE;
+    for (SIZE_T i = 0; i < hooks_arraysize; i++)
+        if (hooks[i].is_hooked && hooks[i].funcname && !strcmp(hooks[i].funcname, name))
+            return TRUE;
+    return FALSE;
+}
+
+// syscall.Syscall*/SyscallN 'trap' is a function pointer (LazyProc.Addr / GetProcAddress), not an SSN.
+// Resolve it to dll!export once per target; report only targets that bypass capemon's API hooks.
+static lookup_t g_go_syscall_targets = {0};
+static void GoResolveSyscallTarget(ULONG_PTR trap, ULONG_PTR callerRet) {
+    if (lookup_get(&g_go_syscall_targets, trap, NULL))
+        return;
+    lookup_add(&g_go_syscall_targets, trap, 0);
+
+    unsigned int offset = 0;
+    // Export directory name first: also names manually mapped DLL copies (e.g. a fresh ntdll used to
+    // bypass hooks), which are absent from the PEB loader list used by convert_address_to_dll_name_and_offset
+    PCHAR exportDll = GetExportDirectory((PVOID)trap);
+    char* dllName = exportDll ? NULL : convert_address_to_dll_name_and_offset(trap, &offset);
+    const char* dll = exportDll ? exportDll : (dllName ? dllName : "?");
+    PCHAR apiName = GetExportNameByAddress((PVOID)trap);
+    const char* goCaller = callerRet ? GoFuncNameForPC(callerRet - 1) : NULL;
+    BOOL hooked = GoApiIsHooked(apiName);
+
+    char target[MAX_PATH];
+    if (apiName)
+        _snprintf_s(target, sizeof(target), _TRUNCATE, "%s!%s", dll, apiName);
+    else if (dllName)
+        _snprintf_s(target, sizeof(target), _TRUNCATE, "%s+0x%x", dll, offset);
+    else
+        _snprintf_s(target, sizeof(target), _TRUNCATE, "%s:0x%p", dll, (PVOID)trap);
+
+    char safeCaller[160];
+    SanitizeForDebug(safeCaller, sizeof(safeCaller), goCaller ? goCaller : "?", goCaller ? strlen(goCaller) : 1);
+    DebugOutput("Go Trace: syscall target 0x%p -> %s (%s), Go caller %s\n", (PVOID)trap, target, hooked ? "hooked" : "not hooked", safeCaller);
+
+    if (!hooked)
+        LOQ_string("go_trace", "sssp", "Event", "Go Syscall Target (API not hooked)", "API", target,
+                   "Caller", goCaller ? goCaller : "", "Address", (PVOID)trap);
+
+    if (dllName)
+        free(dllName);
+}
+
 // Global hook callback executed whenever any registered Go breakpoint is hit
 static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo) {
     if (!pBreakpointInfo || !ExceptionInfo)
@@ -247,9 +375,9 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     const char* funcName = hookEntry->Name;
     BOOL regabi = hookEntry->RegAbi;
 
-    // syscall.Syscall* sits under most Win32 calls made by the Go stdlib and is already covered by the
-    // API hooks; it is only instrumented to catch direct calls into private executable memory, so
-    // nothing is logged for it unless that condition is met
+    // syscall.Syscall* sits under most Win32 calls made by the Go stdlib and is mostly covered by the API
+    // hooks; it is instrumented to catch direct calls into private executable memory and to name image-backed
+    // targets that capemon does not hook (GoResolveSyscallTarget). No go_trace "Function" record is emitted.
     BOOL isSyscall = (strncmp(funcName, "syscall.Syscall", 15) == 0);
 
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
@@ -279,17 +407,25 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     // Dynamic argument tracing based on ABI (RegABI on x64 vs. Stack ABI)
     __try {
         if (isSyscall) {
-            // syscall.Syscall(trap, nargs, a1, a2, a3 uintptr)
+            // syscall.Syscall(trap, nargs, a1, a2, a3 uintptr) / syscall.SyscallN(trap uintptr, args ...uintptr)
             ULONG_PTR trapAddress = GoGetArgWord(ctx, regabi, 0);
+#ifdef _WIN64
+            PULONG_PTR pCallerSp = (PULONG_PTR)ctx->Rsp;
+#else
+            PULONG_PTR pCallerSp = (PULONG_PTR)ctx->Esp;
+#endif
+            ULONG_PTR callerRet = IsAddressAccessible(pCallerSp) ? pCallerSp[0] : 0;
 
             // Check if this is a direct memory address jump (indicates in-memory shellcode or PE execution)
             if (trapAddress != 0 && IsAddressAccessible((PVOID)trapAddress)) {
                 if (!addr_in_our_dll_range(NULL, trapAddress)) {
+                    BOOL privateExec = FALSE;
                     MEMORY_BASIC_INFORMATION mbi;
                     if (VirtualQuery((PVOID)trapAddress, &mbi, sizeof(mbi)) != 0) {
                         if ((mbi.State == MEM_COMMIT) &&
                             (mbi.Type == MEM_PRIVATE) &&
                             (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE))) {
+                            privateExec = TRUE;
 
                             if (IsPEFile(mbi.AllocationBase)) {
                                 DebugOutput("Go Trace: Detected direct in-memory PE execution (MZ or PE signature found) at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, (unsigned int)mbi.RegionSize);
@@ -304,6 +440,11 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                             TrackExecution((PVOID)trapAddress);
                         }
                     }
+
+                    // Image-backed target: name the Win32/NT export and the Go caller (logged once per target,
+                    // and only when the export is not already covered by a capemon API hook)
+                    if (!privateExec)
+                        GoResolveSyscallTarget(trapAddress, callerRet);
                 }
             }
         }
@@ -1152,6 +1293,25 @@ void GoRecoverSymbols(PVOID ImageBase) {
         // 4. Walk function table and hook high-value security/networking/crypto APIs
         if (!functab || !funcdata || !funcnametab || nfunc == 0 || nfunc > 500000) {
             return;
+        }
+
+        // Keep the functab for PC -> function name resolution (Go caller attribution for syscall targets)
+        if (!modInfo->FuncTabValid) {
+            modInfo->Version = detectedVer;
+            modInfo->PtrSize = ptrSize;
+            modInfo->FieldSize = functabFieldSize;
+            modInfo->NFunc = nfunc;
+            modInfo->Pclntab = pclntab;
+            modInfo->Functab = functab;
+            modInfo->Funcdata = funcdata;
+            modInfo->Funcnametab = funcnametab;
+            modInfo->ImageEnd = pImageEnd;
+            modInfo->ImageBase = (ULONG_PTR)ImageBase;
+            modInfo->PreferredBase = preferredBase;
+            modInfo->SizeOfImage = pNt->OptionalHeader.SizeOfImage;
+            modInfo->TextStart = textStart;
+            MemoryBarrier();
+            modInfo->FuncTabValid = TRUE;
         }
 
         candidates = (GO_HOOK_CANDIDATE*)calloc(GO_MAX_HOOK_CANDIDATES, sizeof(GO_HOOK_CANDIDATE));
