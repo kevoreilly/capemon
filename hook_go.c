@@ -794,9 +794,10 @@ static int GoParseMinorVersion(const char* Version) {
 }
 
 // True if the version string carries a GOEXPERIMENT list (" X:a,b,c") that disables any register ABI
-// component. The linker appends " X:" + GOEXPERIMENT to runtime.buildVersion (Go 1.17+), and every
+// component. The linker appends " X:" + GOEXPERIMENT to runtime.buildVersion (Go 1.17+). In go1.17 every
 // noregabi* token (noregabi, noregabiargs, noregabiwrappers, noregabig, noregabireflect, noregabidefer)
-// forces regabiargs off through the buildcfg dependency check.
+// forces regabiargs off through the buildcfg dependency check. Only meaningful for go1.17: go1.18+ forces
+// the register ABI on amd64 regardless of GOEXPERIMENT.
 static BOOL GoVersionHasNoRegAbi(const char* Version) {
     if (!Version)
         return FALSE;
@@ -813,6 +814,34 @@ static BOOL GoVersionHasNoRegAbi(const char* Version) {
             p++;
     }
     return FALSE;
+}
+
+// Code-level ABI evidence (amd64). The register ABI pins g in R14, so the stack-split prologue of a Go
+// function compiled for ABIInternal is "CMPQ SP, 16(R14)" (49 3B 66 10) or, for larger frames,
+// "LEAQ -n(SP), R12; CMPQ R12, 16(R14)" (4D 3B 66 10). Stack-ABI Go on Windows loads g from TLS first:
+// "MOVQ GS:[disp32], reg" (65 48|4C 8B modrm(mod=00,rm=100) SIB=25).
+// ABI0 wrappers and assembly routines in register-ABI binaries also load g from TLS, so callers must vote
+// over many functions instead of trusting one sample.
+#define GO_ABI_PROLOGUE_WINDOW 24
+#define GO_ABI_MAX_SAMPLES     512
+static void GoVoteAbiPrologue(PBYTE Code, DWORD* RegVotes, DWORD* StackVotes) {
+    __try {
+        if (!IsAddressAccessible(Code) || !IsAddressAccessible(Code + GO_ABI_PROLOGUE_WINDOW + 5))
+            return;
+        for (DWORD k = 0; k <= GO_ABI_PROLOGUE_WINDOW; k++) {
+            if ((Code[k] == 0x49 || Code[k] == 0x4D) && Code[k + 1] == 0x3B && Code[k + 2] == 0x66 && Code[k + 3] == 0x10) {
+                (*RegVotes)++;
+                return;
+            }
+            if (Code[k] == 0x65 && (Code[k + 1] == 0x48 || Code[k + 1] == 0x4C) && Code[k + 2] == 0x8B &&
+                (Code[k + 3] & 0xC7) == 0x04 && Code[k + 4] == 0x25) {
+                (*StackVotes)++;
+                return;
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
 }
 
 // Filter for high-signal Go functions/methods, skipping ABI wrappers, package initializers, and closures
@@ -1129,7 +1158,8 @@ void GoRecoverSymbols(PVOID ImageBase) {
         if (!candidates)
             return;
         DWORD nCandidates = 0;
-        BOOL hasSpillArgs = FALSE;
+        DWORD abiRegVotes = 0, abiStackVotes = 0;
+        uint64_t abiSampleStride = (nfunc > GO_ABI_MAX_SAMPLES) ? (nfunc / GO_ABI_MAX_SAMPLES) : 1;
 
         for (uint64_t i = 0; i < nfunc; i++) {
             ULONG_PTR funcEntryOff = 0;
@@ -1163,6 +1193,12 @@ void GoRecoverSymbols(PVOID ImageBase) {
                 continue;
             }
 
+#ifdef _WIN64
+            // Sample prologues across the whole function table (only needed until the module ABI is cached)
+            if (!modInfo->AbiResolved && (i % abiSampleStride) == 0)
+                GoVoteAbiPrologue((PBYTE)funcAddress, &abiRegVotes, &abiStackVotes);
+#endif
+
             // In Go >= 1.16, funcStructOff is relative to funcdata (functab), whereas in Go 1.2 it is relative to pclntab
             PBYTE pFuncData = funcdata + funcStructOff;
             DWORD sz0 = (detectedVer >= GO_VER_118) ? 4 : (DWORD)ptrSize;
@@ -1176,11 +1212,6 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
             const char* funcName = (const char*)pName;
 
-            // runtime.spillArgs/unspillArgs exist only when the amd64 register ABI is enabled
-            // (Go 1.17: under GOEXPERIMENT_regabireflect, on by default; Go 1.18+: unconditional)
-            if (!hasSpillArgs && (strcmp(funcName, "runtime.spillArgs") == 0 || strcmp(funcName, "runtime.unspillArgs") == 0))
-                hasSpillArgs = TRUE;
-
             if (ShouldHookGoFunction(funcName)) {
                 if (nCandidates < GO_MAX_HOOK_CANDIDATES) {
                     candidates[nCandidates].Address = (PVOID)funcAddress;
@@ -1192,34 +1223,37 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
         // 5. Resolve the argument ABI for this module before arming any hook.
         //    386: always stack ABI (Go never enabled the register ABI on 386).
-        //    amd64: Go 1.2-1.16 stack ABI; Go 1.17+ register ABI by default; Go 1.19+ register ABI always
-        //    (buildcfg regabiAlwaysOn). Go 1.17/1.18 could disable it with GOEXPERIMENT=noregabi*.
+        //    amd64: Go 1.2-1.16 stack ABI; Go 1.17 register ABI by default, disabled by GOEXPERIMENT=noregabi*;
+        //    Go 1.18+ register ABI forced on (buildcfg: "regabi is always enabled on amd64").
         //    Go 1.16 and 1.17 share pclntab magic 0xFFFFFFFA. Resolve in order:
-        //      a) buildinfo " X:noregabi*" on go1.17/1.18                  -> stack ABI
-        //      b) pclntab format 1.18+ (0xFFFFFFF0/0xFFFFFFF1)             -> register ABI
-        //      c) format 1.16/1.17 and runtime.spillArgs/unspillArgs present -> register ABI
-        //         (in 1.17 these exist only under GOEXPERIMENT_regabireflect; 1.16 never has them.
-        //          Not used for 1.18+, where they are unconditional)
-        //      d) format 1.16/1.17 and buildinfo version go1.17+           -> register ABI
-        //      e) otherwise                                                -> stack ABI
+        //      a) prologue vote (code evidence, independent of buildinfo): >= 8 votes, >= 90% agreement
+        //      b) pclntab format 1.18+ (0xFFFFFFF0/0xFFFFFFF1)      -> register ABI
+        //      c) format 1.16/1.17, buildinfo go1.17 " X:noregabi*" -> stack ABI
+        //      d) format 1.16/1.17, buildinfo go1.17+               -> register ABI
+        //      e) otherwise                                         -> stack ABI
+        //    runtime.spillArgs is not used: it is present in go1.17 noregabi builds too.
         if (!modInfo->AbiResolved) {
             const char* reason = "386 stack ABI";
             BOOL regabi = FALSE;
 #ifdef _WIN64
-            if (modInfo->NoRegAbiExp && modInfo->GoMinor >= 17 && modInfo->GoMinor <= 18) {
-                reason = "buildinfo GOEXPERIMENT noregabi";
+            DWORD totalVotes = abiRegVotes + abiStackVotes;
+            if (totalVotes >= 8 && abiRegVotes * 10 >= totalVotes * 9) {
+                regabi = TRUE;
+                reason = "prologue vote: CMP SP,16(R14)";
+            } else if (totalVotes >= 8 && abiStackVotes * 10 >= totalVotes * 9) {
+                reason = "prologue vote: g loaded from GS TLS";
             } else if (detectedVer >= GO_VER_118) {
                 regabi = TRUE;
                 reason = "pclntab format >= Go 1.18";
-            } else if (detectedVer == GO_VER_116 && hasSpillArgs) {
-                regabi = TRUE;
-                reason = "runtime.spillArgs present";
-            } else if (detectedVer == GO_VER_116 && modInfo->GoMinor >= 17) {
+            } else if (modInfo->GoMinor == 17 && modInfo->NoRegAbiExp) {
+                reason = "buildinfo go1.17 GOEXPERIMENT noregabi";
+            } else if (modInfo->GoMinor >= 17) {
                 regabi = TRUE;
                 reason = "buildinfo version >= go1.17";
             } else {
-                reason = (modInfo->GoMinor >= 0) ? "buildinfo version < go1.17" : "pclntab format < Go 1.18, no register ABI markers";
+                reason = (modInfo->GoMinor >= 0) ? "buildinfo version < go1.17" : "pclntab format < Go 1.18, no evidence of register ABI";
             }
+            DebugOutput("GoRecoverSymbols: ABI prologue votes: register %u, stack %u.\n", abiRegVotes, abiStackVotes);
 #endif
             modInfo->RegAbi = regabi;
             modInfo->AbiResolved = TRUE;
