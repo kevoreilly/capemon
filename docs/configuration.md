@@ -149,4 +149,4 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | Option | Value Type | Description |
 | :--- | :--- | :--- |
 | `wowmon` | Boolean | Enable Heaven's Gate monitoring in wow64 processes |
-| `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, and breakpoint tracing. |
+| `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, and breakpoint tracing (beta, off by default). Applied to the main image at start-up and to any region matched by the internal `golang` YARA rule (e.g. UPX-unpacked images). |

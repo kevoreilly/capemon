@@ -26,23 +26,34 @@ do { \
 static lookup_t g_go_hook_table = {0};
 static lookup_t g_go_recovered_pclntab = {0};
 
+// Per-hook metadata: ABI/version are stored per module so multiple Go modules (e.g. an unpacked or
+// injected payload built with a different Go version) do not overwrite each other's ABI
 typedef struct _GO_HOOK_ENTRY {
     PVOID Address;
+    BOOL RegAbi;
+    int Version;
     char Name[256];
 } GO_HOOK_ENTRY;
 
-// Structure to track unencrypted TLS payload read buffer on return, keyed by returnAddress
+// Pending crypto/tls.(*Conn).Read calls for one return address. Goroutines on different connections
+// commonly share the same Read call site (e.g. net/http persistConn.readLoop), so each pending call is
+// matched on return by its entry stack pointer: SP at return == SP at entry + sizeof(ULONG_PTR).
+#define GO_TLS_SLOTS 32
+#define GO_TLS_SLOT_RESERVED ((ULONG_PTR)1)
+
+typedef struct _GO_TLS_SLOT {
+    volatile ULONG_PTR EntrySP;     // 0 = free, 1 = being filled
+    PVOID ReadBuffer;
+    PVOID BytesReadSlot;            // stack ABI: address of result n
+    BOOL RegAbi;
+} GO_TLS_SLOT;
+
 typedef struct _GO_TLS_RETURN_STATE {
-    PVOID returnAddress;
-    PVOID readBuffer;
-    PVOID bytesReadSlot;
+    GO_TLS_SLOT Slots[GO_TLS_SLOTS];
+    volatile LONG NextVictim;
 } GO_TLS_RETURN_STATE;
 
 static lookup_t g_go_tls_return_table = {0};
-
-// Detected Go runtime metadata for this process
-static int g_go_detected_version = GO_VER_UNKNOWN;
-static BOOL g_go_uses_regabi = FALSE;
 
 extern lookup_t SoftBPs;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -51,6 +62,7 @@ extern BOOL IsAddressExecutable(PVOID Address);
 extern BOOL addr_in_our_dll_range(PVOID Address, ULONG_PTR Addr);
 
 BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo);
+static void GoTlsAddPending(GO_TLS_RETURN_STATE* tlsState, PVOID retAddr, ULONG_PTR entrySP, PVOID readBuffer, PVOID bytesReadSlot, BOOL regAbi);
 
 // Sanitize strings before passing to DebugOutput (which forwards through pipe() format parsing)
 static void SanitizeForDebug(char* dst, size_t dstSize, const char* src, size_t srcLen) {
@@ -72,9 +84,9 @@ static void SanitizeForDebug(char* dst, size_t dstSize, const char* src, size_t 
 }
 
 // Retrieve the idx-th pointer-sized argument word (0-indexed) according to the active Go ABI
-static ULONG_PTR GoGetArgWord(PCONTEXT Context, DWORD idx) {
+static ULONG_PTR GoGetArgWord(PCONTEXT Context, BOOL RegAbi, DWORD idx) {
 #ifdef _WIN64
-    if (g_go_uses_regabi) {
+    if (RegAbi) {
         // Go x86-64 ABIInternal integer argument registers:
         // RAX, RBX, RCX, RDI, RSI, R8, R9, R10, R11
         switch (idx) {
@@ -99,6 +111,7 @@ static ULONG_PTR GoGetArgWord(PCONTEXT Context, DWORD idx) {
     PULONG_PTR pStack = (PULONG_PTR)Context->Esp;
     if (IsAddressAccessible(&pStack[idx + 1]))
         return pStack[idx + 1];
+    UNREFERENCED_PARAMETER(RegAbi);
     return 0;
 #endif
 }
@@ -159,7 +172,8 @@ static uint64_t ReadHeaderWord(PBYTE pHeader, DWORD wordIndex, BYTE ptrSize) {
 static PBYTE ScanSectionForPclntab(PBYTE pStart, DWORD Size, int* pOutVer) {
     if (Size < 64 || !pStart) return NULL;
     __try {
-        for (PBYTE p = pStart; p <= pStart + Size - 64; p++) {
+        PBYTE pAligned = (PBYTE)(((ULONG_PTR)pStart + 3) & ~(ULONG_PTR)3);
+        for (PBYTE p = pAligned; p <= pStart + Size - 64; p += 4) {
             DWORD Magic = *(PDWORD)p;
             int ver = GO_VER_UNKNOWN;
 
@@ -210,11 +224,17 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
         return TRUE;
 
     // Resolve the function name associated with this breakpoint via thread-safe lookup
-    const char* funcName = "UnknownGoFunc";
     GO_HOOK_ENTRY* hookEntry = (GO_HOOK_ENTRY*)lookup_get(&g_go_hook_table, (ULONG_PTR)pBreakpointInfo->Address, NULL);
-    if (hookEntry) {
-        funcName = hookEntry->Name;
-    }
+    if (!hookEntry)
+        return TRUE;
+
+    const char* funcName = hookEntry->Name;
+    BOOL regabi = hookEntry->RegAbi;
+
+    // syscall.Syscall* sits under most Win32 calls made by the Go stdlib and is already covered by the
+    // API hooks; it is only instrumented to catch direct calls into private executable memory, so
+    // nothing is logged for it unless that condition is met
+    BOOL isSyscall = (strncmp(funcName, "syscall.Syscall", 15) == 0);
 
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
     hook_info_t* hookinfo = hook_info();
@@ -235,14 +255,16 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     char safeFuncName[160];
     SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
 
-    LOQ_string("go_trace", "s", "Function", funcName);
-    DebugOutput("Go Trace: Intercepted Execution of Go Function: %s at 0x%p\n", safeFuncName, pBreakpointInfo->Address);
+    if (!isSyscall) {
+        LOQ_string("go_trace", "s", "Function", funcName);
+        DebugOutput("Go Trace: Intercepted Execution of Go Function: %s at 0x%p\n", safeFuncName, pBreakpointInfo->Address);
+    }
 
     // Dynamic argument tracing based on ABI (RegABI on x64 vs. Stack ABI)
     __try {
-        if (strstr(funcName, "syscall.Syscall")) {
+        if (isSyscall) {
             // syscall.Syscall(trap, nargs, a1, a2, a3 uintptr)
-            ULONG_PTR trapAddress = GoGetArgWord(ctx, 0);
+            ULONG_PTR trapAddress = GoGetArgWord(ctx, regabi, 0);
 
             // Check if this is a direct memory address jump (indicates in-memory shellcode or PE execution)
             if (trapAddress != 0 && IsAddressAccessible((PVOID)trapAddress)) {
@@ -273,10 +295,10 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             // time.Sleep(d Duration) where Duration is int64 nanoseconds
             uint64_t nanoseconds = 0;
 #ifdef _WIN64
-            nanoseconds = (uint64_t)GoGetArgWord(ctx, 0);
+            nanoseconds = (uint64_t)GoGetArgWord(ctx, regabi, 0);
 #else
-            uint32_t low = (uint32_t)GoGetArgWord(ctx, 0);
-            uint32_t high = (uint32_t)GoGetArgWord(ctx, 1);
+            uint32_t low = (uint32_t)GoGetArgWord(ctx, regabi, 0);
+            uint32_t high = (uint32_t)GoGetArgWord(ctx, regabi, 1);
             nanoseconds = ((uint64_t)high << 32) | low;
 #endif
             uint64_t milliseconds = nanoseconds / 1000000;
@@ -288,8 +310,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
         else if (strstr(funcName, "crypto/tls.(*Conn).Write")) {
             // func (c *Conn) Write(b []byte) (int, error)
             // word 0: c (*Conn), word 1: b.Data, word 2: b.Len, word 3: b.Cap
-            ULONG_PTR pData = GoGetArgWord(ctx, 1);
-            ULONG_PTR length = GoGetArgWord(ctx, 2);
+            ULONG_PTR pData = GoGetArgWord(ctx, regabi, 1);
+            ULONG_PTR length = GoGetArgWord(ctx, regabi, 2);
 
             if (pData != 0 && length > 0 && length <= 65536 && IsAddressAccessible((PVOID)pData)) {
                 size_t capLen = (length < 8192) ? (size_t)length : 8192;
@@ -300,8 +322,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
         else if (strstr(funcName, "crypto/tls.(*Conn).Read")) {
             // func (c *Conn) Read(b []byte) (int, error)
             // word 0: c (*Conn), word 1: b.Data, word 2: b.Len, word 3: b.Cap
-            ULONG_PTR pData = GoGetArgWord(ctx, 1);
-            ULONG_PTR length = GoGetArgWord(ctx, 2);
+            ULONG_PTR pData = GoGetArgWord(ctx, regabi, 1);
+            ULONG_PTR length = GoGetArgWord(ctx, regabi, 2);
 
             if (pData != 0 && length > 0 && IsAddressAccessible((PVOID)pData)) {
 #ifdef _WIN64
@@ -313,18 +335,15 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                     PVOID retAddr = (PVOID)pStack[0];
                     GO_TLS_RETURN_STATE* tlsState = (GO_TLS_RETURN_STATE*)lookup_get_or_create(
                         &g_go_tls_return_table, (ULONG_PTR)retAddr, sizeof(GO_TLS_RETURN_STATE));
-                    if (tlsState) {
-                        tlsState->returnAddress = retAddr;
-                        tlsState->readBuffer = (PVOID)pData;
-                        // Under Stack ABI, return value n (int) is at [SP_on_entry + 5*ptrSize]
-                        tlsState->bytesReadSlot = g_go_uses_regabi ? NULL : (PVOID)&pStack[5];
-
-                        SetSoftwareBreakpoint(&SoftBPs, retAddr, GoBreakpointHandler);
-                    }
+                    if (tlsState)
+                        GoTlsAddPending(tlsState, retAddr, (ULONG_PTR)pStack, (PVOID)pData,
+                                        // Under Stack ABI, return value n (int) is at [SP_on_entry + 5*ptrSize]
+                                        regabi ? NULL : (PVOID)&pStack[5], regabi);
                 }
             }
         }
         else if (strstr(funcName, ".NewCipher") ||
+                 strstr(funcName, "des.NewTripleDESCipher") ||
                  strstr(funcName, "chacha20poly1305.New") ||
                  strstr(funcName, "chacha20.NewUnauthenticatedCipher") ||
                  strstr(funcName, "pbkdf2.Key") ||
@@ -332,8 +351,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                  strstr(funcName, "argon2.Key") ||
                  strstr(funcName, "scrypt.Key")) {
             // First parameter is key/password []byte: word 0 = ptr, word 1 = len
-            ULONG_PTR keyPtr = GoGetArgWord(ctx, 0);
-            ULONG_PTR keyLen = GoGetArgWord(ctx, 1);
+            ULONG_PTR keyPtr = GoGetArgWord(ctx, regabi, 0);
+            ULONG_PTR keyLen = GoGetArgWord(ctx, regabi, 1);
 
             LOQ_string("go_trace", "spp", "Event", "Go Cryptographic Key Setup Intercepted",
                        "Key Pointer", (PVOID)keyPtr,
@@ -343,23 +362,40 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                 LOQ_string("go_crypto", "sb", "Function", funcName, "Key", (size_t)keyLen, (const char*)keyPtr);
             }
         }
+        else if (strstr(funcName, "crypto/cipher.NewCBC") ||
+                 strstr(funcName, "crypto/cipher.NewCFB") ||
+                 strstr(funcName, "crypto/cipher.NewCTR") ||
+                 strstr(funcName, "crypto/cipher.NewOFB")) {
+            // func NewXXX(block Block, iv []byte): word 0..1 = block (interface), word 2 = iv.ptr, word 3 = iv.len
+            ULONG_PTR ivPtr = GoGetArgWord(ctx, regabi, 2);
+            ULONG_PTR ivLen = GoGetArgWord(ctx, regabi, 3);
+            if (ivPtr != 0 && ivLen > 0 && ivLen <= 64 && IsAddressAccessible((PVOID)ivPtr)) {
+                LOQ_string("go_crypto", "sb", "Function", funcName, "IV", (size_t)ivLen, (const char*)ivPtr);
+            }
+        }
+        else if (strstr(funcName, "net.Lookup")) {
+            // func LookupHost/LookupIP/LookupTXT(host string): word 0..1 = host
+            ULONG_PTR hostPtr = GoGetArgWord(ctx, regabi, 0);
+            ULONG_PTR hostLen = GoGetArgWord(ctx, regabi, 1);
+            LogGoString("Host", (PVOID)hostPtr, hostLen);
+        }
         else if (strstr(funcName, "net/http.NewRequestWithContext")) {
             // func NewRequestWithContext(ctx context.Context, method, url string, body io.Reader)
             // word 0..1: ctx (interface), word 2..3: method (string), word 4..5: url (string)
-            ULONG_PTR methodPtr = GoGetArgWord(ctx, 2);
-            ULONG_PTR methodLen = GoGetArgWord(ctx, 3);
-            ULONG_PTR urlPtr    = GoGetArgWord(ctx, 4);
-            ULONG_PTR urlLen    = GoGetArgWord(ctx, 5);
+            ULONG_PTR methodPtr = GoGetArgWord(ctx, regabi, 2);
+            ULONG_PTR methodLen = GoGetArgWord(ctx, regabi, 3);
+            ULONG_PTR urlPtr    = GoGetArgWord(ctx, regabi, 4);
+            ULONG_PTR urlLen    = GoGetArgWord(ctx, regabi, 5);
             LogGoString("HTTP Method", (PVOID)methodPtr, methodLen);
             LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
         }
         else if (strstr(funcName, "net/http.NewRequest")) {
             // func NewRequest(method, url string, body io.Reader)
             // word 0..1: method (string), word 2..3: url (string)
-            ULONG_PTR methodPtr = GoGetArgWord(ctx, 0);
-            ULONG_PTR methodLen = GoGetArgWord(ctx, 1);
-            ULONG_PTR urlPtr    = GoGetArgWord(ctx, 2);
-            ULONG_PTR urlLen    = GoGetArgWord(ctx, 3);
+            ULONG_PTR methodPtr = GoGetArgWord(ctx, regabi, 0);
+            ULONG_PTR methodLen = GoGetArgWord(ctx, regabi, 1);
+            ULONG_PTR urlPtr    = GoGetArgWord(ctx, regabi, 2);
+            ULONG_PTR urlLen    = GoGetArgWord(ctx, regabi, 3);
             LogGoString("HTTP Method", (PVOID)methodPtr, methodLen);
             LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
         }
@@ -368,8 +404,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                  strstr(funcName, "net/http.(*Client).Head") ||
                  strstr(funcName, "net/http.(*Client).PostForm")) {
             // Receiver c (*Client) is word 0; url (string) is word 1..2
-            ULONG_PTR urlPtr = GoGetArgWord(ctx, 1);
-            ULONG_PTR urlLen = GoGetArgWord(ctx, 2);
+            ULONG_PTR urlPtr = GoGetArgWord(ctx, regabi, 1);
+            ULONG_PTR urlLen = GoGetArgWord(ctx, regabi, 2);
             LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
         }
         else if (strstr(funcName, "net/http.Get") ||
@@ -377,21 +413,21 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                  strstr(funcName, "net/http.Head") ||
                  strstr(funcName, "net/http.PostForm")) {
             // Package-level helper: url (string) is word 0..1
-            ULONG_PTR urlPtr = GoGetArgWord(ctx, 0);
-            ULONG_PTR urlLen = GoGetArgWord(ctx, 1);
+            ULONG_PTR urlPtr = GoGetArgWord(ctx, regabi, 0);
+            ULONG_PTR urlLen = GoGetArgWord(ctx, regabi, 1);
             LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
         }
-        else if (strstr(funcName, "net.Dial") || strstr(funcName, "net.Listen")) {
+        else if (strstr(funcName, "net.Dial") || strstr(funcName, "net.(*Dialer).Dial") || strstr(funcName, "net.Listen")) {
             // func Dial(network, address string) / func Listen(network, address string)
             BOOL hasReceiver = (strstr(funcName, ").") != NULL);
             DWORD baseIdx = hasReceiver ? 1 : 0;
             if (strstr(funcName, "Context")) {
                 baseIdx += 2; // skip context.Context interface (2 words)
             }
-            ULONG_PTR netPtr  = GoGetArgWord(ctx, baseIdx);
-            ULONG_PTR netLen  = GoGetArgWord(ctx, baseIdx + 1);
-            ULONG_PTR addrPtr = GoGetArgWord(ctx, baseIdx + 2);
-            ULONG_PTR addrLen = GoGetArgWord(ctx, baseIdx + 3);
+            ULONG_PTR netPtr  = GoGetArgWord(ctx, regabi, baseIdx);
+            ULONG_PTR netLen  = GoGetArgWord(ctx, regabi, baseIdx + 1);
+            ULONG_PTR addrPtr = GoGetArgWord(ctx, regabi, baseIdx + 2);
+            ULONG_PTR addrLen = GoGetArgWord(ctx, regabi, baseIdx + 3);
             LogGoString("Network", (PVOID)netPtr, netLen);
             LogGoString("Address", (PVOID)addrPtr, addrLen);
         }
@@ -402,8 +438,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                  strstr(funcName, "os.WriteFile") ||
                  strstr(funcName, "ioutil.WriteFile")) {
             DWORD baseIdx = (strstr(funcName, "CommandContext") != NULL) ? 2 : 0;
-            ULONG_PTR strPtr = GoGetArgWord(ctx, baseIdx);
-            ULONG_PTR strLen = GoGetArgWord(ctx, baseIdx + 1);
+            ULONG_PTR strPtr = GoGetArgWord(ctx, regabi, baseIdx);
+            ULONG_PTR strLen = GoGetArgWord(ctx, regabi, baseIdx + 1);
             LogGoString("Target/Path", (PVOID)strPtr, strLen);
         }
     }
@@ -419,6 +455,47 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     return TRUE;
 }
 
+// Register a pending crypto/tls.(*Conn).Read call and arm its (persistent) return breakpoint
+static void GoTlsAddPending(GO_TLS_RETURN_STATE* tlsState, PVOID retAddr, ULONG_PTR entrySP, PVOID readBuffer, PVOID bytesReadSlot, BOOL regAbi) {
+    GO_TLS_SLOT* slot = NULL;
+
+    // Re-use a stale slot with the same entry SP (e.g. a previous call that unwound without returning)
+    for (int i = 0; i < GO_TLS_SLOTS && !slot; i++) {
+        if (tlsState->Slots[i].EntrySP == entrySP &&
+            InterlockedCompareExchangePointer((PVOID volatile*)&tlsState->Slots[i].EntrySP, (PVOID)GO_TLS_SLOT_RESERVED, (PVOID)entrySP) == (PVOID)entrySP)
+            slot = &tlsState->Slots[i];
+    }
+    for (int i = 0; i < GO_TLS_SLOTS && !slot; i++) {
+        if (InterlockedCompareExchangePointer((PVOID volatile*)&tlsState->Slots[i].EntrySP, (PVOID)GO_TLS_SLOT_RESERVED, NULL) == NULL)
+            slot = &tlsState->Slots[i];
+    }
+    if (!slot) {
+        // All slots taken (stale entries from stack moves/panics): evict round-robin
+        LONG victim = (InterlockedIncrement(&tlsState->NextVictim) & 0x7fffffff) % GO_TLS_SLOTS;
+        slot = &tlsState->Slots[victim];
+        InterlockedExchangePointer((PVOID volatile*)&slot->EntrySP, (PVOID)GO_TLS_SLOT_RESERVED);
+    }
+
+    slot->ReadBuffer = readBuffer;
+    slot->BytesReadSlot = bytesReadSlot;
+    slot->RegAbi = regAbi;
+    InterlockedExchangePointer((PVOID volatile*)&slot->EntrySP, (PVOID)entrySP);
+
+    if (!SetSoftwareBreakpointEx(&SoftBPs, retAddr, GoBreakpointHandler, TRUE)) {
+        // Already present (armed, or being stepped over by another thread): make sure it stays armed
+        PSOFTBP SoftBP = (PSOFTBP)lookup_get(&SoftBPs, (ULONG_PTR)retAddr, NULL);
+        if (SoftBP)
+            SoftBP->Persistent = TRUE;
+    }
+}
+
+static BOOL GoTlsHasPending(GO_TLS_RETURN_STATE* tlsState) {
+    for (int i = 0; i < GO_TLS_SLOTS; i++)
+        if (tlsState->Slots[i].EntrySP != 0)
+            return TRUE;
+    return FALSE;
+}
+
 // Software breakpoint callback registered via SetSoftwareBreakpoint for Go hooks
 BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
     if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord)
@@ -426,9 +503,38 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
 
     PVOID Address = ExceptionInfo->ExceptionRecord->ExceptionAddress;
 
-    // 1. Intercept temporary TLS Read return breakpoints (keyed by returnAddress across goroutine thread migrations)
+    BOOL handled = FALSE;
+
+    // 1. TLS Read return breakpoints: keyed by return address, matched to the pending call by stack pointer
+    //    (independent of the OS thread, since goroutines migrate between threads while blocked in Read)
+    GO_TLS_SLOT pending = {0};
+    BOOL matched = FALSE;
     GO_TLS_RETURN_STATE* tlsState = (GO_TLS_RETURN_STATE*)lookup_get(&g_go_tls_return_table, (ULONG_PTR)Address, NULL);
-    if (tlsState && tlsState->returnAddress == Address) {
+    if (tlsState) {
+#ifdef _WIN64
+        ULONG_PTR entrySP = (ULONG_PTR)ExceptionInfo->ContextRecord->Rsp - sizeof(ULONG_PTR);
+#else
+        ULONG_PTR entrySP = (ULONG_PTR)ExceptionInfo->ContextRecord->Esp - sizeof(ULONG_PTR);
+#endif
+        for (int i = 0; i < GO_TLS_SLOTS && !matched; i++) {
+            GO_TLS_SLOT* slot = &tlsState->Slots[i];
+            if (slot->EntrySP == entrySP &&
+                InterlockedCompareExchangePointer((PVOID volatile*)&slot->EntrySP, (PVOID)GO_TLS_SLOT_RESERVED, (PVOID)entrySP) == (PVOID)entrySP) {
+                pending = *slot;
+                InterlockedExchangePointer((PVOID volatile*)&slot->EntrySP, NULL);
+                matched = TRUE;
+            }
+        }
+
+        // Keep the return breakpoint armed only while other Read calls through this site are pending
+        PSOFTBP SoftBP = (PSOFTBP)lookup_get(&SoftBPs, (ULONG_PTR)Address, NULL);
+        if (SoftBP && !lookup_get(&g_go_hook_table, (ULONG_PTR)Address, NULL))
+            SoftBP->Persistent = GoTlsHasPending(tlsState);
+
+        handled = TRUE;
+    }
+
+    if (tlsState && matched) {
         hook_info_t* hookinfo = hook_info();
         ULONG_PTR savedRetAddr = hookinfo ? hookinfo->return_address : 0;
         ULONG_PTR savedMainCaller = hookinfo ? hookinfo->main_caller_retaddr : 0;
@@ -440,21 +546,21 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
         __try {
             ULONG_PTR bytesRead = 0;
 #ifdef _WIN64
-            if (g_go_uses_regabi) {
+            if (pending.RegAbi) {
                 bytesRead = ExceptionInfo->ContextRecord->Rax;
-            } else if (tlsState->bytesReadSlot && IsAddressAccessible(tlsState->bytesReadSlot)) {
-                bytesRead = *(PULONG_PTR)tlsState->bytesReadSlot;
+            } else if (pending.BytesReadSlot && IsAddressAccessible(pending.BytesReadSlot)) {
+                bytesRead = *(PULONG_PTR)pending.BytesReadSlot;
             }
 #else
-            if (tlsState->bytesReadSlot && IsAddressAccessible(tlsState->bytesReadSlot)) {
-                bytesRead = *(PULONG_PTR)tlsState->bytesReadSlot;
+            if (pending.BytesReadSlot && IsAddressAccessible(pending.BytesReadSlot)) {
+                bytesRead = *(PULONG_PTR)pending.BytesReadSlot;
             }
 #endif
 
-            if (tlsState->readBuffer != NULL && bytesRead > 0 && bytesRead <= 65536 && IsAddressAccessible(tlsState->readBuffer)) {
+            if (pending.ReadBuffer != NULL && bytesRead > 0 && bytesRead <= 65536 && IsAddressAccessible(pending.ReadBuffer)) {
                 size_t capLen = (bytesRead < 8192) ? (size_t)bytesRead : 8192;
-                LOQ_string("go_tls", "sb", "Direction", "Inbound", "Plaintext", capLen, (const char*)tlsState->readBuffer);
-                DebugOutput("Go TLS Inbound Plaintext Payload (%u bytes) intercepted on return at 0x%p\n", (unsigned int)bytesRead, tlsState->readBuffer);
+                LOQ_string("go_tls", "sb", "Direction", "Inbound", "Plaintext", capLen, (const char*)pending.ReadBuffer);
+                DebugOutput("Go TLS Inbound Plaintext Payload (%u bytes) intercepted on return at 0x%p\n", (unsigned int)bytesRead, pending.ReadBuffer);
             }
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -465,19 +571,9 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
             hookinfo->return_address = savedRetAddr;
             hookinfo->main_caller_retaddr = savedMainCaller;
         }
-
-        // SoftwareBreakpointHandler already restored the original instruction byte at Address;
-        // clear the state for reuse and remove the one-shot return breakpoint from SoftBPs.
-        tlsState->returnAddress = NULL;
-        tlsState->readBuffer = NULL;
-        tlsState->bytesReadSlot = NULL;
-        if (!lookup_get(&g_go_hook_table, (ULONG_PTR)Address, NULL)) {
-            lookup_del(&SoftBPs, (ULONG_PTR)Address);
-        }
-        return TRUE;
     }
 
-    // 2. Intercept persistent function entry software breakpoints
+    // 2. Persistent function entry software breakpoints
     GO_HOOK_ENTRY* hookEntry = (GO_HOOK_ENTRY*)lookup_get(&g_go_hook_table, (ULONG_PTR)Address, NULL);
     if (hookEntry) {
         BREAKPOINTINFO bpInfo;
@@ -486,35 +582,41 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
         bpInfo.Callback = GoBreakpointCallback;
 
         GoBreakpointCallback(&bpInfo, ExceptionInfo);
-        return TRUE;
+        handled = TRUE;
     }
 
-    return FALSE;
+    return handled;
 }
 
 // Sets an active internal software breakpoint hook (0xCC) on a recovered Go function address
-static void GoSetFunctionHook(PVOID funcAddress, const char* funcName) {
+static void GoSetFunctionHook(PVOID funcAddress, const char* funcName, BOOL regAbi, int version) {
     if (!funcAddress || !funcName || !IsAddressAccessible(funcAddress))
         return;
 
-    // Check if already hooked in lookup table
-    if (lookup_get(&g_go_hook_table, (ULONG_PTR)funcAddress, NULL))
+    // Already hooked and the breakpoint is still registered: nothing to do.
+    // If the hook entry exists but SoftBPs was cleared (ClearAllBreakpoints), re-arm it below.
+    GO_HOOK_ENTRY* hookEntry = (GO_HOOK_ENTRY*)lookup_get(&g_go_hook_table, (ULONG_PTR)funcAddress, NULL);
+    if (hookEntry && lookup_get(&SoftBPs, (ULONG_PTR)funcAddress, NULL))
         return;
 
     char safeFuncName[160];
     SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
 
-    if (SetSoftwareBreakpoint(&SoftBPs, funcAddress, GoBreakpointHandler)) {
-        g_config.softbpmode = 1;
-        GO_HOOK_ENTRY* hookEntry = (GO_HOOK_ENTRY*)lookup_add(&g_go_hook_table, (ULONG_PTR)funcAddress, sizeof(GO_HOOK_ENTRY));
-        if (hookEntry) {
-            hookEntry->Address = funcAddress;
-            strncpy_s(hookEntry->Name, sizeof(hookEntry->Name), funcName, _TRUNCATE);
-            DebugOutput("GoSetFunctionHook: Successfully hooked '%s' at 0x%p via software breakpoint (0xCC).\n", safeFuncName, funcAddress);
-        }
-    } else {
+    // Register the hook entry before arming so a hit on another thread always finds its metadata
+    if (!hookEntry)
+        hookEntry = (GO_HOOK_ENTRY*)lookup_add(&g_go_hook_table, (ULONG_PTR)funcAddress, sizeof(GO_HOOK_ENTRY));
+    if (!hookEntry)
+        return;
+    hookEntry->Address = funcAddress;
+    hookEntry->RegAbi = regAbi;
+    hookEntry->Version = version;
+    strncpy_s(hookEntry->Name, sizeof(hookEntry->Name), funcName, _TRUNCATE);
+
+    // Persistent per breakpoint: does not change g_config.softbpmode for other software breakpoints
+    if (SetSoftwareBreakpointEx(&SoftBPs, funcAddress, GoBreakpointHandler, TRUE))
+        DebugOutput("GoSetFunctionHook: Hooked '%s' at 0x%p via software breakpoint (0xCC).\n", safeFuncName, funcAddress);
+    else
         DebugOutput("GoSetFunctionHook: Failed to set software breakpoint hook on '%s' at 0x%p.\n", safeFuncName, funcAddress);
-    }
 }
 
 // Safely parses and recovers embedded source file paths from the file table
@@ -815,9 +917,13 @@ void GoRecoverSymbols(PVOID ImageBase) {
             }
         }
 
-        // Fallback: if sections were renamed by a packer/obfuscator (e.g. UPX0), scan any readable section
+        // Fallback: if sections were renamed by a packer/obfuscator (e.g. UPX0), scan the remaining readable sections
         if (!pclntab) {
             for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
+                char secName[9] = {0};
+                memcpy(secName, pSec[i].Name, 8);
+                if (strstr(secName, ".rdata") || strstr(secName, ".rodata") || strstr(secName, "pclntab") || strstr(secName, ".data"))
+                    continue;   // already scanned above
                 if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
                     PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
                     DWORD size = pSec[i].Misc.VirtualSize ? pSec[i].Misc.VirtualSize : pSec[i].SizeOfRawData;
@@ -829,19 +935,24 @@ void GoRecoverSymbols(PVOID ImageBase) {
             }
         }
 
-        // Fast Exit if this is not a Go binary or if this pclntab has already been processed
-        if (!pclntab || lookup_get(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, NULL)) {
+        // Fast Exit if this is not a Go binary
+        if (!pclntab) {
             return;
         }
-        lookup_add(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, sizeof(ULONG_PTR));
 
-        g_go_detected_version = detectedVer;
+        // Metadata (buildinfo, file paths) is logged once per pclntab; the function walk always runs so
+        // hooks removed by ClearAllBreakpoints are re-armed on a later YARA hit
+        BOOL alreadyProcessed = (lookup_get(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, NULL) != NULL);
+        if (!alreadyProcessed)
+            lookup_add(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, sizeof(ULONG_PTR));
+
         BYTE ptrSize = pclntab[7];
 #ifdef _WIN64
-        // In Go 1.17+, 64-bit binaries use register-based ABI (ABIInternal)
-        g_go_uses_regabi = (detectedVer == GO_VER_118 || detectedVer == GO_VER_120);
+        // Go 1.17+ amd64 binaries use the register-based ABIInternal; Go 1.17 shares the 1.16 pclntab magic,
+        // so GO_VER_116 is treated as stack ABI (argument reads may be wrong for Go 1.17 specifically)
+        BOOL regabi = (detectedVer == GO_VER_118 || detectedVer == GO_VER_120);
 #else
-        g_go_uses_regabi = FALSE;
+        BOOL regabi = FALSE;
 #endif
 
         // Read pclntab header offsets according to Go version (per debug/gosym/pclntab.go)
@@ -896,12 +1007,13 @@ void GoRecoverSymbols(PVOID ImageBase) {
             }
         }
 
-        DebugOutput("GoRecoverSymbols: Dynamic Go binary detected at 0x%p! Version: %d, Functions: %llu, PtrSize: %d, RegABI: %d, TextStart: 0x%p\n",
-                    ImageBase, detectedVer, (unsigned long long)nfunc, (int)ptrSize, (int)g_go_uses_regabi, (PVOID)textStart);
+        if (!alreadyProcessed)
+            DebugOutput("GoRecoverSymbols: Go binary detected at 0x%p, version %d, functions %llu, ptrsize %d, RegABI %d, text start 0x%p\n",
+                        ImageBase, detectedVer, (unsigned long long)nfunc, (int)ptrSize, (int)regabi, (PVOID)textStart);
 
         // 2. Parsed BuildInfo scanner: Scan .data, .rdata, or .rodata sections (or fallback readable sections) for buildinfo magic
         const char buildinfoMagic[] = "\xff Go buildinf:";
-        for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
+        for (WORD i = 0; !alreadyProcessed && i < pNt->FileHeader.NumberOfSections; i++) {
             char secName[9] = {0};
             memcpy(secName, pSec[i].Name, 8);
 
@@ -919,7 +1031,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
             }
         }
 
-        if (!buildinfo) {
+        if (!alreadyProcessed && !buildinfo) {
             for (WORD i = 0; i < pNt->FileHeader.NumberOfSections; i++) {
                 if (pSec[i].Characteristics & IMAGE_SCN_MEM_READ) {
                     PBYTE pStart = (PBYTE)ImageBase + pSec[i].VirtualAddress;
@@ -936,7 +1048,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
         }
 
         // 3. Recover source file paths from the Line Table
-        if (filetab && nfiles > 0) {
+        if (!alreadyProcessed && filetab && nfiles > 0) {
             GoRecoverFilePaths(detectedVer, pclntab, (DWORD)nfiles, filetab, cutab, pImageEnd);
         }
 
@@ -990,13 +1102,8 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
             const char* funcName = (const char*)pName;
 
-            if (ShouldHookGoFunction(funcName)) {
-                char safeFuncName[160];
-                SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
-                DebugOutput("GoRecoverSymbols: Recovered critical Go symbol '%s' at 0x%p\n", safeFuncName, (PVOID)funcAddress);
-
-                GoSetFunctionHook((PVOID)funcAddress, funcName);
-            }
+            if (ShouldHookGoFunction(funcName))
+                GoSetFunctionHook((PVOID)funcAddress, funcName, regabi, detectedVer);
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {

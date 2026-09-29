@@ -93,10 +93,13 @@ char InternalYara[] =
 	"rule WMI_GetObjectAsync"
 	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
+	// Go pclntab header (Go 1.2-1.15: FB, 1.16-1.17: FA, 1.18-1.19: F0, 1.20+: F1). 'golang' is a marker option,
+	// not a config key: Go hooking is only performed when the user enabled go-hooks=1.
 	"rule golang"
-	"{meta:cape_options = \"go-hooks=1\""
+	"{meta:cape_options = \"golang\""
 	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) (04|08) [3] 00}"
-	"condition:(uint16(0) == 0x5a4d or (uint32(0x3c) < 0x1000 and uint32(uint32(0x3c)) == 0x00004550)) and $pclntab and uint32(@pclntab + 8) > 0 and uint32(@pclntab + 8) < 500000}";
+	"condition:(uint16(0) == 0x5a4d or (uint32(0x3c) < 0x1000 and uint32(uint32(0x3c)) == 0x00004550)) and "
+	"for any i in (1..#pclntab) : (uint32(@pclntab[i] + 8) > 0 and uint32(@pclntab[i] + 8) < 500000)}";
 
 void ScannerError(int Error)
 {
@@ -283,7 +286,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						}
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
 							SetBreakpoints = TRUE;
-						if (!_strnicmp(OptionLine, "go-hooks", 8) || !_strnicmp(OptionLine, "go_hooks", 8))
+						if (!_stricmp(OptionLine, "golang"))
 							SetGoHooks = TRUE;
 						if (!_stricmp("dump", OptionLine))
 						{
@@ -333,7 +336,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 			if (DebuggerInitialised && SetBreakpoints)
 				SetInitialBreakpoints(user_data);
 
-			if (DebuggerInitialised && SetGoHooks)
+			// Go runtime detected in this region: instrument it if the user opted in (go-hooks=1)
+			if (DebuggerInitialised && SetGoHooks && g_config.go_hooks)
 				GoRecoverSymbols(user_data);
 
 			return CALLBACK_CONTINUE;
