@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "ntapi.h"
 #include "log.h"
 #include "misc.h"
@@ -25,6 +26,20 @@ do { \
 // Table of hooked Go functions keyed by function entry address
 static lookup_t g_go_hook_table = {0};
 static lookup_t g_go_recovered_pclntab = {0};
+
+// Per-pclntab (per Go module) state, persisted across repeated GoRecoverSymbols() calls
+typedef struct _GO_MODULE_INFO {
+    int GoMinor;            // minor version from buildinfo ("go1.N"), -1 if unknown
+    BOOL RegAbi;            // resolved ABI for this module
+    BOOL AbiResolved;
+} GO_MODULE_INFO;
+
+// Candidate hooks collected during the function walk; hooks are armed only after the module ABI is resolved
+#define GO_MAX_HOOK_CANDIDATES 1024
+typedef struct _GO_HOOK_CANDIDATE {
+    PVOID Address;
+    const char* Name;
+} GO_HOOK_CANDIDATE;
 
 // Per-hook metadata: ABI/version are stored per module so multiple Go modules (e.g. an unpacked or
 // injected payload built with a different Go version) do not overwrite each other's ABI
@@ -677,7 +692,7 @@ static void GoRecoverFilePaths(int goVersion, PBYTE pclntab, DWORD nfiles, PBYTE
 }
 
 // Dynamic parser to extract Compiler Version and Modinfo dependency logs from memory (Inspired by GoReSym)
-static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size) {
+static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, size_t VersionOutSize) {
     if (!pBuildinfo || Size < 32) return;
 
     BYTE ptrSize = pBuildinfo[14];
@@ -703,6 +718,8 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size) {
                 char versionBuf[128] = {0};
                 char safeVersion[128] = {0};
                 memcpy(versionBuf, pData, (size_t)verLen);
+                if (VersionOut && VersionOutSize)
+                    strncpy_s(VersionOut, VersionOutSize, versionBuf, _TRUNCATE);
                 SanitizeForDebug(safeVersion, sizeof(safeVersion), versionBuf, (size_t)verLen);
                 LOQ_string("go_buildinfo", "s", "Version", versionBuf);
                 DebugOutput("GoParseBuildInfo: Recovered Go Compiler Version: %s\n", safeVersion);
@@ -735,6 +752,8 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size) {
                     char versionBuf[128] = {0};
                     char safeVersion[128] = {0};
                     memcpy(versionBuf, pVerData, verLen);
+                    if (VersionOut && VersionOutSize)
+                        strncpy_s(VersionOut, VersionOutSize, versionBuf, _TRUNCATE);
                     SanitizeForDebug(safeVersion, sizeof(safeVersion), versionBuf, (size_t)verLen);
                     LOQ_string("go_buildinfo", "s", "Version", versionBuf);
                     DebugOutput("GoParseBuildInfo: Recovered Go Compiler Version: %s\n", safeVersion);
@@ -754,6 +773,23 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size) {
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DebugOutput("GoParseBuildInfo: Exception occurred parsing Go buildinfo.\n");
     }
+}
+
+// Parse the minor version from a Go version string ("go1.17.13", "devel go1.18-abc", "go1.22rc1"); -1 if not found
+static int GoParseMinorVersion(const char* Version) {
+    if (!Version)
+        return -1;
+    const char* p = strstr(Version, "go1.");
+    if (!p)
+        return -1;
+    p += 4;
+    int minor = 0, digits = 0;
+    while (*p >= '0' && *p <= '9' && digits < 3) {
+        minor = minor * 10 + (*p - '0');
+        p++;
+        digits++;
+    }
+    return digits ? minor : -1;
 }
 
 // Filter for high-signal Go functions/methods, skipping ABI wrappers, package initializers, and closures
@@ -882,6 +918,8 @@ void GoRecoverSymbols(PVOID ImageBase) {
     if (!ImageBase)
         ImageBase = GetModuleHandle(NULL);
 
+    GO_HOOK_CANDIDATE* candidates = NULL;
+
     __try {
         PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)ImageBase;
         if (!pDos || !IsAddressAccessible(pDos) || pDos->e_lfanew <= 0 || pDos->e_lfanew > 0x1000)
@@ -942,18 +980,18 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
         // Metadata (buildinfo, file paths) is logged once per pclntab; the function walk always runs so
         // hooks removed by ClearAllBreakpoints are re-armed on a later YARA hit
-        BOOL alreadyProcessed = (lookup_get(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, NULL) != NULL);
-        if (!alreadyProcessed)
-            lookup_add(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, sizeof(ULONG_PTR));
+        GO_MODULE_INFO* modInfo = (GO_MODULE_INFO*)lookup_get(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, NULL);
+        BOOL alreadyProcessed = (modInfo != NULL);
+        if (!modInfo) {
+            modInfo = (GO_MODULE_INFO*)lookup_add(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, sizeof(GO_MODULE_INFO));
+            if (!modInfo)
+                return;
+            modInfo->GoMinor = -1;
+            modInfo->RegAbi = FALSE;
+            modInfo->AbiResolved = FALSE;
+        }
 
         BYTE ptrSize = pclntab[7];
-#ifdef _WIN64
-        // Go 1.17+ amd64 binaries use the register-based ABIInternal; Go 1.17 shares the 1.16 pclntab magic,
-        // so GO_VER_116 is treated as stack ABI (argument reads may be wrong for Go 1.17 specifically)
-        BOOL regabi = (detectedVer == GO_VER_118 || detectedVer == GO_VER_120);
-#else
-        BOOL regabi = FALSE;
-#endif
 
         // Read pclntab header offsets according to Go version (per debug/gosym/pclntab.go)
         uint64_t nfunc = 0;
@@ -1008,8 +1046,9 @@ void GoRecoverSymbols(PVOID ImageBase) {
         }
 
         if (!alreadyProcessed)
-            DebugOutput("GoRecoverSymbols: Go binary detected at 0x%p, version %d, functions %llu, ptrsize %d, RegABI %d, text start 0x%p\n",
-                        ImageBase, detectedVer, (unsigned long long)nfunc, (int)ptrSize, (int)regabi, (PVOID)textStart);
+            DebugOutput("GoRecoverSymbols: Go binary detected at 0x%p, pclntab format %d, functions %llu, ptrsize %d, text start 0x%p\n",
+                        ImageBase, detectedVer, (unsigned long long)nfunc, (int)ptrSize, (PVOID)textStart);
+        char buildVersion[128] = {0};
 
         // 2. Parsed BuildInfo scanner: Scan .data, .rdata, or .rodata sections (or fallback readable sections) for buildinfo magic
         const char buildinfoMagic[] = "\xff Go buildinf:";
@@ -1024,7 +1063,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
                 if (IsAddressAccessible(pStart)) {
                     buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
                     if (buildinfo) {
-                        GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart));
+                        GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion));
                         break;
                     }
                 }
@@ -1039,13 +1078,16 @@ void GoRecoverSymbols(PVOID ImageBase) {
                     if (IsAddressAccessible(pStart)) {
                         buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
                         if (buildinfo) {
-                            GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart));
+                            GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion));
                             break;
                         }
                     }
                 }
             }
         }
+
+        if (!alreadyProcessed)
+            modInfo->GoMinor = GoParseMinorVersion(buildVersion);
 
         // 3. Recover source file paths from the Line Table
         if (!alreadyProcessed && filetab && nfiles > 0) {
@@ -1056,6 +1098,12 @@ void GoRecoverSymbols(PVOID ImageBase) {
         if (!functab || !funcdata || !funcnametab || nfunc == 0 || nfunc > 500000) {
             return;
         }
+
+        candidates = (GO_HOOK_CANDIDATE*)calloc(GO_MAX_HOOK_CANDIDATES, sizeof(GO_HOOK_CANDIDATE));
+        if (!candidates)
+            return;
+        DWORD nCandidates = 0;
+        BOOL hasSpillArgs = FALSE;
 
         for (uint64_t i = 0; i < nfunc; i++) {
             ULONG_PTR funcEntryOff = 0;
@@ -1102,11 +1150,58 @@ void GoRecoverSymbols(PVOID ImageBase) {
 
             const char* funcName = (const char*)pName;
 
-            if (ShouldHookGoFunction(funcName))
-                GoSetFunctionHook((PVOID)funcAddress, funcName, regabi, detectedVer);
+            // runtime.spillArgs/unspillArgs exist only when the amd64 register ABI is enabled
+            // (Go 1.17: under GOEXPERIMENT_regabireflect, on by default; Go 1.18+: unconditional)
+            if (!hasSpillArgs && (strcmp(funcName, "runtime.spillArgs") == 0 || strcmp(funcName, "runtime.unspillArgs") == 0))
+                hasSpillArgs = TRUE;
+
+            if (ShouldHookGoFunction(funcName)) {
+                if (nCandidates < GO_MAX_HOOK_CANDIDATES) {
+                    candidates[nCandidates].Address = (PVOID)funcAddress;
+                    candidates[nCandidates].Name = funcName;
+                    nCandidates++;
+                }
+            }
         }
+
+        // 5. Resolve the argument ABI for this module before arming any hook.
+        //    386: always stack ABI (Go never enabled the register ABI on 386).
+        //    amd64: Go 1.2-1.16 stack ABI, Go 1.17+ register ABI. Go 1.16 and 1.17 share pclntab magic
+        //    0xFFFFFFFA, so the pclntab format alone cannot separate them; resolve in order:
+        //      a) runtime.spillArgs/unspillArgs present in pclntab -> register ABI
+        //      b) buildinfo version go1.17+                        -> register ABI
+        //      c) pclntab format 1.18+ (0xFFFFFFF0/0xFFFFFFF1)     -> register ABI
+        //      d) otherwise                                        -> stack ABI
+        if (!modInfo->AbiResolved) {
+            const char* reason = "386 stack ABI";
+            BOOL regabi = FALSE;
+#ifdef _WIN64
+            if (hasSpillArgs) {
+                regabi = TRUE;
+                reason = "runtime.spillArgs present";
+            } else if (modInfo->GoMinor >= 17) {
+                regabi = TRUE;
+                reason = "buildinfo version >= go1.17";
+            } else if (detectedVer >= GO_VER_118) {
+                regabi = TRUE;
+                reason = "pclntab format >= Go 1.18";
+            } else {
+                reason = (modInfo->GoMinor >= 0) ? "buildinfo version < go1.17" : "pclntab format < Go 1.18, no register ABI markers";
+            }
+#endif
+            modInfo->RegAbi = regabi;
+            modInfo->AbiResolved = TRUE;
+            DebugOutput("GoRecoverSymbols: Go module at 0x%p: go1.%d, ABI %s (%s), %u hook candidates.\n",
+                        ImageBase, modInfo->GoMinor, regabi ? "register" : "stack", reason, nCandidates);
+        }
+
+        for (DWORD c = 0; c < nCandidates; c++)
+            GoSetFunctionHook(candidates[c].Address, candidates[c].Name, modInfo->RegAbi, detectedVer);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DebugOutput("GoRecoverSymbols: Exception occurred parsing Go pclntab structures.\n");
     }
+
+    if (candidates)
+        free(candidates);
 }
