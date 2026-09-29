@@ -45,6 +45,7 @@ typedef struct _GO_MODULE_INFO {
 
 // Candidate hooks collected during the function walk; hooks are armed only after the module ABI is resolved
 #define GO_MAX_HOOK_CANDIDATES 1024
+#define GO_SOURCE_PATHS_MAX 4096     // cap for the go_module SourcePaths field
 typedef struct _GO_HOOK_CANDIDATE {
     PVOID Address;
     const char* Name;
@@ -233,14 +234,13 @@ static PBYTE ScanSectionForPclntab(PBYTE pStart, DWORD Size, int* pOutVer) {
     return NULL;
 }
 
-// Log a recovered Go string argument safely (combining pointer and explicit length)
-static void LogGoString(const char* label, PVOID pStrData, ULONG_PTR length) {
-    if (pStrData != NULL && length > 0 && length < 2048 && IsAddressAccessible(pStrData)) {
-        char safeBuf[200];
-        SanitizeForDebug(safeBuf, sizeof(safeBuf), (const char*)pStrData, (size_t)length);
-        LOQ_string("go_trace", "sS", "Param", label, "Value", (int)length, (const char*)pStrData);
-        DebugOutput("Go Trace: Parameter [%s] = \"%s\"\n", label, safeBuf);
-    }
+// Go string argument validation for single-record LOQ calls: unreadable/implausible strings log as empty
+static int GoStrLen(ULONG_PTR ptr, ULONG_PTR len) {
+    return (ptr != 0 && len > 0 && len < 2048 && IsAddressAccessible((PVOID)ptr)) ? (int)len : 0;
+}
+
+static const char* GoStrPtr(ULONG_PTR ptr, int len) {
+    return len ? (const char*)ptr : "";
 }
 
 // Absolute entry address of functab[i] for a recorded module (0 if it cannot be mapped into the image)
@@ -399,14 +399,17 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
     char safeFuncName[160];
     SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
 
-    if (!isSyscall) {
-        LOQ_string("go_trace", "s", "Function", funcName);
+    if (!isSyscall)
         DebugOutput("Go Trace: Intercepted Execution of Go Function: %s at 0x%p\n", safeFuncName, pBreakpointInfo->Address);
-    }
+
+    // Behaviour log rule: at most ONE LOQ call per breakpoint hit. Each branch gathers all of its fields and
+    // emits a single record that includes the function name; the generic record below is only a fallback.
+    BOOL logged = FALSE;
 
     // Dynamic argument tracing based on ABI (RegABI on x64 vs. Stack ABI)
     __try {
         if (isSyscall) {
+            logged = TRUE;  // syscall.Syscall* never emits a generic record
             // syscall.Syscall(trap, nargs, a1, a2, a3 uintptr) / syscall.SyscallN(trap uintptr, args ...uintptr)
             ULONG_PTR trapAddress = GoGetArgWord(ctx, regabi, 0);
 #ifdef _WIN64
@@ -426,17 +429,12 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                             (mbi.Type == MEM_PRIVATE) &&
                             (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE))) {
                             privateExec = TRUE;
-
-                            if (IsPEFile(mbi.AllocationBase)) {
-                                DebugOutput("Go Trace: Detected direct in-memory PE execution (MZ or PE signature found) at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, (unsigned int)mbi.RegionSize);
-                                LOQ_string("go_trace", "sp", "Event", "Go Reflective PE Payload Execution Intercepted",
-                                           "Jump Address", (PVOID)trapAddress);
-                            } else {
-                                DebugOutput("Go Trace: Detected direct in-memory shellcode execution at 0x%p! (Size: 0x%x)\n", (PVOID)trapAddress, (unsigned int)mbi.RegionSize);
-                                LOQ_string("go_trace", "sp", "Event", "Go Direct Shellcode/Payload Execution Intercepted",
-                                           "Jump Address", (PVOID)trapAddress);
-                            }
-
+                            BOOL isPE = IsPEFile(mbi.AllocationBase);
+                            DebugOutput("Go Trace: Detected direct in-memory %s execution at 0x%p! (Size: 0x%x)\n",
+                                        isPE ? "PE" : "shellcode", (PVOID)trapAddress, (unsigned int)mbi.RegionSize);
+                            LOQ_string("go_trace", "ssp", "Function", funcName,
+                                       "Event", isPE ? "Go Reflective PE Payload Execution Intercepted" : "Go Direct Shellcode/Payload Execution Intercepted",
+                                       "Jump Address", (PVOID)trapAddress);
                             TrackExecution((PVOID)trapAddress);
                         }
                     }
@@ -460,9 +458,8 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
 #endif
             uint64_t milliseconds = nanoseconds / 1000000;
 
-            LOQ_string("go_trace", "si", "Event", "Go Native Sleep Intercepted",
-                       "Duration (ms)", (int)milliseconds);
-            DebugOutput("Go Trace: Intercepted Go native sleep for %u ms.\n", (unsigned int)milliseconds);
+            LOQ_string("go_trace", "si", "Function", funcName, "Milliseconds", (int)milliseconds);
+            logged = TRUE;
         }
         else if (strstr(funcName, "crypto/tls.(*Conn).Write")) {
             // func (c *Conn) Write(b []byte) (int, error)
@@ -472,13 +469,16 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
 
             if (pData != 0 && length > 0 && length <= 65536 && IsAddressAccessible((PVOID)pData)) {
                 size_t capLen = (length < 8192) ? (size_t)length : 8192;
-                LOQ_string("go_tls", "sb", "Direction", "Outbound", "Plaintext", capLen, (const char*)pData);
+                LOQ_string("go_tls", "ssb", "Function", funcName, "Direction", "Outbound", "Plaintext", capLen, (const char*)pData);
+                logged = TRUE;
                 DebugOutput("Go TLS Outbound Plaintext Payload (%u bytes) intercepted at 0x%p\n", (unsigned int)length, (PVOID)pData);
             }
         }
         else if (strstr(funcName, "crypto/tls.(*Conn).Read")) {
             // func (c *Conn) Read(b []byte) (int, error)
             // word 0: c (*Conn), word 1: b.Data, word 2: b.Len, word 3: b.Cap
+            // Logged once, on return (GoBreakpointHandler), when the plaintext is available: silent at entry.
+            logged = TRUE;
             ULONG_PTR pData = GoGetArgWord(ctx, regabi, 1);
             ULONG_PTR length = GoGetArgWord(ctx, regabi, 2);
 
@@ -510,14 +510,11 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             // First parameter is key/password []byte: word 0 = ptr, word 1 = len
             ULONG_PTR keyPtr = GoGetArgWord(ctx, regabi, 0);
             ULONG_PTR keyLen = GoGetArgWord(ctx, regabi, 1);
+            BOOL readable = (keyPtr != 0 && keyLen > 0 && keyLen <= 512 && IsAddressAccessible((PVOID)keyPtr));
 
-            LOQ_string("go_trace", "spp", "Event", "Go Cryptographic Key Setup Intercepted",
-                       "Key Pointer", (PVOID)keyPtr,
-                       "Key Length", (PVOID)keyLen);
-
-            if (keyPtr != 0 && keyLen > 0 && keyLen <= 512 && IsAddressAccessible((PVOID)keyPtr)) {
-                LOQ_string("go_crypto", "sb", "Function", funcName, "Key", (size_t)keyLen, (const char*)keyPtr);
-            }
+            LOQ_string("go_crypto", "sib", "Function", funcName, "KeyLength", (int)keyLen,
+                       "Key", readable ? (size_t)keyLen : (size_t)0, readable ? (const char*)keyPtr : "");
+            logged = TRUE;
         }
         else if (strstr(funcName, "crypto/cipher.NewCBC") ||
                  strstr(funcName, "crypto/cipher.NewCFB") ||
@@ -528,51 +525,45 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             ULONG_PTR ivLen = GoGetArgWord(ctx, regabi, 3);
             if (ivPtr != 0 && ivLen > 0 && ivLen <= 64 && IsAddressAccessible((PVOID)ivPtr)) {
                 LOQ_string("go_crypto", "sb", "Function", funcName, "IV", (size_t)ivLen, (const char*)ivPtr);
+                logged = TRUE;
             }
         }
         else if (strstr(funcName, "net.Lookup")) {
             // func LookupHost/LookupIP/LookupTXT(host string): word 0..1 = host
             ULONG_PTR hostPtr = GoGetArgWord(ctx, regabi, 0);
-            ULONG_PTR hostLen = GoGetArgWord(ctx, regabi, 1);
-            LogGoString("Host", (PVOID)hostPtr, hostLen);
-        }
-        else if (strstr(funcName, "net/http.NewRequestWithContext")) {
-            // func NewRequestWithContext(ctx context.Context, method, url string, body io.Reader)
-            // word 0..1: ctx (interface), word 2..3: method (string), word 4..5: url (string)
-            ULONG_PTR methodPtr = GoGetArgWord(ctx, regabi, 2);
-            ULONG_PTR methodLen = GoGetArgWord(ctx, regabi, 3);
-            ULONG_PTR urlPtr    = GoGetArgWord(ctx, regabi, 4);
-            ULONG_PTR urlLen    = GoGetArgWord(ctx, regabi, 5);
-            LogGoString("HTTP Method", (PVOID)methodPtr, methodLen);
-            LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
+            int hostLen = GoStrLen(hostPtr, GoGetArgWord(ctx, regabi, 1));
+            LOQ_string("go_trace", "sS", "Function", funcName, "Host", hostLen, GoStrPtr(hostPtr, hostLen));
+            logged = TRUE;
         }
         else if (strstr(funcName, "net/http.NewRequest")) {
+            // func NewRequestWithContext(ctx context.Context, method, url string, body io.Reader)
+            //   word 0..1: ctx (interface), word 2..3: method (string), word 4..5: url (string)
             // func NewRequest(method, url string, body io.Reader)
-            // word 0..1: method (string), word 2..3: url (string)
-            ULONG_PTR methodPtr = GoGetArgWord(ctx, regabi, 0);
-            ULONG_PTR methodLen = GoGetArgWord(ctx, regabi, 1);
-            ULONG_PTR urlPtr    = GoGetArgWord(ctx, regabi, 2);
-            ULONG_PTR urlLen    = GoGetArgWord(ctx, regabi, 3);
-            LogGoString("HTTP Method", (PVOID)methodPtr, methodLen);
-            LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
+            //   word 0..1: method (string), word 2..3: url (string)
+            DWORD baseIdx = strstr(funcName, "NewRequestWithContext") ? 2 : 0;
+            ULONG_PTR methodPtr = GoGetArgWord(ctx, regabi, baseIdx);
+            int methodLen = GoStrLen(methodPtr, GoGetArgWord(ctx, regabi, baseIdx + 1));
+            ULONG_PTR urlPtr = GoGetArgWord(ctx, regabi, baseIdx + 2);
+            int urlLen = GoStrLen(urlPtr, GoGetArgWord(ctx, regabi, baseIdx + 3));
+            LOQ_string("go_trace", "sSS", "Function", funcName,
+                       "Method", methodLen, GoStrPtr(methodPtr, methodLen),
+                       "URL", urlLen, GoStrPtr(urlPtr, urlLen));
+            logged = TRUE;
         }
         else if (strstr(funcName, "net/http.(*Client).Get") ||
                  strstr(funcName, "net/http.(*Client).Post") ||
                  strstr(funcName, "net/http.(*Client).Head") ||
-                 strstr(funcName, "net/http.(*Client).PostForm")) {
-            // Receiver c (*Client) is word 0; url (string) is word 1..2
-            ULONG_PTR urlPtr = GoGetArgWord(ctx, regabi, 1);
-            ULONG_PTR urlLen = GoGetArgWord(ctx, regabi, 2);
-            LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
-        }
-        else if (strstr(funcName, "net/http.Get") ||
+                 strstr(funcName, "net/http.(*Client).PostForm") ||
+                 strstr(funcName, "net/http.Get") ||
                  strstr(funcName, "net/http.Post") ||
                  strstr(funcName, "net/http.Head") ||
                  strstr(funcName, "net/http.PostForm")) {
-            // Package-level helper: url (string) is word 0..1
-            ULONG_PTR urlPtr = GoGetArgWord(ctx, regabi, 0);
-            ULONG_PTR urlLen = GoGetArgWord(ctx, regabi, 1);
-            LogGoString("HTTP URL", (PVOID)urlPtr, urlLen);
+            // Method on *Client: receiver is word 0, url (string) is word 1..2; package-level helper: url is word 0..1
+            DWORD baseIdx = strstr(funcName, "(*Client)") ? 1 : 0;
+            ULONG_PTR urlPtr = GoGetArgWord(ctx, regabi, baseIdx);
+            int urlLen = GoStrLen(urlPtr, GoGetArgWord(ctx, regabi, baseIdx + 1));
+            LOQ_string("go_trace", "sS", "Function", funcName, "URL", urlLen, GoStrPtr(urlPtr, urlLen));
+            logged = TRUE;
         }
         else if (strstr(funcName, "net.Dial") || strstr(funcName, "net.(*Dialer).Dial") || strstr(funcName, "net.Listen")) {
             // func Dial(network, address string) / func Listen(network, address string)
@@ -581,12 +572,14 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             if (strstr(funcName, "Context")) {
                 baseIdx += 2; // skip context.Context interface (2 words)
             }
-            ULONG_PTR netPtr  = GoGetArgWord(ctx, regabi, baseIdx);
-            ULONG_PTR netLen  = GoGetArgWord(ctx, regabi, baseIdx + 1);
+            ULONG_PTR netPtr = GoGetArgWord(ctx, regabi, baseIdx);
+            int netLen = GoStrLen(netPtr, GoGetArgWord(ctx, regabi, baseIdx + 1));
             ULONG_PTR addrPtr = GoGetArgWord(ctx, regabi, baseIdx + 2);
-            ULONG_PTR addrLen = GoGetArgWord(ctx, regabi, baseIdx + 3);
-            LogGoString("Network", (PVOID)netPtr, netLen);
-            LogGoString("Address", (PVOID)addrPtr, addrLen);
+            int addrLen = GoStrLen(addrPtr, GoGetArgWord(ctx, regabi, baseIdx + 3));
+            LOQ_string("go_trace", "sSS", "Function", funcName,
+                       "Network", netLen, GoStrPtr(netPtr, netLen),
+                       "Address", addrLen, GoStrPtr(addrPtr, addrLen));
+            logged = TRUE;
         }
         else if (strstr(funcName, "os/exec.Command") ||
                  strstr(funcName, "os.OpenFile") ||
@@ -596,13 +589,18 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                  strstr(funcName, "ioutil.WriteFile")) {
             DWORD baseIdx = (strstr(funcName, "CommandContext") != NULL) ? 2 : 0;
             ULONG_PTR strPtr = GoGetArgWord(ctx, regabi, baseIdx);
-            ULONG_PTR strLen = GoGetArgWord(ctx, regabi, baseIdx + 1);
-            LogGoString("Target/Path", (PVOID)strPtr, strLen);
+            int strLen = GoStrLen(strPtr, GoGetArgWord(ctx, regabi, baseIdx + 1));
+            LOQ_string("go_trace", "sS", "Function", funcName, "Target", strLen, GoStrPtr(strPtr, strLen));
+            logged = TRUE;
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DebugOutput("Go Trace: Exception occurred resolving Go function arguments.\n");
     }
+
+    // Fallback: hooked function with no argument-specific record (or arguments unreadable)
+    if (!logged)
+        LOQ_string("go_trace", "s", "Function", funcName);
 
     if (hookinfo) {
         hookinfo->return_address = savedRetAddr;
@@ -716,7 +714,7 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
 
             if (pending.ReadBuffer != NULL && bytesRead > 0 && bytesRead <= 65536 && IsAddressAccessible(pending.ReadBuffer)) {
                 size_t capLen = (bytesRead < 8192) ? (size_t)bytesRead : 8192;
-                LOQ_string("go_tls", "sb", "Direction", "Inbound", "Plaintext", capLen, (const char*)pending.ReadBuffer);
+                LOQ_string("go_tls", "ssb", "Function", "crypto/tls.(*Conn).Read", "Direction", "Inbound", "Plaintext", capLen, (const char*)pending.ReadBuffer);
                 DebugOutput("Go TLS Inbound Plaintext Payload (%u bytes) intercepted on return at 0x%p\n", (unsigned int)bytesRead, pending.ReadBuffer);
             }
         }
@@ -776,65 +774,133 @@ static void GoSetFunctionHook(PVOID funcAddress, const char* funcName, BOOL regA
         DebugOutput("GoSetFunctionHook: Failed to set software breakpoint hook on '%s' at 0x%p.\n", safeFuncName, funcAddress);
 }
 
-// Safely parses and recovers embedded source file paths from the file table
-static void GoRecoverFilePaths(int goVersion, PBYTE pclntab, DWORD nfiles, PBYTE pFiletab, PBYTE pCutab, PBYTE pImageEnd) {
-    UNREFERENCED_PARAMETER(pCutab);
-    if (!pclntab || !pFiletab || !pImageEnd || nfiles == 0 || nfiles > 50000) return;
+// Top-level standard library directories: identifies stdlib files in -trimpath builds (relative paths)
+static const char* g_go_stdlib_roots[] = {
+    "archive", "bufio", "builtin", "bytes", "cmp", "compress", "container", "context", "crypto", "database",
+    "debug", "embed", "encoding", "errors", "expvar", "flag", "fmt", "go", "hash", "html", "image", "index",
+    "internal", "io", "iter", "log", "maps", "math", "mime", "net", "os", "path", "plugin", "reflect", "regexp",
+    "runtime", "slices", "sort", "strconv", "strings", "structs", "sync", "syscall", "testing", "text", "time",
+    "unicode", "unique", "unsafe", "vendor", "weak", NULL
+};
+
+// TRUE for paths that carry no attribution value: GOROOT/stdlib, module cache dependencies (already in modinfo),
+// and compiler-generated entries
+static BOOL GoIsNoisePath(const char* path, size_t len, const char* goroot, size_t gorootLen) {
+    if (path[0] == '<' || strstr(path, "_cgo_") || strstr(path, "/pkg/mod/") || strstr(path, "\\pkg\\mod\\"))
+        return TRUE;
+    if (gorootLen && len > gorootLen && !strncmp(path, goroot, gorootLen))
+        return TRUE;
+    // -trimpath: relative paths; stdlib first element is dotless and in the known root list, deps carry '@'
+    if (path[0] != '/' && !(len > 2 && path[1] == ':')) {
+        if (strchr(path, '@'))
+            return TRUE;
+        const char* slash = strchr(path, '/');
+        size_t seg = slash ? (size_t)(slash - path) : len;
+        for (int i = 0; g_go_stdlib_roots[i]; i++)
+            if (strlen(g_go_stdlib_roots[i]) == seg && !strncmp(path, g_go_stdlib_roots[i], seg))
+                return TRUE;
+    }
+    return FALSE;
+}
+
+// Iterate source file paths in the pclntab file table (Go 1.16+: packed NUL-terminated; Go 1.2-1.15: offsets)
+typedef void (*GO_PATH_VISITOR)(const char* path, size_t len, void* ctx);
+static void GoForEachFilePath(int goVersion, PBYTE pclntab, DWORD nfiles, PBYTE pFiletab, PBYTE pImageEnd, GO_PATH_VISITOR visit, void* ctx) {
+    if (goVersion == GO_VER_116 || goVersion == GO_VER_118 || goVersion == GO_VER_120) {
+        PBYTE pCur = pFiletab;
+        DWORD count = 0;
+        while (pCur < pImageEnd && count < nfiles && IsAddressAccessible(pCur)) {
+            if (*pCur == '\0') {
+                pCur++;
+                continue;
+            }
+            size_t len = strnlen_s((const char*)pCur, 512);
+            if (len == 0 || len >= 512 || (pCur + len) >= pImageEnd)
+                break;
+            if (strstr((const char*)pCur, ".go"))
+                visit((const char*)pCur, len, ctx);
+            pCur += len + 1;
+            count++;
+        }
+    } else if (goVersion == GO_VER_12) {
+        uint32_t* pOffsets = (uint32_t*)pFiletab;
+        for (DWORD i = 1; i < nfiles; i++) {
+            if (!IsAddressAccessible(&pOffsets[i]))
+                break;
+            PBYTE pStr = pclntab + pOffsets[i];
+            if (pStr < pclntab || pStr >= pImageEnd || !IsAddressAccessible(pStr))
+                continue;
+            size_t len = strnlen_s((const char*)pStr, 512);
+            if (len > 0 && len < 512 && strstr((const char*)pStr, ".go"))
+                visit((const char*)pStr, len, ctx);
+        }
+    }
+}
+
+typedef struct _GO_PATH_COLLECT {
+    char Goroot[256];       // absolute GOROOT prefix ("<goroot>/src/"), derived from runtime sources
+    size_t GorootLen;
+    char* Out;              // newline-separated project source paths
+    size_t OutSize, OutLen;
+    DWORD Total, Kept;
+} GO_PATH_COLLECT;
+
+static void GoFindGoroot(const char* path, size_t len, void* ctx) {
+    GO_PATH_COLLECT* c = (GO_PATH_COLLECT*)ctx;
+    const char* p = c->GorootLen ? NULL : strstr(path, "/src/runtime/");
+    if (p && (size_t)(p - path) + 5 < sizeof(c->Goroot)) {
+        c->GorootLen = (size_t)(p - path) + 5;   // keep "<goroot>/src/"
+        memcpy(c->Goroot, path, c->GorootLen);
+        c->Goroot[c->GorootLen] = '\0';
+    }
+    UNREFERENCED_PARAMETER(len);
+}
+
+static void GoCollectPath(const char* path, size_t len, void* ctx) {
+    GO_PATH_COLLECT* c = (GO_PATH_COLLECT*)ctx;
+    c->Total++;
+    if (GoIsNoisePath(path, len, c->Goroot, c->GorootLen))
+        return;
+    c->Kept++;
+    if (c->OutLen + len + 2 > c->OutSize)
+        return;     // cap reached: count still reported
+    memcpy(c->Out + c->OutLen, path, len);
+    c->OutLen += len;
+    c->Out[c->OutLen++] = '\n';
+    c->Out[c->OutLen] = '\0';
+}
+
+// Collects project source file paths (stdlib, module cache and generated entries excluded) into Out,
+// newline-separated. Nothing is logged here: the result goes into the single per-module go_module record.
+static DWORD GoRecoverFilePaths(int goVersion, PBYTE pclntab, DWORD nfiles, PBYTE pFiletab, PBYTE pImageEnd, char* Out, size_t OutSize) {
+    if (!Out || OutSize < 2)
+        return 0;
+    Out[0] = '\0';
+    if (!pclntab || !pFiletab || !pImageEnd || nfiles == 0 || nfiles > 50000)
+        return 0;
+
+    GO_PATH_COLLECT c;
+    memset(&c, 0, sizeof(c));
+    c.Out = Out;
+    c.OutSize = OutSize;
 
     __try {
-        if (goVersion == GO_VER_116 || goVersion == GO_VER_118 || goVersion == GO_VER_120) {
-            // In Go >= 1.16, filetab contains null-terminated strings packed sequentially
-            PBYTE pCur = pFiletab;
-            DWORD count = 0;
-
-            while (pCur < pImageEnd && count < nfiles && IsAddressAccessible(pCur)) {
-                if (*pCur == '\0') {
-                    pCur++;
-                    continue;
-                }
-                const char* filePath = (const char*)pCur;
-                size_t len = strnlen_s(filePath, 512);
-                if (len > 0 && len < 512 && (pCur + len) < pImageEnd) {
-                    if (strstr(filePath, ".go")) {
-                        char safePath[200];
-                        SanitizeForDebug(safePath, sizeof(safePath), filePath, len);
-                        LOQ_string("go_filepath", "s", "Path", filePath);
-                        DebugOutput("GoRecoverFilePaths: Recovered Go Source File Path: %s\n", safePath);
-                    }
-                    pCur += len + 1;
-                    count++;
-                } else {
-                    break;
-                }
-            }
-        } else if (goVersion == GO_VER_12) {
-            // In Go 1.2 - 1.15, filetab starts with uint32 count followed by uint32 offsets from pclntab
-            uint32_t* pOffsets = (uint32_t*)pFiletab;
-            for (DWORD i = 1; i < nfiles; i++) {
-                if (!IsAddressAccessible(&pOffsets[i]))
-                    break;
-                uint32_t off = pOffsets[i];
-                PBYTE pStr = pclntab + off;
-                if (pStr >= pclntab && pStr < pImageEnd && IsAddressAccessible(pStr)) {
-                    const char* filePath = (const char*)pStr;
-                    size_t len = strnlen_s(filePath, 512);
-                    if (len > 0 && len < 512 && strstr(filePath, ".go")) {
-                        char safePath[200];
-                        SanitizeForDebug(safePath, sizeof(safePath), filePath, len);
-                        LOQ_string("go_filepath", "s", "Path", filePath);
-                        DebugOutput("GoRecoverFilePaths: Recovered Go Source File Path: %s\n", safePath);
-                    }
-                }
-            }
-        }
+        GoForEachFilePath(goVersion, pclntab, nfiles, pFiletab, pImageEnd, GoFindGoroot, &c);
+        GoForEachFilePath(goVersion, pclntab, nfiles, pFiletab, pImageEnd, GoCollectPath, &c);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DebugOutput("GoRecoverFilePaths: Exception occurred recovering Go file paths.\n");
     }
+
+    DebugOutput("GoRecoverFilePaths: %u source paths, %u project paths kept (%u bytes).\n", c.Total, c.Kept, (unsigned int)c.OutLen);
+    return c.Kept;
 }
 
-// Dynamic parser to extract Compiler Version and Modinfo dependency logs from memory (Inspired by GoReSym)
-static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, size_t VersionOutSize) {
+// Extracts the compiler version and modinfo (dependency list) from buildinfo (inspired by GoReSym).
+// Nothing is logged here: both go into the single per-module go_module record.
+static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, size_t VersionOutSize, const char** ModinfoOut, int* ModinfoLenOut) {
+    if (ModinfoOut) *ModinfoOut = NULL;
+    if (ModinfoLenOut) *ModinfoLenOut = 0;
     if (!pBuildinfo || Size < 32) return;
 
     BYTE ptrSize = pBuildinfo[14];
@@ -863,7 +929,6 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, siz
                 if (VersionOut && VersionOutSize)
                     strncpy_s(VersionOut, VersionOutSize, versionBuf, _TRUNCATE);
                 SanitizeForDebug(safeVersion, sizeof(safeVersion), versionBuf, (size_t)verLen);
-                LOQ_string("go_buildinfo", "s", "Version", versionBuf);
                 DebugOutput("GoParseBuildInfo: Recovered Go Compiler Version: %s\n", safeVersion);
                 pData += verLen;
 
@@ -878,7 +943,8 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, siz
                 }
 
                 if (modLen > 0 && modLen < 8192 && (pData + modLen) <= pEnd && IsAddressAccessible(pData)) {
-                    LOQ_string("go_buildinfo", "S", "Modinfo", (int)modLen, (const char*)pData);
+                    if (ModinfoOut) *ModinfoOut = (const char*)pData;
+                    if (ModinfoLenOut) *ModinfoLenOut = (int)modLen;
                     DebugOutput("GoParseBuildInfo: Recovered Go Modinfo dependency tree (%u bytes).\n", (unsigned int)modLen);
                 }
             }
@@ -897,7 +963,6 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, siz
                     if (VersionOut && VersionOutSize)
                         strncpy_s(VersionOut, VersionOutSize, versionBuf, _TRUNCATE);
                     SanitizeForDebug(safeVersion, sizeof(safeVersion), versionBuf, (size_t)verLen);
-                    LOQ_string("go_buildinfo", "s", "Version", versionBuf);
                     DebugOutput("GoParseBuildInfo: Recovered Go Compiler Version: %s\n", safeVersion);
                 }
             }
@@ -906,7 +971,8 @@ static void GoParseBuildInfo(PBYTE pBuildinfo, DWORD Size, char* VersionOut, siz
                 PVOID pModData = *(PVOID*)(*pModinfoPtr);
                 ULONG_PTR modLen = *(ULONG_PTR*)((PBYTE)(*pModinfoPtr) + ptrSize);
                 if (pModData && modLen > 0 && modLen < 8192 && IsAddressAccessible(pModData)) {
-                    LOQ_string("go_buildinfo", "S", "Modinfo", (int)modLen, (const char*)pModData);
+                    if (ModinfoOut) *ModinfoOut = (const char*)pModData;
+                    if (ModinfoLenOut) *ModinfoLenOut = (int)modLen;
                     DebugOutput("GoParseBuildInfo: Recovered Go Modinfo dependency tree (%u bytes).\n", (unsigned int)modLen);
                 }
             }
@@ -1191,7 +1257,6 @@ void GoRecoverSymbols(PVOID ImageBase) {
         uint64_t nfunc = 0;
         uint64_t nfiles = 0;
         PBYTE funcnametab = NULL;
-        PBYTE cutab = NULL;
         PBYTE filetab = NULL;
         PBYTE functab = NULL;
         PBYTE funcdata = NULL;
@@ -1212,7 +1277,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
                 textStart = textSectionVA;
             }
             funcnametab = pclntab + ReadHeaderWord(pclntab, 3, ptrSize);
-            cutab       = pclntab + ReadHeaderWord(pclntab, 4, ptrSize);
+            // header word 4: cutab (not needed)
             filetab     = pclntab + ReadHeaderWord(pclntab, 5, ptrSize);
             functab     = pclntab + ReadHeaderWord(pclntab, 7, ptrSize);
             funcdata    = functab;
@@ -1220,7 +1285,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
             nfunc = ReadHeaderWord(pclntab, 0, ptrSize);
             nfiles = ReadHeaderWord(pclntab, 1, ptrSize);
             funcnametab = pclntab + ReadHeaderWord(pclntab, 2, ptrSize);
-            cutab       = pclntab + ReadHeaderWord(pclntab, 3, ptrSize);
+            // header word 3: cutab (not needed)
             filetab     = pclntab + ReadHeaderWord(pclntab, 4, ptrSize);
             functab     = pclntab + ReadHeaderWord(pclntab, 6, ptrSize);
             funcdata    = functab;
@@ -1243,6 +1308,8 @@ void GoRecoverSymbols(PVOID ImageBase) {
             DebugOutput("GoRecoverSymbols: Go binary detected at 0x%p, pclntab format %d, functions %llu, ptrsize %d, text start 0x%p\n",
                         ImageBase, detectedVer, (unsigned long long)nfunc, (int)ptrSize, (PVOID)textStart);
         char buildVersion[128] = {0};
+        const char* modinfo = NULL;
+        int modinfoLen = 0;
 
         // 2. Parsed BuildInfo scanner: Scan .data, .rdata, or .rodata sections (or fallback readable sections) for buildinfo magic
         const char buildinfoMagic[] = "\xff Go buildinf:";
@@ -1257,7 +1324,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
                 if (IsAddressAccessible(pStart)) {
                     buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
                     if (buildinfo) {
-                        GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion));
+                        GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion), &modinfo, &modinfoLen);
                         break;
                     }
                 }
@@ -1272,7 +1339,7 @@ void GoRecoverSymbols(PVOID ImageBase) {
                     if (IsAddressAccessible(pStart)) {
                         buildinfo = ScanSectionForBytes(pStart, size, (PBYTE)buildinfoMagic, 14);
                         if (buildinfo) {
-                            GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion));
+                            GoParseBuildInfo(buildinfo, size - (DWORD)(buildinfo - pStart), buildVersion, sizeof(buildVersion), &modinfo, &modinfoLen);
                             break;
                         }
                     }
@@ -1285,9 +1352,16 @@ void GoRecoverSymbols(PVOID ImageBase) {
             modInfo->NoRegAbiExp = GoVersionHasNoRegAbi(buildVersion);
         }
 
-        // 3. Recover source file paths from the Line Table
-        if (!alreadyProcessed && filetab && nfiles > 0) {
-            GoRecoverFilePaths(detectedVer, pclntab, (DWORD)nfiles, filetab, cutab, pImageEnd);
+        // 3. Module metadata: ONE behaviour log record per Go module (version, modinfo, project source paths)
+        if (!alreadyProcessed) {
+            char* sourcePaths = (char*)calloc(1, GO_SOURCE_PATHS_MAX);
+            if (sourcePaths && filetab && nfiles > 0)
+                GoRecoverFilePaths(detectedVer, pclntab, (DWORD)nfiles, filetab, pImageEnd, sourcePaths, GO_SOURCE_PATHS_MAX);
+            LOQ_string("go_module", "psSS", "Base", ImageBase, "Version", buildVersion,
+                       "Modinfo", modinfoLen, modinfo ? modinfo : "",
+                       "SourcePaths", sourcePaths ? (int)strlen(sourcePaths) : 0, sourcePaths ? sourcePaths : "");
+            if (sourcePaths)
+                free(sourcePaths);
         }
 
         // 4. Walk function table and hook high-value security/networking/crypto APIs
