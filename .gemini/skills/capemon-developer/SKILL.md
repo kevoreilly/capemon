@@ -64,8 +64,22 @@ Integration of YARA for in-memory scanning
 
 ## Engineering & Documentation Mandates
 - **Always update `@docs/configuration.md`:** Whenever a new configurable option is introduced to the engine (such as `log-format`, `sleep-skip-seconds`, etc.), you must immediately append its documentation details to the appropriate table inside the configuration reference document to ensure the user and the system documentation are fully up-to-date.
+- **Always Fetch and Merge Upstream (`upstream/capemon`):** Before starting any development task, creating a new branch, or preparing changes, you MUST always fetch from upstream (`git fetch upstream`) and merge `upstream/capemon` into your working branch so all work builds upon the latest commits. Never work on stale code. If any merge conflicts arise, you MUST resolve all conflicts completely and verify that compilation and functionality remain intact across all targets (Win32, x64).
 
 ## Source Control Workflow
+
+### Upstream Synchronization & Conflict Resolution Mandate
+
+> [!IMPORTANT]
+> **Always Work on Latest Upstream (`upstream/capemon`):**
+> 1. **Always Fetch Upstream**: Before creating a new branch, starting any task, or making changes, always ensure your working branch is updated with the latest upstream commits:
+>    ```bash
+>    git fetch upstream
+>    git merge upstream/capemon
+>    ```
+>    Ensure the local base branch and working branches are strictly in sync with `upstream/capemon` (`kevoreilly/capemon`).
+> 2. **Resolve All Conflicts**: If any conflicts arise when merging upstream changes into an active branch or worktree, inspect each conflicting file, resolve all conflicts thoroughly, and verify that the resulting code compiles cleanly for both Win32 and x64. Never leave conflict markers or unresolved states.
+> 3. **Sync Before PR & Finalization**: Before pushing commits or finalizing PR branches, fetch and merge `upstream/capemon` again to guarantee clean, fast-forwardable or conflict-free integration.
 
 ### Isolated Checkouts for Review and Testing
 
