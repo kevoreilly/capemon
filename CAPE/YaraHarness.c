@@ -98,11 +98,12 @@ char InternalYara[] =
 	// not a config key: Go hooking is only performed when the user enabled go-hooks=1. The $pclntab and
 	// $buildinfo ("\xff Go buildinf:") match addresses are passed to GoRecoverSymbols; $buildinfo is optional
 	// (referenced via #buildinfo >= 0 so it is not rejected as an unreferenced string).
+	// Condition is PE-independent: covers Go payloads in shellcode, private regions, and images with wiped PE headers.
 	"rule golang"
 	"{meta:cape_options = \"golang\""
 	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) (04|08) [3] 00}"
 	"$buildinfo = {FF 20 47 6F 20 62 75 69 6C 64 69 6E 66 3A}"
-	"condition:(uint16(0) == 0x5a4d or (uint32(0x3c) < 0x1000 and uint32(uint32(0x3c)) == 0x00004550)) and #buildinfo >= 0 and "
+	"condition:#buildinfo >= 0 and "
 	"for any i in (1..#pclntab) : (uint32(@pclntab[i] + 8) > 0 and uint32(@pclntab[i] + 8) < 500000)}"
 	// Detect direct-syscall assembly stubs in 64-bit Go modules (e.g. BananaPhone, Hell's Gate).
 	// $stub matches MOVQ CX, R10 (49 89 CA or 4C 8B D1) followed by SYSCALL (0F 05) within 24 bytes.
