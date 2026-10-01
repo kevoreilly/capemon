@@ -3374,7 +3374,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (g_config.bp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.bp[i]);
-			if (SetSoftwareBreakpoint(&SoftBPs, BreakpointVA))
+			if (SetSoftwareBreakpoint(&SoftBPs, BreakpointVA, SoftwareBreakpointCallback))
 			{
 				DebugOutput("SetInitialBreakpoints: Software breakpoint %d set at 0x%p", i, BreakpointVA);
 				BreakpointsSet = TRUE;
@@ -3388,7 +3388,7 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		if (g_config.sysbp[i])
 		{
 			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp[i]);
-			SyscallBreakpointSet = SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA);
+			SyscallBreakpointSet = SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA, NULL);
 			if (SyscallBreakpointSet)
 				DebugOutput("SetInitialBreakpoints: Syscall breakpoint %d set at 0x%p", i, BreakpointVA);
 			else

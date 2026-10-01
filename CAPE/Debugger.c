@@ -434,56 +434,65 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 }
 
 //**************************************************************************************
+BOOL SoftBPPendingForThread(DWORD ThreadId)
+//**************************************************************************************
+{
+	// TRUE if this thread disarmed a software breakpoint and is single-stepping over it
+	for (entry_t *Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
+	{
+		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
+		if (SoftBP && SoftBP->ThreadId == ThreadId)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+//**************************************************************************************
 BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
-	PVOID CIP;
+	DWORD CurrentThreadId = GetCurrentThreadId();
+	BOOL Restored = FALSE, ChainStep = FALSE;
 
-#ifdef _WIN64
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
-#else
-	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
-#endif
-
-	PBYTE Address = NULL;
-	entry_t *Next = NULL;
-	entry_t *Entry = SoftBPs.root;
-
-	while (Entry != NULL)
+	// Only re-arm breakpoints this thread disarmed; other threads may still be stepping over theirs
+	for (entry_t *Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
 	{
-		Next = Entry->next;
-		Address = (PBYTE)Entry->id;
+		PBYTE Address = (PBYTE)Entry->id;
 		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
 
-		if ((ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress - (ULONG_PTR)Address <= 0x10 && SoftBP->InstructionByte == *Address)
+		if (!SoftBP || SoftBP->ThreadId != CurrentThreadId)
+			continue;
+
+		SoftBP->ThreadId = 0;
+		if (SoftBP->ChainStep)
+			ChainStep = TRUE;
+		SoftBP->ChainStep = FALSE;
+
+		if (IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
 		{
 			DWORD OldProtect;
 			if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 			{
 				DebugOutput("RestoreSoftwareBreakpoint: Unable to change memory protection at 0x%p\n", Address);
-				return FALSE;
+				continue;
 			}
-
 #ifdef DEBUG_COMMENTS
 			DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p\n", Address);
 #endif
 			*(PBYTE)Address = 0xCC;
-
 			VirtualProtect(Address, 1, OldProtect, &OldProtect);
-
-			break;
+			Restored = TRUE;
 		}
-		Entry = Next;
 	}
 
-	if (SoftBPSingleStepHandler)
-	{
-		SINGLE_STEP_HANDLER Handler = SoftBPSingleStepHandler;
-		SoftBPSingleStepHandler = NULL;
-		Handler(ExceptionInfo);
-	}
+	// If this thread was already single-stepping (e.g. Trace started by the breakpoint callback), hand over;
+	// otherwise clear TF for this thread only and leave the global SingleStepHandler untouched
+	if (ChainStep && SingleStepHandler)
+		SingleStepHandler(ExceptionInfo);
+	else
+		ExceptionInfo->ContextRecord->EFlags &= ~FL_TF;
 
-	return TRUE;
+	return Restored;
 }
 
 //**************************************************************************************
@@ -500,16 +509,16 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (InsByte != 0xCC)
 		return FALSE;
 
-	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
+	PSOFTBP SoftBP = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
 
-	if (!pInsByte)
+	if (!SoftBP)
 	{
 		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction byte for 0x%p", Address);
 		return FALSE;
 	}
 
 #ifdef DEBUG_COMMENTS
-	DebugOutput("SoftwareBreakpointHandler: Instruction byte at 0x%p: 0x%x", Address, *pInsByte);
+	DebugOutput("SoftwareBreakpointHandler: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);
 #endif
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
@@ -517,18 +526,24 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return FALSE;
 	}
 
-	*(PBYTE)Address = *pInsByte;
+	*(PBYTE)Address = SoftBP->InstructionByte;
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
-	SoftwareBreakpointCallback(ExceptionInfo);
+	// The callback may change SoftBP->Persistent (e.g. Go TLS return breakpoints with no pending callers)
+	if (SoftBP->Callback)
+		((SOFTWARE_BREAKPOINT_HANDLER)SoftBP->Callback)(ExceptionInfo);
 
-	if (g_config.softbpmode)
+	if ((SoftBP->Persistent || g_config.softbpmode) && lookup_get(&SoftBPs, (ULONG_PTR)Address, 0) == SoftBP)
 	{
-		if (SingleStepHandler)
-			SoftBPSingleStepHandler = SingleStepHandler;
-		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
+		// Step this thread over the original instruction, then re-arm in RestoreSoftwareBreakpoint.
+		// TF already set here means the callback (or an active trace) owns stepping for this thread.
+		SoftBP->ChainStep = (ExceptionInfo->ContextRecord->EFlags & FL_TF) ? TRUE : FALSE;
+		SoftBP->ThreadId = GetCurrentThreadId();
+		ExceptionInfo->ContextRecord->EFlags |= FL_TF;
 	}
+	else
+		lookup_del(&SoftBPs, (ULONG_PTR)Address);	// one-shot: disarmed, drop the record so the address can be re-used
 
 	return TRUE;
 }
@@ -625,18 +640,12 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 				break;
 
-		PTHREADBREAKPOINTS CurrentThreadBreakpoints  = GetThreadBreakpoints(CurrentThreadId);
-
-		if (CurrentThreadBreakpoints == NULL)
-		{
-			DebugOutput("CAPEExceptionFilter: Breakpoint %d not registered (address 0x%p thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId);
-			return EXCEPTION_CONTINUE_SEARCH;
-		}
-
 		// If not it's a single-step
 		if (bp == NUMBER_OF_DEBUG_REGISTERS)
 		{
-			if (SingleStepHandler)
+			if (SoftBPPendingForThread(CurrentThreadId))
+				RestoreSoftwareBreakpoint(ExceptionInfo);
+			else if (SingleStepHandler)
 				SingleStepHandler(ExceptionInfo);
 			else
 			{
@@ -649,6 +658,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			teb->LastErrorValue = saved_error;
 
 			return EXCEPTION_CONTINUE_EXECUTION;
+		}
+
+		PTHREADBREAKPOINTS CurrentThreadBreakpoints = GetThreadBreakpoints(CurrentThreadId);
+
+		if (CurrentThreadBreakpoints == NULL)
+		{
+			DebugOutput("CAPEExceptionFilter: Breakpoint %d not registered (address 0x%p thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId);
+			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
 		if (TrapIndex)
@@ -2187,7 +2204,14 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 }
 
 //**************************************************************************************
-BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address, PVOID Callback)
+//**************************************************************************************
+{
+	return SetSoftwareBreakpointEx(BPs, Address, Callback, FALSE);
+}
+
+//**************************************************************************************
+BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL Persistent)
 //**************************************************************************************
 {
 	DWORD OldProtect;
@@ -2225,6 +2249,10 @@ BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 
 	SoftBP->InstructionByte = InsByte;
 	SoftBP->Length = lde(Address);
+	SoftBP->Callback = Callback;
+	SoftBP->Persistent = Persistent;
+	SoftBP->ChainStep = FALSE;
+	SoftBP->ThreadId = 0;
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);
