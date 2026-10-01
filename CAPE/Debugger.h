@@ -97,6 +97,7 @@ typedef struct SoftBP
 	BOOL			Persistent;	// re-arm after each hit regardless of softbpmode
 	BOOL			ChainStep;	// thread was already single-stepping when the breakpoint was hit
 	DWORD			ThreadId;	// thread stepping over the disarmed breakpoint (0 = armed)
+	BYTE			Mode;		// 0 = default (g_config.sysbpmode), 1 = push return address and jump
 } SOFTBP, *PSOFTBP;
 
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);

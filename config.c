@@ -928,7 +928,9 @@ void parse_config_line(char* line)
 				}
 			}
 		}
-		else if (!stricmp(key, "sysbp")) {
+		else if (!stricmp(key, "sysbp") || !stricmp(key, "sysbp1")) {
+			BOOL is_mode1 = !stricmp(key, "sysbp1");
+			PVOID *target_array = is_mode1 ? g_config.sysbp1 : g_config.sysbp;
 			unsigned int x = 0;
 			char *p2;
 			p = value;
@@ -952,15 +954,15 @@ void parse_config_line(char* line)
 						*p3 = '\0';
 					}
 				}
-				for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp); i++) {
-					if (g_config.sysbp[x])
+				for (unsigned int i = 0; i < SYSBP_MAX; i++) {
+					if (target_array[x])
 						x++;
 					else
 						break;
 				}
 				if (x < SYSBP_MAX) {
 					PVOID address = (PVOID)((PUCHAR)(DWORD_PTR)strtoul(p, NULL, 0) + delta);
-					g_config.sysbp[x] = address;
+					target_array[x] = address;
 					//DebugOutput("Config: Set syscall breakpoint at 0x%p\n", address);
 					g_config.debugger = 1;
 				}
