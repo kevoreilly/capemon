@@ -620,7 +620,13 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		PTEB teb = (PTEB)NtCurrentTeb();
 		DWORD saved_error = teb->LastErrorValue;
 
-		// Test Dr6 to see if this is a breakpoint
+		// Test Dr6 to see if this is a breakpoint. Dr6 is sticky - the CPU sets these bits
+		// and only a debugger clears them - so every path below that resumes execution zeroes
+		// it. Left set, the lowest bit ever set wins this loop for the rest of the thread's
+		// life: a later single-step or fault is reported as a hit on a breakpoint that did
+		// not fire, and the genuine single-step branch below stops being reachable. The
+		// EXCEPTION_CONTINUE_SEARCH paths deliberately leave Dr6 alone, so whichever handler
+		// does own the breakpoint still sees the status bits.
 		for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 				break;
@@ -646,6 +652,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
 
+			ExceptionInfo->ContextRecord->Dr6 = 0;
 			teb->LastErrorValue = saved_error;
 
 			return EXCEPTION_CONTINUE_EXECUTION;
@@ -664,6 +671,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (pBreakpointInfo == NULL)
 		{
 			DebugOutput("CAPEExceptionFilter: Can't get BreakpointInfo for thread %d\n", CurrentThreadId);
+			ExceptionInfo->ContextRecord->Dr6 = 0;
 			teb->LastErrorValue = saved_error;
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
@@ -739,6 +747,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			}
 		}
 
+		ExceptionInfo->ContextRecord->Dr6 = 0;
 		teb->LastErrorValue = saved_error;
 
 		return EXCEPTION_CONTINUE_EXECUTION;
