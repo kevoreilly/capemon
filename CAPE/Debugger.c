@@ -56,6 +56,9 @@ extern int StepOverRegister;
 extern int process_shutting_down;
 extern HANDLE DebuggerLog;
 extern PVOID GuardedPages;
+extern lookup_t InteractiveBPs;
+extern BOOL InteractiveSoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo), InteractiveSingleStep(struct _EXCEPTION_POINTERS* ExceptionInfo);
+extern void ClearInteractiveSoftwareBreakpoints(void);
 
 struct ThreadBreakpoints *MainThreadBreakpointList;
 unsigned int TrapIndex, DepthCount;
@@ -631,6 +634,15 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 				break;
 
+		// Interactive steps are followed per thread, ahead of the thread breakpoints check: a
+		// software breakpoint can halt a thread that has never had hardware breakpoints.
+		if (g_config.idbg && bp == NUMBER_OF_DEBUG_REGISTERS && InteractiveSingleStep(ExceptionInfo))
+		{
+			ExceptionInfo->ContextRecord->Dr6 = 0;
+			teb->LastErrorValue = saved_error;
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
+
 		PTHREADBREAKPOINTS CurrentThreadBreakpoints  = GetThreadBreakpoints(CurrentThreadId);
 
 		if (CurrentThreadBreakpoints == NULL)
@@ -758,6 +770,17 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
 		BYTE InsByte = *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+
+		// Interactive debugger (CAPEsolo) software breakpoint: checked first, as the syscall
+		// test below claims every int3 while syscall breakpoints are set
+		if (g_config.idbg && lookup_get(&InteractiveBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
+		{
+			PTEB teb = (PTEB)NtCurrentTeb();
+			DWORD saved_error = teb->LastErrorValue;
+			InteractiveSoftwareBreakpointCallback(ExceptionInfo);
+			teb->LastErrorValue = saved_error;
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
 
 		// Check to see if it's ours
 		if (lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
@@ -2785,6 +2808,8 @@ void DebuggerShutdown()
 	}
 	if (BreakpointsSet)
 		ClearAllBreakpoints();
+	// An int3 left behind once the debugger is off would go unhandled, and the process dump follows
+	ClearInteractiveSoftwareBreakpoints();
 	g_config.debugger = 0;
 }
 

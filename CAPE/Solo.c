@@ -96,6 +96,184 @@ static CONTEXT LastContext;
 // target thread may drive the session at once. Initialised in DllMain.
 CRITICAL_SECTION g_interactive_debugger_lock;
 
+// Interactive software breakpoints: process-wide, where DR0-3 are per thread. The int3 stays in
+// place while a thread is halted on one, so other threads still stop there; the original byte
+// goes back only for the halted thread to execute it, and the int3 is rewritten one single-step
+// later (InteractiveSingleStep).
+lookup_t InteractiveBPs;
+
+// Per-thread step state: the breakpoint waiting for its int3 again, and the single-step handler
+// the resuming command asked for. Kept per thread because SingleStepHandler is process-wide.
+typedef struct _INTERACTIVESTEP
+{
+	PVOID Rearm;
+	SINGLE_STEP_HANDLER Next;
+} INTERACTIVESTEP, *PINTERACTIVESTEP;
+
+static lookup_t InteractiveSteps;
+
+static BOOL WriteCodeByte(PVOID Address, BYTE Value)
+{
+	DWORD OldProtect;
+	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+		return FALSE;
+
+	*(PBYTE)Address = Value;
+	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+	return TRUE;
+}
+
+// Puts each breakpoint's original byte back into a copy of memory read from Base - only where
+// the copy still holds the int3, so code that has since been overwritten shows as it now is.
+static void MaskSoftwareBreakpoints(ULONG_PTR Base, BYTE* Buffer, SIZE_T Size)
+{
+	for (entry_t* Entry = InteractiveBPs.root; Entry; Entry = Entry->next)
+	{
+		if (Entry->id >= Base && Entry->id - Base < Size && Buffer[Entry->id - Base] == 0xCC)
+			Buffer[Entry->id - Base] = ((PSOFTBP)Entry->data)->InstructionByte;
+	}
+}
+
+// The bytes to decode at Address: memory itself, or a masked copy when a breakpoint lies within
+// Size. Decoding the int3 instead would give every instruction under a breakpoint a length of 1.
+static const unsigned char* CodeView(PVOID Address, BYTE* Copy, SIZE_T Size)
+{
+	for (entry_t* Entry = InteractiveBPs.root; Entry; Entry = Entry->next)
+	{
+		if (Entry->id >= (ULONG_PTR)Address && Entry->id - (ULONG_PTR)Address < Size)
+		{
+			SIZE_T BytesRead = 0;
+			memset(Copy, 0, Size);
+			ReadProcessMemory(GetCurrentProcess(), Address, Copy, Size, &BytesRead);
+			if (!BytesRead)
+				break;
+
+			MaskSoftwareBreakpoints((ULONG_PTR)Address, Copy, BytesRead);
+			return Copy;
+		}
+	}
+
+	return (const unsigned char*)Address;
+}
+
+// After a write to [Base, Base+Size) (PB, NI), the bytes written become each breakpoint's
+// original byte and the int3 goes back over them. The range must still be writable.
+static void RefreshSoftwareBreakpoints(ULONG_PTR Base, SIZE_T Size)
+{
+	for (entry_t* Entry = InteractiveBPs.root; Entry; Entry = Entry->next)
+	{
+		if (Entry->id >= Base && Entry->id - Base < Size)
+		{
+			((PSOFTBP)Entry->data)->InstructionByte = *(PBYTE)Entry->id;
+			*(PBYTE)Entry->id = 0xCC;
+		}
+	}
+}
+
+// Writes the int3 back over a breakpoint the thread has stepped past, unless the breakpoint has
+// been removed or its code overwritten in the meantime.
+static void RearmSoftwareBreakpoint(PINTERACTIVESTEP Step)
+{
+	PVOID Address = Step->Rearm;
+	Step->Rearm = NULL;
+	if (!Address)
+		return;
+
+	PSOFTBP SoftBP = lookup_get(&InteractiveBPs, (ULONG_PTR)Address, 0);
+	if (SoftBP && IsAddressAccessible(Address) && *(PBYTE)Address == SoftBP->InstructionByte)
+		WriteCodeByte(Address, 0xCC);
+}
+
+// Called by CAPEExceptionFilter for each single-step that is not a hardware breakpoint.
+BOOL InteractiveSingleStep(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PINTERACTIVESTEP Step = lookup_get(&InteractiveSteps, (ULONG_PTR)GetCurrentThreadId(), 0);
+	if (!Step || (!Step->Rearm && !Step->Next))
+		return FALSE;
+
+	SINGLE_STEP_HANDLER Next = Step->Next;
+	Step->Next = NULL;
+	RearmSoftwareBreakpoint(Step);
+	ExceptionInfo->ContextRecord->EFlags &= ~FL_TF;
+
+	if (Next)
+	{
+		Next(ExceptionInfo);
+		// A handler that steps again without halting (a trace) stays followed on this thread
+		if ((ExceptionInfo->ContextRecord->EFlags & FL_TF) && !Step->Next)
+			Step->Next = SingleStepHandler;
+	}
+
+	return TRUE;
+}
+
+// Run on every resume from an interactive break. A thread resuming on one of its breakpoints -
+// it halted there, stepped onto it or had CIP set to it - gets the original byte back to execute,
+// and a single-step to rewrite the int3 after it.
+static void PrepareResume(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	PCONTEXT Context = ExceptionInfo->ContextRecord;
+#ifdef _WIN64
+	PVOID CIP = (PVOID)Context->Rip;
+#else
+	PVOID CIP = (PVOID)Context->Eip;
+#endif
+	PINTERACTIVESTEP Step = LOOKUP_THREAD(&InteractiveSteps, INTERACTIVESTEP);
+	if (!Step)
+		return;
+
+	Step->Rearm = NULL;
+	Step->Next = (Context->EFlags & FL_TF) ? SingleStepHandler : NULL;
+
+	PSOFTBP SoftBP = lookup_get(&InteractiveBPs, (ULONG_PTR)CIP, 0);
+	if (SoftBP && *(PBYTE)CIP == 0xCC && WriteCodeByte(CIP, SoftBP->InstructionByte))
+	{
+		Step->Rearm = CIP;
+		Context->EFlags |= FL_TF;
+	}
+}
+
+static const char* SetInteractiveSoftwareBreakpoint(ULONG_PTR Address)
+{
+	if (!IsAddressExecutable((PVOID)Address))
+		return InteractiveDebuggerPipe("Failed to set software breakpoint at 0x%p: not executable\n", (PVOID)Address);
+
+	// The session itself runs system DLL and monitor code (VirtualProtect, the pipe), where an
+	// int3 would re-enter it mid-command.
+	if (is_in_dll_range(Address) || InsideMonitor(NULL, (PVOID)Address) || inside_hook((PVOID)Address))
+		return InteractiveDebuggerPipe("Failed to set software breakpoint at 0x%p: system or monitor code, use a hardware breakpoint\n", (PVOID)Address);
+
+	if (!SetSoftwareBreakpoint(&InteractiveBPs, (PVOID)Address))
+		return InteractiveDebuggerPipe("Failed to set software breakpoint at 0x%p\n", (PVOID)Address);
+
+	return InteractiveDebuggerPipe("Software breakpoint set at 0x%p\n", (PVOID)Address);
+}
+
+// Always forgets the breakpoint, but puts the original byte back only over an int3 still in place.
+static BOOL RemoveSoftwareBreakpoint(PVOID Address)
+{
+	PSOFTBP SoftBP = lookup_get(&InteractiveBPs, (ULONG_PTR)Address, 0);
+	if (!SoftBP)
+		return FALSE;
+
+	if (IsAddressAccessible(Address) && *(PBYTE)Address == 0xCC)
+		WriteCodeByte(Address, SoftBP->InstructionByte);
+
+	lookup_del(&InteractiveBPs, (ULONG_PTR)Address);
+	return TRUE;
+}
+
+void ClearInteractiveSoftwareBreakpoints(void)
+{
+	entry_t* Entry = InteractiveBPs.root;
+	while (Entry)
+	{
+		entry_t* Next = Entry->next;
+		RemoveSoftwareBreakpoint((PVOID)Entry->id);
+		Entry = Next;
+	}
+}
+
 static const uint32_t crc32Table[256] = {
 	0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA,  0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
 	0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988,  0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -532,6 +710,8 @@ char* DumpMemoryView(HANDLE hProcess, PCONTEXT ctx, ULONG_PTR RequestedAddr, int
 
 		if (!ReadProcessMemory(hProcess, (LPCVOID)addr, buf, BYTES_PER_LINE, &BytesRead) || BytesRead == 0) break;
 
+		MaskSoftwareBreakpoints(addr, buf, BytesRead);
+
 #ifdef _WIN64
 		int n = _snprintf_s(p, rem, _TRUNCATE, "%016I64X,", (unsigned __int64)addr);
 #else
@@ -579,6 +759,8 @@ char* RetrievePage(HANDLE hProcess, uintptr_t Address, uintptr_t* OutBase) {
 	SIZE_T BytesRead = 0;
 
 	if (!ReadProcessMemory(hProcess, (LPCVOID)base, page, ToRead, &BytesRead) || BytesRead == 0) return NULL;
+
+	MaskSoftwareBreakpoints(base, page, BytesRead);
 
 	char* hexPage = malloc(BytesRead * 2 + 1);
 	if (!hexPage) return NULL;
@@ -682,6 +864,8 @@ void InteractiveCommandHandler(struct _EXCEPTION_POINTERS* ExceptionInfo, char* 
 		Command = NextCommand;
 		Sleep(100);
 	}
+
+	PrepareResume(ExceptionInfo);
 }
 
 const char* HandleInstructionPage(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
@@ -821,8 +1005,9 @@ const char* HandleStepOver(struct _EXCEPTION_POINTERS* ExceptionInfo, const char
 #endif
 	_DecodedInst inst;
 	unsigned int count = 0;
+	BYTE Code[32];
 
-	_DecodeResult res = distorm_decode(0, (const unsigned char*)cip, 32, sizeof(void*) == 8 ? Decode64Bits : Decode32Bits, &inst, 1, &count);
+	_DecodeResult res = distorm_decode(0, CodeView(cip, Code, sizeof(Code)), sizeof(Code), sizeof(void*) == 8 ? Decode64Bits : Decode32Bits, &inst, 1, &count);
 
 	if (inst.size == 0) 
 	{
@@ -906,6 +1091,8 @@ const char* HandleMemoryDump(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 				free(Buffer);
 				return InteractiveDebuggerPipe("0x%p|%s|Failed with unreadable memory\n", (PVOID)RequestedAddr, Tag);
 			}
+
+			MaskSoftwareBreakpoints(RequestedAddr, Buffer, RequestedSize);
 
 			char* HexOutput = (char*)malloc(RequestedSize * 2 + 1);
 			if (!HexOutput)
@@ -1052,6 +1239,7 @@ static int AppendFrame(char* Output, int Offset, int Index, ULONG_PTR ReturnAddr
 		&& ReadProcessMemory(ProcessHandle, (LPCVOID)(ReturnAddress - CALLSITE_BYTES), Bytes, CALLSITE_BYTES, &BytesRead)
 		&& BytesRead == CALLSITE_BYTES)
 	{
+		MaskSoftwareBreakpoints(ReturnAddress - CALLSITE_BYTES, Bytes, CALLSITE_BYTES);
 		for (SIZE_T i = 0; i < CALLSITE_BYTES; ++i)
 			Written += sprintf(Output + Offset + Written, "%02X", Bytes[i]);
 	}
@@ -1233,8 +1421,10 @@ const char* HandleListBreakpoints(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 	CONTEXT* ctx = ExceptionInfo->ContextRecord;
 	int len = 0;
 	const int MaxPerLine = 48;
-	const int MaxEntries = 4;
+	int MaxEntries = 4;
 
+	for (entry_t* Entry = InteractiveBPs.root; Entry; Entry = Entry->next)
+		MaxEntries++;
 
 	size_t BufSize = MaxEntries * MaxPerLine + 1;
 	char* Output = (char*)malloc(BufSize);
@@ -1265,6 +1455,9 @@ const char* HandleListBreakpoints(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 			len += sprintf(Output + len, "%d,%p,%s,%d|", i, (PVOID)dr[i], Type, Size);
 		}
 	}
+
+	for (entry_t* Entry = InteractiveBPs.root; Entry; Entry = Entry->next)
+		len += sprintf(Output + len, "sw,%p,x,1|", (PVOID)Entry->id);
 
 	if (len == 0)
 	{
@@ -1560,7 +1753,7 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 	else if (BpType == BP_EXEC)
 		BpSize = 0;
 
-	if (strcmp(RegStr, "next") != 0)
+	if (strcmp(RegStr, "next") != 0 && strcmp(RegStr, "sw") != 0)
 	{
 		char* Endp = NULL;
 		long r = strtol(RegStr, &Endp, 0);
@@ -1576,6 +1769,14 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 		return InteractiveDebuggerPipe("Failed with invalid breakpoint address: %s\n", AddrStr);
 
 	ULONG_PTR BpAddress = (ULONG_PTR)addr;
+	if (!strcmp(RegStr, "sw"))
+	{
+		if (BpType != BP_EXEC)
+			return InteractiveDebuggerPipe("Failed: software breakpoints are execute only\n");
+
+		return SetInteractiveSoftwareBreakpoint(BpAddress);
+	}
+
 	if (Register == -1)
 	{
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, BpSize, (BYTE*)BpAddress, BpType, 0, InteractiveBreakpointCallback))
@@ -1604,6 +1805,20 @@ const char* HandleDeleteBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, co
 {
 	if (!data || !*data)
 		return InteractiveDebuggerPipe("Failed to delete breakpoint: missing input.\n");
+
+	// `sw|<addr>`: software breakpoints have no slot, so they are named by address
+	if (!strncmp(data, "sw|", 3))
+	{
+		char* AddrEnd = NULL;
+		ULONG_PTR SwAddress = (ULONG_PTR)strtoull(data + 3, &AddrEnd, 0);
+		if (AddrEnd == data + 3 || *AddrEnd != '\0')
+			return InteractiveDebuggerPipe("Failed to delete breakpoint: invalid address '%s'\n", data + 3);
+
+		if (!RemoveSoftwareBreakpoint((PVOID)SwAddress))
+			return InteractiveDebuggerPipe("Failed to delete breakpoint: no software breakpoint at 0x%p\n", (PVOID)SwAddress);
+
+		return InteractiveDebuggerPipe("Software breakpoint cleared at 0x%p\n", (PVOID)SwAddress);
+	}
 
 	char* Endptr = NULL;
 	unsigned long idx = strtoul(data, &Endptr, 0);
@@ -1857,6 +2072,7 @@ const char* HandleNopInstruction(struct _EXCEPTION_POINTERS* ExceptionInfo, cons
 	_DecodedInst DecodedInstruction;
 	unsigned int DecodedInstructionsCount = 0;
 	DWORD OldProtect;
+	BYTE Code[CHUNKSIZE];
 
 #ifdef _WIN64
 	DecodeType = Decode64Bits;
@@ -1865,7 +2081,7 @@ const char* HandleNopInstruction(struct _EXCEPTION_POINTERS* ExceptionInfo, cons
 #endif
 
 	if (Address)
-		Result = distorm_decode(Offset, (const unsigned char*)Address, CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
+		Result = distorm_decode(Offset, CodeView((PVOID)Address, Code, sizeof(Code)), CHUNKSIZE, DecodeType, &DecodedInstruction, 1, &DecodedInstructionsCount);
 
 	if (!DecodedInstruction.size)
 		return InteractiveDebuggerPipe("Failed Nop instruction at 0x%p\n", Address);
@@ -1874,6 +2090,7 @@ const char* HandleNopInstruction(struct _EXCEPTION_POINTERS* ExceptionInfo, cons
 	for (unsigned int i = 0; i < DecodedInstruction.size; i++) 
 		*((BYTE*)Address + i) = 0x90;
 
+	RefreshSoftwareBreakpoints(Address, DecodedInstruction.size);
 	VirtualProtect((LPVOID)Address, DecodedInstruction.size, OldProtect, &OldProtect);
 	return InteractiveDebuggerPipe("%p|%u\n", Address, DecodedInstruction.size);
 }
@@ -1937,6 +2154,7 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 		*dest = *src;
 	}
 
+	RefreshSoftwareBreakpoints(Address, ByteCount);
 	VirtualProtect((LPVOID)Address, ByteCount, OldProtect, &OldProtect);
 	free(Patch);
 
@@ -2000,6 +2218,8 @@ const char* HandleDumpRegion(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 		free(Buffer);
 		return InteractiveDebuggerPipe("%s|Failed with unreadable memory\n", Tag);
 	}
+
+	MaskSoftwareBreakpoints(Address, Buffer, Size);
 
 	char* FullPathName = GetName();
 	if (!FullPathName)
@@ -2078,7 +2298,8 @@ static BOOL ArmTraceStep(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	{
 		_DecodedInst Inst;
 		unsigned int Count = 0;
-		distorm_decode(0, (const unsigned char*)CIP, CHUNKSIZE, sizeof(void*) == 8 ? Decode64Bits : Decode32Bits, &Inst, 1, &Count);
+		BYTE Code[CHUNKSIZE];
+		distorm_decode(0, CodeView(CIP, Code, sizeof(Code)), CHUNKSIZE, sizeof(void*) == 8 ? Decode64Bits : Decode32Bits, &Inst, 1, &Count);
 		if (Count && Inst.size && !strcmp((char*)Inst.mnemonic.p, "CALL"))
 		{
 			ClearSingleStepMode(ExceptionInfo->ContextRecord);
@@ -2255,7 +2476,7 @@ BOOL InteractiveTrace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	return InteractiveBreakpointCallback(NULL, ExceptionInfo);
 }
 
-BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
+static BOOL InteractiveBreak(PBREAKPOINTINFO pBreakpointInfo, BOOL SoftBreak, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
 	PVOID CIP;
 	char* Command = NULL;
@@ -2271,9 +2492,18 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 	CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
 #endif
 
-	if (pBreakpointInfo)
+	// A re-arm step this thread never took (a hardware breakpoint or an exception got there
+	// first) is finished now, so the breakpoint is not left without its int3.
+	PINTERACTIVESTEP Step = lookup_get(&InteractiveSteps, (ULONG_PTR)GetCurrentThreadId(), 0);
+	if (Step)
 	{
-		if (StepOverRegister != -1 && pBreakpointInfo->Register == StepOverRegister)
+		RearmSoftwareBreakpoint(Step);
+		Step->Next = NULL;
+	}
+
+	if (pBreakpointInfo || SoftBreak)
+	{
+		if (pBreakpointInfo && StepOverRegister != -1 && pBreakpointInfo->Register == StepOverRegister)
 		{
 			StepOverRegister = -1;
 		}
@@ -2292,6 +2522,10 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 	{
 		Command = InteractiveDebuggerPipe("Breakpoint %i => 0x%p tid %u\n", pBreakpointInfo->Register, CIP, GetCurrentThreadId());
 	}
+	else if (SoftBreak)
+	{
+		Command = InteractiveDebuggerPipe("Software breakpoint => 0x%p tid %u\n", CIP, GetCurrentThreadId());
+	}
 	else
 	{
 		Command = InteractiveDebuggerPipe("Single step at 0x%p tid %u\n", CIP, GetCurrentThreadId());
@@ -2302,4 +2536,14 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 
 	LeaveCriticalSection(&g_interactive_debugger_lock);
 	return TRUE;
+}
+
+BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	return InteractiveBreak(pBreakpointInfo, FALSE, ExceptionInfo);
+}
+
+BOOL InteractiveSoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	return InteractiveBreak(NULL, TRUE, ExceptionInfo);
 }
