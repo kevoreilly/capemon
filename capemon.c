@@ -477,8 +477,36 @@ next:
 
 void notify_successful_load(void)
 {
-	// notify analyzer.py that we've loaded
-	pipe("LOADED:%d", GetCurrentProcessId());
+	FILETIME CreationTime, ExitTime, KernelTime, UserTime;
+	ULARGE_INTEGER CreationIdentity;
+
+	// Old analyzers only accept LOADED:<pid>. Preserve that protocol unless
+	// the monitor config explicitly advertises tagged-identity support.
+	if (!g_config.loaded_process_identity) {
+		pipe("LOADED:%d", GetCurrentProcessId());
+		return;
+	}
+
+	// Bind the acknowledgement to this process instance so the analyzer can
+	// reject a delayed message after Windows reuses the numeric PID.
+	if (GetProcessTimes(GetCurrentProcess(), &CreationTime, &ExitTime, &KernelTime, &UserTime)) {
+		char Identity[21];
+		int Length;
+		CreationIdentity.LowPart = CreationTime.dwLowDateTime;
+		CreationIdentity.HighPart = CreationTime.dwHighDateTime;
+		Length = snprintf(Identity, sizeof(Identity), "%llu", (unsigned long long)CreationIdentity.QuadPart);
+		if (Length > 0 && (size_t)Length < sizeof(Identity)) {
+			// pipe() has a deliberately small custom formatter; %z passes a
+			// preformatted NUL-terminated ASCII string through unchanged.
+			pipe("LOADED:%d,i:%z", GetCurrentProcessId(), Identity);
+		}
+		else {
+			pipe("LOADED:%d", GetCurrentProcessId());
+		}
+	}
+	else {
+		pipe("LOADED:%d", GetCurrentProcessId());
+	}
 }
 
 void get_our_process_path(void)

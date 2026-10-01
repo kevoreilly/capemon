@@ -92,6 +92,9 @@ struct _g_config {
 	// is this the first process or not?
 	int first_process;
 
+	// analyzer supports LOADED messages tagged with a process creation identity
+	int loaded_process_identity;
+
 	// do we want to ignore "file of interest" and other forms of log reduction?
 	int full_logs;
 
