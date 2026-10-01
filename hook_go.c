@@ -1290,6 +1290,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
             modInfo->NoRegAbiExp = GoVersionHasNoRegAbi(buildVersion);
         }
 
+        /*
         // 3. Module metadata: ONE behaviour log record per Go module (version, modinfo, project source paths)
         if (!alreadyProcessed) {
             char* sourcePaths = (char*)calloc(1, GO_SOURCE_PATHS_MAX);
@@ -1301,6 +1302,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
             if (sourcePaths)
                 free(sourcePaths);
         }
+        */
 
         // 4. Walk function table and hook high-value security/networking/crypto APIs
         if (!functab || !funcdata || !funcnametab || nfunc == 0 || nfunc > 500000) {
