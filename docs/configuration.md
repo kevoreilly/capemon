@@ -113,7 +113,6 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `br0`, `br1` | Addr/String | Set "break-on-return" addresses. |
 | `bp` | List | Colon-separated list of addresses for software breakpoints. |
 | `sysbp` | List | Colon-separated list of addresses for syscall breakpoints. |
-| `sysbp1` | List | Colon-separated list of addresses for syscall breakpoints using mode 1 (pushes return address onto stack before redirecting). |
 | `sysbpmode` | Integer | Mode for syscall breakpoints. |
 | `softbpmode` | Integer | Execution mode behavior for software breakpoints. |
 | `break-on-return` | List | Colon-separated list of APIs to break on return. |
@@ -150,4 +149,4 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | Option | Value Type | Description |
 | :--- | :--- | :--- |
 | `wowmon` | Boolean | Enable Heaven's Gate monitoring in wow64 processes |
-| `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, breakpoint tracing, and direct-syscall stub interception (beta, off by default). Triggered by internal `golang` and `golang_direct_syscall` YARA rules on the main image and on every region scanned by the unpacking engine (e.g. UPX-unpacked images); requires `yarascan` (default on) and the debugger. |
+| `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, and breakpoint tracing (beta, off by default). Triggered by the internal `golang` YARA rule on the main image and on every region scanned by the unpacking engine (e.g. UPX-unpacked images); requires `yarascan` (default on) and the debugger. |

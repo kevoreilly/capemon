@@ -106,10 +106,9 @@ char InternalYara[] =
 	"for any i in (1..#pclntab) : (uint32(@pclntab[i] + 8) > 0 and uint32(@pclntab[i] + 8) < 500000)}"
 	// Detect direct-syscall assembly stubs in 64-bit Go modules (e.g. BananaPhone, Hell's Gate).
 	// $stub matches MOVQ CX, R10 (49 89 CA or 4C 8B D1) followed by SYSCALL (0F 05) within 24 bytes.
-	// $stub*-1 resolves the offset to the 0F 05 opcode. Uses sysbp1 to push the return address so the
-	// ntdll export returns cleanly to the instruction following SYSCALL in the stub.
+	// Sets sysbpmode=1 so the ntdll export returns cleanly to the instruction following SYSCALL in the stub.
 	"rule golang_direct_syscall"
-	"{meta:cape_options = \"sysbp1=$stub*-1\""
+	"{meta:cape_options = \"sysbpmode=1,sysbp=$stub*-1\""
 	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) 08 [3] 00}"
 	"$stub = {(49 89 CA|4C 8B D1) [0-24] 0F 05}"
 	"condition:$pclntab and $stub}";

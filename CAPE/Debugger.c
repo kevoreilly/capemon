@@ -576,11 +576,10 @@ BOOL SyscallBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	log_direct_syscall(FunctionName, (PVOID)CIP);
 
-	PSOFTBP SyscallBP = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
-	int mode = (SyscallBP && SyscallBP->Mode) ? SyscallBP->Mode : g_config.sysbpmode;
-
-	if (mode == 1)
+	if (g_config.sysbpmode == 1)
 	{
+		PSOFTBP SyscallBP = lookup_get(&SyscallBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0);
+
 		if (!SyscallBP)
 		{
 			DebugOutput("SyscallBreakpointHandler: Unable to retrieve syscall breakpoint info for address 0x%p", ExceptionInfo->ExceptionRecord->ExceptionAddress);
@@ -2254,7 +2253,6 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 	SoftBP->Persistent = Persistent;
 	SoftBP->ChainStep = FALSE;
 	SoftBP->ThreadId = 0;
-	SoftBP->Mode = 0;
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);

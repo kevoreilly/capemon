@@ -320,7 +320,7 @@ struct _g_config {
 	int bpva0, bpva1, bpva2, bpva3;
 	// Type strings
 	char typestring[MAX_PATH], typestring0[MAX_PATH], typestring1[MAX_PATH], typestring2[MAX_PATH], typestring3[MAX_PATH];
-	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX], sysbp1[SYSBP_MAX];
+	PVOID bp[BREAKPOINT_MAX], sysbp[SYSBP_MAX];
 	char *action[BREAKPOINT_MAX];
 	BOOLEAN modulenames;
 	BOOLEAN loopskip;

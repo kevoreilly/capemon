@@ -3397,24 +3397,5 @@ BOOL SetInitialBreakpoints(PVOID ImageBase)
 		}
 	}
 
-	for (unsigned int i = 0; i < ARRAYSIZE(g_config.sysbp1); i++)
-	{
-		if (g_config.sysbp1[i])
-		{
-			BreakpointVA = (PVOID)((DWORD_PTR)ImageBase + (DWORD_PTR)g_config.sysbp1[i]);
-			SyscallBreakpointSet = SetSoftwareBreakpoint(&SyscallBPs, BreakpointVA, NULL);
-			if (SyscallBreakpointSet)
-			{
-				PSOFTBP bp = lookup_get(&SyscallBPs, (ULONG_PTR)BreakpointVA, 0);
-				if (bp)
-					bp->Mode = 1;
-				DebugOutput("SetInitialBreakpoints: Syscall mode 1 breakpoint %d set at 0x%p", i, BreakpointVA);
-			}
-			else
-				DebugOutput("SetInitialBreakpoints: Failed to set syscall mode 1 breakpoint %d set at 0x%p", i, BreakpointVA);
-			g_config.sysbp1[i] = 0;
-		}
-	}
-
 	return BreakpointsSet;
 }
