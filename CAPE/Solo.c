@@ -42,6 +42,16 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // and stays inside InteractiveDebuggerPipe's BUFFER_SIZE with the status field on the end.
 #define REGIONS_PER_PAGE 1024
 #define CHUNKSIZE 16
+// Bytes served by one MD request: 32 KB of hex plus the address/tag prefix stays inside BUFFER_SIZE.
+#define MAX_MD_SIZE 0x4000
+// Bytes written by one DR request (matches Trace.c's MAX_DUMP_SIZE).
+#define MAX_DR_SIZE 0x1000000
+// Instructions executed by one TS request, and how many of their CIPs fit in the reply as
+// bare hex plus a comma, leaving room for the tag and the other fields.
+#define MAX_TS_STEPS 0x10000
+#define MAX_TS_RECORDED ((BUFFER_SIZE - 1024) / (sizeof(PVOID) * 2 + 1))
+#define TS_STEP_OVER_CALLS 1
+#define TS_STOP_ON_MODULE_EXIT 2
 
 // Structure for MBI entry
 typedef const char* (*CmdHandler)(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
@@ -60,6 +70,9 @@ extern DWORD g_terminate_event_thread_id, g_procname_watcher_thread_id, g_unhook
 extern _NtQueryInformationThread pNtQueryInformationThread;
 extern int StepOverRegister;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+extern void CapeOutputFile(LPCTSTR lpOutputFile);
+extern char* GetName();
+extern BOOL inside_hook(LPVOID Address);
 
 BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
 char* InteractiveDebuggerPipe(_In_ LPCTSTR lpOutputString, ...);
@@ -881,8 +894,8 @@ const char* HandleMemoryDump(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 			if (!ParseHex(SizeSep, &RequestedSize))
 				return InteractiveDebuggerPipe("Failed with invalid dump size: %s\n", SizeSep);
 
-			if (RequestedSize > OUTPUT_BUFFER_SIZE)
-				return InteractiveDebuggerPipe("Failed: requested size %zu exceeds max buffer size %d.\n", RequestedSize, OUTPUT_BUFFER_SIZE);
+			if (RequestedSize > MAX_MD_SIZE)
+				return InteractiveDebuggerPipe("Failed: requested size %zu exceeds max buffer size %d.\n", RequestedSize, MAX_MD_SIZE);
 
 			unsigned char* Buffer = (unsigned char*)malloc(RequestedSize);
 			if (!Buffer)
@@ -1930,6 +1943,284 @@ const char* HandlePatchBytes(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 	return InteractiveDebuggerPipe("Patched %p|%u\n", Address, ByteCount);
 }
 
+// Dumps <addr>,<size> to a CAPE payload of type TYPE_STRING: `<tag>|<addr>|<size>[|<type string>]`.
+// Raw bytes only - no PE reconstruction, no trailing-zero trimming, and not subject to dump_limit,
+// so none of DumpMemory/DumpRange/DumpRegion fit. Pages that are not committed, are no-access or
+// are guard pages (reading one would consume the guard) are zero-filled so file offsets still
+// match addresses, and counted in the reply.
+const char* HandleDumpRegion(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	static char TypeString[MAX_PATH];
+	ULONG_PTR Address = 0, Size = 0;
+	SIZE_T Unreadable = 0;
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
+
+	char* SizeStr = Payload ? strchr(Payload, '|') : NULL;
+	if (!SizeStr)
+		return InteractiveDebuggerPipe("%s|Failed with malformed dump command.\n", Tag);
+
+	*SizeStr++ = '\0';
+	char* TypeStr = strchr(SizeStr, '|');
+	if (TypeStr)
+		*TypeStr++ = '\0';
+
+	if (!ParseHex(Payload, &Address))
+		return InteractiveDebuggerPipe("%s|Failed with invalid dump address: %s\n", Tag, Payload);
+
+	if (!ParseHex(SizeStr, &Size) || !Size || Size > MAX_DR_SIZE || Address + Size < Address)
+		return InteractiveDebuggerPipe("%s|Failed with invalid dump size: %s\n", Tag, SizeStr);
+
+	BYTE* Buffer = (BYTE*)calloc(Size, sizeof(BYTE));
+	if (!Buffer)
+		return InteractiveDebuggerPipe("%s|Failed with memory allocation.\n", Tag);
+
+	ULONG_PTR End = Address + Size;
+	for (ULONG_PTR Cursor = Address; Cursor < End;)
+	{
+		ULONG_PTR PageEnd = (Cursor & ~((ULONG_PTR)PAGE_SIZE - 1)) + PAGE_SIZE;
+		SIZE_T Chunk = (SIZE_T)((PageEnd < End ? PageEnd : End) - Cursor);
+		MEMORY_BASIC_INFORMATION mbi;
+		SIZE_T BytesRead = 0;
+
+		if (VirtualQuery((LPCVOID)Cursor, &mbi, sizeof(mbi)) != sizeof(mbi) || mbi.State != MEM_COMMIT
+			|| (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))
+			|| !ReadProcessMemory(GetCurrentProcess(), (LPCVOID)Cursor, Buffer + (Cursor - Address), Chunk, &BytesRead)
+			|| BytesRead != Chunk)
+		{
+			memset(Buffer + (Cursor - Address), 0, Chunk);
+			Unreadable += Chunk;
+		}
+
+		Cursor += Chunk;
+	}
+
+	if (Unreadable == Size)
+	{
+		free(Buffer);
+		return InteractiveDebuggerPipe("%s|Failed with unreadable memory\n", Tag);
+	}
+
+	char* FullPathName = GetName();
+	if (!FullPathName)
+	{
+		free(Buffer);
+		return InteractiveDebuggerPipe("%s|Failed to create payload name.\n", Tag);
+	}
+
+	DWORD BytesWritten = 0;
+	HANDLE hOutputFile = CreateFile(FullPathName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+	BOOL Written = hOutputFile != INVALID_HANDLE_VALUE && WriteFile(hOutputFile, Buffer, (DWORD)Size, &BytesWritten, NULL) && BytesWritten == Size;
+	if (hOutputFile != INVALID_HANDLE_VALUE)
+		CloseHandle(hOutputFile);
+	free(Buffer);
+
+	if (!Written)
+	{
+		free(FullPathName);
+		return InteractiveDebuggerPipe("%s|Failed to write payload file.\n", Tag);
+	}
+
+	if (TypeStr && *TypeStr)
+		strncpy_s(TypeString, sizeof(TypeString), TypeStr, _TRUNCATE);
+	else
+		_snprintf_s(TypeString, sizeof(TypeString), _TRUNCATE, "Debugger dump 0x%p-0x%p", (PVOID)Address, (PVOID)End);
+
+	// The analyzer splits FILE_CAPE on every '|', so one in the type string would lose the payload.
+	for (char* p = TypeString; *p; p++)
+		if (*p == '|')
+			*p = '/';
+
+	// CapeOutputFile only sends the type string when DumpType is unset (it sets TYPE_STRING
+	// itself), and leaves TypeString behind for later dumps, so the old one is put back.
+	char* SavedTypeString = CapeMetaData->TypeString;
+	CapeMetaData->DumpType = 0;
+	CapeMetaData->TypeString = TypeString;
+	CapeMetaData->Address = (PVOID)Address;
+	CapeMetaData->Size = Size;
+	CapeOutputFile(FullPathName);
+	CapeMetaData->TypeString = SavedTypeString;
+
+	DebugOutput("HandleDumpRegion: Dumped 0x%p size 0x%Ix (0x%Ix unreadable) to %s\n", (PVOID)Address, (SIZE_T)Size, Unreadable, FullPathName);
+	const char* Command = InteractiveDebuggerPipe("%s|OK|%s|%Iu|%Iu\n", Tag, FullPathName, (SIZE_T)Size, Unreadable);
+	free(FullPathName);
+	return Command;
+}
+
+// Batched trace state (TS). The thread only executes between exceptions, so the trace is
+// re-armed one instruction at a time from TraceStepsEvent rather than looped here, and ends by
+// halting interactively with the TS result sent in place of the usual break message.
+static BOOL TsActive;
+static DWORD TsThreadId;
+static char TsTag[MAX_PATH];
+static unsigned int TsMaxSteps, TsSteps, TsFlags;
+static ULONG_PTR TsStopAddr;
+static PVOID TsModuleBase;
+static int TsRegister = -1;
+static ULONG_PTR TsCips[MAX_TS_RECORDED];
+static char TsResult[BUFFER_SIZE];
+
+static BOOL TraceStepsStep(struct _EXCEPTION_POINTERS* ExceptionInfo);
+static BOOL TraceStepsBreakpoint(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo);
+
+// Lets the instruction at CIP execute and records it: a CALL is run to its return address via a
+// one-shot breakpoint when stepping over calls, anything else is single-stepped.
+static BOOL ArmTraceStep(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	BOOL Armed = FALSE;
+#ifdef _WIN64
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+
+	if (TsFlags & TS_STEP_OVER_CALLS)
+	{
+		_DecodedInst Inst;
+		unsigned int Count = 0;
+		distorm_decode(0, (const unsigned char*)CIP, CHUNKSIZE, sizeof(void*) == 8 ? Decode64Bits : Decode32Bits, &Inst, 1, &Count);
+		if (Count && Inst.size && !strcmp((char*)Inst.mnemonic.p, "CALL"))
+		{
+			ClearSingleStepMode(ExceptionInfo->ContextRecord);
+			Armed = ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &TsRegister, 0, (BYTE*)CIP + Inst.size, BP_EXEC, 1, TraceStepsBreakpoint);
+		}
+		else
+			Armed = SetSingleStepMode(ExceptionInfo->ContextRecord, TraceStepsStep);
+	}
+	else
+		Armed = SetSingleStepMode(ExceptionInfo->ContextRecord, TraceStepsStep);
+
+	if (Armed)
+	{
+		if (TsSteps < MAX_TS_RECORDED)
+			TsCips[TsSteps] = (ULONG_PTR)CIP;
+		TsSteps++;
+	}
+
+	return Armed;
+}
+
+// Formats `<tag>|<reason>|<steps>|<cip>,<cip>,...|0x<halt cip>|<tid>` into TsResult for
+// InteractiveBreakpointCallback to send. CIPs are bare hex so the halt CIP is the first
+// 0x-prefixed address; ",..." ends the list when it was cut short.
+static void FinishTraceSteps(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* Reason)
+{
+	unsigned int Recorded = TsSteps < MAX_TS_RECORDED ? TsSteps : (unsigned int)MAX_TS_RECORDED;
+#ifdef _WIN64
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+
+	int Offset = sprintf(TsResult, "%s|%s|%u|", TsTag, Reason, TsSteps);
+	for (unsigned int i = 0; i < Recorded; i++)
+		Offset += sprintf(TsResult + Offset, "%s%Ix", i ? "," : "", TsCips[i]);
+	if (TsSteps > Recorded)
+		Offset += sprintf(TsResult + Offset, ",...");
+	sprintf(TsResult + Offset, "|0x%p|%u\n", CIP, GetCurrentThreadId());
+
+	ClearSingleStepMode(ExceptionInfo->ContextRecord);
+	TsActive = FALSE;
+}
+
+static BOOL TraceStepsEvent(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	const char* Reason = NULL;
+#ifdef _WIN64
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+
+	if (TsStopAddr && (ULONG_PTR)CIP == TsStopAddr)
+		Reason = "stop";
+	else if (TsSteps >= TsMaxSteps)
+		Reason = "max";
+	else if ((TsFlags & TS_STOP_ON_MODULE_EXIT) && GetAllocationBase(CIP) != TsModuleBase)
+		Reason = "module";
+	// Stepping through the monitor's own hooks is not safe to do unattended.
+	else if (inside_hook(CIP) || InsideMonitor(NULL, CIP))
+		Reason = "monitor";
+	else if (!ArmTraceStep(ExceptionInfo))
+		Reason = "error";
+
+	if (!Reason)
+		return TRUE;
+
+	FinishTraceSteps(ExceptionInfo, Reason);
+	return InteractiveBreakpointCallback(NULL, ExceptionInfo);
+}
+
+// An abandoned trace (ended by a breakpoint, or the pipe failing) can still leave TF or the
+// step-over breakpoint armed; those then behave as a plain SI or SO.
+static BOOL TraceStepsStep(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	if (!TsActive)
+		return InteractiveTrace(ExceptionInfo);
+	return TraceStepsEvent(ExceptionInfo);
+}
+
+static BOOL TraceStepsBreakpoint(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+	if (!TsActive)
+		return InteractiveBreakpointCallback(pBreakpointInfo, ExceptionInfo);
+	return TraceStepsEvent(ExceptionInfo);
+}
+
+// `<tag>|<max steps>|<stop addr or 0>[|<flags>]`: steps are decimal or 0x-prefixed, the stop
+// address is hex, flags are TS_STEP_OVER_CALLS | TS_STOP_ON_MODULE_EXIT.
+const char* HandleTraceSteps(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	ULONG_PTR StopAddr = 0;
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
+
+	char* StopStr = Payload ? strchr(Payload, '|') : NULL;
+	if (!StopStr)
+		return InteractiveDebuggerPipe("%s|Failed with malformed trace command.\n", Tag);
+
+	*StopStr++ = '\0';
+	char* FlagsStr = strchr(StopStr, '|');
+	if (FlagsStr)
+		*FlagsStr++ = '\0';
+
+	char* Endp = NULL;
+	unsigned long MaxSteps = strtoul(Payload, &Endp, 0);
+	if (Endp == Payload || *Endp != '\0' || !MaxSteps || MaxSteps > MAX_TS_STEPS)
+		return InteractiveDebuggerPipe("%s|Failed with invalid step count: %s\n", Tag, Payload);
+
+	if (!ParseHex(StopStr, &StopAddr))
+		return InteractiveDebuggerPipe("%s|Failed with invalid stop address: %s\n", Tag, StopStr);
+
+	unsigned long Flags = 0;
+	if (FlagsStr && *FlagsStr)
+	{
+		Flags = strtoul(FlagsStr, &Endp, 0);
+		if (*Endp != '\0')
+			return InteractiveDebuggerPipe("%s|Failed with invalid trace flags: %s\n", Tag, FlagsStr);
+	}
+
+	// The tag points into the command buffer, which the next pipe transaction overwrites.
+	strncpy_s(TsTag, sizeof(TsTag), Tag, _TRUNCATE);
+	TsMaxSteps = MaxSteps;
+	TsStopAddr = StopAddr;
+	TsFlags = Flags;
+	TsSteps = 0;
+	TsThreadId = GetCurrentThreadId();
+#ifdef _WIN64
+	TsModuleBase = GetAllocationBase((PVOID)ExceptionInfo->ContextRecord->Rip);
+#else
+	TsModuleBase = GetAllocationBase((PVOID)ExceptionInfo->ContextRecord->Eip);
+#endif
+
+	if (!ArmTraceStep(ExceptionInfo))
+		return InteractiveDebuggerPipe("%s|Failed to arm trace step.\n", Tag);
+
+	TsActive = TRUE;
+	LastContext = *ExceptionInfo->ContextRecord;
+	return "__DONE__";
+}
+
 void InitCommands(void) 
 {
 	RegisterCommand("IN", HandleInstructionPage);
@@ -1955,6 +2246,8 @@ void InitCommands(void)
 	RegisterCommand("SR", HandleSetRegister);
 	RegisterCommand("NI", HandleNopInstruction);
 	RegisterCommand("PB", HandlePatchBytes);
+	RegisterCommand("DR", HandleDumpRegion);
+	RegisterCommand("TS", HandleTraceSteps);
 }
 
 BOOL InteractiveTrace(struct _EXCEPTION_POINTERS* ExceptionInfo)
@@ -1984,11 +2277,24 @@ BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCE
 		{
 			StepOverRegister = -1;
 		}
-		Command = InteractiveDebuggerPipe("Breakpoint %i => 0x%p\n", pBreakpointInfo->Register, CIP);
+
+		// A breakpoint hit mid-trace ends the trace; CAPEsolo is waiting for its reply.
+		if (TsActive && TsThreadId == GetCurrentThreadId())
+			FinishTraceSteps(ExceptionInfo, "bp");
+	}
+
+	if (*TsResult && TsThreadId == GetCurrentThreadId())
+	{
+		Command = InteractiveDebuggerPipe("%s", TsResult);
+		*TsResult = '\0';
+	}
+	else if (pBreakpointInfo)
+	{
+		Command = InteractiveDebuggerPipe("Breakpoint %i => 0x%p tid %u\n", pBreakpointInfo->Register, CIP, GetCurrentThreadId());
 	}
 	else
 	{
-		Command = InteractiveDebuggerPipe("Single step at 0x%p\n", CIP);
+		Command = InteractiveDebuggerPipe("Single step at 0x%p tid %u\n", CIP, GetCurrentThreadId());
 	}
 
 	VerifyCommandMapInitialized();
