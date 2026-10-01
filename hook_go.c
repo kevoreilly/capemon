@@ -326,8 +326,7 @@ static void GoResolveSyscallTarget(ULONG_PTR trap, ULONG_PTR callerRet) {
     DebugOutput("Go Trace: syscall target 0x%p -> %s (%s), Go caller %s\n", (PVOID)trap, target, hooked ? "hooked" : "not hooked", safeCaller);
 
     if (!hooked)
-        LOQ_string("go_trace", "sssp", "Event", "Go Syscall Target (API not hooked)", "API", target,
-                   "Caller", goCaller ? goCaller : "", "Address", (PVOID)trap);
+        LOQ_string("go_trace", "s", "API", target);
 
     if (dllName)
         free(dllName);
