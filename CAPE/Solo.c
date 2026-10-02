@@ -52,6 +52,9 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #define MAX_TS_RECORDED ((BUFFER_SIZE - 1024) / (sizeof(PVOID) * 2 + 1))
 #define TS_STEP_OVER_CALLS 1
 #define TS_STOP_ON_MODULE_EXIT 2
+// Matches one MS request reports (17 characters each in the reply), and the longest pattern.
+#define MAX_MS_RESULTS 1000
+#define MAX_MS_PATTERN 256
 
 // Structure for MBI entry
 typedef const char* (*CmdHandler)(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
@@ -111,6 +114,14 @@ typedef struct _INTERACTIVESTEP
 } INTERACTIVESTEP, *PINTERACTIVESTEP;
 
 static lookup_t InteractiveSteps;
+
+// Hit counts: how many more hits a breakpoint passes over before it breaks ("break on hit N"
+// stores N-1). Debug registers by index; software breakpoints by address.
+static unsigned int HwSkips[4];
+// The address each count was set for: debug registers are per thread and the one-shot step
+// breakpoints reuse whichever is free, so the index alone could swallow a Step Over elsewhere.
+static PVOID HwSkipAddrs[4];
+static lookup_t SwSkips;
 
 static BOOL WriteCodeByte(PVOID Address, BYTE Value)
 {
@@ -233,7 +244,7 @@ static void PrepareResume(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	}
 }
 
-static const char* SetInteractiveSoftwareBreakpoint(ULONG_PTR Address)
+static const char* SetInteractiveSoftwareBreakpoint(ULONG_PTR Address, unsigned int Skip)
 {
 	if (!IsAddressExecutable((PVOID)Address))
 		return InteractiveDebuggerPipe("Failed to set software breakpoint at 0x%p: not executable\n", (PVOID)Address);
@@ -246,7 +257,11 @@ static const char* SetInteractiveSoftwareBreakpoint(ULONG_PTR Address)
 	if (!SetSoftwareBreakpoint(&InteractiveBPs, (PVOID)Address))
 		return InteractiveDebuggerPipe("Failed to set software breakpoint at 0x%p\n", (PVOID)Address);
 
-	return InteractiveDebuggerPipe("Software breakpoint set at 0x%p\n", (PVOID)Address);
+	unsigned int* Skips = lookup_get_or_create(&SwSkips, Address, sizeof(unsigned int));
+	if (Skips)
+		*Skips = Skip;
+
+	return InteractiveDebuggerPipe("Software breakpoint set at 0x%p (breaks on hit %u)\n", (PVOID)Address, Skip + 1);
 }
 
 // Always forgets the breakpoint, but puts the original byte back only over an int3 still in place.
@@ -260,6 +275,7 @@ static BOOL RemoveSoftwareBreakpoint(PVOID Address)
 		WriteCodeByte(Address, SoftBP->InstructionByte);
 
 	lookup_del(&InteractiveBPs, (ULONG_PTR)Address);
+	lookup_del(&SwSkips, (ULONG_PTR)Address);
 	return TRUE;
 }
 
@@ -1452,12 +1468,15 @@ const char* HandleListBreakpoints(struct _EXCEPTION_POINTERS* ExceptionInfo, con
 			const char* Type = "x";
 			int Size = 1;
 			DescribeBreakpoint(Dr7, i, &Type, &Size);
-			len += sprintf(Output + len, "%d,%p,%s,%d|", i, (PVOID)dr[i], Type, Size);
+			len += sprintf(Output + len, "%d,%p,%s,%d,%u|", i, (PVOID)dr[i], Type, Size, HwSkips[i]);
 		}
 	}
 
 	for (entry_t* Entry = InteractiveBPs.root; Entry; Entry = Entry->next)
-		len += sprintf(Output + len, "sw,%p,x,1|", (PVOID)Entry->id);
+	{
+		unsigned int* Skips = lookup_get(&SwSkips, Entry->id, 0);
+		len += sprintf(Output + len, "sw,%p,x,1,%u|", (PVOID)Entry->id, Skips ? *Skips : 0);
+	}
 
 	if (len == 0)
 	{
@@ -1713,13 +1732,31 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 
 	// Optional trailing fields: <slot>|<addr>[|<type>[|<size>]]. Absent means an execute
 	// breakpoint, which is what every caller sent before data watches existed.
+	// A fifth field, <hits>, breaks on that hit instead of the first (default 1).
 	char* TypeStr = strchr(AddrStr, '|');
 	char* SizeStr = NULL;
+	char* HitsStr = NULL;
 	if (TypeStr)
 	{
 		*TypeStr++ = '\0';
 		SizeStr = strchr(TypeStr, '|');
-		if (SizeStr) *SizeStr++ = '\0';
+		if (SizeStr)
+		{
+			*SizeStr++ = '\0';
+			HitsStr = strchr(SizeStr, '|');
+			if (HitsStr) *HitsStr++ = '\0';
+		}
+	}
+
+	unsigned int Skip = 0;
+	if (HitsStr && *HitsStr)
+	{
+		char* HitsEnd = NULL;
+		unsigned long Hits = strtoul(HitsStr, &HitsEnd, 0);
+		if (HitsEnd == HitsStr || *HitsEnd != '\0' || Hits < 1)
+			return InteractiveDebuggerPipe("Failed with invalid hit count: %s\n", HitsStr);
+
+		Skip = (unsigned int)(Hits - 1);
 	}
 
 	DWORD BpType = BP_EXEC;
@@ -1774,14 +1811,16 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 		if (BpType != BP_EXEC)
 			return InteractiveDebuggerPipe("Failed: software breakpoints are execute only\n");
 
-		return SetInteractiveSoftwareBreakpoint(BpAddress);
+		return SetInteractiveSoftwareBreakpoint(BpAddress, Skip);
 	}
 
 	if (Register == -1)
 	{
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, BpSize, (BYTE*)BpAddress, BpType, 0, InteractiveBreakpointCallback))
 		{
-			return InteractiveDebuggerPipe("Breakpoint %d set at 0x%p\n", StepOverRegister, (PVOID)BpAddress);
+			HwSkips[StepOverRegister & 3] = Skip;
+			HwSkipAddrs[StepOverRegister & 3] = (PVOID)BpAddress;
+			return InteractiveDebuggerPipe("Breakpoint %d set at 0x%p (breaks on hit %u)\n", StepOverRegister, (PVOID)BpAddress, Skip + 1);
 		}
 		else
 		{
@@ -1792,7 +1831,9 @@ const char* HandleSetBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, const
 	{
 		if (ContextSetThreadBreakpoint(ExceptionInfo->ContextRecord, Register, BpSize, (BYTE*)BpAddress, BpType, 0, InteractiveBreakpointCallback))
 		{
-			return InteractiveDebuggerPipe("Breakpoint %d set at 0x%p\n", Register, (PVOID)BpAddress);
+			HwSkips[Register] = Skip;
+			HwSkipAddrs[Register] = (PVOID)BpAddress;
+			return InteractiveDebuggerPipe("Breakpoint %d set at 0x%p (breaks on hit %u)\n", Register, (PVOID)BpAddress, Skip + 1);
 		}
 		else
 		{
@@ -1837,6 +1878,9 @@ const char* HandleDeleteBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo, co
 
 	if (!ContextClearBreakpoint(ExceptionInfo->ContextRecord, index))
 		return InteractiveDebuggerPipe("Failed to clear breakpoint index %d\n", index);
+
+	HwSkips[index] = 0;
+	HwSkipAddrs[index] = NULL;
 
 	return InteractiveDebuggerPipe("Breakpoint %d cleared at 0x%p\n", index, (PVOID)BpAddress);
 }
@@ -2442,6 +2486,136 @@ const char* HandleTraceSteps(struct _EXCEPTION_POINTERS* ExceptionInfo, const ch
 	return "__DONE__";
 }
 
+// Search memory for a byte pattern: `<tag>|<start>|<size>|<hex pattern>`, start and size hex,
+// size 0 for every committed readable region. "??" in the pattern matches any byte. Replies
+// `<tag>|<count>|<more>|<addr>,<addr>,...` (more is 1 when the result cap cut it short) or
+// `<tag>|Failed ...`. The monitor's own image is skipped: the pattern itself is in it.
+const char* HandleMemorySearch(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	static BYTE Pattern[MAX_MS_PATTERN], Mask[MAX_MS_PATTERN];
+	static ULONG_PTR Results[MAX_MS_RESULTS];
+	ULONG_PTR Start = 0, Size = 0;
+	unsigned int PatLen = 0, Count = 0;
+	BOOL More = FALSE;
+	// Armed software breakpoints read as their original byte, as in every other memory reply;
+	// checked only on an 0xCC, and only when there are any.
+	BOOL HasSoftBPs = InteractiveBPs.root != NULL;
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
+
+	char* SizeStr = Payload ? strchr(Payload, '|') : NULL;
+	char* PatStr = SizeStr ? strchr(SizeStr + 1, '|') : NULL;
+	if (!PatStr)
+		return InteractiveDebuggerPipe("%s|Failed with malformed search command.\n", Tag);
+
+	*SizeStr++ = '\0';
+	*PatStr++ = '\0';
+	if (!ParseHex(Payload, &Start) || !ParseHex(SizeStr, &Size))
+		return InteractiveDebuggerPipe("%s|Failed with invalid search range.\n", Tag);
+
+	for (char* p = PatStr; p[0] && p[1]; p += 2)
+	{
+		if (PatLen == MAX_MS_PATTERN)
+			return InteractiveDebuggerPipe("%s|Failed: pattern longer than %d bytes.\n", Tag, MAX_MS_PATTERN);
+
+		if (p[0] == '?' && p[1] == '?')
+		{
+			Mask[PatLen] = 0;
+			Pattern[PatLen++] = 0;
+			continue;
+		}
+
+		char Byte[3] = { p[0], p[1], 0 };
+		char* ByteEnd = NULL;
+		unsigned long Value = strtoul(Byte, &ByteEnd, 16);
+		if (ByteEnd != Byte + 2)
+			return InteractiveDebuggerPipe("%s|Failed with invalid pattern byte %s.\n", Tag, Byte);
+
+		Mask[PatLen] = 1;
+		Pattern[PatLen++] = (BYTE)Value;
+	}
+
+	if (!PatLen || strlen(PatStr) != PatLen * 2)
+		return InteractiveDebuggerPipe("%s|Failed with an empty or odd-length pattern.\n", Tag);
+
+	SYSTEM_INFO si;
+	GetSystemInfo(&si);
+	ULONG_PTR Cursor = Size ? Start : (ULONG_PTR)si.lpMinimumApplicationAddress;
+	ULONG_PTR End = Size ? Start + Size : (ULONG_PTR)si.lpMaximumApplicationAddress;
+	if (End < Cursor)
+		End = (ULONG_PTR)-1;
+
+	while (Cursor < End && !More)
+	{
+		MEMORY_BASIC_INFORMATION mbi;
+		if (VirtualQuery((LPCVOID)Cursor, &mbi, sizeof(mbi)) != sizeof(mbi))
+			break;
+
+		ULONG_PTR RegionEnd = (ULONG_PTR)mbi.BaseAddress + mbi.RegionSize;
+		if (mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))
+			&& (mbi.Protect & (0x02 | 0x04 | 0x08 | 0x20 | 0x40 | 0x80))
+			&& !InsideMonitor(NULL, mbi.BaseAddress))
+		{
+			PBYTE From = (PBYTE)(Cursor > (ULONG_PTR)mbi.BaseAddress ? Cursor : (ULONG_PTR)mbi.BaseAddress);
+			PBYTE To = (PBYTE)(RegionEnd < End ? RegionEnd : End);
+			__try
+			{
+				for (PBYTE p = From; p + PatLen <= To; p++)
+				{
+					unsigned int i;
+					for (i = 0; i < PatLen; i++)
+					{
+						if (!Mask[i])
+							continue;
+
+						BYTE Value = p[i];
+						if (Value == 0xCC && HasSoftBPs)
+						{
+							PSOFTBP SoftBP = lookup_get(&InteractiveBPs, (ULONG_PTR)(p + i), 0);
+							if (SoftBP)
+								Value = SoftBP->InstructionByte;
+						}
+
+						if (Value != Pattern[i])
+							break;
+					}
+
+					if (i < PatLen)
+						continue;
+
+					if (Count == MAX_MS_RESULTS)
+					{
+						More = TRUE;
+						break;
+					}
+
+					Results[Count++] = (ULONG_PTR)p;
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				// Freed or reprotected by another thread mid-scan; the rest of it is skipped.
+			}
+		}
+
+		if (RegionEnd <= Cursor)
+			break;
+		Cursor = RegionEnd;
+	}
+
+	char* Output = (char*)malloc(MAX_MS_RESULTS * (sizeof(PVOID) * 2 + 1) + MAX_PATH);
+	if (!Output)
+		return InteractiveDebuggerPipe("%s|Failed with memory allocation.\n", Tag);
+
+	int Offset = sprintf(Output, "%s|%u|%d|", Tag, Count, More ? 1 : 0);
+	for (unsigned int i = 0; i < Count; i++)
+		Offset += sprintf(Output + Offset, "%s%Ix", i ? "," : "", Results[i]);
+
+	const char* Command = InteractiveDebuggerPipe("%s\n", Output);
+	free(Output);
+	return Command;
+}
+
 void InitCommands(void) 
 {
 	RegisterCommand("IN", HandleInstructionPage);
@@ -2469,6 +2643,7 @@ void InitCommands(void)
 	RegisterCommand("PB", HandlePatchBytes);
 	RegisterCommand("DR", HandleDumpRegion);
 	RegisterCommand("TS", HandleTraceSteps);
+	RegisterCommand("MS", HandleMemorySearch);
 }
 
 BOOL InteractiveTrace(struct _EXCEPTION_POINTERS* ExceptionInfo)
@@ -2540,10 +2715,32 @@ static BOOL InteractiveBreak(PBREAKPOINTINFO pBreakpointInfo, BOOL SoftBreak, st
 
 BOOL InteractiveBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
+	// A counted hit is passed over: CAPEExceptionFilter sets the resume flag on return.
+	if (pBreakpointInfo && pBreakpointInfo->Register >= 0 && pBreakpointInfo->Register < 4 && HwSkips[pBreakpointInfo->Register]
+		&& pBreakpointInfo->Address == HwSkipAddrs[pBreakpointInfo->Register])
+	{
+		HwSkips[pBreakpointInfo->Register]--;
+		return TRUE;
+	}
+
 	return InteractiveBreak(pBreakpointInfo, FALSE, ExceptionInfo);
 }
 
 BOOL InteractiveSoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
+#ifdef _WIN64
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Rip;
+#else
+	PVOID CIP = (PVOID)ExceptionInfo->ContextRecord->Eip;
+#endif
+	// A counted hit is passed over: the original byte goes back for one step, as on a resume.
+	unsigned int* Skips = lookup_get(&SwSkips, (ULONG_PTR)CIP, 0);
+	if (Skips && *Skips)
+	{
+		(*Skips)--;
+		PrepareResume(ExceptionInfo);
+		return TRUE;
+	}
+
 	return InteractiveBreak(NULL, TRUE, ExceptionInfo);
 }
