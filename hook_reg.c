@@ -304,6 +304,15 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyW,
 				break;
 			}
 		}
+
+		// Virtual hardware spoofing for Enum\PCI and Enum\IDE
+		if (wcsistr(keypath, L"\\Enum\\PCI") || wcsistr(keypath, L"\\Enum\\IDE")) {
+			if (wcsistr(lpName, L"VEN_1B36") || wcsistr(lpName, L"VEN_1AF4") || 
+				wcsistr(lpName, L"VBOX") || wcsistr(lpName, L"VMWARE") || 
+				wcsistr(lpName, L"QEMU") || wcsistr(lpName, L"VIRTIO") || wcsistr(lpName, L"XEN")) {
+				wcscpy_s(lpName, cchName, L"VEN_8086&DEV_2922");
+			}
+		}
 		free(keybuf);
 	}
 
@@ -323,6 +332,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 	__inout_opt  LPDWORD lpcClass,
 	__out_opt	PFILETIME lpftLastWriteTime
 ) {
+	DWORD original_cchName = lpcName ? *lpcName : MAX_PATH;
 	LONG ret = Old_RegEnumKeyExA(hKey, dwIndex, lpName, lpcName, lpReserved,
 		lpClass, lpcClass, lpftLastWriteTime);
 
@@ -353,6 +363,17 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 			}
 		}
 
+
+		// Virtual hardware spoofing for Enum\PCI and Enum\IDE
+		if (wcsistr(keypath, L"\\Enum\\PCI") || wcsistr(keypath, L"\\Enum\\IDE")) {
+			if (stristr(lpName, "VEN_1B36") || stristr(lpName, "VEN_1AF4") || 
+				stristr(lpName, "VBOX") || stristr(lpName, "VMWARE") || 
+				stristr(lpName, "QEMU") || stristr(lpName, "VIRTIO") || stristr(lpName, "XEN")) {
+				strcpy_s(lpName, original_cchName, "VEN_8086&DEV_2922");
+				if (lpcName) *lpcName = (DWORD)strlen(lpName);
+			}
+		}
+
 		// fake some values
 		if (lpName && !g_config.no_stealth)
 			perform_ascii_registry_fakery(keypath, lpName, (ULONG)strlen(lpName));
@@ -374,6 +395,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 	__inout_opt  LPDWORD lpcClass,
 	__out_opt	PFILETIME lpftLastWriteTime
 ) {
+	DWORD original_cchName = lpcName ? *lpcName : MAX_PATH;
 	LONG ret = Old_RegEnumKeyExW(hKey, dwIndex, lpName, lpcName, lpReserved,
 		lpClass, lpcClass, lpftLastWriteTime);
 
@@ -400,6 +422,17 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 			if (!wcsicmp(keypath, parent_keys[i]) && !wcsicmp(lpName, replace_subkeys[j])) {
 				wcscpy_s(lpName, sizeof(lpName), replace_subkeys[j + 1]);
 				break;
+			}
+		}
+
+
+		// Virtual hardware spoofing for Enum\PCI and Enum\IDE
+		if (wcsistr(keypath, L"\\Enum\\PCI") || wcsistr(keypath, L"\\Enum\\IDE")) {
+			if (wcsistr(lpName, L"VEN_1B36") || wcsistr(lpName, L"VEN_1AF4") || 
+				wcsistr(lpName, L"VBOX") || wcsistr(lpName, L"VMWARE") || 
+				wcsistr(lpName, L"QEMU") || wcsistr(lpName, L"VIRTIO") || wcsistr(lpName, L"XEN")) {
+				wcscpy_s(lpName, original_cchName, L"VEN_8086&DEV_2922");
+				if (lpcName) *lpcName = (DWORD)wcslen(lpName);
 			}
 		}
 
