@@ -757,6 +757,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 				ContextSetThreadBreakpointsEx(ExceptionInfo->ContextRecord, CurrentThreadBreakpoints, TRUE);
 			}
+			else if (pBreakpointInfo->HandlerActive)
+			{
+				// Hit again from inside its own handler: the interactive session calls Sleep,
+				// the pipe and memory APIs, so a breakpoint on one of those is reached while it
+				// runs. Passed over - without the resume flag an execute breakpoint fires again
+				// on the same instruction forever, and the session never answers.
+				ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+			}
 		}
 
 		ExceptionInfo->ContextRecord->Dr6 = 0;
