@@ -57,6 +57,23 @@ void HexEncode(char *Dest, const uint8_t *Source, uint32_t Length)
 	*Dest = 0;
 }
 
+// Bounded wrapper: Length is caller-controlled at most call sites, while
+// every destination here is a fixed-size stack buffer.
+static void HexEncodeBounded(char *Dest, size_t DestSize, const uint8_t *Source, uint32_t Length)
+{
+	uint32_t max;
+	if (Dest == NULL || DestSize == 0)
+		return;
+	if (Source == NULL) {
+		Dest[0] = 0;
+		return;
+	}
+	max = (uint32_t)((DestSize - 1) / 2);
+	if (Length > max)
+		Length = max;
+	HexEncode(Dest, Source, Length);
+}
+
 void LogTls(char* ClientRandomRepr, char* ServerRandomRepr, char* MasterSecretRepr)
 {
 	SIZE_T LastWriteLength = 0;
@@ -120,7 +137,7 @@ BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* 
 	if (pParameterList) {
 		for (unsigned int i = 0; i < pParameterList->cBuffers; i++) {
 			if (pParameterList->pBuffers[i].BufferType == NCRYPTBUFFER_SSL_CLIENT_RANDOM) {
-				HexEncode(ClientRandomRepr, pParameterList->pBuffers[i].pvBuffer, pParameterList->pBuffers[i].cbBuffer);
+				HexEncodeBounded(ClientRandomRepr, 32*2+1, pParameterList->pBuffers[i].pvBuffer, pParameterList->pBuffers[i].cbBuffer);
 #ifdef DEBUG_COMMENTS
 				DebugOutput("GetRandoms: ClientRandom %s", ClientRandomRepr);
 #endif
@@ -128,7 +145,7 @@ BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* 
 
 			}
 			else if (pParameterList->pBuffers[i].BufferType == NCRYPTBUFFER_SSL_SERVER_RANDOM) {
-				HexEncode(ServerRandomRepr, pParameterList->pBuffers[i].pvBuffer, pParameterList->pBuffers[i].cbBuffer);
+				HexEncodeBounded(ServerRandomRepr, 32*2+1, pParameterList->pBuffers[i].pvBuffer, pParameterList->pBuffers[i].cbBuffer);
 #ifdef DEBUG_COMMENTS
 				DebugOutput("GetRandoms: ServerRandom %s", ServerRandomRepr);
 #endif
@@ -344,7 +361,7 @@ HOOKDEF(NTSTATUS, WINAPI, SslExpandTrafficKeys,
 		DWORD SecretSize = 0;
 		if (ExtractTLS13TrafficSecret(*phClientTrafficKey, &Secret, &SecretSize)) {
 			char SecretRepr[48*2+1] = "";
-			HexEncode(SecretRepr, Secret, SecretSize);
+			HexEncodeBounded(SecretRepr, sizeof(SecretRepr), Secret, SecretSize);
 			if (strcmp("", SecretRepr)) {
 				DebugOutput("%s %s %s", ClientLabel, ClientRandomRepr, SecretRepr);
 				LogTls13(ClientLabel, ClientRandomRepr, SecretRepr);
@@ -358,7 +375,7 @@ HOOKDEF(NTSTATUS, WINAPI, SslExpandTrafficKeys,
 		DWORD SecretSize = 0;
 		if (ExtractTLS13TrafficSecret(*phServerTrafficKey, &Secret, &SecretSize)) {
 			char SecretRepr[48*2+1] = "";
-			HexEncode(SecretRepr, Secret, SecretSize);
+			HexEncodeBounded(SecretRepr, sizeof(SecretRepr), Secret, SecretSize);
 			if (strcmp("", SecretRepr)) {
 				DebugOutput("%s %s %s", ServerLabel, ClientRandomRepr, SecretRepr);
 				LogTls13(ServerLabel, ClientRandomRepr, SecretRepr);
@@ -394,7 +411,7 @@ HOOKDEF(NTSTATUS, WINAPI, SslExpandExporterMasterKey,
 		DWORD SecretSize = 0;
 		if (ExtractTLS13TrafficSecret(*phExporterMasterKey, &Secret, &SecretSize)) {
 			char SecretRepr[48*2+1] = "";
-			HexEncode(SecretRepr, Secret, SecretSize);
+			HexEncodeBounded(SecretRepr, sizeof(SecretRepr), Secret, SecretSize);
 			if (strcmp("", SecretRepr)) {
 				DebugOutput("EXPORTER_SECRET %s %s", ClientRandomRepr, SecretRepr);
 				LogTls13("EXPORTER_SECRET", ClientRandomRepr, SecretRepr);
@@ -561,7 +578,7 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptKeyDerivation,
 		}
 
 		char SecretRepr[48*2+1] = "";
-		HexEncode(SecretRepr, pbDerivedKey, cbDerivedKey);
+		HexEncodeBounded(SecretRepr, sizeof(SecretRepr), pbDerivedKey, cbDerivedKey);
 #ifdef DEBUG_COMMENTS
 		DebugOutput("BCryptKeyDerivation: %s %s %s", nssLabel, t_tls13_client_random.ClientRandomRepr, SecretRepr);
 #endif
