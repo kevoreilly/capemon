@@ -18,6 +18,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 //#define DEBUG_COMMENTS
 #include <stdio.h>
 #include <distorm.h>
+#include <mnemonics.h>
 #include "..\hooking.h"
 #include <tlhelp32.h>
 #include "..\misc.h"
@@ -55,6 +56,10 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // Matches one MS request reports (17 characters each in the reply), and the longest pattern.
 #define MAX_MS_RESULTS 1000
 #define MAX_MS_PATTERN 256
+// Cross-references one XR request reports (up to ~23 characters each), and the decode batch.
+#define MAX_XR_RESULTS 1000
+#define XR_CHUNK 0x10000
+#define XR_BATCH 1024
 
 // Structure for MBI entry
 typedef const char* (*CmdHandler)(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data);
@@ -2616,6 +2621,154 @@ const char* HandleMemorySearch(struct _EXCEPTION_POINTERS* ExceptionInfo, const 
 	return Command;
 }
 
+// What kind of reference instruction `di` makes to `Target`, or NULL if it makes none.
+static const char* XrefKind(const _DInst* di, ULONG_PTR Target)
+{
+	unsigned int Flow = META_GET_FC(di->meta);
+	for (int i = 0; i < OPERANDS_NO && di->ops[i].type != O_NONE; i++)
+	{
+		const _Operand* op = &di->ops[i];
+		ULONG_PTR Referenced = 0;
+		BOOL Memory = FALSE;
+
+		if (op->type == O_PC)
+			Referenced = (ULONG_PTR)INSTRUCTION_GET_TARGET(di);
+		else if (op->type == O_SMEM && op->index == R_RIP)
+		{
+			Referenced = (ULONG_PTR)INSTRUCTION_GET_RIP_TARGET(di);
+			Memory = TRUE;
+		}
+		else if (op->type == O_DISP || ((op->type == O_SMEM || op->type == O_MEM) && di->dispSize >= 32))
+		{
+			Referenced = (ULONG_PTR)di->disp;
+			Memory = TRUE;
+		}
+		else if (op->type == O_IMM && op->size >= 32)
+			Referenced = (ULONG_PTR)di->imm.qword;
+		else
+			continue;
+
+		if (Referenced != Target)
+			continue;
+
+		// A call or jump through memory names the slot holding the target: still a call.
+		if (Flow == FC_CALL)
+			return "call";
+		if (Flow == FC_UNC_BRANCH)
+			return "jmp";
+		if (Flow == FC_CND_BRANCH)
+			return "jcc";
+		return Memory ? "data" : "imm";
+	}
+	return NULL;
+}
+
+// Cross-references: `<tag>|<target>[|<scope>]`, hex. Sweeps the executable code of the
+// allocation (module) containing scope - target's own by default; a scope in the sample's image
+// finds its calls to an API in another module - decoding every instruction, and reports each
+// whose branch or call target, RIP-relative or absolute memory operand, or immediate is target.
+// Replies `<tag>|<count>|<more>|<addr>:<kind>,...` (kind call/jmp/jcc/data/imm, more is 1 when
+// the cap cut it short) or `<tag>|Failed ...`. A linear sweep: data in a code section decodes
+// as junk, which rarely references anything.
+const char* HandleXrefs(struct _EXCEPTION_POINTERS* ExceptionInfo, const char* data)
+{
+	static ULONG_PTR Sites[MAX_XR_RESULTS];
+	static const char* Kinds[MAX_XR_RESULTS];
+	static _DInst Insts[XR_BATCH];
+	ULONG_PTR Target = 0, Scope = 0;
+	unsigned int Count = 0;
+	BOOL More = FALSE;
+	char* Payload = (char*)data;
+	const char* Tag = SplitTag(&Payload);
+
+	char* ScopeStr = Payload ? strchr(Payload, '|') : NULL;
+	if (ScopeStr)
+		*ScopeStr++ = '\0';
+	if (!Payload || !ParseHex(Payload, &Target) || (ScopeStr && *ScopeStr && !ParseHex(ScopeStr, &Scope)))
+		return InteractiveDebuggerPipe("%s|Failed with invalid xref address.\n", Tag);
+	if (!Scope)
+		Scope = Target;
+
+	MEMORY_BASIC_INFORMATION mbi;
+	if (VirtualQuery((LPCVOID)Scope, &mbi, sizeof(mbi)) != sizeof(mbi) || !mbi.AllocationBase)
+		return InteractiveDebuggerPipe("%s|Failed: 0x%p is not in an allocation.\n", Tag, (PVOID)Scope);
+
+	PVOID AllocationBase = mbi.AllocationBase;
+	ULONG_PTR Cursor = (ULONG_PTR)AllocationBase;
+	while (!More && VirtualQuery((LPCVOID)Cursor, &mbi, sizeof(mbi)) == sizeof(mbi) && mbi.AllocationBase == AllocationBase)
+	{
+		ULONG_PTR RegionEnd = (ULONG_PTR)mbi.BaseAddress + mbi.RegionSize;
+		if (mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))
+			&& (mbi.Protect & (PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+			&& !InsideMonitor(NULL, mbi.BaseAddress))
+		{
+			for (ULONG_PTR Offset = (ULONG_PTR)mbi.BaseAddress; Offset < RegionEnd && !More;)
+			{
+				SIZE_T Len = RegionEnd - Offset < XR_CHUNK ? RegionEnd - Offset : XR_CHUNK;
+				_CodeInfo ci = { 0 };
+				ci.codeOffset = (_OffsetType)Offset;
+				ci.code = (const uint8_t*)Offset;
+				ci.codeLen = (int)Len;
+#ifdef _WIN64
+				ci.dt = Decode64Bits;
+#else
+				ci.dt = Decode32Bits;
+#endif
+				ci.features = DF_NONE;
+				unsigned int Decoded = 0;
+				__try
+				{
+					distorm_decompose(&ci, Insts, XR_BATCH, &Decoded);
+				}
+				__except (EXCEPTION_EXECUTE_HANDLER)
+				{
+					// Freed or reprotected mid-sweep; the rest of the region is skipped.
+					Decoded = 0;
+				}
+				if (!Decoded)
+					break;
+
+				for (unsigned int i = 0; i < Decoded; i++)
+				{
+					if (Insts[i].flags == FLAG_NOT_DECODABLE)
+						continue;
+					const char* Kind = XrefKind(&Insts[i], Target);
+					if (!Kind)
+						continue;
+					if (Count == MAX_XR_RESULTS)
+					{
+						More = TRUE;
+						break;
+					}
+					Sites[Count] = (ULONG_PTR)Insts[i].addr;
+					Kinds[Count++] = Kind;
+				}
+
+				ULONG_PTR Next = (ULONG_PTR)Insts[Decoded - 1].addr + Insts[Decoded - 1].size;
+				if (Next <= Offset)
+					break;
+				Offset = Next;
+			}
+		}
+
+		if (RegionEnd <= Cursor)
+			break;
+		Cursor = RegionEnd;
+	}
+
+	char* Output = (char*)malloc(MAX_XR_RESULTS * (sizeof(PVOID) * 2 + 7) + MAX_PATH);
+	if (!Output)
+		return InteractiveDebuggerPipe("%s|Failed with memory allocation.\n", Tag);
+
+	int Offset = sprintf(Output, "%s|%u|%d|", Tag, Count, More ? 1 : 0);
+	for (unsigned int i = 0; i < Count; i++)
+		Offset += sprintf(Output + Offset, "%s%Ix:%s", i ? "," : "", Sites[i], Kinds[i]);
+
+	const char* Command = InteractiveDebuggerPipe("%s\n", Output);
+	free(Output);
+	return Command;
+}
+
 void InitCommands(void) 
 {
 	RegisterCommand("IN", HandleInstructionPage);
@@ -2644,6 +2797,7 @@ void InitCommands(void)
 	RegisterCommand("DR", HandleDumpRegion);
 	RegisterCommand("TS", HandleTraceSteps);
 	RegisterCommand("MS", HandleMemorySearch);
+	RegisterCommand("XR", HandleXrefs);
 }
 
 BOOL InteractiveTrace(struct _EXCEPTION_POINTERS* ExceptionInfo)
