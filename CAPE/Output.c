@@ -248,35 +248,51 @@ void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...)
 		return;
 	}
 
-	FullPathName = GetResultsPath("debugger");
-
-	OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
-
-	if (OutputFilename == NULL)
-	{
-		ErrorOutput("DebuggerOutput: failed to allocate memory for file name string");
-		return;
-	}
-
-	sprintf_s(OutputFilename, MAX_PATH, "%u.log", GetCurrentProcessId());
-
-	PathAppend(FullPathName, OutputFilename);
-
-	free(OutputFilename);
-
+	// the log path is only needed while opening the file. It used to be
+	// rebuilt - GetResultsPath does a CreateDirectory - and leaked on
+	// every call, and this fires 1-4 times per single-stepped instruction
 	if (!DebuggerLog)
 	{
 		time_t Time;
 		CHAR TimeBuffer[64];
+
+		FullPathName = GetResultsPath("debugger");
+		if (FullPathName == NULL)
+		{
+			va_end(args);
+			return;
+		}
+
+		OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
+
+		if (OutputFilename == NULL)
+		{
+			ErrorOutput("DebuggerOutput: failed to allocate memory for file name string");
+			free(FullPathName);
+			va_end(args);
+			return;
+		}
+
+		sprintf_s(OutputFilename, MAX_PATH, "%u.log", GetCurrentProcessId());
+
+		PathAppend(FullPathName, OutputFilename);
+
+		free(OutputFilename);
 
 		DebuggerLog = CreateFile(FullPathName, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
 		if (DebuggerLog == INVALID_HANDLE_VALUE)
 		{
 			ErrorOutput("DebuggerOutput: Unable to open debugger logfile %s", FullPathName);
+			// leaving INVALID_HANDLE_VALUE here made every later call
+			// WriteFile to it forever
+			DebuggerLog = NULL;
+			free(FullPathName);
+			va_end(args);
 			return;
 		}
 		DebugOutput("DebuggerOutput: Debugger logfile %s.\n", FullPathName);
+		free(FullPathName);
 
 		time(&Time);
 		memset(DebuggerLine, 0, sizeof(DebuggerLine));
@@ -312,32 +328,48 @@ void StringsOutput(_In_ LPCTSTR lpOutputString, ...)
 
 	va_start(args, lpOutputString);
 
-	StringsFile = GetResultsPath("CAPE");
-
-	OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
-
-	if (OutputFilename == NULL)
-	{
-		ErrorOutput("StringsOutput: failed to allocate memory for file name string");
-		return;
-	}
-
-	sprintf_s(OutputFilename, MAX_PATH, "%u.txt", GetCurrentProcessId());
-
-	PathAppend(StringsFile, OutputFilename);
-
-	free(OutputFilename);
-
+	// StringsFile is a global that DumpStrings reads later, so it has to
+	// persist - but it was rebuilt and leaked on every call
 	if (!Strings)
 	{
-		Strings = CreateFile(StringsFile, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-		if (Strings == INVALID_HANDLE_VALUE)
+		char *NewStringsFile = GetResultsPath("CAPE");
+		if (NewStringsFile == NULL)
 		{
-			ErrorOutput("StringsOutput: Unable to open strings output file %s", StringsFile);
+			va_end(args);
 			return;
 		}
 
+		OutputFilename = (char*)calloc(MAX_PATH, sizeof(BYTE));
+
+		if (OutputFilename == NULL)
+		{
+			ErrorOutput("StringsOutput: failed to allocate memory for file name string");
+			free(NewStringsFile);
+			va_end(args);
+			return;
+		}
+
+		sprintf_s(OutputFilename, MAX_PATH, "%u.txt", GetCurrentProcessId());
+
+		PathAppend(NewStringsFile, OutputFilename);
+
+		free(OutputFilename);
+
+		Strings = CreateFile(NewStringsFile, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		if (Strings == INVALID_HANDLE_VALUE)
+		{
+			ErrorOutput("StringsOutput: Unable to open strings output file %s", NewStringsFile);
+			// leaving INVALID_HANDLE_VALUE here made every later call
+			// WriteFile to it forever
+			Strings = NULL;
+			free(NewStringsFile);
+			va_end(args);
+			return;
+		}
+
+		free(StringsFile);
+		StringsFile = NewStringsFile;
 		DebugOutput("StringsOutput: Output file %s.\n", StringsFile);
 	}
 
