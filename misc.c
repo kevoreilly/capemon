@@ -904,25 +904,69 @@ BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 	return FALSE;
 }
 
-DWORD loaded_dlls;
-struct dll_range dll_ranges[MAX_DLLS];
+// DLL load/unload notifications arrive on arbitrary target threads while
+// is_in_dll_range is being read from the hook path (once per backtrace
+// frame). Writers are serialised with a lock; readers stay lock-free and
+// are kept correct by store ordering rather than by synchronisation:
+//
+//   'end' is the validity marker. A slot with end == 0 matches nothing,
+//   because the test is addr < end on unsigned values.
+//
+//   Insert writes start first, then end, so a reader sees either the old
+//   contents, or (new_start, 0) which matches nothing, or the complete
+//   new entry. Removal clears end first, for the same reason in reverse.
+//
+// Removal therefore leaves a hole rather than swapping the tail down,
+// which is what made the old version unsafe: it moved an entry while a
+// reader could be reading it, and decremented the count afterwards.
+// Holes are reused by the next insert, so the array does not grow
+// without bound; the only cost is that loaded_dlls never shrinks.
+volatile LONG loaded_dlls;
+volatile struct dll_range dll_ranges[MAX_DLLS];
+static SRWLOCK dll_ranges_lock = SRWLOCK_INIT;
 
 void add_dll_range(ULONG_PTR start, ULONG_PTR end)
 {
-	DWORD tmp_loaded_dlls = loaded_dlls;
-	if (tmp_loaded_dlls >= MAX_DLLS)
-		return;
-	if (is_in_dll_range(start))
-		return;
-	dll_ranges[tmp_loaded_dlls].start = start;
-	dll_ranges[tmp_loaded_dlls].end = end;
+	LONG i, slot = -1;
 
-	loaded_dlls++;
+	if (!end)
+		return;
+
+	AcquireSRWLockExclusive(&dll_ranges_lock);
+
+	for (i = 0; i < loaded_dlls; i++) {
+		if (start >= dll_ranges[i].start && start < dll_ranges[i].end) {
+			ReleaseSRWLockExclusive(&dll_ranges_lock);
+			return;
+		}
+		if (slot < 0 && !dll_ranges[i].end)
+			slot = i;
+	}
+
+	if (slot >= 0) {
+		// reusing a retired slot: it is already invisible to readers
+		dll_ranges[slot].start = start;
+		dll_ranges[slot].end = end;
+		ReleaseSRWLockExclusive(&dll_ranges_lock);
+		return;
+	}
+
+	if (loaded_dlls >= MAX_DLLS) {
+		ReleaseSRWLockExclusive(&dll_ranges_lock);
+		return;
+	}
+
+	// fill the slot, then publish it by bumping the count
+	dll_ranges[loaded_dlls].start = start;
+	dll_ranges[loaded_dlls].end = end;
+	InterlockedIncrement(&loaded_dlls);
+
+	ReleaseSRWLockExclusive(&dll_ranges_lock);
 }
 
 BOOL is_in_dll_range(ULONG_PTR addr)
 {
-	DWORD i;
+	LONG i;
 	for (i = 0; i < loaded_dlls; i++) {
 		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end)
 			return TRUE;
@@ -932,16 +976,21 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 
 BOOL remove_dll_range(ULONG_PTR addr)
 {
-    DWORD i;
-    for (i = 0; i < loaded_dlls; i++) {
-        if (addr < dll_ranges[i].start || addr >= dll_ranges[i].end)
-            continue;
-		dll_ranges[i] = dll_ranges[loaded_dlls - 1];
-		dll_ranges[loaded_dlls - 1].start = 0;
-		dll_ranges[loaded_dlls - 1].end = 0;
-		loaded_dlls--;
+	LONG i;
+
+	AcquireSRWLockExclusive(&dll_ranges_lock);
+
+	for (i = 0; i < loaded_dlls; i++) {
+		if (addr < dll_ranges[i].start || addr >= dll_ranges[i].end)
+			continue;
+		// clear end first: that alone retires the slot for every reader
+		dll_ranges[i].end = 0;
+		dll_ranges[i].start = 0;
+		ReleaseSRWLockExclusive(&dll_ranges_lock);
 		return TRUE;
-    }
+	}
+
+	ReleaseSRWLockExclusive(&dll_ranges_lock);
 	return FALSE;
 }
 

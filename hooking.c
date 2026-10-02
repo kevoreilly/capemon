@@ -319,9 +319,13 @@ BOOLEAN force_hook_thread_func(const char* hookname)
 	return FALSE;
 }
 
-static hook_info_t tmphookinfo;
-DWORD tmphookinfo_threadid;
-FILETIME ft;
+// Per-thread. These used to be process-wide: thread A claimed
+// tmphookinfo inside New_NtAllocateVirtualMemory and thread B's next
+// non-alloc hook reset the claim underneath it, crossing current_hook,
+// stack_pointer and return_address between threads. The recursion this
+// guards against is per-thread, so the state should be too.
+static __declspec(thread) hook_info_t tmphookinfo;
+__declspec(thread) DWORD tmphookinfo_threadid;
 
 // returns 1 if we should call our hook, 0 if we should call the original function instead
 // on x86 this is actually: hook, esp, ebp
@@ -329,6 +333,7 @@ FILETIME ft;
 int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 {
 	hook_info_t *hookinfo;
+	FILETIME ft;
 
 	if (h->fully_emulate)
 		return 1;
@@ -354,11 +359,14 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || force_hook_thread_func(h->funcname) || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
 		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
+			unsigned int counter, rate_counter;
+
 			if (h->hook_disabled)
 				return 0;
-			h->counter++;
-			if (g_config.api_cap && h->counter >= g_config.api_cap) {
-				DebugOutput("api-cap: %s hook disabled due to count: %d\n", h->funcname, h->counter);
+			// every thread that calls this API increments the same counter
+			counter = (unsigned int)InterlockedIncrement((volatile LONG *)&h->counter);
+			if (g_config.api_cap && counter >= g_config.api_cap) {
+				DebugOutput("api-cap: %s hook disabled due to count: %d\n", h->funcname, counter);
 				h->hook_disabled = 1;
 				return 0;
 			}
@@ -367,8 +375,8 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 			else
 				GetSystemTimeAsFileTime(&ft);
 			if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
-				h->rate_counter++;
-				if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
+				rate_counter = (unsigned int)InterlockedIncrement((volatile LONG *)&h->rate_counter);
+				if (rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
 					DebugOutput("api-rate-cap: %s hook disabled due to rate\n", h->funcname);
 					h->rate_counter = 0;
 					h->hook_disabled = 1;
