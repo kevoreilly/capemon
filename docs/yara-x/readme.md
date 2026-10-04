@@ -59,16 +59,18 @@ Prerelease-ready, size-optimized binaries built with Pulley and Link-Time Optimi
 
 ## Compilation Guide: Multi-Architecture Build Commands
 
-Use the following commands inside the `yara-x` directory to build the size-optimized release binaries manually. If `cargo` is not in your global system `PATH`, locate it at `C:\Users\Doome\.cargo\bin\cargo.exe`.
+Use the following commands inside the `yara-x` directory to build the size-optimized release binaries manually. Ensure `$env:RUSTFLAGS="-C target-feature=+crt-static"` is set so the CRT is statically linked (avoiding runtime dependencies on `VCRUNTIME140.dll` / Universal CRT). If `cargo` is not in your global system `PATH`, locate it at `$env:USERPROFILE\.cargo\bin\cargo.exe`.
 
 ### 1. Compile for x64 (64-bit Release with Pulley)
 ```powershell
-& 'C:\Users\Doome\.cargo\bin\cargo.exe' build -p yara-x-capi --profile release-lto --target x86_64-pc-windows-msvc --features pulley
+$env:RUSTFLAGS="-C target-feature=+crt-static"
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" build -p yara-x-capi --profile release-lto --target x86_64-pc-windows-msvc --features pulley
 ```
 
 ### 2. Compile for x32 (32-bit Release with Pulley)
 ```powershell
-& 'C:\Users\Doome\.cargo\bin\cargo.exe' build -p yara-x-capi --profile release-lto --target i686-pc-windows-msvc --features pulley
+$env:RUSTFLAGS="-C target-feature=+crt-static"
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" build -p yara-x-capi --profile release-lto --target i686-pc-windows-msvc --features pulley
 ```
 
 ---
@@ -81,10 +83,10 @@ During development or troubleshooting, developers may need to inspect the C-API,
 To produce a fully unoptimized build containing full line information, function scopes, and variables with zero compiler inlining:
 ```powershell
 # For 64-bit Debug:
-& 'C:\Users\Doome\.cargo\bin\cargo.exe' build -p yara-x-capi --target x86_64-pc-windows-msvc --features pulley
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" build -p yara-x-capi --target x86_64-pc-windows-msvc --features pulley
 
 # For 32-bit Debug:
-& 'C:\Users\Doome\.cargo\bin\cargo.exe' build -p yara-x-capi --target i686-pc-windows-msvc --features pulley
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" build -p yara-x-capi --target i686-pc-windows-msvc --features pulley
 ```
 *   **Debug Symbols:** This creates `yara_x_capi.pdb` and `yara_x_capi.dll` inside `target/x86_64-pc-windows-msvc/debug/`. Because optimization is turned off (`opt-level = 0`), you can set breakpoints and inspect all local variables natively.
 
@@ -98,6 +100,6 @@ debug = true  # Force full debug symbols generation even in release builds
 ```
 Then compile using the standard release command:
 ```powershell
-& 'C:\Users\Doome\.cargo\bin\cargo.exe' build -p yara-x-capi --release --target x86_64-pc-windows-msvc --features pulley
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" build -p yara-x-capi --release --target x86_64-pc-windows-msvc --features pulley
 ```
 This will output an optimized DLL with a matching `.pdb` file inside `target/x86_64-pc-windows-msvc/release/`.

@@ -66,8 +66,6 @@ BOOL YaraActivated, YaraLogging;
 extern PVOID LdrpInvertedFunctionTableSRWLock;
 #endif
 
-static char NewLine[MAX_PATH];
-
 // --- per-thread scanner state ------------------------------------------------
 // YRX_SCANNER is not thread-safe and is stateful across a scan, so each thread
 // gets its own, lazily created from the shared YRX_RULES.
@@ -210,6 +208,7 @@ static void CopyPatternIdentifier(char* Dst, size_t DstSize, const uint8_t* Src,
 void ParseOptionLine(char* Line, char* Identifier, size_t MatchOffset, size_t MatchLength, void* user_data)
 {
 	char *Value, *Key, *p, *q, *r, c = 0;
+	char NewLine[MAX_PATH];
 	ULONG_PTR delta = 0;
 	SIZE_T ValueLength = 0;
 
@@ -282,9 +281,9 @@ void ParseOptionLine(char* Line, char* Identifier, size_t MatchOffset, size_t Ma
 
 	memset(NewLine, 0, sizeof(NewLine));
 	if (r)
-		sprintf(NewLine, "%s%c0x%p%s", Key, c, (PUCHAR)MatchOffset + delta, r);
+		snprintf(NewLine, sizeof(NewLine), "%s%c0x%p%s", Key, c, (PUCHAR)MatchOffset + delta, r);
 	else
-		sprintf(NewLine, "%s%c0x%p", Key, c, (PUCHAR)MatchOffset + delta);
+		snprintf(NewLine, sizeof(NewLine), "%s%c0x%p", Key, c, (PUCHAR)MatchOffset + delta);
 
 	if (r && *(r + 1) == '$')
 		*r = c;
@@ -345,7 +344,7 @@ static void MetaScanCallback(const struct YRX_METADATA* Meta, void* user_data)
 		return;
 	if (Meta && Meta->value_type == YRX_STRING && Meta->identifier &&
 		!strcmp(Meta->identifier, "cape_options") && Meta->value.string)
-		ms->CapeOptions = _strdup(Meta->value.string);
+		ms->CapeOptions = strdup(Meta->value.string);
 }
 
 // --- matching-rule callbacks ---------------------------------------------------
@@ -754,7 +753,8 @@ void YaraShutdown()
 			yrx_scanner_destroy(ctx->Scanner);
 			ctx->Scanner = NULL;
 		}
-		free(entry);
+		// Unlinked from g_yrx_scanners, memory intentionally not freed to
+		// preserve pointer stability for concurrent reader threads (like lookup_del).
 		entry = next;
 	}
 
@@ -810,8 +810,25 @@ BOOL YaraInit()
 {
 	YRX_COMPILER* Compiler = NULL;
 	char analyzer_path[MAX_PATH], yara_dir[MAX_PATH], file_name[MAX_PATH], compiled_rules[MAX_PATH];
+	char dll_dir[MAX_PATH], yara_dll[MAX_PATH];
 	uint32_t compiler_flags = YRX_RELAXED_RE_SYNTAX | YRX_ENABLE_CONDITION_OPTIMIZATION;
 	enum YRX_RESULT rc;
+
+	// In injected process contexts, yara_x_capi.dll sits next to our monitor DLL
+	// (capemon.dll / capemon_x64.dll), which is not in the default Windows DLL search path.
+	// Explicitly preload yara_x_capi.dll by absolute path so delay-load calls resolve immediately.
+	if (our_dll_path && our_dll_path[0])
+	{
+		strncpy(dll_dir, our_dll_path, sizeof(dll_dir) - 1);
+		dll_dir[sizeof(dll_dir) - 1] = 0;
+		PathRemoveFileSpecA(dll_dir);
+		snprintf(yara_dll, sizeof(yara_dll), "%s\\yara_x_capi.dll", dll_dir);
+		if (!GetModuleHandleA("yara_x_capi.dll") && !LoadLibraryA(yara_dll))
+		{
+			DebugOutput("YaraInit: Unable to preload %s (error %d)\n", yara_dll, GetLastError());
+			return FALSE;
+		}
+	}
 
 	strncpy(analyzer_path, our_dll_path, strlen(our_dll_path) + 1);
 	if (!g_config.standalone)
@@ -847,6 +864,9 @@ BOOL YaraInit()
 			DebugOutput("YaraInit: yrx_compiler_create failure\n");
 			goto fail;
 		}
+
+		// Gracefully ignore rules that import unsupported modules (e.g. magic)
+		yrx_compiler_ignore_module(Compiler, "magic");
 
 		if (yrx_compiler_add_source(Compiler, InternalYara) != YRX_SUCCESS)
 		{

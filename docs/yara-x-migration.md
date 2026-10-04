@@ -108,11 +108,13 @@ Notes:
 ## Step 2 — project changes (`capemon.vcxproj`)
 
 > This describes the static-lib wiring matching Step 1 above. The
-> **currently-committed** `Release|x64` block instead links
-> `docs\yara-x\bin\x64\yara_x_capi.dll.lib` (dynamic import lib, no
-> `ntdll`/`userenv`/`bcrypt`/`advapi32`) and has a `PostBuildEvent` that copies
-> `yara_x_capi.dll` next to the built `capemon_x64.dll` so it can be loaded at
-> runtime. Only `Release|x64` is enabled today; `Win32` is not yet wired up.
+> **currently-committed** `Release|x64` and `Release|Win32` blocks link
+> `docs\yara-x\bin\{x64,x32}\yara_x_capi.dll.lib` (dynamic import lib),
+> configure `<DelayLoadDLLs>yara_x_capi.dll</DelayLoadDLLs>` (with `delayimp.lib`)
+> to prevent injection failures when capemon is loaded into target processes,
+> have a `PostBuildEvent` that copies `yara_x_capi.dll` next to the built monitor DLL,
+> and preloads it by absolute path in `YaraInit()`. Both `Release|x64` and
+> `Release|Win32` are wired up.
 
 For each of the four `ItemDefinitionGroup` blocks (Debug/Release × Win32/x64):
 

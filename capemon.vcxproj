@@ -147,15 +147,14 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;_CRT_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- CAPE_USE_YARA_X selects CAPE\YaraHarnessX.c (YARA-X backend) instead of CAPE\YaraHarness.c (libyara). -->
+      <PreprocessorDefinitions>CAPE_USE_YARA_X;WIN32;_CRT_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <OmitFramePointers>false</OmitFramePointers>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <!-- CAPE_USE_YARA_X selects CAPE\YaraHarnessX.c (YARA-X backend) instead of CAPE\YaraHarness.c (libyara). -->
-      <PreprocessorDefinitions>CAPE_USE_YARA_X;WIN32;_CRT_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGSNDEBUG;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>.\yara-x\include;.\bson;.\distorm\include;C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\WTL81\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
@@ -171,7 +170,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <!-- Links against the prebuilt yara_x_capi.dll's import lib (docs/yara-x/bin/x32), not a static lib:
            no ntdll/userenv/bcrypt/advapi32 needed here, the DLL resolves those itself at load time. -->
-      <AdditionalDependencies>yara_x_capi.dll.lib;bson.lib;crypt32.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>yara_x_capi.dll.lib;bson.lib;crypt32.lib;ws2_32.lib;delayimp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)\Release;$(ProjectDir)docs\yara-x\bin\x32</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
@@ -179,6 +178,7 @@
       <SetChecksum>true</SetChecksum>
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
       <ModuleDefinitionFile>capemon.def</ModuleDefinitionFile>
+      <DelayLoadDLLs>yara_x_capi.dll</DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
       <Command>
@@ -195,7 +195,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <!-- CAPE_USE_YARA_X selects CAPE\YaraHarnessX.c (YARA-X backend) instead of CAPE\YaraHarness.c (libyara). -->
-      <PreprocessorDefinitions>CAPE_USE_YARA_X;WIN32;_WIN64;_CRT_SECURE_NO_WARNINGS;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)<PreprocessorDefinitions>
+      <PreprocessorDefinitions>CAPE_USE_YARA_X;WIN32;_WIN64;_CRT_SECURE_NO_WARNINGS;NDEBUG;_WINDOWS;_USRDLL;MONGO_HAVE_STDINT;MONGO_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -222,7 +222,7 @@
       <SetChecksum>true</SetChecksum>
       <LinkErrorReporting>NoErrorReport</LinkErrorReporting>
       <ModuleDefinitionFile>capemon.def</ModuleDefinitionFile>
-      <DelayLoadDLLs>advapi32.dll;user32.dll;ws2_32.dll;crypt32.dll;shlwapi.dll;ole32.dll;shell32.dll;oleaut32.dll;netapi32.dll;bcrypt.dll</DelayLoadDLLs>
+      <DelayLoadDLLs>yara_x_capi.dll;advapi32.dll;user32.dll;ws2_32.dll;crypt32.dll;shlwapi.dll;ole32.dll;shell32.dll;oleaut32.dll;netapi32.dll;bcrypt.dll</DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
       <Command>
