@@ -383,6 +383,8 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
 	HOOK(ntdll, NtQueryInformationAtom),
+	HOOK(ntdll, NtSetIoCompletion),
+	HOOK(ntdll, NtSetIoCompletionEx),
 
 	// Misc Hooks
 	//HOOK(ntdll, RtlMoveMemory),
@@ -946,6 +948,8 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
 	HOOK(ntdll, NtQueryInformationAtom),
+	HOOK(ntdll, NtSetIoCompletion),
+	HOOK(ntdll, NtSetIoCompletionEx),
 
 	// Process Hooks
 	HOOK(ntdll, NtAllocateVirtualMemory),
@@ -1321,6 +1325,8 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, NtFindAtom),
 	HOOK(ntdll, NtDeleteAtom),
 	HOOK(ntdll, NtQueryInformationAtom),
+	HOOK(ntdll, NtSetIoCompletion),
+	HOOK(ntdll, NtSetIoCompletionEx),
 
 	// Process Hooks
 	HOOK(ntdll, NtAllocateVirtualMemory),

@@ -177,3 +177,45 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationAtom,
 	
 	return ret;
 }
+
+HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletion,
+	__in		HANDLE IoCompletionHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation
+) {
+	NTSTATUS ret = Old_NtSetIoCompletion(IoCompletionHandle, KeyContext,
+		ApcContext, IoStatus, IoStatusInformation);
+
+	LOQ_ntstatus("synchronization", "ppphl",
+		"IoCompletionHandle", IoCompletionHandle,
+		"KeyContext", KeyContext,
+		"ApcContext", ApcContext,
+		"IoStatus", IoStatus,
+		"IoStatusInformation", IoStatusInformation);
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletionEx,
+	__in		HANDLE IoCompletionHandle,
+	__in_opt	HANDLE IoCompletionPacketHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation
+) {
+	NTSTATUS ret = Old_NtSetIoCompletionEx(IoCompletionHandle, IoCompletionPacketHandle,
+		KeyContext, ApcContext, IoStatus, IoStatusInformation);
+
+	LOQ_ntstatus("synchronization", "pppphl",
+		"IoCompletionHandle", IoCompletionHandle,
+		"IoCompletionPacketHandle", IoCompletionPacketHandle,
+		"KeyContext", KeyContext,
+		"ApcContext", ApcContext,
+		"IoStatus", IoStatus,
+		"IoStatusInformation", IoStatusInformation);
+
+	return ret;
+}

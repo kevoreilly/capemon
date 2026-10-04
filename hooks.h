@@ -1005,6 +1005,23 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationAtom,
 	OUT PULONG ReturnLength OPTIONAL
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletion,
+	__in		HANDLE IoCompletionHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletionEx,
+	__in		HANDLE IoCompletionHandle,
+	__in_opt	HANDLE IoCompletionPacketHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation
+);
+
 //
 // Process Hooks
 //
