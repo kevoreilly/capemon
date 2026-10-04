@@ -93,7 +93,7 @@ void unhook_detect_add_region(const hook_t *hook, uint8_t *addr,
 {
 	uint32_t index;
 
-	if(g_index == UNHOOK_MAXCOUNT - 1) {
+	if(g_index >= UNHOOK_MAXCOUNT - 1) {
 		if (!max_unhook_warned)
 			pipe("CRITICAL:Reached maximum number of unhook detection entries!");
 		max_unhook_warned = 1;

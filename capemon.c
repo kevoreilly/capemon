@@ -462,7 +462,7 @@ next:
 		}
 	}
 
-	DebugOutput(msg);
+	DebugOutput("%s", msg);
 
 	if (dllname)
 		free(dllname);
