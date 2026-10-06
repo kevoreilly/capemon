@@ -503,9 +503,9 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (InsByte != 0xCC)
 		return FALSE;
 
-	PBYTE pInsByte = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
+	PSOFTBP SoftBP = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
 
-	if (!pInsByte)
+	if (!SoftBP || !SoftBP->InstructionByte)
 	{
 		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction byte for 0x%p", Address);
 		return FALSE;
@@ -520,18 +520,21 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return FALSE;
 	}
 
-	*(PBYTE)Address = *pInsByte;
+	*(PBYTE)Address = SoftBP->InstructionByte;
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
 
-	SoftwareBreakpointCallback(ExceptionInfo);
+	if (SoftBP->Callback)
+		((SOFTWARE_BREAKPOINT_HANDLER)SoftBP->Callback)(ExceptionInfo);
 
-	if (g_config.softbpmode)
+	if (SoftBP->Persistent || g_config.softbpmode)
 	{
 		if (SingleStepHandler)
 			SoftBPSingleStepHandler = SingleStepHandler;
 		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
 	}
+	else
+		lookup_del(&SoftBPs, (ULONG_PTR)Address);
 
 	return TRUE;
 }
@@ -2230,6 +2233,13 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 //**************************************************************************************
 {
+	return SetSoftwareBreakpointEx(BPs, Address, SoftwareBreakpointCallback, FALSE);
+}
+
+//**************************************************************************************
+BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL Persistent)
+//**************************************************************************************
+{
 	DWORD OldProtect;
 
 	if (!Address || !IsAddressExecutable(Address))
@@ -2265,6 +2275,8 @@ BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 
 	SoftBP->InstructionByte = InsByte;
 	SoftBP->Length = lde(Address);
+	SoftBP->Callback = Callback;
+	SoftBP->Persistent = Persistent;
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);
