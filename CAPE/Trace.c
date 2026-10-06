@@ -368,7 +368,7 @@ PVOID GetRegister(PCONTEXT Context, char* RegString)
         else if (!strnicmp(RegString, "r11", 3))
 			Register = (PVOID)Context->R11;
         else if (!strnicmp(RegString, "r12", 3))
-			Register = (PVOID)Context->R13;
+			Register = (PVOID)Context->R12;
         else if (!strnicmp(RegString, "r13", 3))
 			Register = (PVOID)Context->R13;
         else if (!strnicmp(RegString, "r14", 3))
@@ -1132,6 +1132,50 @@ BOOL DoStepOver(PCHAR FunctionName)
 	return FALSE;
 }
 
+// Resolve one operand token for the 'If:' conditional action to a value.
+// Token may be Src/Dst (the breakpointed instruction's operands, dereferenced for memory),
+// a register, [reg+off] (dereferenced), or an immediate. $string values are already resolved
+// to addresses upstream by ParseOptionLine, so they arrive here as immediates.
+PVOID ResolveIfOperand(PCONTEXT Context, _DecodedInst DecodedInstruction, PCHAR Token)
+{
+	if (!Token || !*Token)
+		return NULL;
+
+	if (!stricmp(Token, "Src"))
+	{
+		PCHAR Comma = strchr(DecodedInstruction.operands.p, ',');
+		if (Comma)
+		{
+			*Comma = 0;
+			PVOID Value = GetOperand(Context, DecodedInstruction.operands.p);
+			*Comma = ',';
+			return Value;
+		}
+		return GetOperand(Context, DecodedInstruction.operands.p);
+	}
+	if (!stricmp(Token, "Dst"))
+	{
+		PCHAR Comma = strchr(DecodedInstruction.operands.p, ',');
+		if (Comma)
+			return GetOperand(Context, Comma + 2);
+		return NULL;
+	}
+	if (strchr(Token, '['))
+		return GetOperand(Context, Token);
+
+	PVOID Reg = GetRegister(Context, Token);
+	if (Reg)
+		return Reg;
+
+	char *endptr;
+	errno = 0;
+	unsigned long long Imm = _strtoui64(Token, &endptr, 0);
+	if (!errno && endptr != Token)
+		return (PVOID)(DWORD_PTR)Imm;
+
+	return NULL;
+}
+
 void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst DecodedInstruction, PCHAR Action)
 {
 	// This could be further optimised per action but this is safe at least
@@ -1547,6 +1591,84 @@ void ActionDispatcher(struct _EXCEPTION_POINTERS* ExceptionInfo, _DecodedInst De
 	{
 		WriteRet(ExceptionInfo->ContextRecord);
 		DebuggerOutput("\nActionDispatcher: ret written.\n");
+	}
+	else if (!strnicmp(Action, "If:", 3))
+	{
+		// Generic conditional action:  If:<lhs>:<op>[:<rhs>]:<action>
+		//   lhs/rhs : Src|Dst (this instruction's operands), a register, [reg+off], $string (a VA), or immediate
+		//   op      : ptr z nz  (unary) | eq ne gt lt ge le  (binary)
+		//   action  : any existing cape action + its own :param, run only when the condition holds
+		// If the wrapped action does not itself redirect control flow, the guarded instruction is skipped
+		// so a flag/register change stands in for it (e.g. a set ZF survives to a following jz).
+		char Buf[MAX_PATH];
+		strncpy(Buf, Action + 3, sizeof(Buf) - 1);
+		Buf[sizeof(Buf) - 1] = 0;
+
+		PCHAR LhsTok = Buf;
+		PCHAR OpTok = strchr(LhsTok, ':');
+		PCHAR RhsTok = NULL, ActionTok = NULL;
+		if (OpTok)
+		{
+			*OpTok++ = 0;
+			PCHAR Rest = strchr(OpTok, ':');
+			if (Rest)
+			{
+				*Rest++ = 0;
+				BOOL Binary = stricmp(OpTok, "ptr") && stricmp(OpTok, "z") && stricmp(OpTok, "nz");
+				if (Binary)
+				{
+					PCHAR AfterRhs = strchr(Rest, ':');
+					if (AfterRhs)
+					{
+						*AfterRhs++ = 0;
+						RhsTok = Rest;
+						ActionTok = AfterRhs;
+					}
+				}
+				else
+					ActionTok = Rest;
+			}
+		}
+
+		if (!ActionTok)
+			DebuggerOutput("ActionDispatcher: If - malformed '%s' (expected If:<lhs>:<op>[:<rhs>]:<action>).\n", Action);
+		else
+		{
+			ULONG_PTR L = (ULONG_PTR)ResolveIfOperand(ExceptionInfo->ContextRecord, DecodedInstruction, LhsTok);
+			ULONG_PTR R = RhsTok ? (ULONG_PTR)ResolveIfOperand(ExceptionInfo->ContextRecord, DecodedInstruction, RhsTok) : 0;
+			BOOL Cond = FALSE;
+#ifdef _WIN64
+			if (!stricmp(OpTok, "ptr"))      Cond = (L > 0x10000 && L < 0x00007FFFFFFFFFFFULL);
+#else
+			if (!stricmp(OpTok, "ptr"))      Cond = (L > 0x10000 && L < 0x80000000UL);
+#endif
+			else if (!stricmp(OpTok, "z"))   Cond = (L == 0);
+			else if (!stricmp(OpTok, "nz"))  Cond = (L != 0);
+			else if (!stricmp(OpTok, "eq"))  Cond = (L == R);
+			else if (!stricmp(OpTok, "ne"))  Cond = (L != R);
+			else if (!stricmp(OpTok, "gt"))  Cond = (L > R);
+			else if (!stricmp(OpTok, "lt"))  Cond = (L < R);
+			else if (!stricmp(OpTok, "ge"))  Cond = (L >= R);
+			else if (!stricmp(OpTok, "le"))  Cond = (L <= R);
+			else DebuggerOutput("ActionDispatcher: If - unknown op '%s'.\n", OpTok);
+
+			DebuggerOutput("ActionDispatcher: If %s(0x%p, 0x%p) -> %d, action '%s'.\n", OpTok, (PVOID)L, (PVOID)R, Cond, ActionTok);
+			if (Cond)
+			{
+#ifdef _WIN64
+				QWORD RipBefore = ExceptionInfo->ContextRecord->Rip;
+#else
+				DWORD RipBefore = ExceptionInfo->ContextRecord->Eip;
+#endif
+				ActionDispatcher(ExceptionInfo, DecodedInstruction, ActionTok);
+#ifdef _WIN64
+				if (ExceptionInfo->ContextRecord->Rip == RipBefore)
+#else
+				if (ExceptionInfo->ContextRecord->Eip == RipBefore)
+#endif
+					SkipInstruction(ExceptionInfo->ContextRecord);
+			}
+		}
 	}
 	else if (!strnicmp(Action, "GoTo", 4))
 	{

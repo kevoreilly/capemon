@@ -56,6 +56,9 @@ extern int StepOverRegister;
 extern int process_shutting_down;
 extern HANDLE DebuggerLog;
 extern PVOID GuardedPages;
+extern lookup_t InteractiveBPs;
+extern BOOL InteractiveSoftwareBreakpointCallback(struct _EXCEPTION_POINTERS* ExceptionInfo), InteractiveSingleStep(struct _EXCEPTION_POINTERS* ExceptionInfo);
+extern void ClearInteractiveSoftwareBreakpoints(void);
 
 struct ThreadBreakpoints *MainThreadBreakpointList;
 unsigned int TrapIndex, DepthCount;
@@ -623,10 +626,25 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		PTEB teb = (PTEB)NtCurrentTeb();
 		DWORD saved_error = teb->LastErrorValue;
 
-		// Test Dr6 to see if this is a breakpoint
+		// Test Dr6 to see if this is a breakpoint. Dr6 is sticky - the CPU sets these bits
+		// and only a debugger clears them - so every path below that resumes execution zeroes
+		// it. Left set, the lowest bit ever set wins this loop for the rest of the thread's
+		// life: a later single-step or fault is reported as a hit on a breakpoint that did
+		// not fire, and the genuine single-step branch below stops being reachable. The
+		// EXCEPTION_CONTINUE_SEARCH paths deliberately leave Dr6 alone, so whichever handler
+		// does own the breakpoint still sees the status bits.
 		for (bp = 0; bp < NUMBER_OF_DEBUG_REGISTERS; bp++)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 				break;
+
+		// Interactive steps are followed per thread, ahead of the thread breakpoints check: a
+		// software breakpoint can halt a thread that has never had hardware breakpoints.
+		if (g_config.idbg && bp == NUMBER_OF_DEBUG_REGISTERS && InteractiveSingleStep(ExceptionInfo))
+		{
+			ExceptionInfo->ContextRecord->Dr6 = 0;
+			teb->LastErrorValue = saved_error;
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
 
 		PTHREADBREAKPOINTS CurrentThreadBreakpoints  = GetThreadBreakpoints(CurrentThreadId);
 
@@ -649,6 +667,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
 
+			ExceptionInfo->ContextRecord->Dr6 = 0;
 			teb->LastErrorValue = saved_error;
 
 			return EXCEPTION_CONTINUE_EXECUTION;
@@ -667,6 +686,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (pBreakpointInfo == NULL)
 		{
 			DebugOutput("CAPEExceptionFilter: Can't get BreakpointInfo for thread %d\n", CurrentThreadId);
+			ExceptionInfo->ContextRecord->Dr6 = 0;
 			teb->LastErrorValue = saved_error;
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
@@ -740,8 +760,17 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 				ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
 				ContextSetThreadBreakpointsEx(ExceptionInfo->ContextRecord, CurrentThreadBreakpoints, TRUE);
 			}
+			else if (pBreakpointInfo->HandlerActive)
+			{
+				// Hit again from inside its own handler: the interactive session calls Sleep,
+				// the pipe and memory APIs, so a breakpoint on one of those is reached while it
+				// runs. Passed over - without the resume flag an execute breakpoint fires again
+				// on the same instruction forever, and the session never answers.
+				ResumeFromBreakpoint(ExceptionInfo->ContextRecord);
+			}
 		}
 
+		ExceptionInfo->ContextRecord->Dr6 = 0;
 		teb->LastErrorValue = saved_error;
 
 		return EXCEPTION_CONTINUE_EXECUTION;
@@ -752,6 +781,17 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
 #endif
 		BYTE InsByte = *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+
+		// Interactive debugger (CAPEsolo) software breakpoint: checked first, as the syscall
+		// test below claims every int3 while syscall breakpoints are set
+		if (g_config.idbg && lookup_get(&InteractiveBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
+		{
+			PTEB teb = (PTEB)NtCurrentTeb();
+			DWORD saved_error = teb->LastErrorValue;
+			InteractiveSoftwareBreakpointCallback(ExceptionInfo);
+			teb->LastErrorValue = saved_error;
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
 
 		// Check to see if it's ours
 		if (lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0))
@@ -2788,6 +2828,8 @@ void DebuggerShutdown()
 	}
 	if (BreakpointsSet)
 		ClearAllBreakpoints();
+	// An int3 left behind once the debugger is off would go unhandled, and the process dump follows
+	ClearInteractiveSoftwareBreakpoints();
 	g_config.debugger = 0;
 }
 

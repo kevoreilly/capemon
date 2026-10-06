@@ -131,6 +131,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `base-on-caller` | Boolean | Base breakpoints on new calling regions. |
 | `file-offsets` | Boolean | Interpret breakpoints as file offsets instead of RVAs. |
 | `loaderlock` | Boolean | Allow scans/dumps while the Loader Lock is held. |
+| `loaderlock-settle` | Boolean | Yield in loader hooks while the Loader Lock is held. Timing fix for trojanized sideload DLLs (e.g. AxolotlLoader) whose DllMain bootstrap races a dispatch-table slot; opt-in per-sample. |
 | `snaps` | Boolean | Enable Windows Loader Snaps output (LdrSnap). |
 
 ## Target Specific
