@@ -507,89 +507,61 @@ static WATCHDOG_REQUEST *watchdog_get_or_create_slot(DWORD tid)
 	return NULL;
 }
 
-static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
+static char *watchdog_get_module_and_offset(ULONG_PTR addr, unsigned int *offset)
 {
-	WATCHDOG_REQUEST *req = (WATCHDOG_REQUEST *)Parameter;
-	if (!req)
-		return;
+	PEB *peb = (PEB *)get_peb();
+	*offset = 0;
 
-	InterlockedIncrement(&req->apc_executed_count);
+	if (!addr)
+		return NULL;
 
-	// Atomically try to claim the slot (transition from 0 -> 1)
-	if (InterlockedCompareExchange(&req->status, 1, 0) != 0)
-		return;
-
-	memset(&req->ctx, 0, sizeof(req->ctx));
-	req->ctx.ContextFlags = CONTEXT_FULL;
-	RtlCaptureContext(&req->ctx);
-
-	req->backtrace_count = 0;
-#ifndef _WIN64
-	{
-		ULONG_PTR top = get_stack_top();
-		ULONG_PTR bottom = get_stack_bottom();
-		ULONG_PTR _ebp = req->ctx.Ebp;
-		ULONG_PTR _esp = req->ctx.Esp;
-		unsigned int count = 0;
-
-		__try {
-			if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
-				req->backtrace[count++] = *(ULONG_PTR *)_esp;
-			}
-			while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count < WATCHDOG_MAX_FRAMES) {
-				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
-				ULONG_PTR next_ebp = *(ULONG_PTR *)_ebp;
-				if (next_ebp <= _ebp)
-					break;
-				_ebp = next_ebp;
-				if (retaddr)
-					req->backtrace[count++] = retaddr;
-				else
-					break;
-			}
-		}
-		__except(EXCEPTION_EXECUTE_HANDLER) {
-		}
-		req->backtrace_count = count;
-	}
+	// Check if the address falls within capemon DLL itself
+	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size)) {
+#ifdef _WIN64
+		const char our_dll[] = "capemon_x64.dll";
 #else
-	{
-		CONTEXT local_ctx;
-		memcpy(&local_ctx, &req->ctx, sizeof(CONTEXT));
-		DWORD64 imgbase;
-		PRUNTIME_FUNCTION runfunc;
-		KNONVOLATILE_CONTEXT_POINTERS nvctx;
-		PVOID handlerdata;
-		ULONG_PTR establisherframe;
-		unsigned int frame = 0;
+		const char our_dll[] = "capemon.dll";
+#endif
+		char *buf = calloc(1, sizeof(our_dll));
+		if (buf) {
+			memcpy(buf, our_dll, sizeof(our_dll));
+			*offset = (unsigned int)(addr - g_our_dll_base);
+			return buf;
+		}
+		return NULL;
+	}
 
-		if (!srw_lock_held()) {
-			__try {
-				for (frame = 0; frame < WATCHDOG_MAX_FRAMES; frame++) {
-					req->backtrace[frame] = (ULONG_PTR)local_ctx.Rip;
-					runfunc = RtlLookupFunctionEntry(local_ctx.Rip, &imgbase, NULL);
-					memset(&nvctx, 0, sizeof(nvctx));
-					if (runfunc == NULL) {
-						if (our_isbadreadptr((PVOID)local_ctx.Rsp, sizeof(PVOID)))
-							break;
-						local_ctx.Rip = (ULONG_PTR)(*(ULONG_PTR *)local_ctx.Rsp);
-						local_ctx.Rsp += 8;
+	if (peb && peb->LoaderData) {
+		PLIST_ENTRY pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+		PLIST_ENTRY pListEntry;
+
+		for (pListEntry = pHeadEntry->Flink; pListEntry != pHeadEntry; pListEntry = pListEntry->Flink) {
+			PLDR_DATA_TABLE_ENTRY mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+			if (addr >= (ULONG_PTR)mod->BaseAddress && addr < ((ULONG_PTR)mod->BaseAddress + mod->SizeOfImage)) {
+				*offset = (unsigned int)(addr - (ULONG_PTR)mod->BaseAddress);
+				if (peb->ImageBaseAddress && mod->BaseAddress == peb->ImageBaseAddress) {
+					char *buf = calloc(1, 7);
+					if (buf) {
+						memcpy(buf, "<main>", 7);
+						return buf;
 					}
-					else {
-						RtlVirtualUnwind(UNW_FLAG_NHANDLER, imgbase, local_ctx.Rip, runfunc, &local_ctx, &handlerdata, &establisherframe, &nvctx);
+					return NULL;
+				} else {
+					size_t len = mod->BaseDllName.Length / sizeof(wchar_t);
+					char *buf = calloc(1, len + 1);
+					if (buf) {
+						size_t i;
+						for (i = 0; i < len; i++)
+							buf[i] = (char)mod->BaseDllName.Buffer[i];
+						return buf;
 					}
-					if (!local_ctx.Rip)
-						break;
+					return NULL;
 				}
 			}
-			__except(EXCEPTION_EXECUTE_HANDLER) {
-			}
-			req->backtrace_count = frame;
 		}
 	}
-#endif
 
-	req->sampled_via_apc = TRUE;
+	return NULL;
 }
 
 #ifndef _WIN64
@@ -617,9 +589,18 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 	_esp = ctx->Esp;
 
 	__try {
+		if (count < max_depth) {
+			backtrace[count++] = ctx->Eip;
+		}
 		if (top && bottom) {
 			if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
-				backtrace[count++] = *(ULONG_PTR *)_esp;
+				ULONG_PTR first_ret = *(ULONG_PTR *)_esp;
+				MEMORY_BASIC_INFORMATION mbi;
+				if (VirtualQuery((LPCVOID)first_ret, &mbi, sizeof(mbi)) &&
+					(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+					if (count < max_depth)
+						backtrace[count++] = first_ret;
+				}
 			}
 			while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count < max_depth) {
 				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
@@ -627,8 +608,13 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 				if (next_ebp <= _ebp)
 					break;
 				_ebp = next_ebp;
-				if (retaddr)
-					backtrace[count++] = retaddr;
+				if (retaddr) {
+					MEMORY_BASIC_INFORMATION mbi;
+					if (VirtualQuery((LPCVOID)retaddr, &mbi, sizeof(mbi)) &&
+						(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+						backtrace[count++] = retaddr;
+					}
+				}
 				else
 					break;
 			}
@@ -639,8 +625,13 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 				if (next_ebp <= _ebp)
 					break;
 				_ebp = next_ebp;
-				if (retaddr)
-					backtrace[count++] = retaddr;
+				if (retaddr) {
+					MEMORY_BASIC_INFORMATION mbi;
+					if (VirtualQuery((LPCVOID)retaddr, &mbi, sizeof(mbi)) &&
+						(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+						backtrace[count++] = retaddr;
+					}
+				}
 				else
 					break;
 			}
@@ -667,20 +658,44 @@ static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace
 
 	__try {
 		for (frame = 0; frame < max_depth; frame++) {
+			MEMORY_BASIC_INFORMATION mbi;
+			if (!local_ctx.Rip)
+				break;
+
+			// Verify that Rip points to valid executable code
+			if (!VirtualQuery((LPCVOID)local_ctx.Rip, &mbi, sizeof(mbi)))
+				break;
+			if (!(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+				break;
+
 			backtrace[frame] = (ULONG_PTR)local_ctx.Rip;
 			runfunc = RtlLookupFunctionEntry(local_ctx.Rip, &imgbase, NULL);
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
-				if (our_isbadreadptr((PVOID)local_ctx.Rsp, sizeof(PVOID)))
+				ULONG_PTR candidate = 0;
+				int scan;
+				// Scan up the stack for the next executable return address
+				for (scan = 0; scan < 16; scan++) {
+					if (our_isbadreadptr((PVOID)local_ctx.Rsp, sizeof(PVOID)))
+						break;
+					candidate = *(ULONG_PTR *)local_ctx.Rsp;
+					local_ctx.Rsp += 8;
+					if (candidate) {
+						MEMORY_BASIC_INFORMATION cand_mbi;
+						if (VirtualQuery((LPCVOID)candidate, &cand_mbi, sizeof(cand_mbi)) &&
+							(cand_mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+							break;
+						}
+					}
+					candidate = 0;
+				}
+				if (!candidate)
 					break;
-				local_ctx.Rip = (ULONG_PTR)(*(ULONG_PTR *)local_ctx.Rsp);
-				local_ctx.Rsp += 8;
+				local_ctx.Rip = candidate;
 			}
 			else {
 				RtlVirtualUnwind(UNW_FLAG_NHANDLER, imgbase, local_ctx.Rip, runfunc, &local_ctx, &handlerdata, &establisherframe, &nvctx);
 			}
-			if (!local_ctx.Rip)
-				break;
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER) {
@@ -689,47 +704,175 @@ static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace
 }
 #endif
 
+static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
+{
+	WATCHDOG_REQUEST *req = (WATCHDOG_REQUEST *)Parameter;
+	if (!req)
+		return;
+
+	InterlockedIncrement(&req->apc_executed_count);
+
+	// Atomically try to claim the slot (transition from 0 -> 1)
+	if (InterlockedCompareExchange(&req->status, 1, 0) != 0)
+		return;
+
+	memset(&req->ctx, 0, sizeof(req->ctx));
+	req->ctx.ContextFlags = CONTEXT_FULL;
+	RtlCaptureContext(&req->ctx);
+
+	req->backtrace_count = 0;
+#ifndef _WIN64
+	{
+		ULONG_PTR top = get_stack_top();
+		ULONG_PTR bottom = get_stack_bottom();
+		ULONG_PTR _ebp = req->ctx.Ebp;
+		ULONG_PTR _esp = req->ctx.Esp;
+		unsigned int count = 0;
+
+		__try {
+			if (count < WATCHDOG_MAX_FRAMES)
+				req->backtrace[count++] = req->ctx.Eip;
+
+			if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
+				ULONG_PTR first_ret = *(ULONG_PTR *)_esp;
+				MEMORY_BASIC_INFORMATION mbi;
+				if (VirtualQuery((LPCVOID)first_ret, &mbi, sizeof(mbi)) &&
+					(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+					if (count < WATCHDOG_MAX_FRAMES)
+						req->backtrace[count++] = first_ret;
+				}
+			}
+			while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count < WATCHDOG_MAX_FRAMES) {
+				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
+				ULONG_PTR next_ebp = *(ULONG_PTR *)_ebp;
+				if (next_ebp <= _ebp)
+					break;
+				_ebp = next_ebp;
+				if (retaddr) {
+					MEMORY_BASIC_INFORMATION mbi;
+					if (VirtualQuery((LPCVOID)retaddr, &mbi, sizeof(mbi)) &&
+						(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+						req->backtrace[count++] = retaddr;
+					}
+				}
+				else
+					break;
+			}
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER) {
+		}
+		req->backtrace_count = count;
+	}
+#else
+	req->backtrace_count = safe_unwind_backtrace_x64(&req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+#endif
+
+	req->sampled_via_apc = TRUE;
+}
+
 static void watchdog_log_sample(WATCHDOG_REQUEST *req)
 {
 	char msg[4096];
-	char *dllname;
+	char *modname;
 	unsigned int off = 0;
 	unsigned int i;
+	int written;
+	int rem = sizeof(msg);
+	char *p = msg;
+
+	msg[0] = '\0';
 
 #ifdef _WIN64
-	dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)req->ctx.Rip, &off);
-	_snprintf_s(msg, sizeof(msg), _TRUNCATE,
-		"INFO: PID %u thread: %u [%s] RIP: %s+%x(0x%I64x) RAX: 0x%I64x RBX: 0x%I64x RCX: 0x%I64x RDX: 0x%I64x RSI: 0x%I64x RDI: 0x%I64x RBP: 0x%I64x RSP: 0x%I64x",
-		GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
-		dllname ? dllname : "", off, (ULONG_PTR)req->ctx.Rip,
-		(ULONG_PTR)req->ctx.Rax, (ULONG_PTR)req->ctx.Rbx, (ULONG_PTR)req->ctx.Rcx, (ULONG_PTR)req->ctx.Rdx,
-		(ULONG_PTR)req->ctx.Rsi, (ULONG_PTR)req->ctx.Rdi, (ULONG_PTR)req->ctx.Rbp, (ULONG_PTR)req->ctx.Rsp);
-#else
-	dllname = convert_address_to_dll_name_and_offset((ULONG_PTR)req->ctx.Eip, &off);
-	_snprintf_s(msg, sizeof(msg), _TRUNCATE,
-		"INFO: PID %u thread: %u [%s] EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx",
-		GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
-		dllname ? dllname : "", off, (ULONG_PTR)req->ctx.Eip,
-		(ULONG_PTR)req->ctx.Eax, (ULONG_PTR)req->ctx.Ebx, (ULONG_PTR)req->ctx.Ecx, (ULONG_PTR)req->ctx.Edx,
-		(ULONG_PTR)req->ctx.Esi, (ULONG_PTR)req->ctx.Edi, (ULONG_PTR)req->ctx.Ebp, (ULONG_PTR)req->ctx.Esp);
-#endif
-
-	if (dllname)
-		free(dllname);
-
-	for (i = 0; i < req->backtrace_count; i++) {
-		char *dllname2 = convert_address_to_dll_name_and_offset(req->backtrace[i], &off);
-		char frame_buf[128];
-#ifdef _WIN64
-		_snprintf_s(frame_buf, sizeof(frame_buf), _TRUNCATE, " %s+%x(0x%I64x)", dllname2 ? dllname2 : "", off, (ULONG_PTR)req->backtrace[i]);
-#else
-		_snprintf_s(frame_buf, sizeof(frame_buf), _TRUNCATE, " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, (ULONG_PTR)req->backtrace[i]);
-#endif
-		if (dllname2)
-			free(dllname2);
-		strncat_s(msg, sizeof(msg), frame_buf, _TRUNCATE);
+	modname = watchdog_get_module_and_offset((ULONG_PTR)req->ctx.Rip, &off);
+	if (modname) {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  RIP: %s+0x%x (0x%I64x)\n"
+			"  RAX: 0x%I64x  RBX: 0x%I64x  RCX: 0x%I64x  RDX: 0x%I64x\n"
+			"  RSI: 0x%I64x  RDI: 0x%I64x  RBP: 0x%I64x  RSP: 0x%I64x\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			modname, off, (ULONG_PTR)req->ctx.Rip,
+			(ULONG_PTR)req->ctx.Rax, (ULONG_PTR)req->ctx.Rbx, (ULONG_PTR)req->ctx.Rcx, (ULONG_PTR)req->ctx.Rdx,
+			(ULONG_PTR)req->ctx.Rsi, (ULONG_PTR)req->ctx.Rdi, (ULONG_PTR)req->ctx.Rbp, (ULONG_PTR)req->ctx.Rsp);
+		free(modname);
+	} else {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  RIP: [0x%I64x]\n"
+			"  RAX: 0x%I64x  RBX: 0x%I64x  RCX: 0x%I64x  RDX: 0x%I64x\n"
+			"  RSI: 0x%I64x  RDI: 0x%I64x  RBP: 0x%I64x  RSP: 0x%I64x\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			(ULONG_PTR)req->ctx.Rip,
+			(ULONG_PTR)req->ctx.Rax, (ULONG_PTR)req->ctx.Rbx, (ULONG_PTR)req->ctx.Rcx, (ULONG_PTR)req->ctx.Rdx,
+			(ULONG_PTR)req->ctx.Rsi, (ULONG_PTR)req->ctx.Rdi, (ULONG_PTR)req->ctx.Rbp, (ULONG_PTR)req->ctx.Rsp);
 	}
-	strncat_s(msg, sizeof(msg), "\n", _TRUNCATE);
+#else
+	modname = watchdog_get_module_and_offset((ULONG_PTR)req->ctx.Eip, &off);
+	if (modname) {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  EIP: %s+0x%x (0x%lx)\n"
+			"  EAX: 0x%lx  EBX: 0x%lx  ECX: 0x%lx  EDX: 0x%lx\n"
+			"  ESI: 0x%lx  EDI: 0x%lx  EBP: 0x%lx  ESP: 0x%lx\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			modname, off, (ULONG_PTR)req->ctx.Eip,
+			(ULONG_PTR)req->ctx.Eax, (ULONG_PTR)req->ctx.Ebx, (ULONG_PTR)req->ctx.Ecx, (ULONG_PTR)req->ctx.Edx,
+			(ULONG_PTR)req->ctx.Esi, (ULONG_PTR)req->ctx.Edi, (ULONG_PTR)req->ctx.Ebp, (ULONG_PTR)req->ctx.Esp);
+		free(modname);
+	} else {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  EIP: [0x%lx]\n"
+			"  EAX: 0x%lx  EBX: 0x%lx  ECX: 0x%lx  EDX: 0x%lx\n"
+			"  ESI: 0x%lx  EDI: 0x%lx  EBP: 0x%lx  ESP: 0x%lx\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			(ULONG_PTR)req->ctx.Eip,
+			(ULONG_PTR)req->ctx.Eax, (ULONG_PTR)req->ctx.Ebx, (ULONG_PTR)req->ctx.Ecx, (ULONG_PTR)req->ctx.Edx,
+			(ULONG_PTR)req->ctx.Esi, (ULONG_PTR)req->ctx.Edi, (ULONG_PTR)req->ctx.Ebp, (ULONG_PTR)req->ctx.Esp);
+	}
+#endif
+
+	if (written > 0 && written < rem) {
+		p += written;
+		rem -= written;
+	}
+
+	if (req->backtrace_count > 0) {
+		written = _snprintf_s(p, rem, _TRUNCATE, "  Call Stack (%u frames):\n", req->backtrace_count);
+		if (written > 0 && written < rem) {
+			p += written;
+			rem -= written;
+		}
+
+		for (i = 0; i < req->backtrace_count && rem > 128; i++) {
+			modname = watchdog_get_module_and_offset(req->backtrace[i], &off);
+			if (modname) {
+#ifdef _WIN64
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u %s+0x%x (0x%I64x)\n", i, modname, off, (ULONG_PTR)req->backtrace[i]);
+#else
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u %s+0x%x (0x%lx)\n", i, modname, off, (ULONG_PTR)req->backtrace[i]);
+#endif
+				free(modname);
+			} else {
+#ifdef _WIN64
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u [0x%I64x]\n", i, (ULONG_PTR)req->backtrace[i]);
+#else
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u [0x%lx]\n", i, (ULONG_PTR)req->backtrace[i]);
+#endif
+			}
+			if (written > 0 && written < rem) {
+				p += written;
+				rem -= written;
+			}
+		}
+	} else {
+		written = _snprintf_s(p, rem, _TRUNCATE, "  Call Stack: (none)\n");
+		if (written > 0 && written < rem) {
+			p += written;
+			rem -= written;
+		}
+	}
+
 	pipe("%z", msg);
 }
 
