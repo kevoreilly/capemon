@@ -472,11 +472,16 @@ DWORD g_watchdog_thread_id;
 #define WATCHDOG_MAX_THREADS 128
 #define WATCHDOG_MAX_FRAMES  32
 
+#define WATCHDOG_STATUS_PENDING     0
+#define WATCHDOG_STATUS_APC_RUNNING 1
+#define WATCHDOG_STATUS_APC_DONE    2
+#define WATCHDOG_STATUS_FALLBACK    3
+
 typedef struct _WATCHDOG_REQUEST {
 	DWORD tid;
 	HANDLE hThread;
 	ULONG generation;
-	volatile LONG status; // 0 = PENDING, 1 = COMPLETED_BY_APC, 2 = FALLBACK_TAKEN
+	volatile LONG status; // WATCHDOG_STATUS_*
 	volatile LONG apc_dispatched_count;
 	volatile LONG apc_executed_count;
 	BOOL sampled_via_apc;
@@ -492,19 +497,51 @@ static ULONG g_watchdog_generation = 0;
 static WATCHDOG_REQUEST *watchdog_get_or_create_slot(DWORD tid)
 {
 	int i;
-	int free_idx = -1;
+	int clean_free_idx = -1;
+	int fallback_free_idx = -1;
 	for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
 		if (g_watchdog_requests[i].tid == tid)
 			return &g_watchdog_requests[i];
-		if (free_idx == -1 && g_watchdog_requests[i].tid == 0)
-			free_idx = i;
+		if (g_watchdog_requests[i].tid == 0) {
+			if (clean_free_idx == -1 &&
+				g_watchdog_requests[i].apc_dispatched_count == g_watchdog_requests[i].apc_executed_count) {
+				clean_free_idx = i;
+			}
+			if (fallback_free_idx == -1)
+				fallback_free_idx = i;
+		}
 	}
-	if (free_idx != -1) {
-		memset(&g_watchdog_requests[free_idx], 0, sizeof(WATCHDOG_REQUEST));
-		g_watchdog_requests[free_idx].tid = tid;
-		return &g_watchdog_requests[free_idx];
+	if (clean_free_idx != -1) {
+		memset(&g_watchdog_requests[clean_free_idx], 0, sizeof(WATCHDOG_REQUEST));
+		g_watchdog_requests[clean_free_idx].status = WATCHDOG_STATUS_FALLBACK;
+		g_watchdog_requests[clean_free_idx].tid = tid;
+		return &g_watchdog_requests[clean_free_idx];
+	}
+	if (fallback_free_idx != -1) {
+		LONG disp = g_watchdog_requests[fallback_free_idx].apc_dispatched_count;
+		LONG exec = g_watchdog_requests[fallback_free_idx].apc_executed_count;
+		memset(&g_watchdog_requests[fallback_free_idx], 0, sizeof(WATCHDOG_REQUEST));
+		g_watchdog_requests[fallback_free_idx].apc_dispatched_count = disp;
+		g_watchdog_requests[fallback_free_idx].apc_executed_count = exec;
+		g_watchdog_requests[fallback_free_idx].status = WATCHDOG_STATUS_FALLBACK;
+		g_watchdog_requests[fallback_free_idx].tid = tid;
+		return &g_watchdog_requests[fallback_free_idx];
 	}
 	return NULL;
+}
+
+static BOOL is_executable_address(ULONG_PTR addr)
+{
+	MEMORY_BASIC_INFORMATION mbi;
+	if (!addr)
+		return FALSE;
+	if (!VirtualQuery((LPCVOID)addr, &mbi, sizeof(mbi)))
+		return FALSE;
+	if (mbi.State != MEM_COMMIT)
+		return FALSE;
+	if (mbi.Protect & PAGE_GUARD)
+		return FALSE;
+	return (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
 }
 
 static char *watchdog_get_module_and_offset(ULONG_PTR addr, unsigned int *offset)
@@ -589,15 +626,13 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 	_esp = ctx->Esp;
 
 	__try {
-		if (count < max_depth) {
+		if (count < max_depth && is_executable_address(ctx->Eip)) {
 			backtrace[count++] = ctx->Eip;
 		}
 		if (top && bottom) {
 			if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
 				ULONG_PTR first_ret = *(ULONG_PTR *)_esp;
-				MEMORY_BASIC_INFORMATION mbi;
-				if (VirtualQuery((LPCVOID)first_ret, &mbi, sizeof(mbi)) &&
-					(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+				if (is_executable_address(first_ret) && (count == 0 || backtrace[count - 1] != first_ret)) {
 					if (count < max_depth)
 						backtrace[count++] = first_ret;
 				}
@@ -609,9 +644,7 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 					break;
 				_ebp = next_ebp;
 				if (retaddr) {
-					MEMORY_BASIC_INFORMATION mbi;
-					if (VirtualQuery((LPCVOID)retaddr, &mbi, sizeof(mbi)) &&
-						(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+					if (is_executable_address(retaddr) && (count == 0 || backtrace[count - 1] != retaddr)) {
 						backtrace[count++] = retaddr;
 					}
 				}
@@ -626,9 +659,7 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 					break;
 				_ebp = next_ebp;
 				if (retaddr) {
-					MEMORY_BASIC_INFORMATION mbi;
-					if (VirtualQuery((LPCVOID)retaddr, &mbi, sizeof(mbi)) &&
-						(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+					if (is_executable_address(retaddr) && (count == 0 || backtrace[count - 1] != retaddr)) {
 						backtrace[count++] = retaddr;
 					}
 				}
@@ -645,7 +676,6 @@ static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT
 static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace, unsigned int max_depth)
 {
 	CONTEXT local_ctx;
-	memcpy(&local_ctx, ctx, sizeof(CONTEXT));
 	DWORD64 imgbase;
 	PRUNTIME_FUNCTION runfunc;
 	KNONVOLATILE_CONTEXT_POINTERS nvctx;
@@ -656,19 +686,21 @@ static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace
 	if (srw_lock_held())
 		return 0;
 
+	memcpy(&local_ctx, ctx, sizeof(CONTEXT));
+
 	__try {
-		for (frame = 0; frame < max_depth; frame++) {
-			MEMORY_BASIC_INFORMATION mbi;
-			if (!local_ctx.Rip)
+		while (frame < max_depth) {
+			ULONG_PTR prev_rip = (ULONG_PTR)local_ctx.Rip;
+			ULONG_PTR prev_rsp = (ULONG_PTR)local_ctx.Rsp;
+
+			// Verify that Rip points to valid committed executable code
+			if (!is_executable_address(prev_rip))
 				break;
 
-			// Verify that Rip points to valid executable code
-			if (!VirtualQuery((LPCVOID)local_ctx.Rip, &mbi, sizeof(mbi)))
-				break;
-			if (!(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+			backtrace[frame++] = prev_rip;
+			if (frame >= max_depth)
 				break;
 
-			backtrace[frame] = (ULONG_PTR)local_ctx.Rip;
 			runfunc = RtlLookupFunctionEntry(local_ctx.Rip, &imgbase, NULL);
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
@@ -680,13 +712,8 @@ static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace
 						break;
 					candidate = *(ULONG_PTR *)local_ctx.Rsp;
 					local_ctx.Rsp += 8;
-					if (candidate) {
-						MEMORY_BASIC_INFORMATION cand_mbi;
-						if (VirtualQuery((LPCVOID)candidate, &cand_mbi, sizeof(cand_mbi)) &&
-							(cand_mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
-							break;
-						}
-					}
+					if (is_executable_address(candidate))
+						break;
 					candidate = 0;
 				}
 				if (!candidate)
@@ -696,6 +723,9 @@ static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace
 			else {
 				RtlVirtualUnwind(UNW_FLAG_NHANDLER, imgbase, local_ctx.Rip, runfunc, &local_ctx, &handlerdata, &establisherframe, &nvctx);
 			}
+
+			if ((ULONG_PTR)local_ctx.Rip == prev_rip && (ULONG_PTR)local_ctx.Rsp == prev_rsp)
+				break;
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER) {
@@ -706,15 +736,19 @@ static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace
 
 static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
 {
+	lasterror_t lasterror;
 	WATCHDOG_REQUEST *req = (WATCHDOG_REQUEST *)Parameter;
 	if (!req)
 		return;
 
 	InterlockedIncrement(&req->apc_executed_count);
 
-	// Atomically try to claim the slot (transition from 0 -> 1)
-	if (InterlockedCompareExchange(&req->status, 1, 0) != 0)
+	// Atomically try to claim the slot (transition PENDING -> APC_RUNNING)
+	if (InterlockedCompareExchange(&req->status, WATCHDOG_STATUS_APC_RUNNING, WATCHDOG_STATUS_PENDING) != WATCHDOG_STATUS_PENDING)
 		return;
+
+	get_lasterrors(&lasterror);
+	hook_disable();
 
 	memset(&req->ctx, 0, sizeof(req->ctx));
 	req->ctx.ContextFlags = CONTEXT_FULL;
@@ -726,22 +760,9 @@ static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
 		ULONG_PTR top = get_stack_top();
 		ULONG_PTR bottom = get_stack_bottom();
 		ULONG_PTR _ebp = req->ctx.Ebp;
-		ULONG_PTR _esp = req->ctx.Esp;
 		unsigned int count = 0;
 
 		__try {
-			if (count < WATCHDOG_MAX_FRAMES)
-				req->backtrace[count++] = req->ctx.Eip;
-
-			if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
-				ULONG_PTR first_ret = *(ULONG_PTR *)_esp;
-				MEMORY_BASIC_INFORMATION mbi;
-				if (VirtualQuery((LPCVOID)first_ret, &mbi, sizeof(mbi)) &&
-					(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
-					if (count < WATCHDOG_MAX_FRAMES)
-						req->backtrace[count++] = first_ret;
-				}
-			}
 			while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count < WATCHDOG_MAX_FRAMES) {
 				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
 				ULONG_PTR next_ebp = *(ULONG_PTR *)_ebp;
@@ -749,11 +770,8 @@ static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
 					break;
 				_ebp = next_ebp;
 				if (retaddr) {
-					MEMORY_BASIC_INFORMATION mbi;
-					if (VirtualQuery((LPCVOID)retaddr, &mbi, sizeof(mbi)) &&
-						(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+					if (is_executable_address(retaddr))
 						req->backtrace[count++] = retaddr;
-					}
 				}
 				else
 					break;
@@ -762,12 +780,26 @@ static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
 		__except(EXCEPTION_EXECUTE_HANDLER) {
 		}
 		req->backtrace_count = count;
+		if (count > 0)
+			req->ctx.Eip = req->backtrace[0];
 	}
 #else
 	req->backtrace_count = safe_unwind_backtrace_x64(&req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+	// Drop WatchdogApcCallback's own frame so RIP and frame #00 reflect the interrupted thread
+	if (req->backtrace_count > 1) {
+		unsigned int k;
+		for (k = 0; k < req->backtrace_count - 1; k++)
+			req->backtrace[k] = req->backtrace[k + 1];
+		req->backtrace_count--;
+		req->ctx.Rip = req->backtrace[0];
+	}
 #endif
 
 	req->sampled_via_apc = TRUE;
+	InterlockedExchange(&req->status, WATCHDOG_STATUS_APC_DONE);
+
+	hook_enable();
+	set_lasterrors(&lasterror);
 }
 
 static void watchdog_log_sample(WATCHDOG_REQUEST *req)
@@ -910,29 +942,31 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 						WATCHDOG_REQUEST *req = watchdog_get_or_create_slot(te.th32ThreadID);
 						if (req) {
 							req->in_snapshot = TRUE;
+							req->generation = ++g_watchdog_generation;
+							req->sampled_via_apc = FALSE;
+							req->backtrace_count = 0;
+							InterlockedExchange(&req->status, WATCHDOG_STATUS_PENDING);
 
 							// If an APC is not currently in flight for this thread, queue one
 							if (req->apc_dispatched_count == req->apc_executed_count) {
-								HANDLE hThread;
-								req->generation = ++g_watchdog_generation;
-								req->status = 0; // PENDING
-								req->sampled_via_apc = FALSE;
-								req->backtrace_count = 0;
-
-								hThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
-								if (!hThread)
-									hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, te.th32ThreadID);
+								HANDLE hThread = req->hThread;
+								if (!hThread) {
+									hThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+									if (!hThread)
+										hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, te.th32ThreadID);
+									req->hThread = hThread;
+								}
 
 								if (hThread) {
-									req->hThread = hThread;
 									if (QueueUserAPC((PAPCFUNC)WatchdogApcCallback, hThread, (ULONG_PTR)req) != 0) {
 										InterlockedIncrement(&req->apc_dispatched_count);
 									}
 									else {
-										CloseHandle(hThread);
-										req->hThread = NULL;
-										req->status = 2; // skip to fallback later if needed
+										InterlockedExchange(&req->status, WATCHDOG_STATUS_FALLBACK);
 									}
+								}
+								else {
+									InterlockedExchange(&req->status, WATCHDOG_STATUS_FALLBACK);
 								}
 							}
 						}
@@ -940,71 +974,91 @@ static DWORD WINAPI _watchdog_thread(LPVOID param)
 				} while (Thread32Next(hSnap, &te));
 			}
 			CloseHandle(hSnap);
-		}
 
-		// Allow alertable threads to execute their APC
-		raw_sleep(apc_wait);
+			// Allow alertable threads to execute their APC
+			raw_sleep(apc_wait);
 
-		// Evaluate sampled threads and fallback to safe suspend for busy ones
-		for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
-			WATCHDOG_REQUEST *req = &g_watchdog_requests[i];
-			LONG prev;
-			if (!req->tid || !req->in_snapshot)
-				continue;
+			// Evaluate sampled threads and fallback to safe suspend for busy ones
+			for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
+				WATCHDOG_REQUEST *req = &g_watchdog_requests[i];
+				LONG prev;
+				if (!req->tid || !req->in_snapshot)
+					continue;
 
-			// Check if APC executed
-			prev = InterlockedCompareExchange(&req->status, 2, 0);
-			if (prev == 1) {
-				// APC succeeded!
-				if (req->hThread) {
-					CloseHandle(req->hThread);
-					req->hThread = NULL;
-				}
-				watchdog_log_sample(req);
-			}
-			else {
-				// APC did not execute (thread is busy or in non-alertable wait).
-				// Perform Safe Suspend/Resume Fallback.
-				HANDLE hThread = req->hThread;
-				if (!hThread) {
-					hThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, req->tid);
-					if (!hThread)
-						hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, req->tid);
+				// Claim slot for fallback if still PENDING; if APC is running, wait briefly for completion
+				prev = InterlockedCompareExchange(&req->status, WATCHDOG_STATUS_FALLBACK, WATCHDOG_STATUS_PENDING);
+				if (prev == WATCHDOG_STATUS_APC_RUNNING) {
+					int spin;
+					for (spin = 0; spin < 50 && req->status == WATCHDOG_STATUS_APC_RUNNING; spin++)
+						raw_sleep(1);
+					prev = req->status;
 				}
 
-				if (hThread) {
-					if (SuspendThread(hThread) != (DWORD)-1) {
-						memset(&req->ctx, 0, sizeof(req->ctx));
-						req->ctx.ContextFlags = CONTEXT_FULL;
-						if (GetThreadContext(hThread, &req->ctx)) {
-#ifndef _WIN64
-							req->backtrace_count = safe_capture_suspended_backtrace_x86(hThread, &req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
-#endif
-						}
-						ResumeThread(hThread);
-
-#ifdef _WIN64
-						// On x64, unwind stack safely AFTER resuming the thread to avoid lock contention
-						req->backtrace_count = safe_unwind_backtrace_x64(&req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
-#endif
-						req->sampled_via_apc = FALSE;
-						watchdog_log_sample(req);
+				if (prev == WATCHDOG_STATUS_APC_DONE) {
+					if (req->hThread) {
+						CloseHandle(req->hThread);
+						req->hThread = NULL;
 					}
-					CloseHandle(hThread);
-					req->hThread = NULL;
+					watchdog_log_sample(req);
+				}
+				else if (prev != WATCHDOG_STATUS_APC_RUNNING) {
+					// APC did not execute (thread is busy or in non-alertable wait).
+					// Perform Safe Suspend/Resume Fallback.
+					HANDLE hThread = req->hThread;
+					if (!hThread) {
+						hThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, req->tid);
+						if (!hThread)
+							hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, req->tid);
+					}
+
+					if (hThread) {
+						if (SuspendThread(hThread) != (DWORD)-1) {
+							BOOL ctx_ok = FALSE;
+							memset(&req->ctx, 0, sizeof(req->ctx));
+							req->ctx.ContextFlags = CONTEXT_FULL;
+							req->backtrace_count = 0;
+							if (GetThreadContext(hThread, &req->ctx)) {
+								ctx_ok = TRUE;
+#ifndef _WIN64
+								req->backtrace_count = safe_capture_suspended_backtrace_x86(hThread, &req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+#else
+								{
+									PEB *peb = (PEB *)get_peb();
+									RTL_CRITICAL_SECTION *loader_lock = peb ? peb->LoaderLock : NULL;
+									if (!loader_lock || loader_lock->OwningThread != (HANDLE)(ULONG_PTR)req->tid) {
+										req->backtrace_count = safe_unwind_backtrace_x64(&req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+									}
+								}
+#endif
+							}
+							ResumeThread(hThread);
+
+							if (ctx_ok) {
+								req->sampled_via_apc = FALSE;
+								watchdog_log_sample(req);
+							}
+						}
+						CloseHandle(hThread);
+						req->hThread = NULL;
+					}
 				}
 			}
-		}
 
-		// Cleanup terminated threads from our slots
-		for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
-			WATCHDOG_REQUEST *req = &g_watchdog_requests[i];
-			if (req->tid && !req->in_snapshot) {
-				if (req->hThread) {
-					CloseHandle(req->hThread);
-					req->hThread = NULL;
+			// Cleanup terminated threads from our slots
+			for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
+				WATCHDOG_REQUEST *req = &g_watchdog_requests[i];
+				if (req->tid && !req->in_snapshot) {
+					if (req->hThread) {
+						CloseHandle(req->hThread);
+						req->hThread = NULL;
+					}
+					if (req->apc_dispatched_count == req->apc_executed_count) {
+						memset(req, 0, sizeof(WATCHDOG_REQUEST));
+					} else {
+						InterlockedExchange(&req->status, WATCHDOG_STATUS_FALLBACK);
+						req->tid = 0;
+					}
 				}
-				memset(req, 0, sizeof(WATCHDOG_REQUEST));
 			}
 		}
 
