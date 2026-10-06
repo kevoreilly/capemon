@@ -95,6 +95,7 @@ extern int process_shutting_down;
 
 static void _send_log(void)
 {
+	hook_disable();
 	EnterCriticalSection(&g_writing_log_buffer_mutex);
 	while (g_idx > 0) {
 		int written = -1;
@@ -118,8 +119,11 @@ static void _send_log(void)
 			}
 		}
 
-		if (written < 0)
-			continue;
+		if (written <= 0) {
+			// Write failed or pipe closed/full, reset buffer index to avoid spinning forever holding g_writing_log_buffer_mutex
+			g_idx = 0;
+			break;
+		}
 
 		// if this call didn't write the entire buffer, then we have to move
 		// around some stuff in the buffer
@@ -131,6 +135,7 @@ static void _send_log(void)
 		g_idx -= written;
 	}
 	LeaveCriticalSection(&g_writing_log_buffer_mutex);
+	hook_enable();
 }
 
 static DWORD WINAPI _log_thread(LPVOID param)

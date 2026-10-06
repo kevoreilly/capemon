@@ -1393,12 +1393,15 @@ BOOL TrackExecution(PVOID CIP)
 	if (is_in_dll_range((ULONG_PTR)CIP) || inside_hook(CIP))
 		return FALSE;
 
+	hook_disable();
+
 	AllocationBase = GetAllocationBase(CIP);
 	if (!AllocationBase)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("TrackExecution: Failed to add address region for 0x%p to tracked regions list (thread %d).\n", CIP, GetCurrentThreadId());
 #endif
+		hook_enable();
 		return FALSE;
 	}
 
@@ -1409,12 +1412,14 @@ BOOL TrackExecution(PVOID CIP)
 		if (!TrackedRegion)
 		{
 			DebugOutput("TrackExecution: Failed to add region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
+			hook_enable();
 			return FALSE;
 		}
 		DebugOutput("TrackExecution: Added region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
 		TrackedRegion->Caller = CIP;
 		ProcessTrackedRegion(TrackedRegion);
 	}
+	hook_enable();
 	return TRUE;
 }
 

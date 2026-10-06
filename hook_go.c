@@ -625,6 +625,8 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
     if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord)
         return FALSE;
 
+    hook_disable();
+
     PVOID Address = ExceptionInfo->ExceptionRecord->ExceptionAddress;
 
     BOOL handled = FALSE;
@@ -709,6 +711,7 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
         handled = TRUE;
     }
 
+    hook_enable();
     return handled;
 }
 

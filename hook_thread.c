@@ -322,82 +322,84 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 
 	NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
 
-	if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
+	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
 #ifdef _WIN64
-		LOQ_ntstatus(
-			"threading", "pppppppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Rip,
-			"Rax", Context->Rax,
-			"Rbx", Context->Rbx,
-			"Rcx", Context->Rcx,
-			"Rdx", Context->Rdx,
-			"Rsp", Context->Rsp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Rip,
+				"Rax", Context->Rax,
+				"Rbx", Context->Rbx,
+				"Rcx", Context->Rcx,
+				"Rdx", Context->Rdx,
+				"Rsp", Context->Rsp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #else
-		LOQ_ntstatus(
-			"threading", "pppppppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #endif
-	else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
+		else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
 #ifdef _WIN64
-		LOQ_ntstatus(
-			"threading", "pppppii",
-			"ThreadHandle", ThreadHandle,
-			"Rax", Context->Rax,
-			"Rbx", Context->Rbx,
-			"Rcx", Context->Rcx,
-			"Rdx", Context->Rdx,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppii",
+				"ThreadHandle", ThreadHandle,
+				"Rax", Context->Rax,
+				"Rbx", Context->Rbx,
+				"Rcx", Context->Rcx,
+				"Rdx", Context->Rdx,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #else
-		LOQ_ntstatus(
-			"threading", "pppppii",
-			"ThreadHandle", ThreadHandle,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppii",
+				"ThreadHandle", ThreadHandle,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #endif
+		}
+		else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
+#ifdef _WIN64
+			LOQ_ntstatus(
+				"threading", "pppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Rip,
+				"Rsp", Context->Rsp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+#else
+			LOQ_ntstatus(
+				"threading", "pppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+#endif
+		}
+		else
+			LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 	}
-	else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
-#ifdef _WIN64
-		LOQ_ntstatus(
-			"threading", "pppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Rip,
-			"Rsp", Context->Rsp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-#else
-		LOQ_ntstatus(
-			"threading", "pppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-#endif
-	}
-	else
-		LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 
 	// This needs to be __declspec(noinline) to prevent inlining
 	GetThreadContextHandler(ThreadHandle, Context);
@@ -416,83 +418,84 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 
 	NTSTATUS ret = Old_NtSetContextThread(ThreadHandle, Context);
 
-	if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
+	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
 #ifdef _WIN64
-		LOQ_ntstatus(
-			"threading", "pppppppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Rip,
-			"Rax", Context->Rax,
-			"Rbx", Context->Rbx,
-			"Rcx", Context->Rcx,
-			"Rdx", Context->Rdx,
-			"Rsp", Context->Rsp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Rip,
+				"Rax", Context->Rax,
+				"Rbx", Context->Rbx,
+				"Rcx", Context->Rcx,
+				"Rdx", Context->Rdx,
+				"Rsp", Context->Rsp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #else
-		LOQ_ntstatus(
-			"threading", "pppppppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #endif
-	else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
+		else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
 #ifdef _WIN64
-		LOQ_ntstatus(
-			"threading", "pppppii",
-			"ThreadHandle", ThreadHandle,
-			"Rax", Context->Rax,
-			"Rbx", Context->Rbx,
-			"Rcx", Context->Rcx,
-			"Rdx", Context->Rdx,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppii",
+				"ThreadHandle", ThreadHandle,
+				"Rax", Context->Rax,
+				"Rbx", Context->Rbx,
+				"Rcx", Context->Rcx,
+				"Rdx", Context->Rdx,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #else
-		LOQ_ntstatus(
-			"threading", "pppppii",
-			"ThreadHandle", ThreadHandle,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+			LOQ_ntstatus(
+				"threading", "pppppii",
+				"ThreadHandle", ThreadHandle,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
 #endif
+		}
+		else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
+#ifdef _WIN64
+			LOQ_ntstatus(
+				"threading", "pppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Rip,
+				"Rsp", Context->Rsp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+#else
+			LOQ_ntstatus(
+				"threading", "pppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+#endif
+		}
+		else
+			LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 	}
-	else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
-#ifdef _WIN64
-		LOQ_ntstatus(
-			"threading", "pppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Rip,
-			"Rsp", Context->Rsp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-#else
-		LOQ_ntstatus(
-			"threading", "pppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-#endif
-	}
-	else
-
-	LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 
 	return ret;
 }
@@ -507,43 +510,45 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 
 	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
 
-	if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
-		LOQ_ntstatus(
-			"threading", "pppppppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-	else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
-		LOQ_ntstatus(
-			"threading", "pppppii",
-			"ThreadHandle", ThreadHandle,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
+			LOQ_ntstatus(
+				"threading", "pppppppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+		else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
+			LOQ_ntstatus(
+				"threading", "pppppii",
+				"ThreadHandle", ThreadHandle,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+		}
+		else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
+			LOQ_ntstatus(
+				"threading", "pppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+		}
+		else
+			LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 	}
-	else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
-		LOQ_ntstatus(
-			"threading", "pppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-	}
-	else
-		LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 
 	Wow64GetThreadContextHandler(ThreadHandle, Context);
 
@@ -561,43 +566,45 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
 
 	NTSTATUS ret = Old_RtlWow64SetThreadContext(ThreadHandle, Context);
 
-	if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
-		LOQ_ntstatus(
-			"threading", "pppppppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-	else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
-		LOQ_ntstatus(
-			"threading", "pppppii",
-			"ThreadHandle", ThreadHandle,
-			"Eax", Context->Eax,
-			"Ebx", Context->Ebx,
-			"Ecx", Context->Ecx,
-			"Edx", Context->Edx,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
+	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
+			LOQ_ntstatus(
+				"threading", "pppppppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+		else if (Context && (Context->ContextFlags & CONTEXT_INTEGER)) {
+			LOQ_ntstatus(
+				"threading", "pppppii",
+				"ThreadHandle", ThreadHandle,
+				"Eax", Context->Eax,
+				"Ebx", Context->Ebx,
+				"Ecx", Context->Ecx,
+				"Edx", Context->Edx,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+		}
+		else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
+			LOQ_ntstatus(
+				"threading", "pppii",
+				"ThreadHandle", ThreadHandle,
+				"InstructionPointer", Context->Eip,
+				"Esp", Context->Esp,
+				"ProcessId", pid,
+				"ThreadId", tid
+			);
+		}
+		else
+			LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 	}
-	else if (Context && (Context->ContextFlags & CONTEXT_CONTROL)) {
-		LOQ_ntstatus(
-			"threading", "pppii",
-			"ThreadHandle", ThreadHandle,
-			"InstructionPointer", Context->Eip,
-			"Esp", Context->Esp,
-			"ProcessId", pid,
-			"ThreadId", tid
-		);
-	}
-	else
-		LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
 
 	return ret;
 }
@@ -617,9 +624,13 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		*PreviousSuspendCount = 0;
 		LOQ_ntstatus("threading", "pIsi", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread", "ProcessId", pid);
 	}
+	else if (pid == GetCurrentProcessId()) {
+		// Do not call LOQ_ntstatus while a same-process thread is suspended (e.g. Go runtime.preemptM):
+		// the suspended thread may hold g_writing_log_buffer_mutex, g_mutex, or the process heap lock.
+		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
+	}
 	else {
-		if (pid != GetCurrentProcessId())
-			ProcessMessage(pid, 0);
+		ProcessMessage(pid, 0);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
@@ -639,10 +650,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 		if (g_config.injection)
 			ResumeThreadHandler(pid);
 		pipe("RESUME:%d,0", pid);
+		ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
+		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	}
-
-	ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
-	LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
+	else {
+		ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
+	}
 	return ret;
 }
 
@@ -658,10 +671,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
 		if (g_config.injection)
 			ResumeThreadHandler(pid);
 		pipe("RESUME:%d,0", pid);
+		ret = Old_NtAlertResumeThread(ThreadHandle, SuspendCount);
+		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	}
-
-	ret = Old_NtAlertResumeThread(ThreadHandle, SuspendCount);
-	LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
+	else {
+		ret = Old_NtAlertResumeThread(ThreadHandle, SuspendCount);
+	}
 	return ret;
 }
 

@@ -434,14 +434,19 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 }
 
 //**************************************************************************************
-BOOL SoftBPPendingForThread(DWORD ThreadId)
+BOOL SoftBPPendingForThread(DWORD ThreadId, PVOID ExceptionAddress)
 //**************************************************************************************
 {
 	// TRUE if this thread disarmed a software breakpoint and is single-stepping over it
 	for (entry_t *Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
 	{
+		PBYTE Address = (PBYTE)Entry->id;
 		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
-		if (SoftBP && SoftBP->ThreadId == ThreadId)
+		if (!SoftBP)
+			continue;
+		if (SoftBP->ThreadId == ThreadId)
+			return TRUE;
+		if (SoftBP->StepCount > 0 && (ULONG_PTR)ExceptionAddress - (ULONG_PTR)Address <= 0x10)
 			return TRUE;
 	}
 	return FALSE;
@@ -452,6 +457,7 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
 	DWORD CurrentThreadId = GetCurrentThreadId();
+	PVOID ExceptionAddress = ExceptionInfo->ExceptionRecord->ExceptionAddress;
 	BOOL Restored = FALSE, ChainStep = FALSE;
 
 	// Only re-arm breakpoints this thread disarmed; other threads may still be stepping over theirs
@@ -460,15 +466,27 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		PBYTE Address = (PBYTE)Entry->id;
 		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
 
-		if (!SoftBP || SoftBP->ThreadId != CurrentThreadId)
+		if (!SoftBP)
 			continue;
 
-		SoftBP->ThreadId = 0;
+		if (SoftBP->ThreadId != CurrentThreadId &&
+		    !(SoftBP->StepCount > 0 && (ULONG_PTR)ExceptionAddress - (ULONG_PTR)Address <= 0x10))
+			continue;
+
+		if (SoftBP->ThreadId == CurrentThreadId)
+			SoftBP->ThreadId = 0;
 		if (SoftBP->ChainStep)
 			ChainStep = TRUE;
 		SoftBP->ChainStep = FALSE;
 
-		if (IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
+		LONG remaining = InterlockedDecrement(&SoftBP->StepCount);
+		if (remaining < 0)
+		{
+			InterlockedExchange(&SoftBP->StepCount, 0);
+			remaining = 0;
+		}
+
+		if (remaining == 0 && IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
 		{
 			DWORD OldProtect;
 			if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
@@ -481,6 +499,10 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif
 			*(PBYTE)Address = 0xCC;
 			VirtualProtect(Address, 1, OldProtect, &OldProtect);
+			Restored = TRUE;
+		}
+		else if (remaining > 0)
+		{
 			Restored = TRUE;
 		}
 	}
@@ -505,10 +527,6 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (!Address)
 		return FALSE;
 
-	BYTE InsByte = *(PBYTE)Address;
-	if (InsByte != 0xCC)
-		return FALSE;
-
 	PSOFTBP SoftBP = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
 
 	if (!SoftBP)
@@ -517,18 +535,31 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		return FALSE;
 	}
 
+	BYTE InsByte = *(PBYTE)Address;
+	if (InsByte != 0xCC && InsByte != SoftBP->InstructionByte)
+		return FALSE;
+
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SoftwareBreakpointHandler: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);
 #endif
-	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+	if (InsByte == 0xCC)
 	{
-		DebugOutput("SoftwareBreakpointHandler: Unable to change memory protection at 0x%p", Address);
-		return FALSE;
+		if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+		{
+			DebugOutput("SoftwareBreakpointHandler: Unable to change memory protection at 0x%p", Address);
+			return FALSE;
+		}
+
+		*(PBYTE)Address = SoftBP->InstructionByte;
+
+		VirtualProtect(Address, 1, OldProtect, &OldProtect);
 	}
 
-	*(PBYTE)Address = SoftBP->InstructionByte;
-
-	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+#ifdef _WIN64
+	ExceptionInfo->ContextRecord->Rip = (DWORD64)Address;
+#else
+	ExceptionInfo->ContextRecord->Eip = (DWORD)Address;
+#endif
 
 	// The callback may change SoftBP->Persistent (e.g. Go TLS return breakpoints with no pending callers)
 	if (SoftBP->Callback)
@@ -540,6 +571,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		// TF already set here means the callback (or an active trace) owns stepping for this thread.
 		SoftBP->ChainStep = (ExceptionInfo->ContextRecord->EFlags & FL_TF) ? TRUE : FALSE;
 		SoftBP->ThreadId = GetCurrentThreadId();
+		InterlockedIncrement(&SoftBP->StepCount);
 		ExceptionInfo->ContextRecord->EFlags |= FL_TF;
 	}
 	else
@@ -643,7 +675,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		// If not it's a single-step
 		if (bp == NUMBER_OF_DEBUG_REGISTERS)
 		{
-			if (SoftBPPendingForThread(CurrentThreadId))
+			if (SoftBPPendingForThread(CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionAddress))
 				RestoreSoftwareBreakpoint(ExceptionInfo);
 			else if (SingleStepHandler)
 				SingleStepHandler(ExceptionInfo);
@@ -760,7 +792,9 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
-	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT && *(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC)
+	else if (g_config.debugger && ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_BREAKPOINT &&
+		(*(PBYTE)ExceptionInfo->ExceptionRecord->ExceptionAddress == 0xCC ||
+		 lookup_get(&SoftBPs, (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress, 0)))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("CAPEExceptionFilter: Software breakpoint at 0x%p\n", ExceptionInfo->ExceptionRecord->ExceptionAddress);
@@ -2253,6 +2287,7 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 	SoftBP->Persistent = Persistent;
 	SoftBP->ChainStep = FALSE;
 	SoftBP->ThreadId = 0;
+	SoftBP->StepCount = 0;
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SetSoftwareBreakpoint: Instruction byte at 0x%p: 0x%x", Address, SoftBP->InstructionByte);

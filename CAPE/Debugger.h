@@ -97,6 +97,7 @@ typedef struct SoftBP
 	BOOL			Persistent;	// re-arm after each hit regardless of softbpmode
 	BOOL			ChainStep;	// thread was already single-stepping when the breakpoint was hit
 	DWORD			ThreadId;	// thread stepping over the disarmed breakpoint (0 = armed)
+	volatile LONG	StepCount;	// number of threads currently single-stepping over the disarmed breakpoint
 } SOFTBP, *PSOFTBP;
 
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);
@@ -142,7 +143,7 @@ BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, 
 BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
 BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address, PVOID Callback);
 BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL Persistent);
-BOOL SoftBPPendingForThread(DWORD ThreadId);
+BOOL SoftBPPendingForThread(DWORD ThreadId, PVOID ExceptionAddress);
 
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);

@@ -461,10 +461,11 @@ void set_lasterrors(lasterror_t *errors)
 
 void hook_enable()
 {
-	hook_info()->disable_count = 0;
+	if (hook_info()->disable_count > 0)
+		hook_info()->disable_count--;
 }
 
 void hook_disable()
 {
-	hook_info()->disable_count = 1;
+	hook_info()->disable_count++;
 }
