@@ -529,7 +529,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	PSOFTBP SoftBP = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
 
-	if (!SoftBP)
+	if (!SoftBP || !SoftBP->InstructionByte)
 	{
 		DebugOutput("SoftwareBreakpointHandler: Unable to retrieve instruction byte for 0x%p", Address);
 		return FALSE;
@@ -2238,10 +2238,10 @@ BOOL ContextSetThreadBreakpoints(PCONTEXT ThreadContext, PTHREADBREAKPOINTS Thre
 }
 
 //**************************************************************************************
-BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address, PVOID Callback)
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 //**************************************************************************************
 {
-	return SetSoftwareBreakpointEx(BPs, Address, Callback, FALSE);
+	return SetSoftwareBreakpointEx(BPs, Address, SoftwareBreakpointCallback, FALSE);
 }
 
 //**************************************************************************************

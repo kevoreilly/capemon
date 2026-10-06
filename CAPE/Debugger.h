@@ -141,7 +141,7 @@ BOOL ContextSetNextAvailableBreakpoint(PCONTEXT Context, int* Register, int Size
 BOOL SetNextAvailableBreakpoint(DWORD ThreadId, int* Register, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, DWORD Type, unsigned int HitCount, PVOID Callback);
 BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
-BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address, PVOID Callback);
+BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
 BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL Persistent);
 BOOL SoftBPPendingForThread(DWORD ThreadId, PVOID ExceptionAddress);
 
