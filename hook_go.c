@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "ntapi.h"
+#include "hooking.h"
 #include "log.h"
 #include "misc.h"
 #include "config.h"
@@ -47,6 +48,7 @@ typedef struct _GO_MODULE_INFO {
 #define GO_MAX_HOOK_CANDIDATES 1024
 typedef struct _GO_HOOK_CANDIDATE {
     PVOID Address;
+    DWORD MaxSize;
     const char* Name;
 } GO_HOOK_CANDIDATE;
 
@@ -54,6 +56,8 @@ typedef struct _GO_HOOK_CANDIDATE {
 // injected payload built with a different Go version) do not overwrite each other's ABI
 typedef struct _GO_HOOK_ENTRY {
     PVOID Address;
+    PBYTE HookSite;
+    BOOL InlineHooked;
     BOOL RegAbi;
     int Version;
     char Name[256];
@@ -715,16 +719,496 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
     return handled;
 }
 
-// Sets an active internal software breakpoint hook (0xCC) on a recovered Go function address
-static void GoSetFunctionHook(PVOID funcAddress, const char* funcName, BOOL regAbi, int version) {
+#ifdef _WIN64
+typedef struct _GO_INLINE_REGS {
+    ULONG_PTR R15;
+    ULONG_PTR R14;
+    ULONG_PTR R13;
+    ULONG_PTR R12;
+    ULONG_PTR R11;
+    ULONG_PTR R10;
+    ULONG_PTR R9;
+    ULONG_PTR R8;
+    ULONG_PTR Rbp;
+    ULONG_PTR Rsi;
+    ULONG_PTR Rdi;
+    ULONG_PTR Rdx;
+    ULONG_PTR Rcx;
+    ULONG_PTR Rbx;
+    ULONG_PTR Rax;
+    ULONG_PTR Rflags;
+} GO_INLINE_REGS;
+
+void GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
+    if (!hookEntry || !regs)
+        return;
+
+    hook_disable();
+
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.Rax = regs->Rax;
+    ctx.Rbx = regs->Rbx;
+    ctx.Rcx = regs->Rcx;
+    ctx.Rdx = regs->Rdx;
+    ctx.Rdi = regs->Rdi;
+    ctx.Rsi = regs->Rsi;
+    ctx.Rbp = regs->Rbp;
+    ctx.R8  = regs->R8;
+    ctx.R9  = regs->R9;
+    ctx.R10 = regs->R10;
+    ctx.R11 = regs->R11;
+    ctx.R12 = regs->R12;
+    ctx.R13 = regs->R13;
+    ctx.R14 = regs->R14;
+    ctx.R15 = regs->R15;
+    ctx.Rsp = (ULONG_PTR)(regs + 1);
+    ctx.Rip = (ULONG_PTR)hookEntry->Address;
+
+    EXCEPTION_RECORD er;
+    memset(&er, 0, sizeof(er));
+    er.ExceptionAddress = hookEntry->Address;
+
+    EXCEPTION_POINTERS ep;
+    ep.ContextRecord = &ctx;
+    ep.ExceptionRecord = &er;
+
+    BREAKPOINTINFO bpInfo;
+    memset(&bpInfo, 0, sizeof(bpInfo));
+    bpInfo.Address = hookEntry->Address;
+    bpInfo.Callback = GoBreakpointCallback;
+
+    GoBreakpointCallback(&bpInfo, &ep);
+
+    hook_enable();
+}
+#else
+typedef struct _GO_INLINE_REGS {
+    DWORD Edi;
+    DWORD Esi;
+    DWORD Ebp;
+    DWORD EspPushad;
+    DWORD Ebx;
+    DWORD Edx;
+    DWORD Ecx;
+    DWORD Eax;
+    DWORD Eflags;
+} GO_INLINE_REGS;
+
+void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
+    if (!hookEntry || !regs)
+        return;
+
+    hook_disable();
+
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.Eax = regs->Eax;
+    ctx.Ebx = regs->Ebx;
+    ctx.Ecx = regs->Ecx;
+    ctx.Edx = regs->Edx;
+    ctx.Esi = regs->Esi;
+    ctx.Edi = regs->Edi;
+    ctx.Ebp = regs->Ebp;
+    ctx.Esp = (DWORD)(ULONG_PTR)(regs + 1);
+    ctx.Eip = (DWORD)(ULONG_PTR)hookEntry->Address;
+
+    EXCEPTION_RECORD er;
+    memset(&er, 0, sizeof(er));
+    er.ExceptionAddress = hookEntry->Address;
+
+    EXCEPTION_POINTERS ep;
+    ep.ContextRecord = &ctx;
+    ep.ExceptionRecord = &er;
+
+    BREAKPOINTINFO bpInfo;
+    memset(&bpInfo, 0, sizeof(bpInfo));
+    bpInfo.Address = hookEntry->Address;
+    bpInfo.Callback = GoBreakpointCallback;
+
+    GoBreakpointCallback(&bpInfo, &ep);
+
+    hook_enable();
+}
+#endif
+
+// Locate the safe inline-hook site for a Go function:
+// - Standard Go functions begin with a split-stack check (`cmp rsp, [r14+0x10]; jbe morestack` on RegABI x64,
+//   `mov rcx, gs:[0x28]; cmp rsp, [rcx+0x10]; jbe morestack` on StackABI x64, or `mov ecx, fs:[0x14]; cmp esp, [ecx+8]; jbe morestack` on x86).
+//   `morestack` at the end of the function finishes with `jmp entry` (+0). Placing the 5-byte E9 jump immediately
+//   after `jbe morestack` (right at `sub rsp, frame_size`) ensures:
+//     1) `morestack` has already grown the stack before the hook runs, and its `jmp entry` does not re-trigger the hook;
+//     2) RSP/ESP and all Go argument registers (RAX..R11) are still untouched at function-entry values;
+//     3) the 5-byte patch never straddles the `jbe morestack` instruction.
+// - For `//go:nosplit` functions without a split-stack prologue (e.g. `syscall.Syscall*`, `time.Sleep`), returns `funcAddr`.
+static PBYTE GoFindHookSite(PBYTE funcAddr, DWORD maxFuncSize, PBYTE* pCodeLimit) {
+    DWORD scanLen = (maxFuncSize > 0 && maxFuncSize < 32) ? maxFuncSize : 32;
+    PBYTE funcEnd = funcAddr + (maxFuncSize > 0 ? maxFuncSize : 64);
+    *pCodeLimit = funcEnd;
+
+    _DInst insns[12];
+    unsigned int count = 0;
+    _CodeInfo codeInfo;
+    codeInfo.codeOffset = (_OffsetType)(ULONG_PTR)funcAddr;
+    codeInfo.code = funcAddr;
+    codeInfo.codeLen = (int)scanLen;
+#ifdef _WIN64
+    codeInfo.dt = Decode64Bits;
+#else
+    codeInfo.dt = Decode32Bits;
+#endif
+    codeInfo.features = DF_NONE;
+
+    if (distorm_decompose(&codeInfo, insns, 12, &count) == DECRES_INPUTERR || count < 2)
+        return funcAddr;
+
+    for (unsigned int i = 0; i < count && i < 4 && (i + 1) < count; i++) {
+        if (insns[i].flags == FLAG_NOT_DECODABLE || insns[i + 1].flags == FLAG_NOT_DECODABLE)
+            break;
+
+        PBYTE b = (PBYTE)(ULONG_PTR)insns[i].addr;
+        BYTE sz = insns[i].size;
+
+        // Check for CMP reg, [reg + disp8] where disp8 == 0x10 (x64 g.stackguard0) or 0x08 (x86 g.stackguard0)
+        BOOL isStackGuardCmp = FALSE;
+#ifdef _WIN64
+        if (sz == 4 && (b[0] >= 0x48 && b[0] <= 0x4F) && b[1] == 0x3B &&
+            (b[2] & 0xC0) == 0x40 && (b[2] & 0x07) != 4 && b[3] == 0x10) {
+            isStackGuardCmp = TRUE;
+        }
+#else
+        if (sz == 3 && b[0] == 0x3B && (b[1] & 0xC0) == 0x40 && (b[1] & 0x07) != 4 && b[2] == 0x08) {
+            isStackGuardCmp = TRUE;
+        }
+#endif
+        if (isStackGuardCmp) {
+            PBYTE jb = (PBYTE)(ULONG_PTR)insns[i + 1].addr;
+            BYTE jsz = insns[i + 1].size;
+            PBYTE jbeEnd = jb + jsz;
+            PBYTE jbeTarget = NULL;
+
+            if (jsz == 2 && jb[0] == 0x76) {
+                jbeTarget = jbeEnd + *(int8_t*)(jb + 1);
+            } else if (jsz == 6 && jb[0] == 0x0F && jb[1] == 0x86) {
+                jbeTarget = jbeEnd + *(int32_t*)(jb + 2);
+            }
+
+            if (jbeTarget && jbeTarget > jbeEnd) {
+                if (jbeTarget <= funcEnd)
+                    *pCodeLimit = jbeTarget;
+                return jbeEnd;
+            }
+        }
+
+        // Only allow standard split-stack prologue instructions before the CMP:
+        // - GS/FS TLS segment load (0x64 / 0x65)
+        // - MOV reg, [reg + disp] or LEA reg, [rsp - disp] (0x8B / 0x8D with optional REX)
+        BYTE op = b[0];
+#ifdef _WIN64
+        if (op >= 0x40 && op <= 0x4F && sz > 1)
+            op = b[1];
+#endif
+        if (b[0] != 0x64 && b[0] != 0x65 && op != 0x8B && op != 0x8D)
+            break;
+    }
+
+    return funcAddr;
+}
+
+// Install a Go-safe 5-byte E9 inline hook at hookSite:
+// - Runs a pure observer stub in hd->pre_tramp that saves all Go ABI registers (RAX..R15, XMM0..XMM5, XMM14, XMM15, RFLAGS),
+//   invokes GoInlineHookDispatch (which returns before resuming the Go function so ZERO foreign return PCs remain on the
+//   goroutine stack during function execution, stack growth, or GC unwinding), restores all registers, executes the
+//   relocated stolen instructions, and jumps back to hookSite + stolenLen.
+static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
+    if (!hookEntry || !hookEntry->Address)
+        return FALSE;
+
+    PBYTE codeLimit = NULL;
+    PBYTE hookSite = GoFindHookSite((PBYTE)hookEntry->Address, maxFuncSize, &codeLimit);
+    if (!hookSite || codeLimit < hookSite + 5 || !IsAddressAccessible(hookSite))
+        return FALSE;
+
+    // Already patched with E9
+    if (*hookSite == 0xE9)
+        return FALSE;
+
+    DWORD availBytes = (DWORD)(codeLimit - hookSite);
+    if (availBytes > 32)
+        availBytes = 32;
+
+    _DInst insns[16];
+    unsigned int count = 0;
+    _CodeInfo codeInfo;
+    codeInfo.codeOffset = (_OffsetType)(ULONG_PTR)hookSite;
+    codeInfo.code = hookSite;
+    codeInfo.codeLen = (int)availBytes;
+#ifdef _WIN64
+    codeInfo.dt = Decode64Bits;
+#else
+    codeInfo.dt = Decode32Bits;
+#endif
+    codeInfo.features = DF_NONE;
+
+    if (distorm_decompose(&codeInfo, insns, 16, &count) == DECRES_INPUTERR || count == 0)
+        return FALSE;
+
+    DWORD stolenLen = 0;
+    unsigned int nStolen = 0;
+    for (unsigned int i = 0; i < count && stolenLen < 5; i++) {
+        _DInst* ci = &insns[i];
+        if (ci->flags == FLAG_NOT_DECODABLE || ci->size == 0)
+            return FALSE;
+
+        PBYTE insnAddr = (PBYTE)(ULONG_PTR)ci->addr;
+        BYTE b0 = insnAddr[0];
+        BYTE op = b0;
+#ifdef _WIN64
+        if (op >= 0x40 && op <= 0x4F && ci->size > 1)
+            op = insnAddr[1];
+#endif
+        // Reject instructions that cannot execute safely from hd->pre_tramp or leave a trampoline return PC on the Go stack:
+        // RET (C3/C2), INT3 (CC), CALL rel32 (E8), LOOP/JRCXZ (E0..E3), indirect CALL/JMP/PUSH (FF), SYSCALL (0F 05)
+        if (b0 == 0xC3 || b0 == 0xC2 || b0 == 0xCC || b0 == 0xE8 ||
+            (b0 >= 0xE0 && b0 <= 0xE3) || op == 0xFF ||
+            (ci->size >= 2 && b0 == 0x0F && insnAddr[1] == 0x05)) {
+            return FALSE;
+        }
+
+        stolenLen += ci->size;
+        nStolen++;
+    }
+
+    if (stolenLen < 5 || hookSite + stolenLen > codeLimit)
+        return FALSE;
+
+    // Ensure no stolen branch targets the interior of the patched 5-byte window (hookSite, hookSite + stolenLen)
+    for (unsigned int i = 0; i < nStolen; i++) {
+        _DInst* ci = &insns[i];
+        PBYTE insnAddr = (PBYTE)(ULONG_PTR)ci->addr;
+        PBYTE target = NULL;
+        if (ci->size == 5 && insnAddr[0] == 0xE9)
+            target = insnAddr + 5 + *(int32_t*)(insnAddr + 1);
+        else if (ci->size == 6 && insnAddr[0] == 0x0F && (insnAddr[1] & 0xF0) == 0x80)
+            target = insnAddr + 6 + *(int32_t*)(insnAddr + 2);
+        else if (ci->size == 2 && (insnAddr[0] == 0xEB || (insnAddr[0] & 0xF0) == 0x70))
+            target = insnAddr + 2 + *(int8_t*)(insnAddr + 1);
+
+        if (target && target > hookSite && target < hookSite + stolenLen)
+            return FALSE;
+    }
+
+    hook_data_t* hd = alloc_hookdata_near(hookSite);
+    if (!hd)
+        return FALSE;
+
+    PBYTE stub = hd->pre_tramp;
+    DWORD p = 0;
+
+#ifdef _WIN64
+    // Save RFLAGS and all 15 GPRs (RAX..R15) -> forms GO_INLINE_REGS at RSP
+    static const BYTE prologue64[] = {
+        0x9C,                                           // pushfq
+        0x50, 0x53, 0x51, 0x52, 0x57, 0x56, 0x55,       // push rax, rbx, rcx, rdx, rdi, rsi, rbp
+        0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, // push r8, r9, r10, r11
+        0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, // push r12, r13, r14, r15
+        0x48, 0x89, 0xE2,                               // mov rdx, rsp (arg2 = &GO_INLINE_REGS)
+        0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00,       // sub rsp, 0x80
+        0x0F, 0x11, 0x04, 0x24,                         // movups [rsp+0x00], xmm0
+        0x0F, 0x11, 0x4C, 0x24, 0x10,                   // movups [rsp+0x10], xmm1
+        0x0F, 0x11, 0x54, 0x24, 0x20,                   // movups [rsp+0x20], xmm2
+        0x0F, 0x11, 0x5C, 0x24, 0x30,                   // movups [rsp+0x30], xmm3
+        0x0F, 0x11, 0x64, 0x24, 0x40,                   // movups [rsp+0x40], xmm4
+        0x0F, 0x11, 0x6C, 0x24, 0x50,                   // movups [rsp+0x50], xmm5
+        0x44, 0x0F, 0x11, 0x74, 0x24, 0x60,             // movups [rsp+0x60], xmm14
+        0x44, 0x0F, 0x11, 0x7C, 0x24, 0x70,             // movups [rsp+0x70], xmm15 (Go zero register)
+        0x48, 0x89, 0xE5,                               // mov rbp, rsp
+        0x48, 0x83, 0xE4, 0xF0,                         // and rsp, -16
+        0x48, 0x83, 0xEC, 0x20,                         // sub rsp, 0x20 (Win64 shadow space)
+        0xFC                                            // cld
+    };
+    memcpy(stub + p, prologue64, sizeof(prologue64));
+    p += sizeof(prologue64);
+
+    // mov rcx, hookEntry
+    stub[p++] = 0x48;
+    stub[p++] = 0xB9;
+    *(uint64_t*)(stub + p) = (uint64_t)(ULONG_PTR)hookEntry;
+    p += 8;
+
+    // mov rax, &GoInlineHookDispatch; call rax
+    stub[p++] = 0x48;
+    stub[p++] = 0xB8;
+    *(uint64_t*)(stub + p) = (uint64_t)(ULONG_PTR)&GoInlineHookDispatch;
+    p += 8;
+    stub[p++] = 0xFF;
+    stub[p++] = 0xD0;
+
+    static const BYTE epilogue64[] = {
+        0x48, 0x89, 0xEC,                               // mov rsp, rbp
+        0x0F, 0x10, 0x04, 0x24,                         // movups xmm0, [rsp+0x00]
+        0x0F, 0x10, 0x4C, 0x24, 0x10,                   // movups xmm1, [rsp+0x10]
+        0x0F, 0x10, 0x54, 0x24, 0x20,                   // movups xmm2, [rsp+0x20]
+        0x0F, 0x10, 0x5C, 0x24, 0x30,                   // movups xmm3, [rsp+0x30]
+        0x0F, 0x10, 0x64, 0x24, 0x40,                   // movups xmm4, [rsp+0x40]
+        0x0F, 0x10, 0x6C, 0x24, 0x50,                   // movups xmm5, [rsp+0x50]
+        0x44, 0x0F, 0x10, 0x74, 0x24, 0x60,             // movups xmm14, [rsp+0x60]
+        0x44, 0x0F, 0x10, 0x7C, 0x24, 0x70,             // movups xmm15, [rsp+0x70]
+        0x48, 0x81, 0xC4, 0x80, 0x00, 0x00, 0x00,       // add rsp, 0x80
+        0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, // pop r15, r14, r13, r12
+        0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, // pop r11, r10, r9, r8
+        0x5D, 0x5E, 0x5F, 0x5A, 0x59, 0x5B, 0x58,       // pop rbp, rsi, rdi, rdx, rcx, rbx, rax
+        0x9D                                            // popfq
+    };
+    memcpy(stub + p, epilogue64, sizeof(epilogue64));
+    p += sizeof(epilogue64);
+#else
+    static const BYTE prologue32[] = {
+        0x9C,                   // pushfd
+        0x60,                   // pushad
+        0x89, 0xE0,             // mov eax, esp (arg2 = &GO_INLINE_REGS)
+        0x89, 0xE5,             // mov ebp, esp
+        0x83, 0xE4, 0xF0,       // and esp, -16
+        0xFC,                   // cld
+        0x50                    // push eax
+    };
+    memcpy(stub + p, prologue32, sizeof(prologue32));
+    p += sizeof(prologue32);
+
+    // push hookEntry
+    stub[p++] = 0x68;
+    *(uint32_t*)(stub + p) = (uint32_t)(ULONG_PTR)hookEntry;
+    p += 4;
+
+    // mov eax, &GoInlineHookDispatch; call eax
+    stub[p++] = 0xB8;
+    *(uint32_t*)(stub + p) = (uint32_t)(ULONG_PTR)&GoInlineHookDispatch;
+    p += 4;
+    stub[p++] = 0xFF;
+    stub[p++] = 0xD0;
+
+    static const BYTE epilogue32[] = {
+        0x89, 0xEC,             // mov esp, ebp
+        0x61,                   // popad
+        0x9D                    // popfd
+    };
+    memcpy(stub + p, epilogue32, sizeof(epilogue32));
+    p += sizeof(epilogue32);
+#endif
+
+    // Relocate the stolen instructions into stub + p
+    for (unsigned int i = 0; i < nStolen; i++) {
+        _DInst* ci = &insns[i];
+        PBYTE insnAddr = (PBYTE)(ULONG_PTR)ci->addr;
+        PBYTE dstInsn = stub + p;
+
+        if (ci->size == 5 && insnAddr[0] == 0xE9) {
+            PBYTE target = insnAddr + 5 + *(int32_t*)(insnAddr + 1);
+            INT64 rel = (INT64)(target - (dstInsn + 5));
+            if (rel < INT32_MIN || rel > INT32_MAX)
+                return FALSE;
+            dstInsn[0] = 0xE9;
+            *(int32_t*)(dstInsn + 1) = (int32_t)rel;
+            p += 5;
+        } else if (ci->size == 6 && insnAddr[0] == 0x0F && (insnAddr[1] & 0xF0) == 0x80) {
+            PBYTE target = insnAddr + 6 + *(int32_t*)(insnAddr + 2);
+            INT64 rel = (INT64)(target - (dstInsn + 6));
+            if (rel < INT32_MIN || rel > INT32_MAX)
+                return FALSE;
+            dstInsn[0] = 0x0F;
+            dstInsn[1] = insnAddr[1];
+            *(int32_t*)(dstInsn + 2) = (int32_t)rel;
+            p += 6;
+        } else if (ci->size == 2 && insnAddr[0] == 0xEB) {
+            PBYTE target = insnAddr + 2 + *(int8_t*)(insnAddr + 1);
+            INT64 rel = (INT64)(target - (dstInsn + 5));
+            if (rel < INT32_MIN || rel > INT32_MAX)
+                return FALSE;
+            dstInsn[0] = 0xE9;
+            *(int32_t*)(dstInsn + 1) = (int32_t)rel;
+            p += 5;
+        } else if (ci->size == 2 && (insnAddr[0] & 0xF0) == 0x70) {
+            PBYTE target = insnAddr + 2 + *(int8_t*)(insnAddr + 1);
+            INT64 rel = (INT64)(target - (dstInsn + 6));
+            if (rel < INT32_MIN || rel > INT32_MAX)
+                return FALSE;
+            dstInsn[0] = 0x0F;
+            dstInsn[1] = 0x80 | (insnAddr[0] & 0x0F);
+            *(int32_t*)(dstInsn + 2) = (int32_t)rel;
+            p += 6;
+        } else {
+            memcpy(dstInsn, insnAddr, ci->size);
+#ifdef _WIN64
+            if (ci->flags & FLAG_RIP_RELATIVE) {
+                BYTE immBytes = 0;
+                for (int k = 0; k < OPERANDS_NO; k++) {
+                    if (ci->ops[k].type == O_IMM || ci->ops[k].type == O_IMM1 || ci->ops[k].type == O_IMM2)
+                        immBytes += (BYTE)(ci->ops[k].size / 8);
+                }
+                if (ci->size < (BYTE)(4 + immBytes))
+                    return FALSE;
+                BYTE dispOff = (BYTE)(ci->size - 4 - immBytes);
+                int32_t origDisp = *(int32_t*)(insnAddr + dispOff);
+                PBYTE target = insnAddr + ci->size + origDisp;
+                INT64 newDisp = (INT64)(target - (dstInsn + ci->size));
+                if (newDisp < INT32_MIN || newDisp > INT32_MAX)
+                    return FALSE;
+                *(int32_t*)(dstInsn + dispOff) = (int32_t)newDisp;
+            }
+#endif
+            p += ci->size;
+        }
+    }
+
+    // Final jump back to hookSite + stolenLen
+    PBYTE resumeAddr = hookSite + stolenLen;
+    INT64 backRel = (INT64)(resumeAddr - (stub + p + 5));
+    if (backRel < INT32_MIN || backRel > INT32_MAX)
+        return FALSE;
+    stub[p++] = 0xE9;
+    *(int32_t*)(stub + p) = (int32_t)backRel;
+    p += 4;
+
+    INT64 fwdRel = (INT64)(stub - (hookSite + 5));
+    if (fwdRel < INT32_MIN || fwdRel > INT32_MAX)
+        return FALSE;
+
+    FlushInstructionCache(GetCurrentProcess(), stub, p);
+
+    DWORD oldProt = 0;
+    if (!VirtualProtect(hookSite, 8, PAGE_EXECUTE_READWRITE, &oldProt))
+        return FALSE;
+
+    // Atomically patch the 5-byte E9 jump at hookSite while preserving bytes 5..7
+    LONGLONG orig8 = *(volatile LONGLONG*)hookSite;
+    LONGLONG patched8 = orig8;
+    PBYTE patchBytes = (PBYTE)&patched8;
+    patchBytes[0] = 0xE9;
+    *(int32_t*)(patchBytes + 1) = (int32_t)fwdRel;
+    InterlockedCompareExchange64((volatile LONGLONG*)hookSite, patched8, orig8);
+
+    VirtualProtect(hookSite, 8, oldProt, &oldProt);
+    FlushInstructionCache(GetCurrentProcess(), hookSite, 8);
+
+    hookEntry->HookSite = hookSite;
+    hookEntry->InlineHooked = TRUE;
+    return TRUE;
+}
+
+// Sets an inline hook (5-byte E9 trampoline) on a recovered Go function address, falling back to a software breakpoint (0xCC) if needed
+static void GoSetFunctionHook(PVOID funcAddress, DWORD maxFuncSize, const char* funcName, BOOL regAbi, int version) {
     if (!funcAddress || !funcName || !IsAddressAccessible(funcAddress))
         return;
 
-    // Already hooked and the breakpoint is still registered: nothing to do.
-    // If the hook entry exists but SoftBPs was cleared (ClearAllBreakpoints), re-arm it below.
+    // Already hooked: nothing to do.
+    // If the hook entry exists and uses SoftBPs which was cleared (ClearAllBreakpoints), re-arm it below.
     GO_HOOK_ENTRY* hookEntry = (GO_HOOK_ENTRY*)lookup_get(&g_go_hook_table, (ULONG_PTR)funcAddress, NULL);
-    if (hookEntry && lookup_get(&SoftBPs, (ULONG_PTR)funcAddress, NULL))
-        return;
+    if (hookEntry) {
+        if (hookEntry->InlineHooked && hookEntry->HookSite && IsAddressAccessible(hookEntry->HookSite) && *hookEntry->HookSite == 0xE9)
+            return;
+        if (lookup_get(&SoftBPs, (ULONG_PTR)funcAddress, NULL))
+            return;
+    }
 
     char safeFuncName[160];
     SanitizeForDebug(safeFuncName, sizeof(safeFuncName), funcName, strlen(funcName));
@@ -739,11 +1223,17 @@ static void GoSetFunctionHook(PVOID funcAddress, const char* funcName, BOOL regA
     hookEntry->Version = version;
     strncpy_s(hookEntry->Name, sizeof(hookEntry->Name), funcName, _TRUNCATE);
 
-    // Persistent per breakpoint: does not change g_config.softbpmode for other software breakpoints
+    if (GoSetInlineHook(hookEntry, maxFuncSize)) {
+        DebugOutput("GoSetFunctionHook: Hooked '%s' at 0x%p (patch site 0x%p) via inline trampoline.\n",
+                    safeFuncName, funcAddress, hookEntry->HookSite);
+        return;
+    }
+
+    // Fallback to persistent software breakpoint if the function cannot be inline-patched
     if (SetSoftwareBreakpointEx(&SoftBPs, funcAddress, GoBreakpointHandler, TRUE))
-        DebugOutput("GoSetFunctionHook: Hooked '%s' at 0x%p via software breakpoint (0xCC).\n", safeFuncName, funcAddress);
+        DebugOutput("GoSetFunctionHook: Hooked '%s' at 0x%p via software breakpoint (0xCC fallback).\n", safeFuncName, funcAddress);
     else
-        DebugOutput("GoSetFunctionHook: Failed to set software breakpoint hook on '%s' at 0x%p.\n", safeFuncName, funcAddress);
+        DebugOutput("GoSetFunctionHook: Failed to set hook on '%s' at 0x%p.\n", safeFuncName, funcAddress);
 }
 
 // Extracts the compiler version from buildinfo (inspired by GoReSym).
@@ -1156,17 +1646,22 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
         for (uint64_t i = 0; i < nfunc; i++) {
             ULONG_PTR funcEntryOff = 0;
             ULONG_PTR funcStructOff = 0;
+            ULONG_PTR nextEntryOff = 0;
 
             if (functabFieldSize == 4) {
                 uint32_t* pTab32 = (uint32_t*)(functab + 2 * i * 4);
                 if ((PBYTE)&pTab32[2] > pImageEnd || !IsAddressAccessible(pTab32)) break;
                 funcEntryOff = pTab32[0];
                 funcStructOff = pTab32[1];
+                if ((i + 1) < nfunc && (PBYTE)&pTab32[3] <= pImageEnd && IsAddressAccessible(&pTab32[2]))
+                    nextEntryOff = pTab32[2];
             } else {
                 uint64_t* pTab64 = (uint64_t*)(functab + 2 * i * 8);
                 if ((PBYTE)&pTab64[2] > pImageEnd || !IsAddressAccessible(pTab64)) break;
                 funcEntryOff = (ULONG_PTR)pTab64[0];
                 funcStructOff = (ULONG_PTR)pTab64[1];
+                if ((i + 1) < nfunc && (PBYTE)&pTab64[3] <= pImageEnd && IsAddressAccessible(&pTab64[2]))
+                    nextEntryOff = (ULONG_PTR)pTab64[2];
             }
 
             ULONG_PTR funcAddress = 0;
@@ -1206,7 +1701,13 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
 
             if (ShouldHookGoFunction(funcName)) {
                 if (nCandidates < GO_MAX_HOOK_CANDIDATES) {
+                    DWORD maxSize = 64;
+                    if (nextEntryOff > funcEntryOff && (nextEntryOff - funcEntryOff) <= 0x100000)
+                        maxSize = (DWORD)(nextEntryOff - funcEntryOff);
+                    if ((PBYTE)funcAddress + maxSize > pImageEnd)
+                        maxSize = (DWORD)(pImageEnd - (PBYTE)funcAddress);
                     candidates[nCandidates].Address = (PVOID)funcAddress;
+                    candidates[nCandidates].MaxSize = maxSize;
                     candidates[nCandidates].Name = funcName;
                     nCandidates++;
                 }
@@ -1254,7 +1755,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
         }
 
         for (DWORD c = 0; c < nCandidates; c++)
-            GoSetFunctionHook(candidates[c].Address, candidates[c].Name, modInfo->RegAbi, detectedVer);
+            GoSetFunctionHook(candidates[c].Address, candidates[c].MaxSize, candidates[c].Name, modInfo->RegAbi, detectedVer);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         DebugOutput("GoRecoverSymbols: Exception occurred parsing Go pclntab structures.\n");
