@@ -327,7 +327,7 @@ struct _g_config {
 	int softbpmode;
 	int sysbpmode;
 	// search string
-	char *str[MAX_PATH];
+	char str[MAX_PATH];
 
 	int trace_all;
 	int step_out;

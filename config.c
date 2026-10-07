@@ -71,12 +71,17 @@ void parse_config_line(char* line)
 		*p = 0;
 		vallen = (unsigned int)strlen(value);
 		if (!strcmp(key, "pipe")) {
-			for (i = 0; i < vallen; i++)
+			// the line buffer is 32768 bytes; pipe_name is MAX_PATH wchars
+			unsigned int n = vallen;
+			if (n > ARRAYSIZE(g_config.pipe_name) - 1)
+				n = ARRAYSIZE(g_config.pipe_name) - 1;
+			for (i = 0; i < n; i++)
 				g_config.pipe_name[i] = (wchar_t)(unsigned short)value[i];
+			g_config.pipe_name[n] = L'\0';
 		}
 		else if (!strcmp(key, "logserver")) {
 			strncpy(g_config.logserver, value,
-				ARRAYSIZE(g_config.logserver));
+				ARRAYSIZE(g_config.logserver) - 1);
 		}
 		else if (!strcmp(key, "results")) {
 			memset(g_config.results, 0, MAX_PATH);
@@ -114,12 +119,13 @@ void parse_config_line(char* line)
 			strncpy(g_config.analyzer, value, ARRAYSIZE(g_config.analyzer)-1);
 			for (i = 0; i < ARRAYSIZE(g_config.analyzer); i++)
 				g_config.w_analyzer[i] = (wchar_t)(unsigned short)g_config.analyzer[i];
-			wcscpy(g_config.dllpath, g_config.w_analyzer);
+			wcsncpy(g_config.dllpath, g_config.w_analyzer, ARRAYSIZE(g_config.dllpath) - 1);
+			g_config.dllpath[ARRAYSIZE(g_config.dllpath) - 1] = L'\0';
 			if (wcslen(g_config.dllpath) < ARRAYSIZE(g_config.dllpath) - 5)
 				wcscat(g_config.dllpath, L"\\dll\\");
 		}
 		else if (!strcmp(key, "shutdown-mutex")) {
-			strncpy(g_config.shutdown_mutex, value, ARRAYSIZE(g_config.shutdown_mutex));
+			strncpy(g_config.shutdown_mutex, value, ARRAYSIZE(g_config.shutdown_mutex) - 1);
 		}
 		else if (!strcmp(key, "first-process")) {
 			g_config.first_process = value[0] == '1';
@@ -206,7 +212,7 @@ void parse_config_line(char* line)
 			g_config.force_flush = atoi(value);
 		}
 		else if (!strcmp(key, "terminate-event")) {
-			strncpy(g_config.terminate_event_name, value, ARRAYSIZE(g_config.terminate_event_name));
+			strncpy(g_config.terminate_event_name, value, ARRAYSIZE(g_config.terminate_event_name) - 1);
 		}
 		else if (!strcmp(key, "no-stealth")) { // Set to 1 to disable anti-anti-VM/sandbox code enabled by default.
 			g_config.no_stealth = value[0] == '1';
@@ -1098,12 +1104,15 @@ void parse_config_line(char* line)
 		}
 		else if (!stricmp(key, "procname0")) {
 			procname0 = calloc(1, MAX_PATH);
-			strncpy(procname0, value, strlen(value));
+			if (procname0)
+				strncpy(procname0, value, MAX_PATH - 1);
 			DebugOutput("Config: procname0 set to %s.", value);
 		}
 		else if (!stricmp(key, "break-on-return")) { //Sets breakpoints on the return address(es) from a colon-separated list of APIs
 			g_config.debugger = 1;
-			strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return));
+			// stricmp'd on every hooked API call, so a missing NUL is an
+			// out-of-bounds read per call
+			strncpy(g_config.break_on_return, value, ARRAYSIZE(g_config.break_on_return) - 1);
 			DebugOutput("Config: Break-on-return set to %s.", g_config.break_on_return);
 			g_config.break_on_return_set = TRUE;
 		}
@@ -1156,32 +1165,32 @@ void parse_config_line(char* line)
 		}
 		else if (!stricmp(key, "typestring")) {
 			memset(g_config.typestring, 0, MAX_PATH);
-			strncpy(g_config.typestring, value, strlen(value));
+			strncpy(g_config.typestring, value, ARRAYSIZE(g_config.typestring) - 1);
 			DebugOutput("Config: typestring set to %s", g_config.typestring);
 		}
 		else if (!stricmp(key, "typestring0")) {
 			memset(g_config.typestring0, 0, MAX_PATH);
-			strncpy(g_config.typestring0, value, strlen(value));
+			strncpy(g_config.typestring0, value, ARRAYSIZE(g_config.typestring0) - 1);
 			DebugOutput("Config: typestring0 set to %s", g_config.typestring0);
 		}
 		else if (!stricmp(key, "typestring1")) {
 			memset(g_config.typestring1, 0, MAX_PATH);
-			strncpy(g_config.typestring1, value, strlen(value));
+			strncpy(g_config.typestring1, value, ARRAYSIZE(g_config.typestring1) - 1);
 			DebugOutput("Config: typestring1 set to %s", g_config.typestring1);
 		}
 		else if (!stricmp(key, "typestring2")) {
 			memset(g_config.typestring2, 0, MAX_PATH);
-			strncpy(g_config.typestring2, value, strlen(value));
+			strncpy(g_config.typestring2, value, ARRAYSIZE(g_config.typestring2) - 1);
 			DebugOutput("Config: typestring2 set to %s", g_config.typestring2);
 		}
 		else if (!stricmp(key, "typestring3")) {
 			memset(g_config.typestring3, 0, MAX_PATH);
-			strncpy(g_config.typestring3, value, strlen(value));
+			strncpy(g_config.typestring3, value, ARRAYSIZE(g_config.typestring3) - 1);
 			DebugOutput("Config: typestring3 set to %s", g_config.typestring3);
 		}
 		else if (!stricmp(key, "str")) {
 			memset(g_config.str, 0, MAX_PATH);
-			strncpy((char*)g_config.str, value, strlen(value));
+			strncpy((char*)g_config.str, value, ARRAYSIZE(g_config.str) - 1);
 			DebugOutput("Config: Search string set to %s", g_config.str);
 			if (strlen((char*)g_config.str))
 				g_config.no_logs = 2;
@@ -1522,13 +1531,14 @@ void read_config(void)
 
 	// look for the config in monitor directory
 	memset(g_config.analyzer, 0, MAX_PATH);
-	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
+	strncpy(g_config.analyzer, our_dll_path, ARRAYSIZE(g_config.analyzer) - 1);
 	char *p = strrchr(g_config.analyzer, '\\');
 	if (p)
 		*p = '\0'; // remove filename
 	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
 
-	strcpy(g_config.results, g_config.analyzer);
+	strncpy(g_config.results, g_config.analyzer, ARRAYSIZE(g_config.results) - 1);
+	g_config.results[ARRAYSIZE(g_config.results) - 1] = '\0';
 
 	fp = fopen(config_fname, "r");
 
@@ -1565,7 +1575,7 @@ void read_config(void)
 
 	if (!wcslen(g_config.w_pythonpath)) {
 		char* DummyString = "default";
-		strncpy(g_config.pythonpath, DummyString, strlen(DummyString));
+		strncpy(g_config.pythonpath, DummyString, ARRAYSIZE(g_config.pythonpath) - 1);
 		for (unsigned int i = 0; i < ARRAYSIZE(g_config.pythonpath); i++)
 			g_config.w_pythonpath[i] = (wchar_t)(unsigned short)g_config.pythonpath[i];
 		DebugOutput("Python path defaulted to '%ws'.\n", g_config.w_pythonpath);
