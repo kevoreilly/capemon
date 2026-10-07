@@ -3416,6 +3416,28 @@ int DumpCurrentProcess()
 }
 
 //**************************************************************************************
+BOOL ReserveDotNetCacheDump(void)
+//**************************************************************************************
+{
+	LONG Count;
+
+	do {
+		Count = (LONG)DotNetCacheDumpCount;
+		if ((unsigned int)Count >= g_config.jit_dumps)
+			return FALSE;
+	} while (InterlockedCompareExchange((volatile LONG *)&DotNetCacheDumpCount, Count + 1, Count) != Count);
+
+	return TRUE;
+}
+
+//**************************************************************************************
+void ReleaseDotNetCacheDump(void)
+//**************************************************************************************
+{
+	InterlockedDecrement((volatile LONG *)&DotNetCacheDumpCount);
+}
+
+//**************************************************************************************
 void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 //**************************************************************************************
 {
@@ -3431,25 +3453,22 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
 
-	// g_dotnet_jit is a lock-free set (lookup.c) - lookup_get is safe against the
-	// compileMethod hook adding to it concurrently. g_jit_dump_lock serialises the
-	// CapeMetaData scratch writes and the DotNetCacheDumpCount counter below
-	// against that hook, which shares both.
 	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
 	{
-		EnterCriticalSection(&g_jit_dump_lock);
+		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
+
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = UNPACKED_PE;
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
-		LeaveCriticalSection(&g_jit_dump_lock);
 	}
 
+	// g_dotnet_jit is a lock-free set (lookup.c): lookup_get is safe against the
+	// compileMethod hook adding to it concurrently. The jit_dumps budget is
+	// shared with that hook and claimed atomically via ReserveDotNetCacheDump().
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
-		EnterCriticalSection(&g_jit_dump_lock);
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
 #ifdef _WIN64
@@ -3459,16 +3478,14 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 #endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
-		{
-			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
-			DotNetCacheDumpCount++;
-		}
-		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
-			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
-		else if (!g_config.jit_dumps)
+		if (!g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
-		LeaveCriticalSection(&g_jit_dump_lock);
+		else if (!ReserveDotNetCacheDump())
+			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
+		else if (DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
+			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+		else
+			ReleaseDotNetCacheDump();
 	}
 }
 
