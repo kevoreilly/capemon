@@ -831,7 +831,8 @@ static PBYTE GoFindHookSite(PBYTE funcAddr, DWORD maxFuncSize, PBYTE* pCodeLimit
     if (distorm_decompose(&codeInfo, insns, 12, &count) == DECRES_INPUTERR || count < 2)
         return funcAddr;
 
-    for (unsigned int i = 0; i < count && i < 4 && (i + 1) < count; i++) {
+    BOOL sawStackGuard = FALSE;
+    for (unsigned int i = 0; i < count && i < 5 && (i + 1) < count; i++) {
         if (insns[i].flags == FLAG_NOT_DECODABLE || insns[i + 1].flags == FLAG_NOT_DECODABLE)
             break;
 
@@ -851,6 +852,7 @@ static PBYTE GoFindHookSite(PBYTE funcAddr, DWORD maxFuncSize, PBYTE* pCodeLimit
         }
 #endif
         if (isStackGuardCmp) {
+            sawStackGuard = TRUE;
             PBYTE jb = (PBYTE)(ULONG_PTR)insns[i + 1].addr;
             BYTE jsz = insns[i + 1].size;
             PBYTE jbeEnd = jb + jsz;
@@ -872,17 +874,94 @@ static PBYTE GoFindHookSite(PBYTE funcAddr, DWORD maxFuncSize, PBYTE* pCodeLimit
         // Only allow standard split-stack prologue instructions before the CMP:
         // - GS/FS TLS segment load (0x64 / 0x65)
         // - MOV reg, [reg + disp] or LEA reg, [rsp - disp] (0x8B / 0x8D with optional REX)
+        // - huge frames: MOV r12, rsp; SUB r12, imm (0x89, 0x81 / 0x83 with REX)
         BYTE op = b[0];
 #ifdef _WIN64
         if (op >= 0x40 && op <= 0x4F && sz > 1)
             op = b[1];
 #endif
-        if (b[0] != 0x64 && b[0] != 0x65 && op != 0x8B && op != 0x8D)
+        if (b[0] != 0x64 && b[0] != 0x65 && op != 0x8B && op != 0x8D && op != 0x89 && op != 0x81 && op != 0x83)
             break;
     }
 
+    // A split-stack check was seen but its `jbe morestack` could not be resolved: patching at +0 would straddle
+    // the check and be re-entered by morestack's `jmp entry`. Refuse the inline hook (caller falls back to 0xCC).
+    if (sawStackGuard)
+        return NULL;
+
     return funcAddr;
 }
+
+// Inline stub fixed parts (prologue, dispatch call, epilogue); relocated instructions and the back-jump follow
+#ifdef _WIN64
+
+static const BYTE go_prologue64[] = {
+    0x9C,                                           // pushfq
+    0x50, 0x53, 0x51, 0x52, 0x57, 0x56, 0x55,       // push rax, rbx, rcx, rdx, rdi, rsi, rbp
+    0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, // push r8, r9, r10, r11
+    0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, // push r12, r13, r14, r15
+    0x48, 0x89, 0xE2,                               // mov rdx, rsp (arg2 = &GO_INLINE_REGS)
+    0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00,       // sub rsp, 0x80
+    0x0F, 0x11, 0x04, 0x24,                         // movups [rsp+0x00], xmm0
+    0x0F, 0x11, 0x4C, 0x24, 0x10,                   // movups [rsp+0x10], xmm1
+    0x0F, 0x11, 0x54, 0x24, 0x20,                   // movups [rsp+0x20], xmm2
+    0x0F, 0x11, 0x5C, 0x24, 0x30,                   // movups [rsp+0x30], xmm3
+    0x0F, 0x11, 0x64, 0x24, 0x40,                   // movups [rsp+0x40], xmm4
+    0x0F, 0x11, 0x6C, 0x24, 0x50,                   // movups [rsp+0x50], xmm5
+    0x44, 0x0F, 0x11, 0x74, 0x24, 0x60,             // movups [rsp+0x60], xmm14
+    0x44, 0x0F, 0x11, 0x7C, 0x24, 0x70,             // movups [rsp+0x70], xmm15 (Go zero register)
+    0x48, 0x89, 0xE5,                               // mov rbp, rsp
+    0x48, 0x83, 0xE4, 0xF0,                         // and rsp, -16
+    0x48, 0x83, 0xEC, 0x20,                         // sub rsp, 0x20 (Win64 shadow space)
+    0xFC                                            // cld
+};
+
+static const BYTE go_epilogue64[] = {
+    0x48, 0x89, 0xEC,                               // mov rsp, rbp
+    0x0F, 0x10, 0x04, 0x24,                         // movups xmm0, [rsp+0x00]
+    0x0F, 0x10, 0x4C, 0x24, 0x10,                   // movups xmm1, [rsp+0x10]
+    0x0F, 0x10, 0x54, 0x24, 0x20,                   // movups xmm2, [rsp+0x20]
+    0x0F, 0x10, 0x5C, 0x24, 0x30,                   // movups xmm3, [rsp+0x30]
+    0x0F, 0x10, 0x64, 0x24, 0x40,                   // movups xmm4, [rsp+0x40]
+    0x0F, 0x10, 0x6C, 0x24, 0x50,                   // movups xmm5, [rsp+0x50]
+    0x44, 0x0F, 0x10, 0x74, 0x24, 0x60,             // movups xmm14, [rsp+0x60]
+    0x44, 0x0F, 0x10, 0x7C, 0x24, 0x70,             // movups xmm15, [rsp+0x70]
+    0x48, 0x81, 0xC4, 0x80, 0x00, 0x00, 0x00,       // add rsp, 0x80
+    0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, // pop r15, r14, r13, r12
+    0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, // pop r11, r10, r9, r8
+    0x5D, 0x5E, 0x5F, 0x5A, 0x59, 0x5B, 0x58,       // pop rbp, rsi, rdi, rdx, rcx, rbx, rax
+    0x9D                                            // popfq
+};
+// mov rcx, imm64 (10) + mov rax, imm64 (10) + call rax (2)
+#define GO_INLINE_STUB_DISPATCH 22
+#define GO_INLINE_STUB_FIXED (sizeof(go_prologue64) + GO_INLINE_STUB_DISPATCH + sizeof(go_epilogue64))
+#else
+
+static const BYTE go_prologue32[] = {
+    0x9C,                   // pushfd
+    0x60,                   // pushad
+    0x89, 0xE0,             // mov eax, esp (arg2 = &GO_INLINE_REGS)
+    0x89, 0xE5,             // mov ebp, esp
+    0x83, 0xE4, 0xF0,       // and esp, -16
+    0xFC,                   // cld
+    0x50                    // push eax
+};
+
+static const BYTE go_epilogue32[] = {
+    0x89, 0xEC,             // mov esp, ebp
+    0x61,                   // popad
+    0x9D                    // popfd
+};
+// push imm32 (5) + mov eax, imm32 (5) + call eax (2)
+#define GO_INLINE_STUB_DISPATCH 12
+#define GO_INLINE_STUB_FIXED (sizeof(go_prologue32) + GO_INLINE_STUB_DISPATCH + sizeof(go_epilogue32))
+#endif
+
+// Inline (E9) patching is only performed while the process is still single-threaded (GoProcessPending from
+// CAPE_post_init, before the entry point runs). Modules instrumented later from YaraCallback (unpacked / injected
+// Go payloads) have Go worker threads running; overwriting several instructions under a live thread is unsafe, so
+// those use the 1-byte 0xCC software breakpoint only.
+static BOOL g_go_inline_allowed = FALSE;
 
 // Install a Go-safe 5-byte E9 inline hook at hookSite:
 // - Runs a pure observer stub in hd->pre_tramp that saves all Go ABI registers (RAX..R15, XMM0..XMM5, XMM14, XMM15, RFLAGS),
@@ -898,7 +977,8 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
     if (!hookSite || codeLimit < hookSite + 5 || !IsAddressAccessible(hookSite))
         return FALSE;
 
-    // Already patched with E9
+    // Refuse sites that already start with a rel32 jmp (our own earlier patch or a foreign hook):
+    // GoSetFunctionHook already returned for entries we know about, so anything here is not ours to steal.
     if (*hookSite == 0xE9)
         return FALSE;
 
@@ -951,21 +1031,52 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
     if (stolenLen < 5 || hookSite + stolenLen > codeLimit)
         return FALSE;
 
-    // Ensure no stolen branch targets the interior of the patched 5-byte window (hookSite, hookSite + stolenLen)
+    // Validate everything that can fail *before* taking a hook_data_t slot (arena slots are never returned):
+    //  - no stolen branch may target the interior of the patched window (hookSite, hookSite + stolenLen);
+    //  - every relocated branch / RIP-relative target must lie within +-1GB of hookSite, so that with the stub
+    //    allocated within 1GB of hookSite (alloc_hookdata_near) no rel32 can overflow;
+    //  - the finished stub must fit pre_tramp (fixed part + relocated instructions + 5-byte back-jump).
+    DWORD relocatedLen = 0;
     for (unsigned int i = 0; i < nStolen; i++) {
         _DInst* ci = &insns[i];
         PBYTE insnAddr = (PBYTE)(ULONG_PTR)ci->addr;
         PBYTE target = NULL;
-        if (ci->size == 5 && insnAddr[0] == 0xE9)
+        DWORD outSize = ci->size;
+        if (ci->size == 5 && insnAddr[0] == 0xE9) {
             target = insnAddr + 5 + *(int32_t*)(insnAddr + 1);
-        else if (ci->size == 6 && insnAddr[0] == 0x0F && (insnAddr[1] & 0xF0) == 0x80)
+        } else if (ci->size == 6 && insnAddr[0] == 0x0F && (insnAddr[1] & 0xF0) == 0x80) {
             target = insnAddr + 6 + *(int32_t*)(insnAddr + 2);
-        else if (ci->size == 2 && (insnAddr[0] == 0xEB || (insnAddr[0] & 0xF0) == 0x70))
+        } else if (ci->size == 2 && insnAddr[0] == 0xEB) {
             target = insnAddr + 2 + *(int8_t*)(insnAddr + 1);
-
-        if (target && target > hookSite && target < hookSite + stolenLen)
-            return FALSE;
+            outSize = 5;
+        } else if (ci->size == 2 && (insnAddr[0] & 0xF0) == 0x70) {
+            target = insnAddr + 2 + *(int8_t*)(insnAddr + 1);
+            outSize = 6;
+        }
+#ifdef _WIN64
+        else if (ci->flags & FLAG_RIP_RELATIVE) {
+            BYTE immBytes = 0;
+            for (int k = 0; k < OPERANDS_NO; k++) {
+                if (ci->ops[k].type == O_IMM || ci->ops[k].type == O_IMM1 || ci->ops[k].type == O_IMM2)
+                    immBytes += (BYTE)(ci->ops[k].size / 8);
+            }
+            if (ci->size < (BYTE)(4 + immBytes))
+                return FALSE;
+            target = insnAddr + ci->size + *(int32_t*)(insnAddr + ci->size - 4 - immBytes);
+        }
+#endif
+        if (target) {
+            if (target > hookSite && target < hookSite + stolenLen)
+                return FALSE;
+            INT64 dist = (INT64)(target - hookSite);
+            if (dist < -(INT64)0x40000000 || dist > (INT64)0x40000000)
+                return FALSE;
+        }
+        relocatedLen += outSize;
     }
+
+    if (GO_INLINE_STUB_FIXED + relocatedLen + 5 > MAX_PRETRAMP_SIZE)
+        return FALSE;
 
     hook_data_t* hd = alloc_hookdata_near(hookSite);
     if (!hd)
@@ -976,28 +1087,8 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
 
 #ifdef _WIN64
     // Save RFLAGS and all 15 GPRs (RAX..R15) -> forms GO_INLINE_REGS at RSP
-    static const BYTE prologue64[] = {
-        0x9C,                                           // pushfq
-        0x50, 0x53, 0x51, 0x52, 0x57, 0x56, 0x55,       // push rax, rbx, rcx, rdx, rdi, rsi, rbp
-        0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, // push r8, r9, r10, r11
-        0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, // push r12, r13, r14, r15
-        0x48, 0x89, 0xE2,                               // mov rdx, rsp (arg2 = &GO_INLINE_REGS)
-        0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00,       // sub rsp, 0x80
-        0x0F, 0x11, 0x04, 0x24,                         // movups [rsp+0x00], xmm0
-        0x0F, 0x11, 0x4C, 0x24, 0x10,                   // movups [rsp+0x10], xmm1
-        0x0F, 0x11, 0x54, 0x24, 0x20,                   // movups [rsp+0x20], xmm2
-        0x0F, 0x11, 0x5C, 0x24, 0x30,                   // movups [rsp+0x30], xmm3
-        0x0F, 0x11, 0x64, 0x24, 0x40,                   // movups [rsp+0x40], xmm4
-        0x0F, 0x11, 0x6C, 0x24, 0x50,                   // movups [rsp+0x50], xmm5
-        0x44, 0x0F, 0x11, 0x74, 0x24, 0x60,             // movups [rsp+0x60], xmm14
-        0x44, 0x0F, 0x11, 0x7C, 0x24, 0x70,             // movups [rsp+0x70], xmm15 (Go zero register)
-        0x48, 0x89, 0xE5,                               // mov rbp, rsp
-        0x48, 0x83, 0xE4, 0xF0,                         // and rsp, -16
-        0x48, 0x83, 0xEC, 0x20,                         // sub rsp, 0x20 (Win64 shadow space)
-        0xFC                                            // cld
-    };
-    memcpy(stub + p, prologue64, sizeof(prologue64));
-    p += sizeof(prologue64);
+    memcpy(stub + p, go_prologue64, sizeof(go_prologue64));
+    p += sizeof(go_prologue64);
 
     // mov rcx, hookEntry
     stub[p++] = 0x48;
@@ -1013,36 +1104,11 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
     stub[p++] = 0xFF;
     stub[p++] = 0xD0;
 
-    static const BYTE epilogue64[] = {
-        0x48, 0x89, 0xEC,                               // mov rsp, rbp
-        0x0F, 0x10, 0x04, 0x24,                         // movups xmm0, [rsp+0x00]
-        0x0F, 0x10, 0x4C, 0x24, 0x10,                   // movups xmm1, [rsp+0x10]
-        0x0F, 0x10, 0x54, 0x24, 0x20,                   // movups xmm2, [rsp+0x20]
-        0x0F, 0x10, 0x5C, 0x24, 0x30,                   // movups xmm3, [rsp+0x30]
-        0x0F, 0x10, 0x64, 0x24, 0x40,                   // movups xmm4, [rsp+0x40]
-        0x0F, 0x10, 0x6C, 0x24, 0x50,                   // movups xmm5, [rsp+0x50]
-        0x44, 0x0F, 0x10, 0x74, 0x24, 0x60,             // movups xmm14, [rsp+0x60]
-        0x44, 0x0F, 0x10, 0x7C, 0x24, 0x70,             // movups xmm15, [rsp+0x70]
-        0x48, 0x81, 0xC4, 0x80, 0x00, 0x00, 0x00,       // add rsp, 0x80
-        0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, // pop r15, r14, r13, r12
-        0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, // pop r11, r10, r9, r8
-        0x5D, 0x5E, 0x5F, 0x5A, 0x59, 0x5B, 0x58,       // pop rbp, rsi, rdi, rdx, rcx, rbx, rax
-        0x9D                                            // popfq
-    };
-    memcpy(stub + p, epilogue64, sizeof(epilogue64));
-    p += sizeof(epilogue64);
+    memcpy(stub + p, go_epilogue64, sizeof(go_epilogue64));
+    p += sizeof(go_epilogue64);
 #else
-    static const BYTE prologue32[] = {
-        0x9C,                   // pushfd
-        0x60,                   // pushad
-        0x89, 0xE0,             // mov eax, esp (arg2 = &GO_INLINE_REGS)
-        0x89, 0xE5,             // mov ebp, esp
-        0x83, 0xE4, 0xF0,       // and esp, -16
-        0xFC,                   // cld
-        0x50                    // push eax
-    };
-    memcpy(stub + p, prologue32, sizeof(prologue32));
-    p += sizeof(prologue32);
+    memcpy(stub + p, go_prologue32, sizeof(go_prologue32));
+    p += sizeof(go_prologue32);
 
     // push hookEntry
     stub[p++] = 0x68;
@@ -1056,13 +1122,8 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
     stub[p++] = 0xFF;
     stub[p++] = 0xD0;
 
-    static const BYTE epilogue32[] = {
-        0x89, 0xEC,             // mov esp, ebp
-        0x61,                   // popad
-        0x9D                    // popfd
-    };
-    memcpy(stub + p, epilogue32, sizeof(epilogue32));
-    p += sizeof(epilogue32);
+    memcpy(stub + p, go_epilogue32, sizeof(go_epilogue32));
+    p += sizeof(go_epilogue32);
 #endif
 
     // Relocate the stolen instructions into stub + p
@@ -1130,6 +1191,8 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
     }
 
     // Final jump back to hookSite + stolenLen
+    if (p + 5 > MAX_PRETRAMP_SIZE)
+        return FALSE;
     PBYTE resumeAddr = hookSite + stolenLen;
     INT64 backRel = (INT64)(resumeAddr - (stub + p + 5));
     if (backRel < INT32_MIN || backRel > INT32_MAX)
@@ -1154,10 +1217,13 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
     PBYTE patchBytes = (PBYTE)&patched8;
     patchBytes[0] = 0xE9;
     *(int32_t*)(patchBytes + 1) = (int32_t)fwdRel;
-    InterlockedCompareExchange64((volatile LONGLONG*)hookSite, patched8, orig8);
+    BOOL patched = (InterlockedCompareExchange64((volatile LONGLONG*)hookSite, patched8, orig8) == orig8);
 
     VirtualProtect(hookSite, 8, oldProt, &oldProt);
     FlushInstructionCache(GetCurrentProcess(), hookSite, 8);
+
+    if (!patched)
+        return FALSE;   // bytes changed under us: leave the site untouched, caller falls back to 0xCC
 
     hookEntry->HookSite = hookSite;
     hookEntry->InlineHooked = TRUE;
@@ -1192,7 +1258,7 @@ static void GoSetFunctionHook(PVOID funcAddress, DWORD maxFuncSize, const char* 
     hookEntry->Version = version;
     strncpy_s(hookEntry->Name, sizeof(hookEntry->Name), funcName, _TRUNCATE);
 
-    if (GoSetInlineHook(hookEntry, maxFuncSize)) {
+    if (g_go_inline_allowed && GoSetInlineHook(hookEntry, maxFuncSize)) {
         DebugOutput("GoSetFunctionHook: Hooked '%s' at 0x%p (patch site 0x%p) via inline trampoline.\n",
                     safeFuncName, funcAddress, hookEntry->HookSite);
         return;
@@ -1809,9 +1875,13 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
 // Called from CAPE_post_init once the debugger is initialised: instrument Go modules detected by the
 // init-time YARA scan. No scanning here; entries were produced by YaraCallback.
 void GoProcessPending(void) {
+    // Still single-threaded here (called from CAPE_post_init in the loader's init path, before the entry point):
+    // the only window in which multi-byte inline patches can be written safely.
+    g_go_inline_allowed = TRUE;
     for (entry_t* e = (entry_t*)g_go_pending.root; e != NULL; e = e->next) {
         GO_PENDING* pend = (GO_PENDING*)e->data;
         if (InterlockedExchange(&pend->Done, 1) == 0)
             GoRecoverSymbols(pend->RegionBase, pend->Pclntab, pend->Buildinfo);
     }
+    g_go_inline_allowed = FALSE;
 }
