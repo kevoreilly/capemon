@@ -7,11 +7,6 @@
 #include "lookup.h"
 #include "CAPE\CAPE.h"
 
-#define AMSIBUFFER 0x6a
-#define AMSISTREAM 0x6b
-
-extern CRITICAL_SECTION g_mutex;
-
 // Per-thread "AMSI hook active" flag using lock-free lookup table (LOOKUP_THREAD)
 // to avoid static TLS (__declspec(thread)) crashes in post-loaded/injected DLLs.
 static lookup_t g_amsi_active_lookup;
@@ -42,10 +37,8 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
 	LOQ_hresult("amsi", "up", "ContentName", contentName, "Length", length);
 
 	if (g_config.amsidump && buffer != NULL && length > 0 && !our_isbadreadptr(buffer, length)) {
-		EnterCriticalSection(&g_mutex);
 		SetCapeMetaData(AMSIBUFFER, 0, NULL, NULL);
 		DumpMemoryRaw(buffer, (SIZE_T)length);
-		LeaveCriticalSection(&g_mutex);
 		DebugOutput("AmsiScanBuffer: Actively dumped AMSI buffer of size %u at 0x%p.\n", length, buffer);
 	}
 
@@ -75,10 +68,8 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 		}
 
 		if (len > sizeof(wchar_t) && !our_isbadreadptr((PVOID)string, len)) {
-			EnterCriticalSection(&g_mutex);
 			SetCapeMetaData(AMSIBUFFER, 0, NULL, NULL);
 			DumpMemoryRaw((PVOID)string, len);
-			LeaveCriticalSection(&g_mutex);
 			DebugOutput("AmsiScanString: Actively dumped AMSI string at 0x%p.\n", string);
 		}
 	}
