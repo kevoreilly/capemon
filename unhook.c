@@ -17,6 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "ntapi.h"
 #include "hooking.h"
 #include "pipe.h"
@@ -24,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "misc.h"
 #include "config.h"
 #include <Sddl.h>
+#include <tlhelp32.h>
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
@@ -467,80 +469,614 @@ int procname_watch_init()
 
 DWORD g_watchdog_thread_id;
 
-#ifndef _WIN64
-static ULONG_PTR capemonaddrs[60];
-static int capemonaddrs_num;
+#define WATCHDOG_MAX_THREADS 128
+#define WATCHDOG_MAX_FRAMES  32
 
-static int find_capemon_addrs(void *unused, ULONG_PTR addr)
+#define WATCHDOG_STATUS_PENDING     0
+#define WATCHDOG_STATUS_APC_RUNNING 1
+#define WATCHDOG_STATUS_APC_DONE    2
+#define WATCHDOG_STATUS_FALLBACK    3
+
+typedef struct _WATCHDOG_REQUEST {
+	DWORD tid;
+	HANDLE hThread;
+	ULONG generation;
+	volatile LONG status; // WATCHDOG_STATUS_*
+	volatile LONG apc_dispatched_count;
+	volatile LONG apc_executed_count;
+	BOOL sampled_via_apc;
+	BOOL in_snapshot;
+	CONTEXT ctx;
+	ULONG_PTR backtrace[WATCHDOG_MAX_FRAMES];
+	unsigned int backtrace_count;
+} WATCHDOG_REQUEST;
+
+static WATCHDOG_REQUEST g_watchdog_requests[WATCHDOG_MAX_THREADS];
+static ULONG g_watchdog_generation = 0;
+
+static WATCHDOG_REQUEST *watchdog_get_or_create_slot(DWORD tid)
 {
-	if (capemonaddrs_num < 60)
-		capemonaddrs[capemonaddrs_num++] = addr;
-	return 0;
+	int i;
+	int clean_free_idx = -1;
+	int fallback_free_idx = -1;
+	for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
+		if (g_watchdog_requests[i].tid == tid)
+			return &g_watchdog_requests[i];
+		if (g_watchdog_requests[i].tid == 0) {
+			if (clean_free_idx == -1 &&
+				g_watchdog_requests[i].apc_dispatched_count == g_watchdog_requests[i].apc_executed_count) {
+				clean_free_idx = i;
+			}
+			if (fallback_free_idx == -1)
+				fallback_free_idx = i;
+		}
+	}
+	if (clean_free_idx != -1) {
+		memset(&g_watchdog_requests[clean_free_idx], 0, sizeof(WATCHDOG_REQUEST));
+		g_watchdog_requests[clean_free_idx].status = WATCHDOG_STATUS_FALLBACK;
+		g_watchdog_requests[clean_free_idx].tid = tid;
+		return &g_watchdog_requests[clean_free_idx];
+	}
+	if (fallback_free_idx != -1) {
+		LONG disp = g_watchdog_requests[fallback_free_idx].apc_dispatched_count;
+		LONG exec = g_watchdog_requests[fallback_free_idx].apc_executed_count;
+		memset(&g_watchdog_requests[fallback_free_idx], 0, sizeof(WATCHDOG_REQUEST));
+		g_watchdog_requests[fallback_free_idx].apc_dispatched_count = disp;
+		g_watchdog_requests[fallback_free_idx].apc_executed_count = exec;
+		g_watchdog_requests[fallback_free_idx].status = WATCHDOG_STATUS_FALLBACK;
+		g_watchdog_requests[fallback_free_idx].tid = tid;
+		return &g_watchdog_requests[fallback_free_idx];
+	}
+	return NULL;
 }
 
-static int _operate_on_backtrace(ULONG_PTR retaddr, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR))
+static BOOL is_executable_address(ULONG_PTR addr)
 {
-	int ret = 0;
+	MEMORY_BASIC_INFORMATION mbi;
+	if (!addr)
+		return FALSE;
+	if (!VirtualQuery((LPCVOID)addr, &mbi, sizeof(mbi)))
+		return FALSE;
+	if (mbi.State != MEM_COMMIT)
+		return FALSE;
+	if (mbi.Protect & PAGE_GUARD)
+		return FALSE;
+	return (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+}
 
-	while (_ebp)
-	{
-		// obtain the return address and the next value of ebp
-		ULONG_PTR addr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
-		_ebp = *(ULONG_PTR *)_ebp;
+static char *watchdog_get_module_and_offset(ULONG_PTR addr, unsigned int *offset)
+{
+	PEB *peb = (PEB *)get_peb();
+	*offset = 0;
 
-		ret = func(extra, addr);
-		if (ret)
-			return ret;
+	if (!addr)
+		return NULL;
+
+	// Check if the address falls within capemon DLL itself
+	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size)) {
+#ifdef _WIN64
+		const char our_dll[] = "capemon_x64.dll";
+#else
+		const char our_dll[] = "capemon.dll";
+#endif
+		char *buf = calloc(1, sizeof(our_dll));
+		if (buf) {
+			memcpy(buf, our_dll, sizeof(our_dll));
+			*offset = (unsigned int)(addr - g_our_dll_base);
+			return buf;
+		}
+		return NULL;
 	}
 
-	return ret;
+	if (peb && peb->LoaderData) {
+		PLIST_ENTRY pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+		PLIST_ENTRY pListEntry;
+
+		for (pListEntry = pHeadEntry->Flink; pListEntry != pHeadEntry; pListEntry = pListEntry->Flink) {
+			PLDR_DATA_TABLE_ENTRY mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+			if (addr >= (ULONG_PTR)mod->BaseAddress && addr < ((ULONG_PTR)mod->BaseAddress + mod->SizeOfImage)) {
+				*offset = (unsigned int)(addr - (ULONG_PTR)mod->BaseAddress);
+				if (peb->ImageBaseAddress && mod->BaseAddress == peb->ImageBaseAddress) {
+					char *buf = calloc(1, 7);
+					if (buf) {
+						memcpy(buf, "<main>", 7);
+						return buf;
+					}
+					return NULL;
+				} else {
+					size_t len = mod->BaseDllName.Length / sizeof(wchar_t);
+					char *buf = calloc(1, len + 1);
+					if (buf) {
+						size_t i;
+						for (i = 0; i < len; i++)
+							buf[i] = (char)mod->BaseDllName.Buffer[i];
+						return buf;
+					}
+					return NULL;
+				}
+			}
+		}
+	}
+
+	return NULL;
+}
+
+#ifndef _WIN64
+static unsigned int safe_capture_suspended_backtrace_x86(HANDLE hThread, CONTEXT *ctx, ULONG_PTR *backtrace, unsigned int max_depth)
+{
+	unsigned int count = 0;
+	THREAD_BASIC_INFORMATION tbi;
+	ULONG ulSize = 0;
+	ULONG_PTR top = 0, bottom = 0;
+	ULONG_PTR _ebp, _esp;
+
+	if (pNtQueryInformationThread && pNtQueryInformationThread(hThread, 0, &tbi, sizeof(tbi), &ulSize) >= 0 && tbi.TebBaseAddress) {
+		PNT_TIB tib = (PNT_TIB)tbi.TebBaseAddress;
+		__try {
+			top = (ULONG_PTR)tib->StackBase;
+			bottom = (ULONG_PTR)tib->StackLimit;
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER) {
+			top = 0;
+			bottom = 0;
+		}
+	}
+
+	_ebp = ctx->Ebp;
+	_esp = ctx->Esp;
+
+	__try {
+		if (count < max_depth && is_executable_address(ctx->Eip)) {
+			backtrace[count++] = ctx->Eip;
+		}
+		if (top && bottom) {
+			if (_esp >= bottom && _esp <= (top - sizeof(ULONG_PTR))) {
+				ULONG_PTR first_ret = *(ULONG_PTR *)_esp;
+				if (is_executable_address(first_ret) && (count == 0 || backtrace[count - 1] != first_ret)) {
+					if (count < max_depth)
+						backtrace[count++] = first_ret;
+				}
+			}
+			while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count < max_depth) {
+				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
+				ULONG_PTR next_ebp = *(ULONG_PTR *)_ebp;
+				if (next_ebp <= _ebp)
+					break;
+				_ebp = next_ebp;
+				if (retaddr) {
+					if (is_executable_address(retaddr) && (count == 0 || backtrace[count - 1] != retaddr)) {
+						backtrace[count++] = retaddr;
+					}
+				}
+				else
+					break;
+			}
+		} else {
+			while (_ebp && count < max_depth) {
+				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
+				ULONG_PTR next_ebp = *(ULONG_PTR *)_ebp;
+				if (next_ebp <= _ebp)
+					break;
+				_ebp = next_ebp;
+				if (retaddr) {
+					if (is_executable_address(retaddr) && (count == 0 || backtrace[count - 1] != retaddr)) {
+						backtrace[count++] = retaddr;
+					}
+				}
+				else
+					break;
+			}
+		}
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER) {
+	}
+	return count;
+}
+#else
+static unsigned int safe_unwind_backtrace_x64(CONTEXT *ctx, ULONG_PTR *backtrace, unsigned int max_depth)
+{
+	CONTEXT local_ctx;
+	DWORD64 imgbase;
+	PRUNTIME_FUNCTION runfunc;
+	KNONVOLATILE_CONTEXT_POINTERS nvctx;
+	PVOID handlerdata;
+	ULONG_PTR establisherframe;
+	unsigned int frame = 0;
+
+	if (srw_lock_held())
+		return 0;
+
+	memcpy(&local_ctx, ctx, sizeof(CONTEXT));
+
+	__try {
+		while (frame < max_depth) {
+			ULONG_PTR prev_rip = (ULONG_PTR)local_ctx.Rip;
+			ULONG_PTR prev_rsp = (ULONG_PTR)local_ctx.Rsp;
+
+			// Verify that Rip points to valid committed executable code
+			if (!is_executable_address(prev_rip))
+				break;
+
+			backtrace[frame++] = prev_rip;
+			if (frame >= max_depth)
+				break;
+
+			runfunc = RtlLookupFunctionEntry(local_ctx.Rip, &imgbase, NULL);
+			memset(&nvctx, 0, sizeof(nvctx));
+			if (runfunc == NULL) {
+				ULONG_PTR candidate = 0;
+				int scan;
+				// Scan up the stack for the next executable return address
+				for (scan = 0; scan < 16; scan++) {
+					if (our_isbadreadptr((PVOID)local_ctx.Rsp, sizeof(PVOID)))
+						break;
+					candidate = *(ULONG_PTR *)local_ctx.Rsp;
+					local_ctx.Rsp += 8;
+					if (is_executable_address(candidate))
+						break;
+					candidate = 0;
+				}
+				if (!candidate)
+					break;
+				local_ctx.Rip = candidate;
+			}
+			else {
+				RtlVirtualUnwind(UNW_FLAG_NHANDLER, imgbase, local_ctx.Rip, runfunc, &local_ctx, &handlerdata, &establisherframe, &nvctx);
+			}
+
+			if ((ULONG_PTR)local_ctx.Rip == prev_rip && (ULONG_PTR)local_ctx.Rsp == prev_rsp)
+				break;
+		}
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER) {
+	}
+	return frame;
+}
+#endif
+
+static VOID NTAPI WatchdogApcCallback(ULONG_PTR Parameter)
+{
+	lasterror_t lasterror;
+	WATCHDOG_REQUEST *req = (WATCHDOG_REQUEST *)Parameter;
+	if (!req)
+		return;
+
+	InterlockedIncrement(&req->apc_executed_count);
+
+	// Atomically try to claim the slot (transition PENDING -> APC_RUNNING)
+	if (InterlockedCompareExchange(&req->status, WATCHDOG_STATUS_APC_RUNNING, WATCHDOG_STATUS_PENDING) != WATCHDOG_STATUS_PENDING)
+		return;
+
+	get_lasterrors(&lasterror);
+	hook_disable();
+
+	memset(&req->ctx, 0, sizeof(req->ctx));
+	req->ctx.ContextFlags = CONTEXT_FULL;
+	RtlCaptureContext(&req->ctx);
+
+	req->backtrace_count = 0;
+#ifndef _WIN64
+	{
+		ULONG_PTR top = get_stack_top();
+		ULONG_PTR bottom = get_stack_bottom();
+		ULONG_PTR _ebp = req->ctx.Ebp;
+		unsigned int count = 0;
+
+		__try {
+			while (_ebp >= bottom && _ebp <= (top - (2 * sizeof(ULONG_PTR))) && count < WATCHDOG_MAX_FRAMES) {
+				ULONG_PTR retaddr = *(ULONG_PTR *)(_ebp + sizeof(ULONG_PTR));
+				ULONG_PTR next_ebp = *(ULONG_PTR *)_ebp;
+				if (next_ebp <= _ebp)
+					break;
+				_ebp = next_ebp;
+				if (retaddr) {
+					if (is_executable_address(retaddr))
+						req->backtrace[count++] = retaddr;
+				}
+				else
+					break;
+			}
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER) {
+		}
+		req->backtrace_count = count;
+		if (count > 0)
+			req->ctx.Eip = req->backtrace[0];
+	}
+#else
+	req->backtrace_count = safe_unwind_backtrace_x64(&req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+	// Drop WatchdogApcCallback's own frame so RIP and frame #00 reflect the interrupted thread
+	if (req->backtrace_count > 1) {
+		unsigned int k;
+		for (k = 0; k < req->backtrace_count - 1; k++)
+			req->backtrace[k] = req->backtrace[k + 1];
+		req->backtrace_count--;
+		req->ctx.Rip = req->backtrace[0];
+	}
+#endif
+
+	req->sampled_via_apc = TRUE;
+	InterlockedExchange(&req->status, WATCHDOG_STATUS_APC_DONE);
+
+	hook_enable();
+	set_lasterrors(&lasterror);
+}
+
+static void watchdog_log_sample(WATCHDOG_REQUEST *req)
+{
+	char msg[4096];
+	char *modname;
+	unsigned int off = 0;
+	unsigned int i;
+	int written;
+	int rem = sizeof(msg);
+	char *p = msg;
+
+	msg[0] = '\0';
+
+#ifdef _WIN64
+	modname = watchdog_get_module_and_offset((ULONG_PTR)req->ctx.Rip, &off);
+	if (modname) {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  RIP: %s+0x%x (0x%I64x)\n"
+			"  RAX: 0x%I64x  RBX: 0x%I64x  RCX: 0x%I64x  RDX: 0x%I64x\n"
+			"  RSI: 0x%I64x  RDI: 0x%I64x  RBP: 0x%I64x  RSP: 0x%I64x\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			modname, off, (ULONG_PTR)req->ctx.Rip,
+			(ULONG_PTR)req->ctx.Rax, (ULONG_PTR)req->ctx.Rbx, (ULONG_PTR)req->ctx.Rcx, (ULONG_PTR)req->ctx.Rdx,
+			(ULONG_PTR)req->ctx.Rsi, (ULONG_PTR)req->ctx.Rdi, (ULONG_PTR)req->ctx.Rbp, (ULONG_PTR)req->ctx.Rsp);
+		free(modname);
+	} else {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  RIP: [0x%I64x]\n"
+			"  RAX: 0x%I64x  RBX: 0x%I64x  RCX: 0x%I64x  RDX: 0x%I64x\n"
+			"  RSI: 0x%I64x  RDI: 0x%I64x  RBP: 0x%I64x  RSP: 0x%I64x\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			(ULONG_PTR)req->ctx.Rip,
+			(ULONG_PTR)req->ctx.Rax, (ULONG_PTR)req->ctx.Rbx, (ULONG_PTR)req->ctx.Rcx, (ULONG_PTR)req->ctx.Rdx,
+			(ULONG_PTR)req->ctx.Rsi, (ULONG_PTR)req->ctx.Rdi, (ULONG_PTR)req->ctx.Rbp, (ULONG_PTR)req->ctx.Rsp);
+	}
+#else
+	modname = watchdog_get_module_and_offset((ULONG_PTR)req->ctx.Eip, &off);
+	if (modname) {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  EIP: %s+0x%x (0x%lx)\n"
+			"  EAX: 0x%lx  EBX: 0x%lx  ECX: 0x%lx  EDX: 0x%lx\n"
+			"  ESI: 0x%lx  EDI: 0x%lx  EBP: 0x%lx  ESP: 0x%lx\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			modname, off, (ULONG_PTR)req->ctx.Eip,
+			(ULONG_PTR)req->ctx.Eax, (ULONG_PTR)req->ctx.Ebx, (ULONG_PTR)req->ctx.Ecx, (ULONG_PTR)req->ctx.Edx,
+			(ULONG_PTR)req->ctx.Esi, (ULONG_PTR)req->ctx.Edi, (ULONG_PTR)req->ctx.Ebp, (ULONG_PTR)req->ctx.Esp);
+		free(modname);
+	} else {
+		written = _snprintf_s(p, rem, _TRUNCATE,
+			"INFO: [WATCHDOG] PID %u | TID %u [%s]\n"
+			"  EIP: [0x%lx]\n"
+			"  EAX: 0x%lx  EBX: 0x%lx  ECX: 0x%lx  EDX: 0x%lx\n"
+			"  ESI: 0x%lx  EDI: 0x%lx  EBP: 0x%lx  ESP: 0x%lx\n",
+			GetCurrentProcessId(), req->tid, req->sampled_via_apc ? "APC" : "BUSY",
+			(ULONG_PTR)req->ctx.Eip,
+			(ULONG_PTR)req->ctx.Eax, (ULONG_PTR)req->ctx.Ebx, (ULONG_PTR)req->ctx.Ecx, (ULONG_PTR)req->ctx.Edx,
+			(ULONG_PTR)req->ctx.Esi, (ULONG_PTR)req->ctx.Edi, (ULONG_PTR)req->ctx.Ebp, (ULONG_PTR)req->ctx.Esp);
+	}
+#endif
+
+	if (written > 0 && written < rem) {
+		p += written;
+		rem -= written;
+	}
+
+	if (req->backtrace_count > 0) {
+		written = _snprintf_s(p, rem, _TRUNCATE, "  Call Stack (%u frames):\n", req->backtrace_count);
+		if (written > 0 && written < rem) {
+			p += written;
+			rem -= written;
+		}
+
+		for (i = 0; i < req->backtrace_count && rem > 128; i++) {
+			modname = watchdog_get_module_and_offset(req->backtrace[i], &off);
+			if (modname) {
+#ifdef _WIN64
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u %s+0x%x (0x%I64x)\n", i, modname, off, (ULONG_PTR)req->backtrace[i]);
+#else
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u %s+0x%x (0x%lx)\n", i, modname, off, (ULONG_PTR)req->backtrace[i]);
+#endif
+				free(modname);
+			} else {
+#ifdef _WIN64
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u [0x%I64x]\n", i, (ULONG_PTR)req->backtrace[i]);
+#else
+				written = _snprintf_s(p, rem, _TRUNCATE, "    #%02u [0x%lx]\n", i, (ULONG_PTR)req->backtrace[i]);
+#endif
+			}
+			if (written > 0 && written < rem) {
+				p += written;
+				rem -= written;
+			}
+		}
+	} else {
+		written = _snprintf_s(p, rem, _TRUNCATE, "  Call Stack: (none)\n");
+		if (written > 0 && written < rem) {
+			p += written;
+			rem -= written;
+		}
+	}
+
+	pipe("%z", msg);
 }
 
 static DWORD WINAPI _watchdog_thread(LPVOID param)
 {
+	(void)param;
 	hook_disable();
 
 	while (1) {
-		char msg[MAX_PATH];
-		char *dllname;
-		unsigned int off = 0;
+		int interval = g_config.watchdog_interval > 0 ? g_config.watchdog_interval : 5000;
+		int apc_wait = 500;
 		int i;
+		HANDLE hSnap;
+		int remaining_sleep;
 
-		CONTEXT ctx;
-		raw_sleep(5000);
-		memset(&capemonaddrs, 0, sizeof(capemonaddrs));
-		capemonaddrs_num = 0;
-		memset(&ctx, 0, sizeof(ctx));
-		SuspendThread((HANDLE)param);
-		ctx.ContextFlags = CONTEXT_FULL;
-		GetThreadContext((HANDLE)param, &ctx);
-		dllname = convert_address_to_dll_name_and_offset(ctx.Eip, &off);
-		_snprintf_s(msg, MAX_PATH, _TRUNCATE, "INFO: PID %u thread: %p EIP: %s+%x(0x%lx) EAX: 0x%lx EBX: 0x%lx ECX: 0x%lx EDX: 0x%lx ESI: 0x%lx EDI: 0x%lx EBP: 0x%lx ESP: 0x%lx\n", GetCurrentProcessId(), param, dllname ? dllname : "", off, ctx.Eip, ctx.Eax, ctx.Ebx, ctx.Ecx, ctx.Edx, ctx.Esi, ctx.Edi, ctx.Ebp, ctx.Esp);
+		if (interval < 600)
+			apc_wait = interval / 2;
 
-		_operate_on_backtrace(ctx.Eip, ctx.Ebp, NULL, find_capemon_addrs);
-
-		for (i = 0; i < capemonaddrs_num; i++) {
-			char *dllname2 = convert_address_to_dll_name_and_offset(capemonaddrs[i], &off);
-			sprintf(msg + strlen(msg), " %s+%x(0x%lx)", dllname2 ? dllname2 : "", off, capemonaddrs[i]);
-			if (dllname2)
-				free(dllname2);
+		// Mark all slots as not seen in current snapshot
+		for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
+			g_watchdog_requests[i].in_snapshot = FALSE;
 		}
 
-		if (dllname)
-			free(dllname);
-		ResumeThread((HANDLE)param);
-		pipe(msg);
+		// Enumerate active threads of current process
+		hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+		if (hSnap != INVALID_HANDLE_VALUE) {
+			THREADENTRY32 te;
+			te.dwSize = sizeof(te);
+			if (Thread32First(hSnap, &te)) {
+				do {
+					if (te.th32OwnerProcessID == GetCurrentProcessId() &&
+						te.th32ThreadID != GetCurrentThreadId() &&
+						!is_monitor_thread(te.th32ThreadID)) {
+
+						WATCHDOG_REQUEST *req = watchdog_get_or_create_slot(te.th32ThreadID);
+						if (req) {
+							req->in_snapshot = TRUE;
+							req->generation = ++g_watchdog_generation;
+							req->sampled_via_apc = FALSE;
+							req->backtrace_count = 0;
+							InterlockedExchange(&req->status, WATCHDOG_STATUS_PENDING);
+
+							// If an APC is not currently in flight for this thread, queue one
+							if (req->apc_dispatched_count == req->apc_executed_count) {
+								HANDLE hThread = req->hThread;
+								if (!hThread) {
+									hThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+									if (!hThread)
+										hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, te.th32ThreadID);
+									req->hThread = hThread;
+								}
+
+								if (hThread) {
+									if (QueueUserAPC((PAPCFUNC)WatchdogApcCallback, hThread, (ULONG_PTR)req) != 0) {
+										InterlockedIncrement(&req->apc_dispatched_count);
+									}
+									else {
+										InterlockedExchange(&req->status, WATCHDOG_STATUS_FALLBACK);
+									}
+								}
+								else {
+									InterlockedExchange(&req->status, WATCHDOG_STATUS_FALLBACK);
+								}
+							}
+						}
+					}
+				} while (Thread32Next(hSnap, &te));
+			}
+			CloseHandle(hSnap);
+
+			// Allow alertable threads to execute their APC
+			raw_sleep(apc_wait);
+
+			// Evaluate sampled threads and fallback to safe suspend for busy ones
+			for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
+				WATCHDOG_REQUEST *req = &g_watchdog_requests[i];
+				LONG prev;
+				if (!req->tid || !req->in_snapshot)
+					continue;
+
+				// Claim slot for fallback if still PENDING; if APC is running, wait briefly for completion
+				prev = InterlockedCompareExchange(&req->status, WATCHDOG_STATUS_FALLBACK, WATCHDOG_STATUS_PENDING);
+				if (prev == WATCHDOG_STATUS_APC_RUNNING) {
+					int spin;
+					for (spin = 0; spin < 50 && req->status == WATCHDOG_STATUS_APC_RUNNING; spin++)
+						raw_sleep(1);
+					prev = req->status;
+				}
+
+				if (prev == WATCHDOG_STATUS_APC_DONE) {
+					if (req->hThread) {
+						CloseHandle(req->hThread);
+						req->hThread = NULL;
+					}
+					watchdog_log_sample(req);
+				}
+				else if (prev != WATCHDOG_STATUS_APC_RUNNING) {
+					// APC did not execute (thread is busy or in non-alertable wait).
+					// Perform Safe Suspend/Resume Fallback.
+					HANDLE hThread = req->hThread;
+					if (!hThread) {
+						hThread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, req->tid);
+						if (!hThread)
+							hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, req->tid);
+					}
+
+					if (hThread) {
+						if (SuspendThread(hThread) != (DWORD)-1) {
+							BOOL ctx_ok = FALSE;
+							memset(&req->ctx, 0, sizeof(req->ctx));
+							req->ctx.ContextFlags = CONTEXT_FULL;
+							req->backtrace_count = 0;
+							if (GetThreadContext(hThread, &req->ctx)) {
+								ctx_ok = TRUE;
+#ifndef _WIN64
+								req->backtrace_count = safe_capture_suspended_backtrace_x86(hThread, &req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+#else
+								{
+									PEB *peb = (PEB *)get_peb();
+									RTL_CRITICAL_SECTION *loader_lock = peb ? peb->LoaderLock : NULL;
+									if (!loader_lock || loader_lock->OwningThread != (HANDLE)(ULONG_PTR)req->tid) {
+										req->backtrace_count = safe_unwind_backtrace_x64(&req->ctx, req->backtrace, WATCHDOG_MAX_FRAMES);
+									}
+								}
+#endif
+							}
+							ResumeThread(hThread);
+
+							if (ctx_ok) {
+								req->sampled_via_apc = FALSE;
+								watchdog_log_sample(req);
+							}
+						}
+						CloseHandle(hThread);
+						req->hThread = NULL;
+					}
+				}
+			}
+
+			// Cleanup terminated threads from our slots
+			for (i = 0; i < WATCHDOG_MAX_THREADS; i++) {
+				WATCHDOG_REQUEST *req = &g_watchdog_requests[i];
+				if (req->tid && !req->in_snapshot) {
+					if (req->hThread) {
+						CloseHandle(req->hThread);
+						req->hThread = NULL;
+					}
+					if (req->apc_dispatched_count == req->apc_executed_count) {
+						memset(req, 0, sizeof(WATCHDOG_REQUEST));
+					} else {
+						InterlockedExchange(&req->status, WATCHDOG_STATUS_FALLBACK);
+						req->tid = 0;
+					}
+				}
+			}
+		}
+
+		// Sleep for the remainder of the interval
+		remaining_sleep = interval - apc_wait;
+		if (remaining_sleep > 0)
+			raw_sleep(remaining_sleep);
 	}
-}
-
-int init_watchdog()
-{
-	HANDLE mainthreadhandle;
-
-	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &mainthreadhandle, THREAD_ALL_ACCESS, FALSE, 0);
-
-	CreateThread(NULL, 0, &_watchdog_thread, mainthreadhandle, 0, &g_watchdog_thread_id);
 
 	return 0;
 }
-#endif
+
+int init_watchdog(void)
+{
+	HANDLE hWatchdog = CreateThread(NULL, 0, &_watchdog_thread, NULL, 0, &g_watchdog_thread_id);
+	if (hWatchdog) {
+		CloseHandle(hWatchdog);
+		return 0;
+	}
+	return -1;
+}
