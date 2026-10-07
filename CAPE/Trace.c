@@ -2446,7 +2446,7 @@ BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	LastContext = *ExceptionInfo->ContextRecord;
 
-	if (!StopTrace && ReturnAddress && (StepOver == TRUE) || ForceStepOver)
+	if (!StopTrace && ReturnAddress && (StepOver == TRUE || ForceStepOver))
 	{
 		if (ContextSetNextAvailableBreakpoint(ExceptionInfo->ContextRecord, &StepOverRegister, 0, (BYTE*)ReturnAddress, BP_EXEC, 1, BreakpointCallback))
 		{

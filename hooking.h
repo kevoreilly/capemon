@@ -276,7 +276,7 @@ static inline BOOLEAN disable_this_hook(hook_t *h)
 {
 	const char *required_apis[] = {
 		"NtCreateThread",
-		"NtCreateThreadEx"
+		"NtCreateThreadEx",
 		"NtCreateProcess",
 		"NtCreateProcessEx",
 		"NtCreateUserProcess",
