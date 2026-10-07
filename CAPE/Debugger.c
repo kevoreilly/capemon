@@ -561,7 +561,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	ExceptionInfo->ContextRecord->Eip = (DWORD)Address;
 #endif
 
-	// The callback may change SoftBP->Persistent (e.g. Go TLS return breakpoints with no pending callers)
+	// The callback may remove the breakpoint from BPs; re-check membership before re-arming
 	if (SoftBP->Callback)
 		((SOFTWARE_BREAKPOINT_HANDLER)SoftBP->Callback)(ExceptionInfo);
 

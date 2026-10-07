@@ -590,19 +590,9 @@ static void GoTlsAddPending(GO_TLS_RETURN_STATE* tlsState, PVOID retAddr, ULONG_
     slot->RegAbi = regAbi;
     InterlockedExchangePointer((PVOID volatile*)&slot->EntrySP, (PVOID)entrySP);
 
-    if (!SetSoftwareBreakpointEx(&SoftBPs, retAddr, GoBreakpointHandler, TRUE)) {
-        // Already present (armed, or being stepped over by another thread): make sure it stays armed
-        PSOFTBP SoftBP = (PSOFTBP)lookup_get(&SoftBPs, (ULONG_PTR)retAddr, NULL);
-        if (SoftBP)
-            SoftBP->Persistent = TRUE;
-    }
-}
-
-static BOOL GoTlsHasPending(GO_TLS_RETURN_STATE* tlsState) {
-    for (int i = 0; i < GO_TLS_SLOTS; i++)
-        if (tlsState->Slots[i].EntrySP != 0)
-            return TRUE;
-    return FALSE;
+    // Persistent return breakpoint, armed once per return site (re-armed here if ClearAllBreakpoints removed it)
+    if (!lookup_get(&SoftBPs, (ULONG_PTR)retAddr, NULL))
+        SetSoftwareBreakpointEx(&SoftBPs, retAddr, GoBreakpointHandler, TRUE);
 }
 
 // Software breakpoint callback registered via SetSoftwareBreakpoint for Go hooks
@@ -637,11 +627,9 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
             }
         }
 
-        // Keep the return breakpoint armed only while other Read calls through this site are pending
-        PSOFTBP SoftBP = (PSOFTBP)lookup_get(&SoftBPs, (ULONG_PTR)Address, NULL);
-        if (SoftBP && !lookup_get(&g_go_hook_table, (ULONG_PTR)Address, NULL))
-            SoftBP->Persistent = GoTlsHasPending(tlsState);
-
+        // The return breakpoint stays persistent for the lifetime of the g_go_tls_return_table entry: this site is
+        // only reached after a Read that registered a pending slot, and toggling it one-shot would lookup_del/re-add
+        // a SoftBPs record (never freed) on every read.
         handled = TRUE;
     }
 
