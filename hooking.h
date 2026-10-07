@@ -141,6 +141,9 @@ typedef struct _hook_info_t {
 	PVOID alt_stack;
 	int alt_stack_depth;          // > 0 while this thread executes on alt_stack
 	ULONG_PTR alt_stack_orig_sp;  // approximate SP of the hooked thread at switch time (valid while alt_stack_depth > 0)
+	// software breakpoint this thread disarmed and is single-stepping over (NULL = none), see Debugger.c
+	PVOID softbp_stepping;
+	BOOL softbp_chain_step;       // TF was already set when that breakpoint was hit: hand the step on afterwards
 } hook_info_t;
 
 

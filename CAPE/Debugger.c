@@ -434,51 +434,33 @@ void ShowStack(DWORD_PTR StackPointer, unsigned int NumberOfRecords)
 }
 
 //**************************************************************************************
-BOOL SoftBPPendingForThread(DWORD ThreadId, PVOID ExceptionAddress)
+BOOL SoftBPPendingForThread(void)
 //**************************************************************************************
 {
-	// TRUE if this thread disarmed a software breakpoint and is single-stepping over it
-	for (entry_t *Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
-	{
-		PBYTE Address = (PBYTE)Entry->id;
-		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
-		if (!SoftBP)
-			continue;
-		if (SoftBP->ThreadId == ThreadId)
-			return TRUE;
-		if (SoftBP->StepCount > 0 && (ULONG_PTR)ExceptionAddress - (ULONG_PTR)Address <= 0x10)
-			return TRUE;
-	}
-	return FALSE;
+	// TRUE if the current thread disarmed a software breakpoint and is single-stepping over it
+	return hook_info()->softbp_stepping != NULL;
 }
 
 //**************************************************************************************
 BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
-	DWORD CurrentThreadId = GetCurrentThreadId();
-	PVOID ExceptionAddress = ExceptionInfo->ExceptionRecord->ExceptionAddress;
-	BOOL Restored = FALSE, ChainStep = FALSE;
+	hook_info_t *hookinfo = hook_info();
+	PBYTE Address = (PBYTE)hookinfo->softbp_stepping;
+	BOOL ChainStep = hookinfo->softbp_chain_step;
+	BOOL Restored = FALSE;
 
-	// Only re-arm breakpoints this thread disarmed; other threads may still be stepping over theirs
-	for (entry_t *Entry = SoftBPs.root; Entry != NULL; Entry = Entry->next)
+	hookinfo->softbp_stepping = NULL;
+	hookinfo->softbp_chain_step = FALSE;
+
+	if (!Address)
+		return FALSE;
+
+	// Only re-arm once the last thread stepping over this breakpoint is done; the record may have been removed
+	// by the callback (one-shot) or ClearAllBreakpoints in the meantime
+	PSOFTBP SoftBP = lookup_get(&SoftBPs, (ULONG_PTR)Address, 0);
+	if (SoftBP)
 	{
-		PBYTE Address = (PBYTE)Entry->id;
-		PSOFTBP SoftBP = (PSOFTBP)Entry->data;
-
-		if (!SoftBP)
-			continue;
-
-		if (SoftBP->ThreadId != CurrentThreadId &&
-		    !(SoftBP->StepCount > 0 && (ULONG_PTR)ExceptionAddress - (ULONG_PTR)Address <= 0x10))
-			continue;
-
-		if (SoftBP->ThreadId == CurrentThreadId)
-			SoftBP->ThreadId = 0;
-		if (SoftBP->ChainStep)
-			ChainStep = TRUE;
-		SoftBP->ChainStep = FALSE;
-
 		LONG remaining = InterlockedDecrement(&SoftBP->StepCount);
 		if (remaining < 0)
 		{
@@ -489,22 +471,20 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (remaining == 0 && IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
 		{
 			DWORD OldProtect;
-			if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
+			if (VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 			{
-				DebugOutput("RestoreSoftwareBreakpoint: Unable to change memory protection at 0x%p\n", Address);
-				continue;
-			}
 #ifdef DEBUG_COMMENTS
-			DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p\n", Address);
+				DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p\n", Address);
 #endif
-			*(PBYTE)Address = 0xCC;
-			VirtualProtect(Address, 1, OldProtect, &OldProtect);
-			Restored = TRUE;
+				*(PBYTE)Address = 0xCC;
+				VirtualProtect(Address, 1, OldProtect, &OldProtect);
+				Restored = TRUE;
+			}
+			else
+				DebugOutput("RestoreSoftwareBreakpoint: Unable to change memory protection at 0x%p\n", Address);
 		}
 		else if (remaining > 0)
-		{
 			Restored = TRUE;
-		}
 	}
 
 	// If this thread was already single-stepping (e.g. Trace started by the breakpoint callback), hand over;
@@ -569,8 +549,9 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	{
 		// Step this thread over the original instruction, then re-arm in RestoreSoftwareBreakpoint.
 		// TF already set here means the callback (or an active trace) owns stepping for this thread.
-		SoftBP->ChainStep = (ExceptionInfo->ContextRecord->EFlags & FL_TF) ? TRUE : FALSE;
-		SoftBP->ThreadId = GetCurrentThreadId();
+		hook_info_t *hookinfo = hook_info();
+		hookinfo->softbp_chain_step = (ExceptionInfo->ContextRecord->EFlags & FL_TF) ? TRUE : FALSE;
+		hookinfo->softbp_stepping = Address;
 		InterlockedIncrement(&SoftBP->StepCount);
 		ExceptionInfo->ContextRecord->EFlags |= FL_TF;
 	}
@@ -676,7 +657,7 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (bp == NUMBER_OF_DEBUG_REGISTERS)
 		{
 			// Step-over of a disarmed software breakpoint is tracked per thread and needs no THREADBREAKPOINTS
-			if (SoftBPPendingForThread(CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionAddress))
+			if (SoftBPPendingForThread())
 				RestoreSoftwareBreakpoint(ExceptionInfo);
 			else
 			{
@@ -2297,8 +2278,6 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 	SoftBP->Length = lde(Address);
 	SoftBP->Callback = Callback;
 	SoftBP->Persistent = Persistent;
-	SoftBP->ChainStep = FALSE;
-	SoftBP->ThreadId = 0;
 	SoftBP->StepCount = 0;
 
 #ifdef DEBUG_COMMENTS
