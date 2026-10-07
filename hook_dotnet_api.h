@@ -21,7 +21,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // Called by the compileMethod hook once a managed method has been JIT compiled
 // and its name resolved. If the method is in the .NET API allowlist a persistent
 // software breakpoint is placed on its native entry and each call is logged as
-// one behaviour-log record in the "dotnet_api" category.
+// one "DotNetApi" behaviour-log record in the entry's category.
 void DotNetApiOnMethodCompiled(const char *NamespaceName, const char *ClassName, const char *MethodName, PVOID NativeCode);
 
 // Sets the CLR configuration knobs that disable precompiled BCL images so the

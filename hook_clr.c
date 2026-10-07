@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <psapi.h>
 #include "hooking.h"
 #include "log.h"
 #include "pipe.h"
@@ -26,6 +27,11 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 // recorded with LOOKUP_MARK_SEEN and read with lookup_get, both of which are
 // safe without external locking. Entries are never removed.
 lookup_t g_dotnet_jit;
+
+// Per-AllocationBase cache classifying mapped IL images as system/BCL (1) vs
+// sample/user (-1), so disabling NGEN/ReadyToRun does not flood the "dotnet"
+// log, YARA scanner, or jit_dumps quota with thousands of BCL methods.
+static lookup_t g_dotnet_il_modules;
 
 // The CORINFO_METHOD_INFO structure is passed to compileMethod by the CLR JIT engine.
 // The first four fields are extremely stable and consistent across all .NET versions.
@@ -460,6 +466,69 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** clas
 	return name;
 }
 
+static BOOL HasSystemDotNetPrefix(const char *Name)
+{
+	static const char *Prefixes[] = {
+		"System",
+		"Microsoft",
+		"Internal",
+		"Interop",
+		"MS",
+		"Windows",
+	};
+	unsigned int i;
+
+	if (!Name || !*Name)
+		return FALSE;
+
+	for (i = 0; i < sizeof(Prefixes) / sizeof(Prefixes[0]); i++) {
+		size_t len = strlen(Prefixes[i]);
+		if (!strncmp(Name, Prefixes[i], len) && (Name[len] == '\0' || Name[len] == '.'))
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+static BOOL IsSystemDotNetMethod(const CORINFO_METHOD_INFO_REDUCED *info, const char *namespaceName, const char *className)
+{
+	if (info && info->ILCode) {
+		PVOID Base;
+		int *Verdict;
+		wchar_t MappedPath[MAX_PATH];
+		BOOL IsSystem = FALSE;
+
+		if (is_in_dll_range((ULONG_PTR)info->ILCode))
+			return TRUE;
+
+		Base = GetAllocationBase(info->ILCode);
+		if (Base) {
+			Verdict = (int *)lookup_get(&g_dotnet_il_modules, (ULONG_PTR)Base, NULL);
+			if (Verdict && *Verdict != 0)
+				return *Verdict > 0;
+
+			if (GetMappedFileNameW(GetCurrentProcess(), Base, MappedPath, MAX_PATH)) {
+				MappedPath[MAX_PATH - 1] = L'\0';
+				if (path_is_system(MappedPath) ||
+				    wcsistr(MappedPath, L"\\windows\\microsoft.net\\") ||
+				    wcsistr(MappedPath, L"\\windows\\assembly\\") ||
+				    wcsistr(MappedPath, L"\\program files\\dotnet\\") ||
+				    wcsistr(MappedPath, L"\\program files (x86)\\dotnet\\") ||
+				    wcsistr(MappedPath, L"\\dotnet\\shared\\"))
+					IsSystem = TRUE;
+			}
+
+			Verdict = (int *)lookup_add(&g_dotnet_il_modules, (ULONG_PTR)Base, sizeof(int));
+			if (Verdict)
+				*Verdict = IsSystem ? 1 : -1;
+
+			return IsSystem;
+		}
+	}
+
+	return HasSystemDotNetPrefix(namespaceName && *namespaceName ? namespaceName : className);
+}
+
 HOOKDEF(int, WINAPI, compileMethod,
 	PVOID			this,
 	PVOID			compHnd,
@@ -481,8 +550,9 @@ HOOKDEF(int, WINAPI, compileMethod,
 		const char* className = NULL;
 		const char* namespaceName = NULL;
 		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className, &namespaceName);
+		BOOL isSystemMethod = IsSystemDotNetMethod(info, namespaceName, className);
 
-		if (methodName != NULL) {
+		if (!isSystemMethod && methodName != NULL) {
 			LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
 				"Class", className ? className : "UnknownClass", "Method", methodName);
 			DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
@@ -508,7 +578,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 			if (methodName)
 				DotNetApiOnMethodCompiled(namespaceName, className, methodName, nativeCode);
 
-			if (g_config.yarascan)
+			if (!isSystemMethod && g_config.yarascan)
 			{
 				// Scan JIT compiled native assembly code
 #ifdef DEBUG_COMMENTS
@@ -519,7 +589,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 			}
 		}
 
-		if (g_config.yarascan && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize))
+		if (!isSystemMethod && g_config.yarascan && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize))
 		{
 			// Scan original, decrypted intermediate MSIL bytecode (only if above size threshold)
 #ifdef DEBUG_COMMENTS
@@ -529,7 +599,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 #endif
 		}
 
-		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize)) {
+		if (!isSystemMethod && g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize)) {
 			// jit_dumps budget is shared with DumpInterestingRegions() and claimed
 			// atomically; no lock. Runs at most jit_dumps times process-wide.
 			if (ReserveDotNetCacheDump()) {
@@ -544,7 +614,7 @@ HOOKDEF(int, WINAPI, compileMethod,
 			}
 		}
 
-		if (g_config.break_on_jit && nativeCode) {
+		if (!isSystemMethod && g_config.break_on_jit && nativeCode) {
 			unsigned int Register;
 			if (SetNextAvailableBreakpoint(GetCurrentThreadId(), &Register, 0, nativeCode, BP_EXEC, 1, BreakpointCallback))
 				DebugOutput("compileMethod: set JIT native breakpoint.\n");

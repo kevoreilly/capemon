@@ -23,7 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // compiles is matched against the allowlist below and, on a hit, gets a
 // persistent software breakpoint on its native entry. The breakpoint callback
 // decodes the arguments per the managed calling convention and emits exactly
-// one behaviour-log record per call in the "dotnet_api" category.
+// one "DotNetApi" behaviour-log record per call in the entry's category.
 //
 // Coverage note: BCL code is normally precompiled (NGEN on Framework, R2R on
 // Core) and never passes through compileMethod. DllMain therefore calls
@@ -60,10 +60,20 @@ extern lookup_t SoftBPs;
 #define MANAGED_ARRAY_LENGTH_OFFSET		(sizeof(PVOID))
 #define MANAGED_ARRAY_DATA_OFFSET		(2 * sizeof(PVOID))
 
+// CLR MethodTable m_dwFlags (offset 0) across Framework 2.0-4.8 and Core/5-10:
+// bit 31 (0x80000000) is enum_flag_HasComponentSize (set only on System.String
+// and Array types); the low 16 bits hold the element size in bytes (2 for
+// WCHAR in System.String, 1 for byte[]/sbyte[]/bool[]).
+#define MT_FLAGS_HAS_COMPONENT_SIZE		0x80000000U
+#define MT_FLAGS_COMPONENT_SIZE_MASK	0x8000FFFFU
+#define MT_FLAGS_STRING					(MT_FLAGS_HAS_COMPONENT_SIZE | sizeof(WCHAR))
+#define MT_FLAGS_BYTE_ARRAY				(MT_FLAGS_HAS_COMPONENT_SIZE | sizeof(BYTE))
+
 // Caps. Strings longer than this are truncated in the log, arrays larger than
 // DOTNET_API_BUFFER_LOG_MAX are truncated in the log (loq applies its own
 // buffer_log_max on top), and Assembly.Load payloads above
 // DOTNET_ASSEMBLY_DUMP_MAX are not dumped.
+#define DOTNET_API_STRING_MAX_RAW_LEN	0x100000	// WCHAR sanity bound before NUL terminator check
 #define DOTNET_API_STRING_LOG_MAX		4096		// WCHARs
 #define DOTNET_API_STRING_PROBE_MAX		2048		// WCHARs accepted by structural probing
 #define DOTNET_API_BUFFER_LOG_MAX		0x10000		// bytes
@@ -103,18 +113,18 @@ typedef struct _DOTNET_API_ENTRY {
 // start their first parameter at slot 0.
 static DOTNET_API_ENTRY g_dotnet_api_table[] = {
 	// network
-	{ "System.Net.WebClient", "DownloadString",	"network", FALSE, 0, 1, {1},	{DNARG_STRING},						{"Url"} },
-	{ "System.Net.WebClient", "DownloadData",	"network", FALSE, 0, 1, {1},	{DNARG_STRING},						{"Url"} },
-	{ "System.Net.WebClient", "DownloadFile",	"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING, DNARG_STRING},		{"Url", "FileName"} },
-	{ "System.Net.WebClient", "UploadString",	"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING, DNARG_STRING},		{"Url", "Data"} },
-	{ "System.Net.WebClient", "UploadData",		"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING, DNARG_BYTES},		{"Url", "Data"} },
+	{ "System.Net.WebClient", "DownloadString",	"network", FALSE, 0, 1, {1},	{DNARG_STRING_PROBE},				{"Url"} },
+	{ "System.Net.WebClient", "DownloadData",	"network", FALSE, 0, 1, {1},	{DNARG_STRING_PROBE},				{"Url"} },
+	{ "System.Net.WebClient", "DownloadFile",	"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING_PROBE, DNARG_STRING_PROBE}, {"Url", "FileName"} },
+	{ "System.Net.WebClient", "UploadString",	"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING_PROBE, DNARG_STRING_PROBE}, {"Url", "Data"} },
+	{ "System.Net.WebClient", "UploadData",		"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING_PROBE, DNARG_BYTES},	{"Url", "Data"} },
 	{ "System.Net.WebRequest", "Create",		"network", FALSE, 0, 1, {0},	{DNARG_STRING_PROBE},				{"Url"} },
 	{ "System.Net.Http.HttpClient", "GetAsync",			"network", FALSE, 0, 1, {1}, {DNARG_STRING_PROBE},		{"Url"} },
 	{ "System.Net.Http.HttpClient", "GetStringAsync",	"network", FALSE, 0, 1, {1}, {DNARG_STRING_PROBE},		{"Url"} },
 	{ "System.Net.Http.HttpClient", "GetByteArrayAsync","network", FALSE, 0, 1, {1}, {DNARG_STRING_PROBE},		{"Url"} },
 	{ "System.Net.Http.HttpClient", "PostAsync",		"network", FALSE, 1, 1, {1}, {DNARG_STRING_PROBE},		{"Url"} },
 	{ "System.Net.Sockets.TcpClient", ".ctor",	"network", FALSE, 1, 2, {1, 2},	{DNARG_STRING_PROBE, DNARG_INT},	{"Host", "Port"} },
-	{ "System.Net.Dns", "GetHostAddresses",		"network", FALSE, 0, 1, {0},	{DNARG_STRING},						{"Host"} },
+	{ "System.Net.Dns", "GetHostAddresses",		"network", FALSE, 0, 1, {0},	{DNARG_STRING_PROBE},				{"Host"} },
 	{ "System.Net.Dns", "GetHostEntry",			"network", FALSE, 0, 1, {0},	{DNARG_STRING_PROBE},				{"Host"} },
 	// process
 	{ "System.Diagnostics.Process", "Start",	"process", FALSE, 0, 2, {0, 1},	{DNARG_STRING_PROBE, DNARG_STRING_PROBE}, {"FileName", "Arguments"} },
@@ -161,9 +171,12 @@ static lookup_t g_dotnet_api_bps;
 static PVOID volatile g_string_methodtable;
 
 static volatile LONG g_assembly_dump_count;
+static PVOID volatile g_last_assembly_data;
+static volatile LONG g_last_assembly_length;
 
 typedef struct _DECODED_ARG {
 	dotnet_arg_kind_t Kind;
+	BOOL Decoded;
 	int Length;		// WCHARs for strings, bytes for arrays
 	PVOID Data;
 	int Value;
@@ -228,66 +241,95 @@ static BOOL LooksLikeText(PWCHAR Chars, int Length)
 static BOOL ReadManagedString(ULONG_PTR Object, BOOL Probe, DECODED_ARG *Out)
 //**************************************************************************************
 {
-	int Length;
+	int RawLength, Length;
 	PWCHAR Chars;
-	PVOID MethodTable;
+	PVOID MethodTable, KnownMT;
 
-	if (!Object || our_isbadreadptr((PVOID)Object, MANAGED_STRING_CHARS_OFFSET))
+	if (!Object || (Object & (sizeof(PVOID) - 1)) != 0)
+		return FALSE;
+
+	if (our_isbadreadptr((PVOID)Object, MANAGED_STRING_CHARS_OFFSET + sizeof(WCHAR)))
 		return FALSE;
 
 	MethodTable = *(PVOID *)Object;
-	Length = *(int *)(Object + MANAGED_STRING_LENGTH_OFFSET);
-	Chars = (PWCHAR)(Object + MANAGED_STRING_CHARS_OFFSET);
-
-	if (Length < 0 || !MethodTable)
+	if (!MethodTable || ((ULONG_PTR)MethodTable & (sizeof(PVOID) - 1)) != 0 ||
+	    our_isbadreadptr(MethodTable, sizeof(DWORD)))
 		return FALSE;
 
-	if (Probe) {
-		// Ambiguous overload: accept a learned String MethodTable exactly, or,
-		// before one is known, a bounded string of plausible text.
-		if (g_string_methodtable) {
-			if (MethodTable != g_string_methodtable)
-				return FALSE;
-		}
-		else if (Length > DOTNET_API_STRING_PROBE_MAX || our_isbadreadptr(Chars, (Length + 1) * sizeof(WCHAR)) || !LooksLikeText(Chars, Length) || Chars[Length] != 0)
+	if ((*(DWORD *)MethodTable & MT_FLAGS_COMPONENT_SIZE_MASK) != MT_FLAGS_STRING)
+		return FALSE;
+
+	KnownMT = g_string_methodtable;
+	if (KnownMT && MethodTable != KnownMT)
+		return FALSE;
+
+	RawLength = *(int *)(Object + MANAGED_STRING_LENGTH_OFFSET);
+	if (RawLength < 0 || RawLength > DOTNET_API_STRING_MAX_RAW_LEN)
+		return FALSE;
+
+	Chars = (PWCHAR)(Object + MANAGED_STRING_CHARS_OFFSET);
+	if (our_isbadreadptr(Chars, (ULONG)(((SIZE_T)RawLength + 1) * sizeof(WCHAR))) || Chars[RawLength] != L'\0')
+		return FALSE;
+
+	if (Probe && !KnownMT) {
+		if (RawLength > DOTNET_API_STRING_PROBE_MAX || (RawLength > 0 && !LooksLikeText(Chars, RawLength)))
 			return FALSE;
 	}
 
-	if (Length > DOTNET_API_STRING_LOG_MAX)
-		Length = DOTNET_API_STRING_LOG_MAX;
-
-	if (our_isbadreadptr(Chars, Length * sizeof(WCHAR)))
-		return FALSE;
-
-	if (!Probe && !g_string_methodtable)
+	if (!Probe && !KnownMT)
 		InterlockedCompareExchangePointer(&g_string_methodtable, MethodTable, NULL);
 
+	Length = RawLength > DOTNET_API_STRING_LOG_MAX ? DOTNET_API_STRING_LOG_MAX : RawLength;
+
 	Out->Kind = DNARG_STRING;
+	Out->Decoded = TRUE;
 	Out->Length = Length;
 	Out->Data = Chars;
 	return TRUE;
 }
 
 //**************************************************************************************
-static BOOL ReadManagedByteArray(ULONG_PTR Object, SIZE_T MaxLength, DECODED_ARG *Out)
+static BOOL ReadManagedByteArray(ULONG_PTR Object, SIZE_T MaxLength, BOOL TruncateToMax, DECODED_ARG *Out)
 //**************************************************************************************
 {
+	ULONG_PTR RawLength;
 	SIZE_T Length;
 	PBYTE Data;
+	PVOID MethodTable;
 
-	if (!Object || our_isbadreadptr((PVOID)Object, MANAGED_ARRAY_DATA_OFFSET))
+	if (!Object || (Object & (sizeof(PVOID) - 1)) != 0)
 		return FALSE;
 
-	Length = *(DWORD *)(Object + MANAGED_ARRAY_LENGTH_OFFSET);
-	Data = (PBYTE)(Object + MANAGED_ARRAY_DATA_OFFSET);
+	if (our_isbadreadptr((PVOID)Object, MANAGED_ARRAY_DATA_OFFSET))
+		return FALSE;
 
-	if (Length > MaxLength)
+	MethodTable = *(PVOID *)Object;
+	if (!MethodTable || ((ULONG_PTR)MethodTable & (sizeof(PVOID) - 1)) != 0 ||
+	    our_isbadreadptr(MethodTable, sizeof(DWORD)))
+		return FALSE;
+
+	if ((*(DWORD *)MethodTable & MT_FLAGS_COMPONENT_SIZE_MASK) != MT_FLAGS_BYTE_ARRAY)
+		return FALSE;
+
+	RawLength = *(ULONG_PTR *)(Object + MANAGED_ARRAY_LENGTH_OFFSET);
+	if (RawLength > DOTNET_ASSEMBLY_DUMP_MAX)
+		return FALSE;
+
+	if (RawLength > MaxLength) {
+		if (!TruncateToMax)
+			return FALSE;
 		Length = MaxLength;
+	}
+	else {
+		Length = (SIZE_T)RawLength;
+	}
 
-	if (Length && our_isbadreadptr(Data, Length))
+	Data = (PBYTE)(Object + MANAGED_ARRAY_DATA_OFFSET);
+	if (Length && our_isbadreadptr(Data, (ULONG)Length))
 		return FALSE;
 
 	Out->Kind = DNARG_BYTES;
+	Out->Decoded = TRUE;
 	Out->Length = (int)Length;
 	Out->Data = Data;
 	return TRUE;
@@ -295,12 +337,17 @@ static BOOL ReadManagedByteArray(ULONG_PTR Object, SIZE_T MaxLength, DECODED_ARG
 
 // Returns TRUE when the array holds a PE image (the Assembly.Load(byte[]) /
 // AppDomain.Load(byte[]) overloads); other overloads of the same name pass a
-// string or an AssemblyName and are reported with size 0.
+// string or an AssemblyName and are skipped.
 //**************************************************************************************
 static BOOL DumpManagedAssembly(DECODED_ARG *Arg)
 //**************************************************************************************
 {
 	if (Arg->Length < 2 || *(PWORD)Arg->Data != IMAGE_DOS_SIGNATURE)
+		return FALSE;
+
+	// AppDomain.Load(byte[]) delegates to Assembly.Load(byte[], ...) on the same
+	// buffer; avoid dumping and logging the same in-memory PE twice.
+	if (g_last_assembly_data == Arg->Data && g_last_assembly_length == Arg->Length)
 		return FALSE;
 
 	if (InterlockedIncrement(&g_assembly_dump_count) > DOTNET_ASSEMBLY_DUMP_LIMIT) {
@@ -310,8 +357,11 @@ static BOOL DumpManagedAssembly(DECODED_ARG *Arg)
 	}
 
 	SetCapeMetaData(DOTNET_ASSEMBLY, 0, NULL, NULL);
-	if (DumpMemoryRaw(Arg->Data, (SIZE_T)Arg->Length))
+	if (DumpMemoryRaw(Arg->Data, (SIZE_T)Arg->Length)) {
+		g_last_assembly_data = Arg->Data;
+		g_last_assembly_length = Arg->Length;
 		DebugOutput("DotNetApi: dumped in-memory assembly at 0x%p (size 0x%x).\n", Arg->Data, Arg->Length);
+	}
 	else
 		InterlockedDecrement(&g_assembly_dump_count);
 
@@ -338,18 +388,21 @@ static void DecodeArg(DOTNET_API_ENTRY *Entry, PCONTEXT Context, unsigned int i,
 			Arg->Length = 0, Arg->Data = NULL;
 		break;
 	case DNARG_BYTES:
-		if (!ReadManagedByteArray(Raw, DOTNET_API_BUFFER_LOG_MAX, Arg))
+		if (!ReadManagedByteArray(Raw, DOTNET_API_BUFFER_LOG_MAX, TRUE, Arg))
 			Arg->Length = 0, Arg->Data = NULL;
 		break;
 	case DNARG_BYTES_PE_DUMP:
 		Arg->Kind = DNARG_INT;
 		{
 			DECODED_ARG Bytes;
-			if (ReadManagedByteArray(Raw, DOTNET_ASSEMBLY_DUMP_MAX, &Bytes) && DumpManagedAssembly(&Bytes))
+			if (ReadManagedByteArray(Raw, DOTNET_ASSEMBLY_DUMP_MAX, FALSE, &Bytes) && DumpManagedAssembly(&Bytes)) {
+				Arg->Decoded = TRUE;
 				Arg->Value = Bytes.Length;
+			}
 		}
 		break;
 	case DNARG_INT:
+		Arg->Decoded = TRUE;
 		Arg->Value = (int)Raw;
 		break;
 	default:
@@ -357,10 +410,72 @@ static void DecodeArg(DOTNET_API_ENTRY *Entry, PCONTEXT Context, unsigned int i,
 	}
 }
 
+//**************************************************************************************
+static char ArgKindFormatChar(BYTE Kind)
+//**************************************************************************************
+{
+	switch (Kind) {
+	case DNARG_STRING:
+	case DNARG_STRING_PROBE:
+		return 'U';
+	case DNARG_BYTES:
+		return 'b';
+	default:
+		return 'i';
+	}
+}
+
+// Shares a single behaviour-log id across table entries that emit the same
+// (Category, Fmt, ArgName[]) explain schema so the 39-entry table consumes at
+// most 21 slots in logtbl_explained[256].
+//**************************************************************************************
+static LONG GetDotNetApiLogIndex(DOTNET_API_ENTRY *Entry)
+//**************************************************************************************
+{
+	DOTNET_API_ENTRY *Canonical = Entry;
+	unsigned int i, j;
+
+	if (Entry->LogIndex != 0)
+		return Entry->LogIndex;
+
+	for (i = 0; i < DOTNET_API_TABLE_SIZE; i++) {
+		DOTNET_API_ENTRY *Candidate = &g_dotnet_api_table[i];
+		BOOL Same = TRUE;
+
+		if (Candidate == Entry)
+			break;
+		if (Candidate->ArgCount != Entry->ArgCount || strcmp(Candidate->Category, Entry->Category))
+			continue;
+
+		for (j = 0; j < Entry->ArgCount; j++) {
+			if (ArgKindFormatChar(Candidate->ArgKind[j]) != ArgKindFormatChar(Entry->ArgKind[j]) ||
+			    strcmp(Candidate->ArgName[j], Entry->ArgName[j])) {
+				Same = FALSE;
+				break;
+			}
+		}
+		if (Same) {
+			Canonical = Candidate;
+			break;
+		}
+	}
+
+	if (Canonical->LogIndex == 0) {
+		LONG NewIndex = InterlockedIncrement(&g_log_index);
+		InterlockedCompareExchange(&Canonical->LogIndex, NewIndex, 0);
+	}
+
+	if (Canonical != Entry)
+		InterlockedCompareExchange(&Entry->LogIndex, Canonical->LogIndex, 0);
+
+	return Canonical->LogIndex;
+}
+
 // One behaviour-log record per hit. The format string is fixed per entry by its
-// ArgKind[] list, and the log id is per entry, so the explain record emitted
-// for that id matches every subsequent record. 'Method' is the first field on
-// every record so processing can key on it regardless of the entry's shape.
+// ArgKind[] list, and the log id is shared per (Category, Fmt, ArgName[]) shape,
+// so the explain record emitted for that id matches every subsequent record.
+// 'Method' is the first field on every record so processing can key on it
+// regardless of the entry's shape.
 //**************************************************************************************
 static void LogDotNetApiCall(DOTNET_API_ENTRY *Entry, PCONTEXT Context)
 //**************************************************************************************
@@ -368,12 +483,8 @@ static void LogDotNetApiCall(DOTNET_API_ENTRY *Entry, PCONTEXT Context)
 	DECODED_ARG Arg[DOTNET_API_MAX_ARGS];
 	char Fmt[DOTNET_API_MAX_ARGS + 2];
 	char Method[256];
+	LONG LogIndex;
 	unsigned int i, n = Entry->ArgCount > DOTNET_API_MAX_ARGS ? DOTNET_API_MAX_ARGS : Entry->ArgCount;
-
-	if (Entry->LogIndex == 0)
-		InterlockedCompareExchange(&Entry->LogIndex, InterlockedIncrement(&g_log_index), 0);
-
-	_snprintf_s(Method, sizeof(Method), _TRUNCATE, "%s.%s", Entry->Class, Entry->Method);
 
 	Fmt[0] = 's';
 	for (i = 0; i < n; i++) {
@@ -382,35 +493,54 @@ static void LogDotNetApiCall(DOTNET_API_ENTRY *Entry, PCONTEXT Context)
 	}
 	Fmt[n + 1] = '\0';
 
-	// loq is variadic: each shape the table uses is spelled out, three slots max.
+	// Skip non-matching or self-delegated overloads whose primary managed object
+	// argument did not match the expected type (e.g. WebClient/HttpClient Uri
+	// overloads delegated from the string overload, parameterless TcpClient..ctor
+	// or CreateDecryptor(), or Assembly.Load(AssemblyName)).
+	if (n > 0 && !Arg[0].Decoded)
+		return;
+
+	LogIndex = GetDotNetApiLogIndex(Entry);
+	_snprintf_s(Method, sizeof(Method), _TRUNCATE, "%s.%s", Entry->Class, Entry->Method);
+
+	// loq is variadic: 'U' expects (int len, PWCHAR), 'b' expects (size_t len, PVOID),
+	// and 'i' expects (int).
 	switch (n) {
 	case 0:
-		loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method);
+		loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method);
 		break;
 	case 1:
 		if (Arg[0].Kind == DNARG_INT)
-			loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method, Entry->ArgName[0], Arg[0].Value);
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method, Entry->ArgName[0], Arg[0].Value);
+		else if (Arg[0].Kind == DNARG_BYTES)
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method, Entry->ArgName[0], (SIZE_T)Arg[0].Length, Arg[0].Data);
 		else
-			loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method, Entry->ArgName[0], (SIZE_T)Arg[0].Length, Arg[0].Data);
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method, Entry->ArgName[0], Arg[0].Length, Arg[0].Data);
 		break;
 	case 2:
-		if (Arg[0].Kind != DNARG_INT && Arg[1].Kind != DNARG_INT)
-			loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
+		if (Arg[0].Kind == DNARG_STRING && Arg[1].Kind == DNARG_STRING)
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
+				Entry->ArgName[0], Arg[0].Length, Arg[0].Data, Entry->ArgName[1], Arg[1].Length, Arg[1].Data);
+		else if (Arg[0].Kind == DNARG_STRING && Arg[1].Kind == DNARG_BYTES)
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
+				Entry->ArgName[0], Arg[0].Length, Arg[0].Data, Entry->ArgName[1], (SIZE_T)Arg[1].Length, Arg[1].Data);
+		else if (Arg[0].Kind == DNARG_BYTES && Arg[1].Kind == DNARG_BYTES)
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
 				Entry->ArgName[0], (SIZE_T)Arg[0].Length, Arg[0].Data, Entry->ArgName[1], (SIZE_T)Arg[1].Length, Arg[1].Data);
-		else if (Arg[0].Kind != DNARG_INT)
-			loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
+		else if (Arg[0].Kind == DNARG_STRING && Arg[1].Kind == DNARG_INT)
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
+				Entry->ArgName[0], Arg[0].Length, Arg[0].Data, Entry->ArgName[1], Arg[1].Value);
+		else if (Arg[0].Kind == DNARG_BYTES && Arg[1].Kind == DNARG_INT)
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
 				Entry->ArgName[0], (SIZE_T)Arg[0].Length, Arg[0].Data, Entry->ArgName[1], Arg[1].Value);
-		else if (Arg[1].Kind != DNARG_INT)
-			loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
-				Entry->ArgName[0], Arg[0].Value, Entry->ArgName[1], (SIZE_T)Arg[1].Length, Arg[1].Data);
 		else
-			loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
+			loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method,
 				Entry->ArgName[0], Arg[0].Value, Entry->ArgName[1], Arg[1].Value);
 		break;
 	default:
 		// Three-argument shapes are not used by the table; log the method only.
 		Fmt[1] = '\0';
-		loq(Entry->LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method);
+		loq(LogIndex, Entry->Category, "DotNetApi", TRUE, 0, Fmt, "Method", Method);
 		break;
 	}
 }
@@ -420,6 +550,9 @@ BOOL DotNetApiBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
 	DOTNET_API_ENTRY **Slot;
+	PCONTEXT Context;
+	hook_info_t *hookinfo;
+	ULONG_PTR saved_retaddr = 0, saved_main_caller = 0, saved_parent_caller = 0;
 
 	if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord || !ExceptionInfo->ContextRecord)
 		return FALSE;
@@ -428,14 +561,39 @@ BOOL DotNetApiBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (!Slot || !*Slot)
 		return FALSE;
 
+	Context = ExceptionInfo->ContextRecord;
+	hookinfo = hook_info();
+	if (hookinfo) {
+		PULONG_PTR Sp;
+		saved_retaddr = hookinfo->return_address;
+		saved_main_caller = hookinfo->main_caller_retaddr;
+		saved_parent_caller = hookinfo->parent_caller_retaddr;
+		hookinfo->return_address = (ULONG_PTR)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+		hookinfo->main_caller_retaddr = 0;
+		hookinfo->parent_caller_retaddr = 0;
+#ifdef _WIN64
+		Sp = (PULONG_PTR)Context->Rsp;
+#else
+		Sp = (PULONG_PTR)Context->Esp;
+#endif
+		if (!our_isbadreadptr(Sp, sizeof(ULONG_PTR)))
+			hookinfo->main_caller_retaddr = Sp[0];
+	}
+
 	hook_disable();
 	__try {
-		LogDotNetApiCall(*Slot, ExceptionInfo->ContextRecord);
+		LogDotNetApiCall(*Slot, Context);
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		DebugOutput("DotNetApi: exception decoding %s.%s at 0x%p.\n", (*Slot)->Class, (*Slot)->Method, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 	}
 	hook_enable();
+
+	if (hookinfo) {
+		hookinfo->return_address = saved_retaddr;
+		hookinfo->main_caller_retaddr = saved_main_caller;
+		hookinfo->parent_caller_retaddr = saved_parent_caller;
+	}
 
 	return TRUE;
 }
