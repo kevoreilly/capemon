@@ -85,8 +85,10 @@ typedef enum {
 
 static dotnet_runtime_t g_dotnet_runtime = DOTNET_RT_UNKNOWN;
 static char g_dotnet_version[64] = {0};   // best-effort, taken from the module directory
-static int  g_dotnet_major = 0;           // major version parsed from the above (Core only)
-static int  g_dotnet_minor = 0;           // minor version parsed from the above (Core only)
+static int  g_dotnet_major = 0;           // file version major (resource; dir-name fallback for Core)
+static int  g_dotnet_minor = 0;           // file version minor
+static int  g_dotnet_build = 0;           // file version build (log only)
+static int  g_dotnet_revision = 0;        // file version revision (log only)
 static int  g_getmethodname_slot = -1;    // -1 => unknown layout, name resolution disabled
 static method_name_abi_t g_method_name_abi = METHOD_NAME_ABI_NONE;
 static BOOL g_dotnet_runtime_resolved = FALSE;
@@ -110,6 +112,10 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 	case DOTNET_RT_CORE:
 		switch (major) {
 		case 1:
+			// 1.0.1 / 1.0.2-rc2 = 102, 1.0.2+ = 105: not separable at
+			// major.minor granularity, so 1.0 is left unresolved.
+			if (minor != 1)
+				return -1;
 			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
 			return 105; // CoreCLR 1.1.x
 		case 2:
@@ -174,9 +180,10 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 				*abi = METHOD_NAME_ABI_CORE_V3;
 				return 113; // .NET 4.8 - 4.8.1
 			default:
-				// Fallback to 113 (.NET 4.8) as default
-				*abi = METHOD_NAME_ABI_CORE_V3;
-				return 113;
+				// clr.dll file-version minors are exactly 0 (4.0-4.5.2), 6, 7
+				// and 8, and 4.8.1 is the final Framework release. Any other
+				// minor is a misread version, not a layout we know.
+				return -1;
 			}
 		default:
 			return -1;
@@ -209,10 +216,12 @@ typedef struct {
 	DWORD dwFileDateLS;
 } VS_FIXEDFILEINFO_LOCAL;
 
-static void GetDllVersion(HMODULE hMod, int* major, int* minor)
+static void GetDllVersion(HMODULE hMod, int* major, int* minor, int* build, int* revision)
 {
 	*major = 0;
 	*minor = 0;
+	*build = 0;
+	*revision = 0;
 
 	if (!hMod)
 		return;
@@ -233,6 +242,8 @@ static void GetDllVersion(HMODULE hMod, int* major, int* minor)
 							VS_FIXEDFILEINFO_LOCAL* pFileInfo = (VS_FIXEDFILEINFO_LOCAL*)pDword;
 							*major = HIWORD(pFileInfo->dwFileVersionMS);
 							*minor = LOWORD(pFileInfo->dwFileVersionMS);
+							*build = HIWORD(pFileInfo->dwFileVersionLS);
+							*revision = LOWORD(pFileInfo->dwFileVersionLS);
 							break;
 						}
 						pDword++;
@@ -249,6 +260,7 @@ static void GetDllVersion(HMODULE hMod, int* major, int* minor)
 static void ResolveDotNetRuntime(void)
 {
 	HMODULE hMod = NULL;
+	const char *ModuleName = "?";
 
 	// First-writer-wins, no lock: resolution is idempotent (every JIT thread
 	// derives the same runtime/version/slot from the loaded CLR), so a race just
@@ -257,10 +269,18 @@ static void ResolveDotNetRuntime(void)
 	if (g_dotnet_runtime_resolved)
 		return;
 
-	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL)
+	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL) {
 		g_dotnet_runtime = DOTNET_RT_CORE;
-	else if ((hMod = GetModuleHandleA("clr.dll")) != NULL || (hMod = GetModuleHandleA("mscorwks.dll")) != NULL)
+		ModuleName = "coreclr.dll";
+	}
+	else if ((hMod = GetModuleHandleA("clr.dll")) != NULL) {
 		g_dotnet_runtime = DOTNET_RT_FRAMEWORK;
+		ModuleName = "clr.dll";
+	}
+	else if ((hMod = GetModuleHandleA("mscorwks.dll")) != NULL) {
+		g_dotnet_runtime = DOTNET_RT_FRAMEWORK;
+		ModuleName = "mscorwks.dll";
+	}
 
 	// Both runtimes ship inside a version-named directory
 	// (...\Framework64\v4.0.30319\clr.dll, ...\Microsoft.NETCore.App\8.0.11\coreclr.dll),
@@ -282,19 +302,21 @@ static void ResolveDotNetRuntime(void)
 	}
 
 	if (hMod) {
-		GetDllVersion(hMod, &g_dotnet_major, &g_dotnet_minor);
+		GetDllVersion(hMod, &g_dotnet_major, &g_dotnet_minor, &g_dotnet_build, &g_dotnet_revision);
 	}
 
-	// Fallback to directory-name parsing if GetDllVersion didn't resolve version
-	if (g_dotnet_major == 0 && g_dotnet_version[0]) {
+	// Fallback to directory-name parsing if GetDllVersion didn't resolve the
+	// version. CoreCLR only: its directory is the real runtime version
+	// (Microsoft.NETCore.App\8.0.11). Framework's is v4.0.30319 for every
+	// 4.x release, so parsing it would mislabel 4.6/4.7/4.8 as 4.0 and pick
+	// the wrong slot and ABI; without a resource version Framework stays
+	// unresolved (slot -1).
+	if (g_dotnet_major == 0 && g_dotnet_runtime == DOTNET_RT_CORE && g_dotnet_version[0]) {
 		int major = 0, minor = 0;
-		// Skip leading 'v' if present (e.g. "v4.0.30319")
-		const char* verStr = g_dotnet_version;
-		if (verStr[0] == 'v' || verStr[0] == 'V') verStr++;
-		if (sscanf(verStr, "%d.%d", &major, &minor) == 2) {
+		if (sscanf(g_dotnet_version, "%d.%d", &major, &minor) == 2) {
 			g_dotnet_major = major;
 			g_dotnet_minor = minor;
-		} else if (sscanf(verStr, "%d", &major) == 1) {
+		} else if (sscanf(g_dotnet_version, "%d", &major) == 1) {
 			g_dotnet_major = major;
 			g_dotnet_minor = 0;
 		}
@@ -303,11 +325,19 @@ static void ResolveDotNetRuntime(void)
 	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, g_dotnet_minor, &g_method_name_abi);
 	g_dotnet_runtime_resolved = TRUE;
 
-	DebugOutput("compileMethod: .NET runtime = %s %d.%d (%s, name accessor vtable slot %d)\n",
-		g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
-		g_dotnet_runtime == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown",
-		g_dotnet_major, g_dotnet_minor,
-		g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
+	const char *RuntimeName = g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
+		g_dotnet_runtime == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown";
+
+	if (g_getmethodname_slot < 0 && g_dotnet_runtime != DOTNET_RT_UNKNOWN)
+		// Everything needed to add a GetMethodNameSlot() entry: runtime family,
+		// module, full file version and the install directory.
+		DebugOutput("compileMethod: UNSUPPORTED .NET runtime - %s %s file version %d.%d.%d.%d (dir %s): no verified getMethodName slot, method name resolution disabled. Add this version to GetMethodNameSlot().\n",
+			RuntimeName, ModuleName, g_dotnet_major, g_dotnet_minor, g_dotnet_build, g_dotnet_revision,
+			g_dotnet_version[0] ? g_dotnet_version : "?");
+	else
+		DebugOutput("compileMethod: .NET runtime = %s %s %d.%d.%d.%d (%s, name accessor vtable slot %d)\n",
+			RuntimeName, ModuleName, g_dotnet_major, g_dotnet_minor, g_dotnet_build, g_dotnet_revision,
+			g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
 }
 
 // Bounded, fault-tolerant check that s is a readable, NUL-terminated string
