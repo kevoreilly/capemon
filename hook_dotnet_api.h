@@ -23,3 +23,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // software breakpoint is placed on its native entry and each call is logged as
 // one behaviour-log record in the "dotnet_api" category.
 void DotNetApiOnMethodCompiled(const char *NamespaceName, const char *ClassName, const char *MethodName, PVOID NativeCode);
+
+// Sets the CLR configuration knobs that disable precompiled BCL images so the
+// JIT compiles them. Must run before the runtime initialises (DllMain).
+void DotNetApiDisablePrecompiledImages(void);

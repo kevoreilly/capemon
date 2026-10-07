@@ -26,9 +26,11 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 // one behaviour-log record per call in the "dotnet_api" category.
 //
 // Coverage note: BCL code is normally precompiled (NGEN on Framework, R2R on
-// Core) and never passes through compileMethod. The analyzer is expected to
-// set COMPlus_ZapDisable=1 / DOTNET_ReadyToRun=0 for .NET targets so the whole
-// BCL is JIT compiled; without that only tiered re-JITs on Core are seen.
+// Core) and never passes through compileMethod. DllMain therefore calls
+// DotNetApiDisablePrecompiledImages() before the runtime can start, which sets
+// the CLR knobs that turn those images off so the whole BCL is JIT compiled.
+// A process whose CLR was already running when the monitor arrived keeps its
+// precompiled code; only tiered re-JITs on Core are seen there.
 //
 // Overloads: the name resolver provides no signature, so an entry may fire for
 // several overloads of the same name. Argument decoders therefore validate
@@ -436,6 +438,30 @@ BOOL DotNetApiBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	hook_enable();
 
 	return TRUE;
+}
+
+// CLRConfig reads these through GetEnvironmentVariable on the process block at
+// EE startup, so setting them in our DllMain is equivalent to the parent having
+// exported them. ZapDisable: Framework NGEN images (also in CoreCLR's table).
+// ReadyToRun: CoreCLR R2R images. Both prefixes are set so the knob is read by
+// every runtime generation (COMPlus_ is accepted by all, DOTNET_ by Core 6+).
+//**************************************************************************************
+void DotNetApiDisablePrecompiledImages(void)
+//**************************************************************************************
+{
+	static const char *Knobs[][2] = {
+		{ "COMPlus_ZapDisable",  "1" },
+		{ "DOTNET_ZapDisable",   "1" },
+		{ "COMPlus_ReadyToRun",  "0" },
+		{ "DOTNET_ReadyToRun",   "0" },
+	};
+	unsigned int i;
+
+	for (i = 0; i < sizeof(Knobs) / sizeof(Knobs[0]); i++)
+		if (!SetEnvironmentVariableA(Knobs[i][0], Knobs[i][1]))
+			DebugOutput("DotNetApi: SetEnvironmentVariable(%s) failed, error %u.\n", Knobs[i][0], GetLastError());
+
+	DebugOutput("DotNetApi: precompiled .NET images disabled for this process (ZapDisable=1, ReadyToRun=0).\n");
 }
 
 //**************************************************************************************
