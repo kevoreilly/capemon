@@ -8,6 +8,7 @@
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
+#include "hook_dotnet_api.h"
 
 //#define DEBUG_COMMENTS
 
@@ -503,6 +504,9 @@ HOOKDEF(int, WINAPI, compileMethod,
 			PVOID AllocationBase = GetAllocationBase(nativeCode);
 			if (AllocationBase)
 				LOOKUP_MARK_SEEN(&g_dotnet_jit, AllocationBase);
+
+			if (methodName)
+				DotNetApiOnMethodCompiled(namespaceName, className, methodName, nativeCode);
 
 			if (g_config.yarascan)
 			{

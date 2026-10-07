@@ -158,6 +158,8 @@ enum {
 
 	STACK_REGION = 0x6c,
 
+	DOTNET_ASSEMBLY = 0x6d,
+
 	TYPE_STRING = 0x100,
 };
 

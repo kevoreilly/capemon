@@ -117,6 +117,8 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `softbpmode` | Integer | Execution mode behavior for software breakpoints. |
 | `break-on-return` | List | Colon-separated list of APIs to break on return. |
 | `break-on-jit` | Boolean | Break on .NET JIT compiled native code. |
+| `dotnet-api-trace` | Boolean | Log calls to an allowlist of .NET BCL methods (network, process, loader, reflection, crypto, filesystem, registry) as `dotnet_api` behaviour records, with decoded string/byte[] arguments; `Assembly.Load(byte[])` payloads are dumped as `DOTNET_ASSEMBLY`. Requires the BCL to be JIT compiled: set `COMPlus_ZapDisable=1` (Framework) / `DOTNET_ReadyToRun=0` (Core) in the target environment. Implies `debugger`. |
+| `dotnet-api-strings` | Boolean | With `dotnet-api-trace`, also log `Convert.FromBase64String` and `Encoding.GetString` (high volume). |
 | `idbg` | Boolean | Enable interactive remote debugger interface (CAPEsolo internal). |
 | `trace-all` | Boolean | Enable full execution tracing. |
 | `trace-into-api` | List | Colon-separated list of APIs to trace into. |

@@ -304,6 +304,10 @@ struct _g_config {
 	char break_on_return[MAX_PATH];
 	BOOLEAN break_on_return_set;
 	BOOLEAN break_on_jit;
+	// .NET API tracing (hook_dotnet_api.c): behaviour-log records for allowlisted BCL methods
+	BOOLEAN dotnet_api_trace;
+	// also trace the high-volume string helpers (Convert.FromBase64String, Encoding.GetString)
+	BOOLEAN dotnet_api_strings;
 
 	// debugger breakpoints
 	PVOID bp0, bp1, bp2, bp3;

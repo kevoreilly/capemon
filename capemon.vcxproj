@@ -258,6 +258,7 @@
     <ClCompile Include="hooking_64.c" />
     <ClCompile Include="hooks.c" />
     <ClCompile Include="hook_clr.c" />
+    <ClCompile Include="hook_dotnet_api.c" />
     <ClCompile Include="hook_com.c" />
     <ClCompile Include="hook_crypto.c" />
     <ClCompile Include="hook_file.c" />
@@ -476,6 +477,7 @@
     <ClInclude Include="distorm\src\x86defs.h" />
     <ClInclude Include="hooking.h" />
     <ClInclude Include="hooks.h" />
+    <ClInclude Include="hook_dotnet_api.h" />
     <ClInclude Include="hook_file.h" />
     <ClInclude Include="hook_sleep.h" />
     <ClInclude Include="hook_trace.h" />
