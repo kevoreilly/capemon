@@ -145,31 +145,12 @@ static ULONG_PTR GoGetArgWord(PCONTEXT Context, BOOL RegAbi, DWORD idx) {
 #endif
 }
 
-// Detects PE files reliably even if the "MZ" header magic has been wiped/zeroed out
-static BOOL IsPEFile(PVOID pBase) {
+// TRUE if the allocation looks like a PE image, including images whose MZ/e_magic was wiped (IsDisguisedPEHeader
+// validates e_lfanew and the NT headers, which is what DumpRegion uses)
+static BOOL GoIsPEImage(PVOID pBase) {
     if (!pBase || !IsAddressAccessible(pBase))
         return FALSE;
-
-    __try {
-        if (*(PWORD)pBase == 0x5A4D) { // "MZ"
-            return TRUE;
-        }
-
-        PDWORD pBuf = (PDWORD)pBase;
-        for (DWORD i = 0; i < 256; i++) {
-            if (IsAddressAccessible(&pBuf[i])) {
-                if (pBuf[i] == 0x00004550) { // "PE\0\0"
-                    return TRUE;
-                }
-            } else {
-                break;
-            }
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return FALSE;
-    }
-    return FALSE;
+    return IsDisguisedPEHeader(pBase) > 0;
 }
 
 // Helper to read pointer-sized integer from pclntab header offsets
@@ -402,7 +383,7 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
                             (mbi.Type == MEM_PRIVATE) &&
                             (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE))) {
                             privateExec = TRUE;
-                            BOOL isPE = IsPEFile(mbi.AllocationBase);
+                            BOOL isPE = GoIsPEImage(mbi.AllocationBase);
                             DebugOutput("Go Trace: Detected direct in-memory %s execution at 0x%p! (Size: 0x%x)\n",
                                         isPE ? "PE" : "shellcode", (PVOID)trapAddress, (unsigned int)mbi.RegionSize);
                             LOQ_string("go_trace", "ssp", "Function", funcName,
@@ -1338,6 +1319,7 @@ static BOOL GoVersionHasNoRegAbi(const char* Version) {
 // "MOVQ GS:[disp32], reg" (65 48|4C 8B modrm(mod=00,rm=100) SIB=25).
 // ABI0 wrappers and assembly routines in register-ABI binaries also load g from TLS, so callers must vote
 // over many functions instead of trusting one sample.
+#ifdef _WIN64
 #define GO_ABI_PROLOGUE_WINDOW 24
 #define GO_ABI_MAX_SAMPLES     512
 static void GoVoteAbiPrologue(PBYTE Code, DWORD* RegVotes, DWORD* StackVotes) {
@@ -1359,21 +1341,54 @@ static void GoVoteAbiPrologue(PBYTE Code, DWORD* RegVotes, DWORD* StackVotes) {
     __except (EXCEPTION_EXECUTE_HANDLER) {
     }
 }
+#endif
+
+static BOOL GoNameEndsWith(const char* name, const char* suffix) {
+    size_t n = strlen(name), s = strlen(suffix);
+    return n >= s && strcmp(name + n - s, suffix) == 0;
+}
+
+// Third-party symbols carry the full module path (github.com/x/y/v3.(*T).M). Match on a module-path fragment
+// plus the exact ".(*Type).Method" / ".Func" suffix so only the named entry point is hooked, not the whole package.
+static BOOL GoPkgFunc(const char* name, const char* pkgFragment, const char* suffix) {
+    return strstr(name, pkgFragment) != NULL && GoNameEndsWith(name, suffix);
+}
+
+// Compiler-generated closure (".func1", ".func2.1") or deferwrap (".deferwrap1") name component
+static BOOL GoIsGeneratedName(const char* name) {
+    const char* p = name;
+    while ((p = strstr(p, ".func")) != NULL) {
+        if (p[5] >= '0' && p[5] <= '9')
+            return TRUE;
+        p += 5;
+    }
+    p = name;
+    while ((p = strstr(p, ".deferwrap")) != NULL) {
+        if (p[10] >= '0' && p[10] <= '9')
+            return TRUE;
+        p += 10;
+    }
+    return FALSE;
+}
 
 // Filter for high-signal Go functions/methods, skipping ABI wrappers, package initializers, and closures
 static BOOL ShouldHookGoFunction(const char* funcName) {
     if (!funcName || *funcName == '\0')
         return FALSE;
 
-    // Skip compiler-generated ABI0/ABIInternal wrappers, defer wrappers, closures, package init routines, and synthetic symbols
-    if (strstr(funcName, ".abi0") ||
-        strstr(funcName, ".abiinternal") ||
-        strstr(funcName, ".deferwrap") ||
-        strstr(funcName, ".func") ||
-        strstr(funcName, ".init") ||
+    // Skip compiler-generated ABI0/ABIInternal wrappers, defer wrappers, closures, package init routines
+    // (pkg.init, pkg.init.0) and synthetic symbols. User functions such as main.initConfig or
+    // main.funcDecrypt are not excluded.
+    if (GoNameEndsWith(funcName, ".abi0") ||
+        GoNameEndsWith(funcName, ".abiinternal") ||
+        GoIsGeneratedName(funcName) ||
+        GoNameEndsWith(funcName, ".init") ||
+        strstr(funcName, ".init.") ||
         strstr(funcName, "..inittask") ||
         strncmp(funcName, "type:", 5) == 0 ||
-        strncmp(funcName, "go:", 3) == 0) {
+        strncmp(funcName, "type..", 6) == 0 ||
+        strncmp(funcName, "go:", 3) == 0 ||
+        strncmp(funcName, "go..", 4) == 0) {
         return FALSE;
     }
 
@@ -1418,14 +1433,17 @@ static BOOL ShouldHookGoFunction(const char* funcName) {
         strcmp(funcName, "net/http.(*Client).Post") == 0 ||
         strcmp(funcName, "net/http.(*Client).Head") == 0 ||
         strcmp(funcName, "net/http.(*Client).PostForm") == 0 ||
-        strstr(funcName, "go-resty/resty.(*Request).Execute") != NULL ||
-        strstr(funcName, "valyala/fasthttp.Do") != NULL ||
-        strstr(funcName, "valyala/fasthttp.(*Client).Do") != NULL ||
-        strstr(funcName, "imroc/req") != NULL ||
-        strstr(funcName, "gorilla/websocket.(*Dialer).Dial") != NULL ||
-        strstr(funcName, "gorilla/websocket.(*Conn).WriteMessage") != NULL ||
-        strstr(funcName, "nhooyr.io/websocket.Dial") != NULL ||
-        strstr(funcName, "net/smtp.SendMail") != NULL) {
+        strcmp(funcName, "net/smtp.SendMail") == 0 ||
+        GoPkgFunc(funcName, "go-resty/resty", ".(*Request).Execute") ||
+        GoPkgFunc(funcName, "valyala/fasthttp", "fasthttp.Do") ||
+        GoPkgFunc(funcName, "valyala/fasthttp", ".(*Client).Do") ||
+        GoPkgFunc(funcName, "imroc/req", ".(*Request).Send") ||
+        GoPkgFunc(funcName, "imroc/req", ".(*Request).Do") ||
+        GoPkgFunc(funcName, "gorilla/websocket", ".(*Dialer).Dial") ||
+        GoPkgFunc(funcName, "gorilla/websocket", ".(*Dialer).DialContext") ||
+        GoPkgFunc(funcName, "gorilla/websocket", ".(*Conn).WriteMessage") ||
+        GoPkgFunc(funcName, "nhooyr.io/websocket", "websocket.Dial") ||
+        GoPkgFunc(funcName, "coder/websocket", "websocket.Dial")) {
         return TRUE;
     }
 
@@ -1441,7 +1459,7 @@ static BOOL ShouldHookGoFunction(const char* funcName) {
         return TRUE;
     }
 
-    // Execution, syscalls, file system, registry, and sleep
+    // Execution, syscalls, file system, registry, services, and sleep
     if (strcmp(funcName, "syscall.Syscall") == 0 ||
         strcmp(funcName, "syscall.Syscall6") == 0 ||
         strcmp(funcName, "syscall.Syscall9") == 0 ||
@@ -1464,17 +1482,50 @@ static BOOL ShouldHookGoFunction(const char* funcName) {
         strcmp(funcName, "path/filepath.Walk") == 0 ||
         strcmp(funcName, "path/filepath.WalkDir") == 0 ||
         strcmp(funcName, "time.Sleep") == 0 ||
-        strstr(funcName, "registry.OpenKey") != NULL ||
-        strstr(funcName, "registry.CreateKey") != NULL ||
-        strstr(funcName, "registry.Key.Set") != NULL ||
-        strstr(funcName, "windows/svc/mgr") != NULL ||
-        strstr(funcName, "main.inject") != NULL ||
-        strstr(funcName, "main.execute") != NULL ||
-        strstr(funcName, "yusufpapurcu/wmi") != NULL ||
-        strstr(funcName, "go-ldap/ldap") != NULL ||
-        strstr(funcName, "jcmturner/gokrb5") != NULL ||
-        strstr(funcName, "masterzen/winrm") != NULL ||
-        strstr(funcName, "hirochachacha/go-smb2") != NULL) {
+        // golang.org/x/sys/windows/registry
+        GoPkgFunc(funcName, "windows/registry", "registry.OpenKey") ||
+        GoPkgFunc(funcName, "windows/registry", "registry.CreateKey") ||
+        GoPkgFunc(funcName, "windows/registry", "registry.Key.SetStringValue") ||
+        GoPkgFunc(funcName, "windows/registry", "registry.Key.SetExpandStringValue") ||
+        GoPkgFunc(funcName, "windows/registry", "registry.Key.SetBinaryValue") ||
+        GoPkgFunc(funcName, "windows/registry", "registry.Key.SetDWordValue") ||
+        // golang.org/x/sys/windows/svc/mgr
+        GoPkgFunc(funcName, "windows/svc/mgr", "mgr.Connect") ||
+        GoPkgFunc(funcName, "windows/svc/mgr", ".(*Mgr).CreateService") ||
+        GoPkgFunc(funcName, "windows/svc/mgr", ".(*Service).Start") ||
+        GoPkgFunc(funcName, "windows/svc/mgr", ".(*Service).Delete") ||
+        // sample-authored loaders
+        strncmp(funcName, "main.inject", 11) == 0 ||
+        strncmp(funcName, "main.execute", 12) == 0 ||
+        // github.com/yusufpapurcu/wmi (and StackExchange/wmi)
+        GoPkgFunc(funcName, "/wmi", "wmi.Query") ||
+        GoPkgFunc(funcName, "/wmi", "wmi.QueryNamespace") ||
+        GoPkgFunc(funcName, "/wmi", ".(*Client).Query") ||
+        // github.com/go-ldap/ldap[/v3]
+        GoPkgFunc(funcName, "go-ldap/ldap", ".Dial") ||
+        GoPkgFunc(funcName, "go-ldap/ldap", ".DialURL") ||
+        GoPkgFunc(funcName, "go-ldap/ldap", ".(*Conn).Bind") ||
+        GoPkgFunc(funcName, "go-ldap/ldap", ".(*Conn).SimpleBind") ||
+        GoPkgFunc(funcName, "go-ldap/ldap", ".(*Conn).NTLMBind") ||
+        GoPkgFunc(funcName, "go-ldap/ldap", ".(*Conn).Search") ||
+        // github.com/jcmturner/gokrb5[/v8]/client
+        GoPkgFunc(funcName, "jcmturner/gokrb5", "client.(*Client).Login") ||
+        GoPkgFunc(funcName, "jcmturner/gokrb5", "client.(*Client).GetServiceTicket") ||
+        GoPkgFunc(funcName, "jcmturner/gokrb5", "client.NewWithPassword") ||
+        GoPkgFunc(funcName, "jcmturner/gokrb5", "client.NewWithKeytab") ||
+        // github.com/masterzen/winrm
+        GoPkgFunc(funcName, "masterzen/winrm", "winrm.NewClient") ||
+        GoPkgFunc(funcName, "masterzen/winrm", ".(*Client).Run") ||
+        GoPkgFunc(funcName, "masterzen/winrm", ".(*Client).RunWithString") ||
+        GoPkgFunc(funcName, "masterzen/winrm", ".(*Client).RunWithContext") ||
+        GoPkgFunc(funcName, "masterzen/winrm", ".(*Client).CreateShell") ||
+        // github.com/hirochachacha/go-smb2
+        GoPkgFunc(funcName, "hirochachacha/go-smb2", ".(*Dialer).Dial") ||
+        GoPkgFunc(funcName, "hirochachacha/go-smb2", ".(*Dialer).DialContext") ||
+        GoPkgFunc(funcName, "hirochachacha/go-smb2", ".(*Session).Mount") ||
+        GoPkgFunc(funcName, "hirochachacha/go-smb2", ".(*Share).Create") ||
+        GoPkgFunc(funcName, "hirochachacha/go-smb2", ".(*Share).OpenFile") ||
+        GoPkgFunc(funcName, "hirochachacha/go-smb2", ".(*Share).WriteFile")) {
         return TRUE;
     }
 
@@ -1640,8 +1691,10 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
         if (!candidates)
             return;
         DWORD nCandidates = 0;
+#ifdef _WIN64
         DWORD abiRegVotes = 0, abiStackVotes = 0;
         uint64_t abiSampleStride = (nfunc > GO_ABI_MAX_SAMPLES) ? (nfunc / GO_ABI_MAX_SAMPLES) : 1;
+#endif
 
         for (uint64_t i = 0; i < nfunc; i++) {
             ULONG_PTR funcEntryOff = 0;
