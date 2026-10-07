@@ -135,6 +135,12 @@ typedef struct _hook_info_t {
 	ULONG_PTR frame_pointer;
 	ULONG_PTR main_caller_retaddr;
 	ULONG_PTR parent_caller_retaddr;
+	// capemon-owned stack for callbacks that must not run on a stack the target controls
+	// (goroutine stacks, pivoted/scratch stacks). Lowest address; NULL until first use; never freed
+	// (capemon unlinks itself from the PEB module list, so DLL_THREAD_DETACH is not delivered).
+	PVOID alt_stack;
+	int alt_stack_depth;          // > 0 while this thread executes on alt_stack
+	ULONG_PTR alt_stack_orig_sp;  // approximate SP of the hooked thread at switch time (valid while alt_stack_depth > 0)
 } hook_info_t;
 
 
@@ -153,6 +159,16 @@ hook_data_t *alloc_hookdata_near(void *addr);
 int hook_api(hook_t *h, int type);
 
 hook_info_t* hook_info();
+
+// Alternate stack: run fn(arg) on a per-thread capemon-owned stack (HOOK_ALT_STACK_SIZE bytes, fully committed,
+// no guard page). TEB StackBase/StackLimit are pointed at the alternate stack for the duration so SEH dispatch
+// inside fn works; exceptions escaping fn are caught (they must not unwind through the switch thunk).
+// Nested calls on a thread already running on its alternate stack are plain calls.
+// Returns FALSE (fn not called) if the thunk or the stack could not be allocated.
+#define HOOK_ALT_STACK_SIZE (256 * 1024)
+typedef void (__cdecl *alt_stack_fn_t)(void *arg);
+BOOL hook_call_on_alt_stack(alt_stack_fn_t fn, void *arg);
+BOOL hook_on_alt_stack(void);
 void hook_enable();
 void hook_disable();
 int called_by_hook(void);

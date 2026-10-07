@@ -596,11 +596,15 @@ static void GoTlsAddPending(GO_TLS_RETURN_STATE* tlsState, PVOID retAddr, ULONG_
 }
 
 // Software breakpoint callback registered via SetSoftwareBreakpoint for Go hooks
-BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
-    if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord)
-        return FALSE;
+typedef struct _GO_BP_CALL {
+    struct _EXCEPTION_POINTERS* ExceptionInfo;
+    BOOL Handled;
+} GO_BP_CALL;
 
-    hook_disable();
+// Body of the software-breakpoint handler; runs on the capemon alternate stack (see GoBreakpointHandler).
+static void __cdecl GoBreakpointHandlerOnStack(void* p) {
+    GO_BP_CALL* call = (GO_BP_CALL*)p;
+    struct _EXCEPTION_POINTERS* ExceptionInfo = call->ExceptionInfo;
 
     PVOID Address = ExceptionInfo->ExceptionRecord->ExceptionAddress;
 
@@ -684,8 +688,27 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
         handled = TRUE;
     }
 
+    call->Handled = handled;
+}
+
+// Software-breakpoint (0xCC) path. The kernel has already pushed its exception dispatch frames onto the
+// goroutine stack (that is what Go's stackSystem headroom is for); everything heavier moves to the capemon
+// alternate stack. If none is available the body runs in place: an unacknowledged breakpoint would be passed
+// on to the Go runtime as a fatal exception, which is worse than the overflow risk.
+BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
+    if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord)
+        return FALSE;
+
+    hook_disable();
+
+    GO_BP_CALL call;
+    call.ExceptionInfo = ExceptionInfo;
+    call.Handled = FALSE;
+    if (!hook_call_on_alt_stack(GoBreakpointHandlerOnStack, &call))
+        GoBreakpointHandlerOnStack(&call);
+
     hook_enable();
-    return handled;
+    return call.Handled;
 }
 
 #ifdef _WIN64
@@ -707,15 +730,35 @@ typedef struct _GO_INLINE_REGS {
     ULONG_PTR Rax;
     ULONG_PTR Rflags;
 } GO_INLINE_REGS;
+#else
+typedef struct _GO_INLINE_REGS {
+    DWORD Edi;
+    DWORD Esi;
+    DWORD Ebp;
+    DWORD EspPushad;
+    DWORD Ebx;
+    DWORD Edx;
+    DWORD Ecx;
+    DWORD Eax;
+    DWORD Eflags;
+} GO_INLINE_REGS;
+#endif
 
-void GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
-    if (!hookEntry || !regs)
-        return;
+typedef struct _GO_INLINE_CALL {
+    GO_HOOK_ENTRY* HookEntry;
+    GO_INLINE_REGS* Regs;
+} GO_INLINE_CALL;
 
-    hook_disable();
+// Runs on the capemon alternate stack: rebuilds a CONTEXT from the registers the stub saved on the goroutine
+// stack and feeds it to the common breakpoint callback.
+static void __cdecl GoInlineHookDispatchOnStack(void* p) {
+    GO_INLINE_CALL* call = (GO_INLINE_CALL*)p;
+    GO_HOOK_ENTRY* hookEntry = call->HookEntry;
+    GO_INLINE_REGS* regs = call->Regs;
 
     CONTEXT ctx;
     memset(&ctx, 0, sizeof(ctx));
+#ifdef _WIN64
     ctx.Rax = regs->Rax;
     ctx.Rbx = regs->Rbx;
     ctx.Rcx = regs->Rcx;
@@ -733,45 +776,7 @@ void GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
     ctx.R15 = regs->R15;
     ctx.Rsp = (ULONG_PTR)(regs + 1);
     ctx.Rip = (ULONG_PTR)hookEntry->Address;
-
-    EXCEPTION_RECORD er;
-    memset(&er, 0, sizeof(er));
-    er.ExceptionAddress = hookEntry->Address;
-
-    EXCEPTION_POINTERS ep;
-    ep.ContextRecord = &ctx;
-    ep.ExceptionRecord = &er;
-
-    BREAKPOINTINFO bpInfo;
-    memset(&bpInfo, 0, sizeof(bpInfo));
-    bpInfo.Address = hookEntry->Address;
-    bpInfo.Callback = GoBreakpointCallback;
-
-    GoBreakpointCallback(&bpInfo, &ep);
-
-    hook_enable();
-}
 #else
-typedef struct _GO_INLINE_REGS {
-    DWORD Edi;
-    DWORD Esi;
-    DWORD Ebp;
-    DWORD EspPushad;
-    DWORD Ebx;
-    DWORD Edx;
-    DWORD Ecx;
-    DWORD Eax;
-    DWORD Eflags;
-} GO_INLINE_REGS;
-
-void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
-    if (!hookEntry || !regs)
-        return;
-
-    hook_disable();
-
-    CONTEXT ctx;
-    memset(&ctx, 0, sizeof(ctx));
     ctx.Eax = regs->Eax;
     ctx.Ebx = regs->Ebx;
     ctx.Ecx = regs->Ecx;
@@ -781,6 +786,7 @@ void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* re
     ctx.Ebp = regs->Ebp;
     ctx.Esp = (DWORD)(ULONG_PTR)(regs + 1);
     ctx.Eip = (DWORD)(ULONG_PTR)hookEntry->Address;
+#endif
 
     EXCEPTION_RECORD er;
     memset(&er, 0, sizeof(er));
@@ -796,10 +802,33 @@ void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* re
     bpInfo.Callback = GoBreakpointCallback;
 
     GoBreakpointCallback(&bpInfo, &ep);
+}
+
+// Entered from the inline stub on the goroutine stack. Only ~stackGuard bytes (928 + 4096 on Windows) are
+// guaranteed below SP there and there is no guard page, so nothing larger than a few small frames may run
+// before hook_call_on_alt_stack switches to the capemon-owned stack. If no alternate stack is available the
+// hit is dropped rather than risk overrunning the goroutine stack into adjacent heap memory.
+#ifdef _WIN64
+void GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
+#else
+void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
+#endif
+    if (!hookEntry || !regs)
+        return;
+
+    hook_disable();
+
+    GO_INLINE_CALL call;
+    call.HookEntry = hookEntry;
+    call.Regs = regs;
+    if (!hook_call_on_alt_stack(GoInlineHookDispatchOnStack, &call)) {
+        static LONG warned = 0;
+        if (InterlockedExchange(&warned, 1) == 0)
+            DebugOutput("GoInlineHookDispatch: no alternate stack available, Go function hits are dropped.\n");
+    }
 
     hook_enable();
 }
-#endif
 
 // Locate the safe inline-hook site for a Go function:
 // - Standard Go functions begin with a split-stack check (`cmp rsp, [r14+0x10]; jbe morestack` on RegABI x64,
