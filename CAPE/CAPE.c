@@ -3343,7 +3343,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
