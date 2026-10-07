@@ -92,9 +92,17 @@ static HANDLE g_logwatcher_thread_handle;
 static HANDLE g_log_flush;
 
 extern int process_shutting_down;
+extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
+
+// Consecutive failed/zero-length writes tolerated before the pending buffer is dropped
+#define LOG_WRITE_MAX_RETRIES 5
+static volatile LONG g_log_dropped_bytes;
 
 static void _send_log(void)
 {
+	int failures = 0;
+	LONG dropped = 0;
+
 	hook_disable();
 	EnterCriticalSection(&g_writing_log_buffer_mutex);
 	while (g_idx > 0) {
@@ -120,10 +128,17 @@ static void _send_log(void)
 		}
 
 		if (written <= 0) {
-			// Write failed or pipe closed/full, reset buffer index to avoid spinning forever holding g_writing_log_buffer_mutex
+			// Transient write failure (pipe full/closed): retry a few times, then drop the pending bytes rather
+			// than spinning forever while holding g_writing_log_buffer_mutex
+			if (++failures < LOG_WRITE_MAX_RETRIES) {
+				Sleep(1);
+				continue;
+			}
+			dropped = g_idx;
 			g_idx = 0;
 			break;
 		}
+		failures = 0;
 
 		// if this call didn't write the entire buffer, then we have to move
 		// around some stuff in the buffer
@@ -135,6 +150,11 @@ static void _send_log(void)
 		g_idx -= written;
 	}
 	LeaveCriticalSection(&g_writing_log_buffer_mutex);
+
+	if (dropped) {
+		LONG total = InterlockedExchangeAdd(&g_log_dropped_bytes, dropped) + dropped;
+		DebugOutput("_send_log: log write failed %d times, dropped %d bytes (%d total).\n", failures, dropped, total);
+	}
 	hook_enable();
 }
 

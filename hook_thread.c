@@ -36,6 +36,15 @@ extern void NtContinueHandler(PCONTEXT ThreadContext);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern BOOL BreakpointsSet;
 
+// With go-hooks enabled the Go runtime's async preemption (runtime.preemptM) suspends, inspects and resumes
+// same-process worker threads every few milliseconds. Those operations are not logged: the volume trips api-cap,
+// and logging while a same-process thread is suspended can deadlock on a lock that thread holds.
+// Without go-hooks every call is logged as before.
+static __inline BOOL go_runtime_thread_op(DWORD pid, DWORD tid)
+{
+	return g_config.go_hooks && pid == GetCurrentProcessId() && tid != GetCurrentThreadId();
+}
+
 static lookup_t g_ignored_threads;
 
 DWORD LastInjected;
@@ -322,7 +331,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtGetContextThread,
 
 	NTSTATUS ret = Old_NtGetContextThread(ThreadHandle, Context);
 
-	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+	if (!go_runtime_thread_op(pid, tid)) {
 		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
 #ifdef _WIN64
 			LOQ_ntstatus(
@@ -418,7 +427,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetContextThread,
 
 	NTSTATUS ret = Old_NtSetContextThread(ThreadHandle, Context);
 
-	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+	if (!go_runtime_thread_op(pid, tid)) {
 		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
 #ifdef _WIN64
 			LOQ_ntstatus(
@@ -510,7 +519,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64GetThreadContext,
 
 	NTSTATUS ret = Old_RtlWow64GetThreadContext(ThreadHandle, Context);
 
-	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+	if (!go_runtime_thread_op(pid, tid)) {
 		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
 			LOQ_ntstatus(
 				"threading", "pppppppii",
@@ -566,7 +575,7 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
 
 	NTSTATUS ret = Old_RtlWow64SetThreadContext(ThreadHandle, Context);
 
-	if (pid != GetCurrentProcessId() || tid == GetCurrentThreadId()) {
+	if (!go_runtime_thread_op(pid, tid)) {
 		if (Context && (Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER)) == (CONTEXT_CONTROL | CONTEXT_INTEGER))
 			LOQ_ntstatus(
 				"threading", "pppppppii",
@@ -625,8 +634,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		LOQ_ntstatus("threading", "pIsi", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread", "ProcessId", pid);
 	}
 	else if (pid == GetCurrentProcessId()) {
-		// Do not call LOQ_ntstatus while a same-process thread is suspended (e.g. Go runtime.preemptM):
-		// the suspended thread may hold g_writing_log_buffer_mutex, g_mutex, or the process heap lock.
+		// Same-process target: log before suspending. Once suspended, the target may hold
+		// g_writing_log_buffer_mutex, g_mutex or the heap lock, so no logging may happen until it is resumed.
+		// Go runtime.preemptM traffic is omitted (see go_runtime_thread_op).
+		if (!go_runtime_thread_op(pid, tid)) {
+			ret = STATUS_SUCCESS;
+			LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
+			"ProcessId", pid);
+		}
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 	}
 	else {
@@ -655,6 +670,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	}
 	else {
 		ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
+		if (!go_runtime_thread_op(pid, tid))
+			LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	}
 	return ret;
 }
@@ -676,6 +693,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
 	}
 	else {
 		ret = Old_NtAlertResumeThread(ThreadHandle, SuspendCount);
+		if (!go_runtime_thread_op(pid, tid))
+			LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	}
 	return ret;
 }

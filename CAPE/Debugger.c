@@ -675,16 +675,28 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		// If not it's a single-step
 		if (bp == NUMBER_OF_DEBUG_REGISTERS)
 		{
+			// Step-over of a disarmed software breakpoint is tracked per thread and needs no THREADBREAKPOINTS
 			if (SoftBPPendingForThread(CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionAddress))
 				RestoreSoftwareBreakpoint(ExceptionInfo);
-			else if (SingleStepHandler)
-				SingleStepHandler(ExceptionInfo);
 			else
 			{
-				// Unhandled single-step exception, pass it on
-				if (BreakpointsSet)
-					ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
-				return EXCEPTION_CONTINUE_SEARCH;
+				// Any other single-step belongs to this thread's debugger state; a thread with no registered
+				// breakpoints (e.g. a sample thread setting TF itself) must not be routed to another thread's trace
+				if (GetThreadBreakpoints(CurrentThreadId) == NULL)
+				{
+					DebugOutput("CAPEExceptionFilter: Single-step on thread %d with no registered breakpoints (address 0x%p)\n", CurrentThreadId, ExceptionInfo->ExceptionRecord->ExceptionAddress);
+					return EXCEPTION_CONTINUE_SEARCH;
+				}
+
+				if (SingleStepHandler)
+					SingleStepHandler(ExceptionInfo);
+				else
+				{
+					// Unhandled single-step exception, pass it on
+					if (BreakpointsSet)
+						ContextClearDebugRegisters(ExceptionInfo->ContextRecord);
+					return EXCEPTION_CONTINUE_SEARCH;
+				}
 			}
 
 			teb->LastErrorValue = saved_error;
