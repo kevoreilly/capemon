@@ -1459,6 +1459,15 @@ void parse_config_line(char* line)
 			if (g_config.hook_watch)
 				DebugOutput("Config: Hook watch enabled.\n");
 		}
+		else if (!stricmp(key, "watchdog")) {
+			g_config.watchdog = value[0] == '1';
+			if (g_config.watchdog)
+				DebugOutput("Config: Watchdog thread sampling enabled.\n");
+		}
+		else if (!stricmp(key, "watchdog-interval")) {
+			g_config.watchdog_interval = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: Watchdog interval set to %d ms.\n", g_config.watchdog_interval);
+		}
 		else if (!stricmp(key, "sleep-skip-seconds")) {
 			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
 			DebugOutput("Config: Sleep skip seconds set to %d.\n", g_config.sleep_skip_seconds);
@@ -1517,6 +1526,8 @@ void read_config(void)
 	g_config.syscall = 1;
 	g_config.sleep_skip_seconds = 10;
 	g_config.go_hooks = 0;
+	g_config.watchdog = 0;
+	g_config.watchdog_interval = 5000;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
