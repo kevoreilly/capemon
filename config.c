@@ -52,6 +52,7 @@ extern char *Instruction0, *Instruction1, *Instruction2, *Instruction3;
 extern char *procname0;
 extern char DumpSizeString[MAX_PATH];
 extern BOOL ImageBaseRemapped;
+extern BOOL is_64bit_os;
 extern DWORD ExportAddress;
 extern SIZE_T DumpSize;
 
@@ -1448,6 +1449,11 @@ void parse_config_line(char* line)
 			if (g_config.snaps)
 				DebugOutput("Loader snaps enabled.\n");
 		}
+		else if (!stricmp(key, "wowmon")) {
+			g_config.wowmon = value[0] == '1';
+			if (g_config.wowmon)
+				DebugOutput("WOW64 monitoring enabled.\n");
+		}
 		else if (!stricmp(key, "hook-watch")) {
 			g_config.hook_watch = value[0] == '1';
 			if (g_config.hook_watch)
@@ -1480,6 +1486,14 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "wmi-bios-serial")) {
 			strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), value, _TRUNCATE);
 			DebugOutput("Config: WMI BIOS serial set to %s.\n", g_config.bios_serial);
+		else if (!stricmp(key, "watchdog")) {
+			g_config.watchdog = value[0] == '1';
+			if (g_config.watchdog)
+				DebugOutput("Config: Watchdog thread sampling enabled.\n");
+		}
+		else if (!stricmp(key, "watchdog-interval")) {
+			g_config.watchdog_interval = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: Watchdog interval set to %d ms.\n", g_config.watchdog_interval);
 		}
 		else if (!stricmp(key, "sleep-skip-seconds")) {
 			g_config.sleep_skip_seconds = (int)strtoul(value, NULL, 10);
@@ -1540,6 +1554,8 @@ void read_config(void)
 	strncpy_s(g_config.bios_vendor, _countof(g_config.bios_vendor), "American Megatrends Inc.", _TRUNCATE);
 	strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), "System Serial Number", _TRUNCATE);
 	g_config.sleep_skip_seconds = 10;
+	g_config.watchdog = 0;
+	g_config.watchdog_interval = 5000;
 
 	StepLimit = SINGLE_STEP_LIMIT;
 
@@ -1552,7 +1568,9 @@ void read_config(void)
 	// look for the config in monitor directory
 	memset(g_config.analyzer, 0, MAX_PATH);
 	strncpy(g_config.analyzer, our_dll_path, strlen(our_dll_path));
-	PathRemoveFileSpec(g_config.analyzer); // remove filename
+	char *p = strrchr(g_config.analyzer, '\\');
+	if (p)
+		*p = '\0'; // remove filename
 	sprintf(config_fname, "%s\\%u.ini", g_config.analyzer, GetCurrentProcessId());
 
 	strcpy(g_config.results, g_config.analyzer);
@@ -1621,6 +1639,20 @@ void read_config(void)
 		g_config.br2 = 0;
 		memset(g_config.break_on_return, 0, ARRAYSIZE(g_config.break_on_return));
 	}
+
+#ifdef _WIN64
+	if (is_64bit_os || is_wow64_process()) {
+		g_config.native = 1;
+		g_config.ntdll_protect = 0;
+		g_config.procdump = 0;
+		g_config.procmemdump = 0;
+		g_config.yarascan = 0;
+		g_config.unpacker = 0;
+		g_config.injection = 0;
+		g_config.syscall = 0;
+	}
+#endif
+
 
 	if (TraceDepthLimit == 0xFFFFFFFF)
 		TraceDepthLimit = 1;

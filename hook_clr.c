@@ -40,7 +40,7 @@ static const char* SafeGetMethodName(PVOID compHnd, PVOID ftn, const char** modu
 		PVOID* vtable = *(PVOID**)compHnd;
 		if (vtable && vtable[0]) {
 			fnGetMethodName getMethodName = (fnGetMethodName)vtable[0];
-			name = getMethodName(compHnd, ftn, moduleName);
+			//name = getMethodName(compHnd, ftn, moduleName);
 
 			// Probe-verify the returned name pointer for absolute crash-protection
 			if (name != NULL) {
@@ -74,9 +74,9 @@ HOOKDEF(int, WINAPI, compileMethod,
 	uint32_t*		nativeSizeOfCode
 )
 {
-	CORINFO_METHOD_INFO_REDUCED *info = (CORINFO_METHOD_INFO_REDUCED *)methodInfo;
     int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
+		CORINFO_METHOD_INFO_REDUCED *info = (CORINFO_METHOD_INFO_REDUCED *)methodInfo;
 		const char* className = NULL;
 		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className);
 

@@ -462,7 +462,7 @@ next:
 		}
 	}
 
-	DebugOutput(msg);
+	DebugOutput("%s", msg);
 
 	if (dllname)
 		free(dllname);
@@ -642,6 +642,20 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 			add_protected_pid(pids[i]);
 		}
 
+#ifdef _WIN64
+		if (is_64bit_os || is_wow64_process()) {
+			log_init(g_config.debug || g_config.standalone);
+			init_sleep_skip(g_config.first_process);
+			init_startup_time(g_config.startup_time);
+			InitializeCriticalSection(&readfile_critsec);
+			add_all_dlls_to_dll_ranges();
+			set_hooks();
+			g_dll_main_complete = TRUE;
+			set_lasterrors(&lasterror);
+			return TRUE;
+		}
+#endif
+
 		hkcu_init();
 
 		// initialize the log file
@@ -680,7 +694,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		CAPE_post_init();
 
 		// initialize context watchdog
-		//init_watchdog();
+		if (g_config.watchdog)
+			init_watchdog();
 
 #ifndef _WIN64
 		if (!g_config.no_stealth) {

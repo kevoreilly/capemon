@@ -87,11 +87,11 @@ HOOKDEF_NOTAIL(WINAPI, LdrLoadDll,
 	}
 	else if (!g_config.tlsdump && !called_by_hook()) {
 		if (g_config.file_of_interest && g_config.suspend_logging) {
-			wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
+			wchar_t *absolutename = path_scratch_acquire();
 			ensure_absolute_unicode_path(absolutename, library.Buffer);
 			if (!wcsicmp(absolutename, g_config.file_of_interest))
 				g_config.suspend_logging = FALSE;
-			free(absolutename);
+			path_scratch_release(absolutename);
 		}
 
 		if (library.Buffer[1] != L':') {
@@ -363,10 +363,15 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 
 	get_lasterrors(&lasterror);
 
-	if (!pCoTaskMemFree)
-		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
-	if (!pProgIDFromCLSID)
-		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
+	if (!pCoTaskMemFree || !pProgIDFromCLSID) {
+		HMODULE hCombase = GetModuleHandle("combase");
+		if (hCombase) {
+			if (!pCoTaskMemFree)
+				pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(hCombase, "CoTaskMemFree");
+			if (!pProgIDFromCLSID)
+				pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(hCombase, "ProgIDFromCLSID");
+		}
+	}
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 		memcpy(&id1, rclsid, sizeof(id1));
@@ -390,11 +395,12 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstance,
 
 	get_lasterrors(&lasterror);
 
-	pProgIDFromCLSID(&id1, &resolv);
+	if (pProgIDFromCLSID)
+		pProgIDFromCLSID(&id1, &resolv);
 
 	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", dwClsContext, "riid", idbuf2, "ProgID", resolv);
 
-	if (resolv)
+	if (resolv && pCoTaskMemFree)
 		pCoTaskMemFree(resolv);
 
 	set_lasterrors(&lasterror);
@@ -419,10 +425,15 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 	get_lasterrors(&lasterror);
 
-	if (!pCoTaskMemFree)
-		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
-	if (!pProgIDFromCLSID)
-		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
+	if (!pCoTaskMemFree || !pProgIDFromCLSID) {
+		HMODULE hCombase = GetModuleHandle("combase");
+		if (hCombase) {
+			if (!pCoTaskMemFree)
+				pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(hCombase, "CoTaskMemFree");
+			if (!pProgIDFromCLSID)
+				pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(hCombase, "ProgIDFromCLSID");
+		}
+	}
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 			memcpy(&id1, rclsid, sizeof(id1));
@@ -448,8 +459,9 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 
 		LOQ_hresult("com", "shuu", "rclsid", idbuf1, "ClsContext", dwClsContext, "ServerName", pServerInfo ? pServerInfo->pwszName : NULL, "ProgID", resolv);
 
-		if (resolv)
+		if (resolv && pCoTaskMemFree)
 			pCoTaskMemFree(resolv);
+
 		set_lasterrors(&lasterror);
 	}
 
@@ -474,10 +486,15 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	get_lasterrors(&lasterror);
 
-	if (!pCoTaskMemFree)
-		pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(GetModuleHandleA("ole32"), "CoTaskMemFree");
-	if (!pProgIDFromCLSID)
-		pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(GetModuleHandleA("ole32"), "ProgIDFromCLSID");
+	if (!pCoTaskMemFree || !pProgIDFromCLSID) {
+		HMODULE hCombase = GetModuleHandle("combase");
+		if (hCombase) {
+			if (!pCoTaskMemFree)
+				pCoTaskMemFree = (_CoTaskMemFree)GetProcAddress(hCombase, "CoTaskMemFree");
+			if (!pProgIDFromCLSID)
+				pProgIDFromCLSID = (_ProgIDFromCLSID)GetProcAddress(hCombase, "ProgIDFromCLSID");
+		}
+	}
 
 	if (is_valid_address_range((ULONG_PTR)rclsid, 16))
 		memcpy(&id1, rclsid, sizeof(id1));
@@ -511,7 +528,7 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", dwClsContext, "riid", idbuf2, "ProgID", resolv);
 
-	if (resolv)
+	if (resolv && pCoTaskMemFree)
 		pCoTaskMemFree(resolv);
 
 	set_lasterrors(&lasterror);

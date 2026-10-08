@@ -163,6 +163,9 @@ void set_lasterrors(lasterror_t *errors);
 int WINAPI enter_hook(hook_t *h, ULONG_PTR _ebp, ULONG_PTR retaddr);
 void emit_rel(unsigned char *buf, unsigned char *source, unsigned char *target);
 int operate_on_backtrace(ULONG_PTR retaddr, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
+#ifdef _WIN64
+BOOL srw_lock_held(void);
+#endif
 
 extern LARGE_INTEGER time_skipped;
 
@@ -276,7 +279,7 @@ static inline BOOLEAN disable_this_hook(hook_t *h)
 {
 	const char *required_apis[] = {
 		"NtCreateThread",
-		"NtCreateThreadEx"
+		"NtCreateThreadEx",
 		"NtCreateProcess",
 		"NtCreateProcessEx",
 		"NtCreateUserProcess",
