@@ -438,20 +438,23 @@ BOOL SoftBPPendingForThread(void)
 //**************************************************************************************
 {
 	// TRUE if the current thread disarmed a software breakpoint and is single-stepping over it
-	return hook_info()->softbp_stepping != NULL;
+	hook_thread_state_t *state = hook_thread_state();
+	return state != NULL && state->softbp_stepping != NULL;
 }
 
 //**************************************************************************************
 BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 //**************************************************************************************
 {
-	hook_info_t *hookinfo = hook_info();
-	PBYTE Address = (PBYTE)hookinfo->softbp_stepping;
-	BOOL ChainStep = hookinfo->softbp_chain_step;
+	hook_thread_state_t *state = hook_thread_state();
+	PBYTE Address = state ? (PBYTE)state->softbp_stepping : NULL;
+	BOOL ChainStep = state ? state->softbp_chain_step : FALSE;
 	BOOL Restored = FALSE;
 
-	hookinfo->softbp_stepping = NULL;
-	hookinfo->softbp_chain_step = FALSE;
+	if (state) {
+		state->softbp_stepping = NULL;
+		state->softbp_chain_step = FALSE;
+	}
 
 	if (!Address)
 		return FALSE;
@@ -549,11 +552,13 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	{
 		// Step this thread over the original instruction, then re-arm in RestoreSoftwareBreakpoint.
 		// TF already set here means the callback (or an active trace) owns stepping for this thread.
-		hook_info_t *hookinfo = hook_info();
-		hookinfo->softbp_chain_step = (ExceptionInfo->ContextRecord->EFlags & FL_TF) ? TRUE : FALSE;
-		hookinfo->softbp_stepping = Address;
-		InterlockedIncrement(&SoftBP->StepCount);
-		ExceptionInfo->ContextRecord->EFlags |= FL_TF;
+		hook_thread_state_t *state = hook_thread_state();
+		if (state) {
+			state->softbp_chain_step = (ExceptionInfo->ContextRecord->EFlags & FL_TF) ? TRUE : FALSE;
+			state->softbp_stepping = Address;
+			InterlockedIncrement(&SoftBP->StepCount);
+			ExceptionInfo->ContextRecord->EFlags |= FL_TF;
+		}
 	}
 	else
 		lookup_del(&SoftBPs, (ULONG_PTR)Address);	// one-shot: disarmed, drop the record so the address can be re-used

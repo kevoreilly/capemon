@@ -135,6 +135,7 @@ extern int path_is_system(const wchar_t *path_w);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern BOOL inside_hook(LPVOID Address);
 extern hook_info_t *hook_info();
+extern BOOL hook_get_orig_stack_bounds(ULONG_PTR *bottom, ULONG_PTR *top);
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
@@ -2963,10 +2964,13 @@ end:
 BOOL DumpStackRegion(void)
 //**************************************************************************************
 {
-	SIZE_T StackSize = (SIZE_T)(get_stack_top() - get_stack_bottom());
+	ULONG_PTR bottom = get_stack_bottom();
+	ULONG_PTR top = get_stack_top();
+	hook_get_orig_stack_bounds(&bottom, &top);
+	SIZE_T StackSize = (SIZE_T)(top - bottom);
 	CapeMetaData->DumpType = STACK_REGION;
-	CapeMetaData->Address = (PVOID)get_stack_bottom();
-	return DumpMemory((PVOID)get_stack_bottom(), StackSize);
+	CapeMetaData->Address = (PVOID)bottom;
+	return DumpMemory((PVOID)bottom, StackSize);
 }
 
 //**************************************************************************************

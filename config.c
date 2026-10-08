@@ -1474,8 +1474,11 @@ void parse_config_line(char* line)
 		}
 		else if (!stricmp(key, "go-hooks") || !stricmp(key, "go_hooks")) {
 			g_config.go_hooks = value[0] == '1';
-			if (g_config.go_hooks)
+			if (g_config.go_hooks) {
+				g_config.debugger = 1;
+				g_config.yarascan = 1;
 				DebugOutput("Config: Go symbol recovery and breakpoint hooks enabled.\n");
+			}
 		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
@@ -1593,7 +1596,8 @@ void read_config(void)
 
 	if (g_config.tlsdump) {
 		g_config.syscall = 0;
-		g_config.debugger = 0;
+		if (!g_config.go_hooks)
+			g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
 		g_config.dump_limit = DUMP_LIMIT;
@@ -1601,7 +1605,8 @@ void read_config(void)
 		g_config.injection = 0;
 		g_config.unpacker = 0;
 		g_config.api_rate_cap = 0;
-		g_config.yarascan = 0;
+		if (!g_config.go_hooks)
+			g_config.yarascan = 0;
 		g_config.amsidump = 0;
 		g_config.bp0 = 0;
 		g_config.bp1 = 0;

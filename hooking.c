@@ -42,6 +42,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define HOOK_RATE_LIMIT 0x100
 
 static lookup_t g_hook_info;
+static lookup_t g_hook_thread_state;
 static lookup_t g_force_hook_threads;
 
 extern BOOL inside_hook(LPVOID Address);
@@ -533,7 +534,26 @@ static void __cdecl alt_stack_entry(void *p)
 	}
 }
 
-static BOOL alt_stack_init(hook_info_t *hookinfo)
+hook_thread_state_t *hook_thread_state(void)
+{
+	hook_thread_state_t *ptr;
+	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+
+	ptr = (hook_thread_state_t *)lookup_get(&g_hook_thread_state, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (ptr == NULL) {
+		ptr = (hook_thread_state_t *)lookup_add(&g_hook_thread_state, (ULONG_PTR)GetCurrentThreadId(), sizeof(hook_thread_state_t));
+		if (ptr != NULL)
+			memset(ptr, 0, sizeof(*ptr));
+	}
+
+	set_lasterrors(&lasterror);
+
+	return ptr;
+}
+
+static BOOL alt_stack_init(hook_thread_state_t *state)
 {
 	// VirtualAlloc/VirtualProtect are hooked: keep our own allocations out of the behaviour log
 	hook_disable();
@@ -553,58 +573,91 @@ static BOOL alt_stack_init(hook_info_t *hookinfo)
 		}
 	}
 
-	if (hookinfo->alt_stack == NULL)
-		hookinfo->alt_stack = VirtualAlloc(NULL, HOOK_ALT_STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (state->alt_stack == NULL)
+		state->alt_stack = VirtualAlloc(NULL, HOOK_ALT_STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
 	hook_enable();
 
-	return g_alt_stack_thunk != NULL && hookinfo->alt_stack != NULL;
+	return g_alt_stack_thunk != NULL && state->alt_stack != NULL;
 }
 
 BOOL hook_on_alt_stack(void)
 {
-	return hook_info()->alt_stack_depth > 0;
+	hook_thread_state_t *state = hook_thread_state();
+	return state != NULL && state->alt_stack_depth > 0;
+}
+
+BOOL hook_get_orig_stack_bounds(ULONG_PTR *bottom, ULONG_PTR *top)
+{
+	hook_thread_state_t *state = hook_thread_state();
+	if (state != NULL && state->alt_stack_depth > 0 && state->orig_stack_base != NULL && state->orig_stack_limit != NULL) {
+		if (bottom != NULL)
+			*bottom = (ULONG_PTR)state->orig_stack_limit;
+		if (top != NULL)
+			*top = (ULONG_PTR)state->orig_stack_base;
+		return TRUE;
+	}
+	return FALSE;
 }
 
 BOOL hook_call_on_alt_stack(alt_stack_fn_t fn, void *arg)
 {
-	hook_info_t *hookinfo = hook_info();
+	hook_thread_state_t *state = hook_thread_state();
 	alt_stack_call_t call;
 	PNT_TIB tib;
 	PVOID saved_base, saved_limit, stack_top;
+#ifndef _WIN64
+	PVOID saved_exc_list;
+#endif
 
-	if (fn == NULL || hookinfo == NULL)
+	if (fn == NULL || state == NULL)
 		return FALSE;
 
 	// Already on our stack (nested hook or callback on the same thread)
-	if (hookinfo->alt_stack_depth > 0) {
+	if (state->alt_stack_depth > 0) {
 		fn(arg);
 		return TRUE;
 	}
 
 	// Everything up to the switch runs on the caller's stack: keep it to a few small frames
-	if (!alt_stack_init(hookinfo))
+	if (!alt_stack_init(state))
 		return FALSE;
 
 	call.fn = fn;
 	call.arg = arg;
-	stack_top = (PVOID)(((ULONG_PTR)hookinfo->alt_stack + HOOK_ALT_STACK_SIZE) & ~(ULONG_PTR)0xF);
+	stack_top = (PVOID)(((ULONG_PTR)state->alt_stack + HOOK_ALT_STACK_SIZE) & ~(ULONG_PTR)0xF);
 
 	tib = (PNT_TIB)NtCurrentTeb();
 	saved_base = tib->StackBase;
 	saved_limit = tib->StackLimit;
+#ifndef _WIN64
+	// On x86 SEH registration records are chained from fs:[0] and validated against [StackLimit, StackBase].
+	// Terminate the chain at EXCEPTION_CHAIN_END before switching so alt_stack_entry's __try starts a clean
+	// chain entirely within the alternate stack.
+	saved_exc_list = tib->ExceptionList;
+#endif
 
-	hookinfo->alt_stack_orig_sp = (ULONG_PTR)&call;
-	hookinfo->alt_stack_depth = 1;
+	state->orig_stack_base = saved_base;
+	state->orig_stack_limit = saved_limit;
+	state->alt_stack_orig_sp = (ULONG_PTR)&call;
+	state->alt_stack_depth = 1;
 	tib->StackBase = stack_top;
-	tib->StackLimit = hookinfo->alt_stack;
+	tib->StackLimit = state->alt_stack;
+#ifndef _WIN64
+	tib->ExceptionList = (PVOID)(ULONG_PTR)-1;
+#endif
 
 	g_alt_stack_thunk(alt_stack_entry, &call, stack_top);
 
+#ifndef _WIN64
+	tib->ExceptionList = saved_exc_list;
+#endif
 	tib->StackBase = saved_base;
 	tib->StackLimit = saved_limit;
-	hookinfo->alt_stack_depth = 0;
-	hookinfo->alt_stack_orig_sp = 0;
+	state->alt_stack_depth = 0;
+	state->alt_stack_orig_sp = 0;
+	state->orig_stack_base = NULL;
+	state->orig_stack_limit = NULL;
 
 	return TRUE;
 }

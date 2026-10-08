@@ -13,9 +13,13 @@
 #define LOQ_string(cat, fmt, ...) \
 do { \
     static volatile LONG _index; \
-    if (_index == 0) \
-        InterlockedExchange(&_index, InterlockedIncrement(&g_log_index)); \
-    loq(_index, cat, "GoBreakpoint", TRUE, 0, fmt, ##__VA_ARGS__); \
+    LONG _id = _index; \
+    if (_id == 0) { \
+        LONG _new_id = InterlockedIncrement(&g_log_index); \
+        LONG _prev = InterlockedCompareExchange(&_index, _new_id, 0); \
+        _id = (_prev == 0) ? _new_id : _prev; \
+    } \
+    loq(_id, cat, "GoBreakpoint", TRUE, 0, fmt, ##__VA_ARGS__); \
 } while (0)
 
 #define GO_VER_UNKNOWN 0
@@ -189,9 +193,30 @@ int GoPclntabVersion(PBYTE p) {
     return ver;
 }
 
+// Verify that the entire [addr, addr + len) range is readable before handing it to loq(), which holds
+// g_mutex without a __finally guard while copying string/buffer arguments.
+static BOOL IsBufferAccessible(PVOID addr, SIZE_T len) {
+    if (!addr || len == 0)
+        return FALSE;
+    ULONG_PTR start = (ULONG_PTR)addr;
+    ULONG_PTR end = start + len - 1;
+    if (end < start)
+        return FALSE;
+    __try {
+        for (ULONG_PTR p = start & ~(ULONG_PTR)0xFFF; p <= (end & ~(ULONG_PTR)0xFFF); p += 0x1000) {
+            volatile BYTE b = *(volatile BYTE*)p;
+            (void)b;
+        }
+        return TRUE;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return FALSE;
+    }
+}
+
 // Go string argument validation for single-record LOQ calls: unreadable/implausible strings log as empty
 static int GoStrLen(ULONG_PTR ptr, ULONG_PTR len) {
-    return (ptr != 0 && len > 0 && len < 2048 && IsAddressAccessible((PVOID)ptr)) ? (int)len : 0;
+    return (ptr != 0 && len > 0 && len < 2048 && IsBufferAccessible((PVOID)ptr, (SIZE_T)len)) ? (int)len : 0;
 }
 
 static const char* GoStrPtr(ULONG_PTR ptr, int len) {
@@ -421,11 +446,13 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             ULONG_PTR pData = GoGetArgWord(ctx, regabi, 1);
             ULONG_PTR length = GoGetArgWord(ctx, regabi, 2);
 
-            if (pData != 0 && length > 0 && length <= 65536 && IsAddressAccessible((PVOID)pData)) {
+            if (pData != 0 && length > 0 && length <= 65536) {
                 size_t capLen = (length < 8192) ? (size_t)length : 8192;
-                LOQ_string("go_tls", "ssb", "Function", funcName, "Direction", "Outbound", "Plaintext", capLen, (const char*)pData);
-                logged = TRUE;
-                DebugOutput("Go TLS Outbound Plaintext Payload (%u bytes) intercepted at 0x%p\n", (unsigned int)length, (PVOID)pData);
+                if (IsBufferAccessible((PVOID)pData, capLen)) {
+                    LOQ_string("go_tls", "ssb", "Function", funcName, "Direction", "Outbound", "Plaintext", capLen, (const char*)pData);
+                    logged = TRUE;
+                    DebugOutput("Go TLS Outbound Plaintext Payload (%u bytes) intercepted at 0x%p\n", (unsigned int)length, (PVOID)pData);
+                }
             }
         }
         else if (strstr(funcName, "crypto/tls.(*Conn).Read")) {
@@ -464,7 +491,7 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             // First parameter is key/password []byte: word 0 = ptr, word 1 = len
             ULONG_PTR keyPtr = GoGetArgWord(ctx, regabi, 0);
             ULONG_PTR keyLen = GoGetArgWord(ctx, regabi, 1);
-            BOOL readable = (keyPtr != 0 && keyLen > 0 && keyLen <= 512 && IsAddressAccessible((PVOID)keyPtr));
+            BOOL readable = (keyPtr != 0 && keyLen > 0 && keyLen <= 512 && IsBufferAccessible((PVOID)keyPtr, (SIZE_T)keyLen));
 
             LOQ_string("go_crypto", "sib", "Function", funcName, "KeyLength", (int)keyLen,
                        "Key", readable ? (size_t)keyLen : (size_t)0, readable ? (const char*)keyPtr : "");
@@ -477,7 +504,7 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
             // func NewXXX(block Block, iv []byte): word 0..1 = block (interface), word 2 = iv.ptr, word 3 = iv.len
             ULONG_PTR ivPtr = GoGetArgWord(ctx, regabi, 2);
             ULONG_PTR ivLen = GoGetArgWord(ctx, regabi, 3);
-            if (ivPtr != 0 && ivLen > 0 && ivLen <= 64 && IsAddressAccessible((PVOID)ivPtr)) {
+            if (ivPtr != 0 && ivLen > 0 && ivLen <= 64 && IsBufferAccessible((PVOID)ivPtr, (SIZE_T)ivLen)) {
                 LOQ_string("go_crypto", "sb", "Function", funcName, "IV", (size_t)ivLen, (const char*)ivPtr);
                 logged = TRUE;
             }
@@ -660,10 +687,12 @@ static void __cdecl GoBreakpointHandlerOnStack(void* p) {
             }
 #endif
 
-            if (pending.ReadBuffer != NULL && bytesRead > 0 && bytesRead <= 65536 && IsAddressAccessible(pending.ReadBuffer)) {
+            if (pending.ReadBuffer != NULL && bytesRead > 0 && bytesRead <= 65536) {
                 size_t capLen = (bytesRead < 8192) ? (size_t)bytesRead : 8192;
-                LOQ_string("go_tls", "ssb", "Function", "crypto/tls.(*Conn).Read", "Direction", "Inbound", "Plaintext", capLen, (const char*)pending.ReadBuffer);
-                DebugOutput("Go TLS Inbound Plaintext Payload (%u bytes) intercepted on return at 0x%p\n", (unsigned int)bytesRead, pending.ReadBuffer);
+                if (IsBufferAccessible(pending.ReadBuffer, capLen)) {
+                    LOQ_string("go_tls", "ssb", "Function", "crypto/tls.(*Conn).Read", "Direction", "Inbound", "Plaintext", capLen, (const char*)pending.ReadBuffer);
+                    DebugOutput("Go TLS Inbound Plaintext Payload (%u bytes) intercepted on return at 0x%p\n", (unsigned int)bytesRead, pending.ReadBuffer);
+                }
             }
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1003,7 +1032,7 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
 
     PBYTE codeLimit = NULL;
     PBYTE hookSite = GoFindHookSite((PBYTE)hookEntry->Address, maxFuncSize, &codeLimit);
-    if (!hookSite || codeLimit < hookSite + 5 || !IsAddressAccessible(hookSite))
+    if (!hookSite || codeLimit < hookSite + 5 || !IsBufferAccessible(hookSite, 8))
         return FALSE;
 
     // Refuse sites that already start with a rel32 jmp (our own earlier patch or a foreign hook):
@@ -1039,18 +1068,17 @@ static BOOL GoSetInlineHook(GO_HOOK_ENTRY* hookEntry, DWORD maxFuncSize) {
             return FALSE;
 
         PBYTE insnAddr = (PBYTE)(ULONG_PTR)ci->addr;
-        BYTE b0 = insnAddr[0];
-        BYTE op = b0;
-#ifdef _WIN64
-        if (op >= 0x40 && op <= 0x4F && ci->size > 1)
-            op = insnAddr[1];
-#endif
-        // Reject instructions that cannot execute safely from hd->pre_tramp or leave a trampoline return PC on the Go stack:
-        // RET (C3/C2), INT3 (CC), CALL rel32 (E8), LOOP/JRCXZ (E0..E3), indirect CALL/JMP/PUSH (FF), SYSCALL (0F 05)
-        if (b0 == 0xC3 || b0 == 0xC2 || b0 == 0xCC || b0 == 0xE8 ||
-            (b0 >= 0xE0 && b0 <= 0xE3) || op == 0xFF ||
-            (ci->size >= 2 && b0 == 0x0F && insnAddr[1] == 0x05)) {
-            return FALSE;
+        BYTE fc = META_GET_FC(ci->meta);
+        // Reject flow-control instructions (CALL, RET, SYSCALL/SYSENTER, INT/UD2, LOOP/JRCXZ, indirect or prefixed
+        // branches) except the exact unprefixed near/short JMP and Jcc encodings relocated below.
+        if (fc != FC_NONE && fc != FC_CMOV) {
+            BOOL relocatableBranch =
+                (ci->size == 5 && insnAddr[0] == 0xE9) ||
+                (ci->size == 6 && insnAddr[0] == 0x0F && (insnAddr[1] & 0xF0) == 0x80) ||
+                (ci->size == 2 && insnAddr[0] == 0xEB) ||
+                (ci->size == 2 && (insnAddr[0] & 0xF0) == 0x70);
+            if (!relocatableBranch)
+                return FALSE;
         }
 
         stolenLen += ci->size;
