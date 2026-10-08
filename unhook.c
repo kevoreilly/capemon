@@ -38,6 +38,7 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void file_handle_terminate();
 extern int DoProcessDump();
 extern BOOL ProcessDumped;
+extern BOOLEAN is_monitor_thread(DWORD tid);
 extern void DebuggerShutdown(), DumpStrings();
 extern HANDLE DebuggerLog, TlsLog;
 
