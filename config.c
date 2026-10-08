@@ -1486,6 +1486,7 @@ void parse_config_line(char* line)
 		else if (!stricmp(key, "wmi-bios-serial")) {
 			strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), value, _TRUNCATE);
 			DebugOutput("Config: WMI BIOS serial set to %s.\n", g_config.bios_serial);
+		}
 		else if (!stricmp(key, "watchdog")) {
 			g_config.watchdog = value[0] == '1';
 			if (g_config.watchdog)
