@@ -24,6 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "hook_sleep.h"
 #include "config.h"
 #include "CAPE\CAPE.h"
+#include "CAPE\Debugger.h"
 #include "CAPE\Unpacker.h"
 
 
