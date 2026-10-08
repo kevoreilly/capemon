@@ -393,8 +393,6 @@ void NewThreadHandler(PVOID StartAddress)
 	if (TrackedRegion->AllocationBase == ImageBase || TrackedRegion->AllocationBase == GetModuleHandle(NULL))
 		return;
 
-	DebugOutput("NewThreadHandler: Address: 0x%p.\n", StartAddress);
-
 	hook_disable();
 
 	if (ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)) && !TrackedRegion->PagesDumped)
