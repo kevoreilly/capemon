@@ -2001,7 +2001,7 @@ void set_com_hooks(REFCLSID	rclsid, REFIID riid, PVOID pComObject) {
 							}
 						}
 						else if (!rclsid && !riid && !com_hook->rclsid && !com_hook->riid) {
-							if (bHookViaWbemLocator && !strncmp(hook->funcname, "IWbemServices_", 14)) {
+							if (IsHookViaWbemLocator() && !strncmp(hook->funcname, "IWbemServices_", 14)) {
 								ret = set_IWbemServices_hooks(pComObject, hook);
 							}
 						}

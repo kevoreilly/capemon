@@ -562,7 +562,6 @@ void init_private_heap(void)
 }
 
 extern CRITICAL_SECTION readfile_critsec, g_mutex, g_writing_log_buffer_mutex, g_interactive_debugger_lock;
-lookup_t g_wmi_locator_lookup;
 BOOLEAN g_dll_main_complete;
 OSVERSIONINFOA g_osverinfo;
 

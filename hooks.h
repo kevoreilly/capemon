@@ -23,7 +23,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <tlhelp32.h>
 #include <ncrypt.h>
 #include "hook_trace.h"
-#include "lookup.h"
 #include <Wbemidl.h>
 
 #pragma comment(lib, "wbemuuid.lib")

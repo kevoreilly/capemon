@@ -3,58 +3,22 @@
 #include "config.h"
 #include <Wbemidl.h>
 
-static BSTR g_wmi_board_vendor = NULL;
-static BSTR g_wmi_board_product = NULL;
-static BSTR g_wmi_board_serial = NULL;
-static BSTR g_wmi_disk_model = NULL;
-static BSTR g_wmi_disk_serial = NULL;
-static BSTR g_wmi_bios_vendor = NULL;
-static BSTR g_wmi_bios_serial = NULL;
+static WCHAR g_wmi_board_vendor[128];
+static WCHAR g_wmi_board_product[128];
+static WCHAR g_wmi_board_serial[128];
+static WCHAR g_wmi_disk_model[128];
+static WCHAR g_wmi_disk_serial[128];
+static WCHAR g_wmi_bios_vendor[128];
+static WCHAR g_wmi_bios_serial[128];
 
 void InitWmiSpoofStrings(void) {
-	int len;
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.board_vendor, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_board_vendor = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.board_vendor, -1, g_wmi_board_vendor, len);
-	}
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.board_product, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_board_product = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.board_product, -1, g_wmi_board_product, len);
-	}
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.board_serial, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_board_serial = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.board_serial, -1, g_wmi_board_serial, len);
-	}
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.disk_model, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_disk_model = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.disk_model, -1, g_wmi_disk_model, len);
-	}
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.disk_serial, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_disk_serial = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.disk_serial, -1, g_wmi_disk_serial, len);
-	}
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.bios_vendor, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_bios_vendor = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.bios_vendor, -1, g_wmi_bios_vendor, len);
-	}
-
-	len = MultiByteToWideChar(CP_ACP, 0, g_config.bios_serial, -1, NULL, 0);
-	if (len > 0) {
-		g_wmi_bios_serial = SysAllocStringLen(NULL, len - 1);
-		MultiByteToWideChar(CP_ACP, 0, g_config.bios_serial, -1, g_wmi_bios_serial, len);
-	}
+	MultiByteToWideChar(CP_ACP, 0, g_config.board_vendor, -1, g_wmi_board_vendor, _countof(g_wmi_board_vendor));
+	MultiByteToWideChar(CP_ACP, 0, g_config.board_product, -1, g_wmi_board_product, _countof(g_wmi_board_product));
+	MultiByteToWideChar(CP_ACP, 0, g_config.board_serial, -1, g_wmi_board_serial, _countof(g_wmi_board_serial));
+	MultiByteToWideChar(CP_ACP, 0, g_config.disk_model, -1, g_wmi_disk_model, _countof(g_wmi_disk_model));
+	MultiByteToWideChar(CP_ACP, 0, g_config.disk_serial, -1, g_wmi_disk_serial, _countof(g_wmi_disk_serial));
+	MultiByteToWideChar(CP_ACP, 0, g_config.bios_vendor, -1, g_wmi_bios_vendor, _countof(g_wmi_bios_vendor));
+	MultiByteToWideChar(CP_ACP, 0, g_config.bios_serial, -1, g_wmi_bios_serial, _countof(g_wmi_bios_serial));
 }
 
 void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* pVal) {
@@ -105,35 +69,35 @@ void SpoofWmiData(const wchar_t* szClassName, const wchar_t* wszName, VARIANT* p
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_BaseBoard")) {
-			if (!_wcsicmp(wszName, L"Manufacturer") && g_wmi_board_vendor) {
+			if (!_wcsicmp(wszName, L"Manufacturer") && g_wmi_board_vendor[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_board_vendor);
 			}
-			else if (!_wcsicmp(wszName, L"Product") && g_wmi_board_product) {
+			else if (!_wcsicmp(wszName, L"Product") && g_wmi_board_product[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_board_product);
 			}
-			else if (!_wcsicmp(wszName, L"SerialNumber") && g_wmi_board_serial) {
+			else if (!_wcsicmp(wszName, L"SerialNumber") && g_wmi_board_serial[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_board_serial);
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_DiskDrive")) {
-			if (!_wcsicmp(wszName, L"Model") && g_wmi_disk_model) {
+			if (!_wcsicmp(wszName, L"Model") && g_wmi_disk_model[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_disk_model);
 			}
-			else if (!_wcsicmp(wszName, L"SerialNumber") && g_wmi_disk_serial) {
+			else if (!_wcsicmp(wszName, L"SerialNumber") && g_wmi_disk_serial[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_disk_serial);
 			}
 		}
 		else if (!_wcsicmp(szClassName, L"Win32_BIOS")) {
-			if (!_wcsicmp(wszName, L"Manufacturer") && g_wmi_bios_vendor) {
+			if (!_wcsicmp(wszName, L"Manufacturer") && g_wmi_bios_vendor[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_bios_vendor);
 			}
-			else if (!_wcsicmp(wszName, L"SerialNumber") && g_wmi_bios_serial) {
+			else if (!_wcsicmp(wszName, L"SerialNumber") && g_wmi_bios_serial[0]) {
 				SysFreeString(pVal->bstrVal);
 				pVal->bstrVal = SysAllocString(g_wmi_bios_serial);
 			}
