@@ -1425,7 +1425,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 HOOKDEF(HRESULT, WINAPI, WMI_Next,
 	_In_		PVOID	_this,
 	_In_		LONG	lFlags,
-	_Out_		BSTR	wszName,
+	_Out_		BSTR	*strName,
 	_Out_		VARIANT	*pVal,
 	_Out_opt_	CIMTYPE	*pType,
 	_Out_opt_	LONG	*plFlavor
@@ -4337,5 +4337,9 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 
 BOOL IsAmsiActive(void);
 void SetAmsiActive(BOOL val);
+
+void InitWmiSpoofStrings(void);
+BOOL IsHookViaWbemLocator(void);
+void SetHookViaWbemLocator(BOOL val);
 
 #include "hook_vbscript.h"

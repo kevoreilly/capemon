@@ -608,6 +608,9 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		// read the config settings
 		read_config();
 
+		// initialize dynamic polymorphic WMI spoofing strings
+		InitWmiSpoofStrings();
+
 		if (g_config.standalone) {
 			// initialize these because some hooks behave badly when they are empty
 			if (!g_config.w_analyzer[0]) {

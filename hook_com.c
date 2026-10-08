@@ -1,8 +1,23 @@
 
 #include "hooking.h"
+#include "hooks.h"
 #include "log.h"
+#include "lookup.h"
 #include "CAPE\CAPE.h"
 #include <Wbemidl.h>
+
+static lookup_t g_wmi_locator_lookup;
+
+BOOL IsHookViaWbemLocator(void) {
+	BOOL *p = (BOOL *)lookup_get(&g_wmi_locator_lookup, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	return p ? *p : FALSE;
+}
+
+void SetHookViaWbemLocator(BOOL val) {
+	BOOL *p = (BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL);
+	if (p)
+		*p = val;
+}
 
 BOOL ContainsNamespace(const wchar_t* resource, const wchar_t* target) {
 	/*
@@ -40,7 +55,6 @@ BOOL ContainsNamespace(const wchar_t* resource, const wchar_t* target) {
 	return FALSE;
 }
 
-__declspec(thread) BOOL bHookViaWbemLocator;
 HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
 	_In_	PVOID			_this,
 	_In_	const BSTR		strNetworkResource,
@@ -63,9 +77,9 @@ HOOKDEF(HRESULT, WINAPI, WbemLocator_ConnectServer,
 		ContainsNamespace(strNetworkResource, L"ROOT\\Microsoft\\Windows\\TaskScheduler")
 	)) 
 	{
-		bHookViaWbemLocator = TRUE;
+		SetHookViaWbemLocator(TRUE);
 		set_com_hooks(NULL, NULL, *ppNamespace);
-		bHookViaWbemLocator = FALSE;
+		SetHookViaWbemLocator(FALSE);
 	}
 
 	LOQ_hresult("com", "uu", "NetworkResource", strNetworkResource, "User", strUser);
