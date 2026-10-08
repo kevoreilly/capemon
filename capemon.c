@@ -690,7 +690,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 		CAPE_post_init();
 
 		// initialize context watchdog
-		//init_watchdog();
+		if (g_config.watchdog)
+			init_watchdog();
 
 #ifndef _WIN64
 		if (!g_config.no_stealth) {
