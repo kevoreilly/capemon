@@ -476,12 +476,12 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		Entry = Next;
 	}
 
-	if (SoftBPSingleStepHandler)
-	{
-		SINGLE_STEP_HANDLER Handler = SoftBPSingleStepHandler;
-		SoftBPSingleStepHandler = NULL;
+	SINGLE_STEP_HANDLER Handler = SoftBPSingleStepHandler;
+	SoftBPSingleStepHandler = NULL;
+	SingleStepHandler = NULL;
+
+	if (Handler)
 		Handler(ExceptionInfo);
-	}
 
 	return TRUE;
 }
@@ -526,7 +526,7 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 
 	if (SoftBP->Persistent || g_config.softbpmode)
 	{
-		if (SingleStepHandler)
+		if (SingleStepHandler && SingleStepHandler != RestoreSoftwareBreakpoint)
 			SoftBPSingleStepHandler = SingleStepHandler;
 		SetSingleStepMode(ExceptionInfo->ContextRecord, RestoreSoftwareBreakpoint);
 	}
@@ -628,15 +628,8 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			if (ExceptionInfo->ContextRecord->Dr6 & (DWORD_PTR)(1 << bp))
 				break;
 
-		PTHREADBREAKPOINTS CurrentThreadBreakpoints  = GetThreadBreakpoints(CurrentThreadId);
-
-		if (CurrentThreadBreakpoints == NULL)
-		{
-			DebugOutput("CAPEExceptionFilter: Breakpoint %d not registered (address 0x%p thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId);
-			return EXCEPTION_CONTINUE_SEARCH;
-		}
-
-		// If not it's a single-step
+		// If not it's a single-step (including software breakpoint restoration on
+		// threads that have no hardware breakpoints registered).
 		if (bp == NUMBER_OF_DEBUG_REGISTERS)
 		{
 			if (SingleStepHandler)
@@ -652,6 +645,14 @@ LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
 			teb->LastErrorValue = saved_error;
 
 			return EXCEPTION_CONTINUE_EXECUTION;
+		}
+
+		PTHREADBREAKPOINTS CurrentThreadBreakpoints = GetThreadBreakpoints(CurrentThreadId);
+
+		if (CurrentThreadBreakpoints == NULL)
+		{
+			DebugOutput("CAPEExceptionFilter: Breakpoint %d not registered (address 0x%p thread %d)\n", bp, ExceptionInfo->ExceptionRecord->ExceptionAddress, CurrentThreadId);
+			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
 		if (TrapIndex)

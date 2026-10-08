@@ -27,6 +27,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ignore.h"
 #include "hook_file.h"
 #include "hook_sleep.h"
+#include "hook_dotnet_api.h"
 #include "config.h"
 #include "unhook.h"
 #include "bson.h"
@@ -607,6 +608,14 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		// read the config settings
 		read_config();
+
+		// The CLR reads its COMPlus_/DOTNET_ knobs from the process environment
+		// at EE startup, which is after this DllMain. Disabling the precompiled
+		// BCL images (NGEN on Framework, ReadyToRun on Core) routes every method
+		// through compileMethod, which is where hook_dotnet_api.c sees names.
+		// Inherited by child processes through the default environment block.
+		if (g_config.dotnet_api_trace)
+			DotNetApiDisablePrecompiledImages();
 
 		if (g_config.standalone) {
 			// initialize these because some hooks behave badly when they are empty
