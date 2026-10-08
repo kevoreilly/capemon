@@ -340,6 +340,8 @@ struct _g_config {
 	char *trace_into_api[EXCLUSION_MAX];
 	int hook_watch;
 	int sleep_skip_seconds;
+	int watchdog;
+	int watchdog_interval;
 };
 
 extern struct _g_config g_config;
