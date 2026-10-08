@@ -60,6 +60,9 @@
     <ClCompile Include="hook_sleep.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_amsi.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hook_socket.c">
       <Filter>Source Files</Filter>
     </ClCompile>

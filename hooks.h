@@ -4319,12 +4319,28 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD CheckSum
 );
 
-void InitWmiSpoofStrings(void);
+HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
+	_In_     PVOID        amsiContext,
+	_In_     PVOID        buffer,
+	_In_     ULONG        length,
+	_In_opt_ LPCWSTR      contentName,
+	_In_opt_ PVOID        amsiSession,
+	_Out_    PVOID        result
+);
 
-// Per-thread "hooking via IWbemLocator" flag. Uses the lock-free lookup table
-// (LOOKUP_THREAD idiom) instead of TLS, matching the SafeLookup convention.
-extern lookup_t g_wmi_locator_lookup;
-#define bHookViaWbemLocator (*(BOOL *)LOOKUP_THREAD(&g_wmi_locator_lookup, BOOL))
-#define SetHookViaWbemLocator(val) (bHookViaWbemLocator = (BOOL)(val))
+HOOKDEF(HRESULT, WINAPI, AmsiScanString,
+	_In_     PVOID        amsiContext,
+	_In_     LPCWSTR      string,
+	_In_opt_ LPCWSTR      contentName,
+	_In_opt_ PVOID        amsiSession,
+	_Out_    PVOID        result
+);
+
+BOOL IsAmsiActive(void);
+void SetAmsiActive(BOOL val);
+
+void InitWmiSpoofStrings(void);
+BOOL IsHookViaWbemLocator(void);
+void SetHookViaWbemLocator(BOOL val);
 
 #include "hook_vbscript.h"
