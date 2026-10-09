@@ -1435,14 +1435,14 @@ static BOOL GoVersionHasNoRegAbi(const char* Version) {
 #define GO_ABI_MAX_SAMPLES     512
 static void GoVoteAbiPrologue(PBYTE Code, DWORD* RegVotes, DWORD* StackVotes) {
     __try {
-        if (!IsAddressAccessible(Code) || !IsAddressAccessible(Code + GO_ABI_PROLOGUE_WINDOW + 5))
+        if (!IsBufferAccessible(Code, GO_ABI_PROLOGUE_WINDOW + 5))
             return;
         for (DWORD k = 0; k <= GO_ABI_PROLOGUE_WINDOW; k++) {
             if ((Code[k] == 0x49 || Code[k] == 0x4D) && Code[k + 1] == 0x3B && Code[k + 2] == 0x66 && Code[k + 3] == 0x10) {
                 (*RegVotes)++;
                 return;
             }
-            if (Code[k] == 0x65 && (Code[k + 1] == 0x48 || Code[k + 1] == 0x4C) && Code[k + 2] == 0x8B &&
+            if ((Code[k] == 0x64 || Code[k] == 0x65) && (Code[k + 1] == 0x48 || Code[k + 1] == 0x4C) && Code[k + 2] == 0x8B &&
                 (Code[k + 3] & 0xC7) == 0x04 && Code[k + 4] == 0x25) {
                 (*StackVotes)++;
                 return;
@@ -1844,12 +1844,6 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
                 continue;
             }
 
-#ifdef _WIN64
-            // Sample prologues across the whole function table (only needed until the module ABI is cached)
-            if (!modInfo->AbiResolved && (i % abiSampleStride) == 0)
-                GoVoteAbiPrologue((PBYTE)funcAddress, &abiRegVotes, &abiStackVotes);
-#endif
-
             // In Go >= 1.16, funcStructOff is relative to funcdata (functab), whereas in Go 1.2 it is relative to pclntab
             PBYTE pFuncData = funcdata + funcStructOff;
             DWORD sz0 = (detectedVer >= GO_VER_118) ? 4 : (DWORD)ptrSize;
@@ -1862,6 +1856,14 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
                 continue;
 
             const char* funcName = (const char*)pName;
+
+#ifdef _WIN64
+            // Sample prologues across the function table, skipping compiler-generated ABI wrappers
+            if (!modInfo->AbiResolved && (i % abiSampleStride) == 0) {
+                if (!GoNameEndsWith(funcName, ".abi0") && !GoNameEndsWith(funcName, ".abiinternal"))
+                    GoVoteAbiPrologue((PBYTE)funcAddress, &abiRegVotes, &abiStackVotes);
+            }
+#endif
 
             if (ShouldHookGoFunction(funcName)) {
                 if (nCandidates < GO_MAX_HOOK_CANDIDATES) {
@@ -1898,7 +1900,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
                 regabi = TRUE;
                 reason = "prologue vote: CMP SP,16(R14)";
             } else if (totalVotes >= 8 && abiStackVotes * 10 >= totalVotes * 9) {
-                reason = "prologue vote: g loaded from GS TLS";
+                reason = "prologue vote: g loaded from TLS";
             } else if (detectedVer >= GO_VER_118) {
                 regabi = TRUE;
                 reason = "pclntab format >= Go 1.18";
