@@ -19,6 +19,7 @@ extern BOOL BreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPTIO
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 
 lookup_t g_dotnet_jit;
+lookup_t g_dotnet_jit_lock;
 
 // The CORINFO_METHOD_INFO structure is passed to compileMethod by the CLR JIT engine.
 // The first four fields are extremely stable and consistent across all .NET versions.
