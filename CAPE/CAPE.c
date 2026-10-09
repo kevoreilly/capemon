@@ -135,6 +135,7 @@ extern int path_is_system(const wchar_t *path_w);
 extern BOOL is_in_dll_range(ULONG_PTR addr);
 extern BOOL inside_hook(LPVOID Address);
 extern hook_info_t *hook_info();
+extern BOOL hook_get_orig_stack_bounds(ULONG_PTR *bottom, ULONG_PTR *top);
 extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
@@ -1393,12 +1394,15 @@ BOOL TrackExecution(PVOID CIP)
 	if (is_in_dll_range((ULONG_PTR)CIP) || inside_hook(CIP))
 		return FALSE;
 
+	hook_disable();
+
 	AllocationBase = GetAllocationBase(CIP);
 	if (!AllocationBase)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("TrackExecution: Failed to add address region for 0x%p to tracked regions list (thread %d).\n", CIP, GetCurrentThreadId());
 #endif
+		hook_enable();
 		return FALSE;
 	}
 
@@ -1409,12 +1413,14 @@ BOOL TrackExecution(PVOID CIP)
 		if (!TrackedRegion)
 		{
 			DebugOutput("TrackExecution: Failed to add region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
+			hook_enable();
 			return FALSE;
 		}
 		DebugOutput("TrackExecution: Added region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
 		TrackedRegion->Caller = CIP;
 		ProcessTrackedRegion(TrackedRegion);
 	}
+	hook_enable();
 	return TRUE;
 }
 
@@ -2958,10 +2964,13 @@ end:
 BOOL DumpStackRegion(void)
 //**************************************************************************************
 {
-	SIZE_T StackSize = (SIZE_T)(get_stack_top() - get_stack_bottom());
+	ULONG_PTR bottom = get_stack_bottom();
+	ULONG_PTR top = get_stack_top();
+	hook_get_orig_stack_bounds(&bottom, &top);
+	SIZE_T StackSize = (SIZE_T)(top - bottom);
 	CapeMetaData->DumpType = STACK_REGION;
-	CapeMetaData->Address = (PVOID)get_stack_bottom();
-	return DumpMemory((PVOID)get_stack_bottom(), StackSize);
+	CapeMetaData->Address = (PVOID)bottom;
+	return DumpMemory((PVOID)bottom, StackSize);
 }
 
 //**************************************************************************************
@@ -3817,8 +3826,16 @@ void CAPE_post_init()
 #ifdef DEBUG_COMMENTS
 		DebugOutput("Post-init: Debugger initialised.\n");
 #endif
-		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name))
+		if (!g_config.base_on_apiname[0] && !loader_is_allowed(our_process_name)) {
 			SetInitialBreakpoints(GetModuleHandle(NULL));
+			
+			// Go modules found by the init-time YARA scan (internal 'golang' rule) are instrumented now that the
+			// debugger is up; later (e.g. unpacked) modules are handled directly from YaraCallback
+			if (g_config.go_hooks) {
+				extern void GoProcessPending(void);
+				GoProcessPending();
+			}
+		}
 	}
 #ifdef DEBUG_COMMENTS
 	else if (g_config.debugger)

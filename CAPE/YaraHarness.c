@@ -28,6 +28,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
+extern void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo);
+extern int GoPclntabVersion(PBYTE Pclntab);
 extern BOOL remove_dll_range(ULONG_PTR addr);
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 extern void parse_config_line(char* line);
@@ -91,7 +93,26 @@ char InternalYara[] =
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule WMI_GetObjectAsync"
 	"{strings:$function = {48 8B C4 56 57 41 54 41 56 41 57 48 83 EC 40 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 4D 8B F9 45 8B E0 48 8B EA 48 8B F1 48 8B 41 08 48 83 78 20 00 75 0A B8 08 01 01 80 E9}"
-	"condition:uint16(0) == 0x5a4d and any of them}";
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	// Go pclntab header (Go 1.2-1.15: FB, 1.16-1.17: FA, 1.18-1.19: F0, 1.20+: F1). 'golang' is a marker option,
+	// not a config key: Go hooking is only performed when the user enabled go-hooks=1. The $pclntab and
+	// $buildinfo ("\xff Go buildinf:") match addresses are passed to GoRecoverSymbols; $buildinfo is optional
+	// (referenced via #buildinfo >= 0 so it is not rejected as an unreferenced string).
+	// Condition is PE-independent: covers Go payloads in shellcode, private regions, and images with wiped PE headers.
+	"rule golang"
+	"{meta:cape_options = \"golang\""
+	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) (04|08) [3] 00}"
+	"$buildinfo = {FF 20 47 6F 20 62 75 69 6C 64 69 6E 66 3A}"
+	"condition:#buildinfo >= 0 and "
+	"for any i in (1..#pclntab) : (uint32(@pclntab[i] + 8) > 0 and uint32(@pclntab[i] + 8) < 500000)}"
+	// Detect direct-syscall assembly stubs in 64-bit Go modules (e.g. BananaPhone, Hell's Gate).
+	// $stub matches MOVQ CX, R10 (49 89 CA or 4C 8B D1) followed by SYSCALL (0F 05) within 24 bytes.
+	// Sets sysbpmode=1 so the ntdll export returns cleanly to the instruction following SYSCALL in the stub.
+	"rule golang_direct_syscall"
+	"{meta:cape_options = \"sysbpmode=1,sysbp=$stub*-1\""
+	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) 08 [3] 00}"
+	"$stub = {(49 89 CA|4C 8B D1) [0-24] 0F 05}"
+	"condition:$pclntab and $stub}";
 
 void ScannerError(int Error)
 {
@@ -233,7 +254,7 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
-			BOOL SetBreakpoints = FALSE, DoDumpRegion = FALSE;
+			BOOL SetBreakpoints = FALSE, SetGoHooks = FALSE, DoDumpRegion = FALSE;
 			YR_MATCH* Match;
 			YR_STRING* String;
 			YR_META* Meta;
@@ -251,6 +272,9 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 			{
 				if (Meta->type == META_TYPE_STRING && !strcmp(Meta->identifier, "cape_options"))
 				{
+					if (!strncmp(Rule->identifier, "golang", 6) && !g_config.go_hooks)
+						return CALLBACK_CONTINUE;
+
 					yr_rule_strings_foreach(Rule, String)
 						yr_string_matches_foreach(context, String, Match)
 						{
@@ -278,6 +302,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 						}
 						if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
 							SetBreakpoints = TRUE;
+						if (!_stricmp(OptionLine, "golang"))
+							SetGoHooks = TRUE;
 						if (!_stricmp("dump", OptionLine))
 						{
 							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
@@ -325,6 +351,26 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 
 			if (DebuggerInitialised && SetBreakpoints)
 				SetInitialBreakpoints(user_data);
+
+			// Go runtime detected in this region: instrument it if the user opted in (go-hooks=1). The match addresses
+			// are handed over so hook_go does no scanning; hits before debugger initialisation are queued there.
+			if (SetGoHooks && g_config.go_hooks)
+			{
+				PBYTE Pclntab = NULL, Buildinfo = NULL;
+				yr_rule_strings_foreach(Rule, String)
+				{
+					yr_string_matches_foreach(context, String, Match)
+					{
+						PBYTE Address = (PBYTE)user_data + Match->offset;
+						if (!Pclntab && !strcmp(String->identifier, "$pclntab") && GoPclntabVersion(Address))
+							Pclntab = Address;
+						else if (!Buildinfo && !strcmp(String->identifier, "$buildinfo"))
+							Buildinfo = Address;
+					}
+				}
+				if (Pclntab)
+					GoRecoverSymbols(user_data, Pclntab, Buildinfo);
+			}
 
 			return CALLBACK_CONTINUE;
 	}

@@ -94,7 +94,8 @@ typedef struct SoftBP
 	BYTE			InstructionByte;
 	unsigned int	Length;
 	LPVOID			Callback;
-	BOOL			Persistent;
+	BOOL			Persistent;	// re-arm after each hit regardless of softbpmode
+	volatile LONG	StepCount;	// threads currently single-stepping over the disarmed breakpoint (per-thread state lives in hook_info_t)
 } SOFTBP, *PSOFTBP;
 
 typedef BOOL (cdecl *SINGLE_STEP_HANDLER)(struct _EXCEPTION_POINTERS*);
@@ -113,7 +114,7 @@ extern "C" {
 BOOL DebuggerInitialised;
 
 LONG WINAPI CAPEExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo);
-SINGLE_STEP_HANDLER SingleStepHandler, SoftBPSingleStepHandler;
+SINGLE_STEP_HANDLER SingleStepHandler;
 PVOID CAPEExceptionFilterHandle;
 PEXCEPTION_ROUTINE SEH_TopLevelHandler;
 LPTOP_LEVEL_EXCEPTION_FILTER OriginalExceptionHandler;
@@ -140,6 +141,7 @@ BOOL ContextUpdateCurrentBreakpoint(PCONTEXT Context, int Size, LPVOID Address, 
 BOOL SetThreadBreakpoints(PTHREADBREAKPOINTS ThreadBreakpoints);
 BOOL SetSoftwareBreakpoint(lookup_t *BPs, LPVOID Address);
 BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL Persistent);
+BOOL SoftBPPendingForThread(void);
 
 BOOL SetSingleStepMode(PCONTEXT Context, PVOID Handler);
 BOOL SetResumeFlag(PCONTEXT Context);
