@@ -17,6 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <distorm.h>
 #include "ntapi.h"
 #include "misc.h"
@@ -41,6 +42,29 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #endif
 
 #define WIDE_STRING_LIMIT 32768
+
+// Size of the heap buffer used to build the exception report in capemon_exception_handler().
+#define EXCEPTION_MSG_SIZE WIDE_STRING_LIMIT
+
+// _FULL_STACK_TRACE: stop appending raw stack frames once less than this many bytes
+// remain free in the exception report, so one deep stack cannot fill the whole buffer.
+#define STACK_TRACE_MIN_FREE 0x200
+
+// Append printf-style text to the NUL-terminated string in buf (bufsize bytes in total).
+// Output is truncated to fit and buf is always left NUL-terminated.
+// Does nothing if buf is already full.
+static void append_msg(char *buf, size_t bufsize, const char *fmt, ...)
+{
+	va_list args;
+	size_t len = strnlen(buf, bufsize);
+
+	if (len + 1 >= bufsize)	// no room for any character besides the terminator
+		return;
+
+	va_start(args, fmt);
+	_vsnprintf_s(buf + len, bufsize - len, _TRUNCATE, fmt, args);
+	va_end(args);
+}
 
 char *our_process_path;
 char *our_process_name;
@@ -198,9 +222,9 @@ static int parse_stack_trace(void *msg, ULONG_PTR addr)
 		PCHAR funcname;
 		funcname = ScanForExport((PVOID)addr, 0x50);
 		if (funcname)
-			snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s::%s(0x%x)\n", buf, funcname, offset);
+			append_msg((char *)msg, EXCEPTION_MSG_SIZE, "%s::%s(0x%x)\n", buf, funcname, offset);
 		else
-			snprintf((char *)msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, "%s+0x%x\n", buf, offset);
+			append_msg((char *)msg, EXCEPTION_MSG_SIZE, "%s+0x%x\n", buf, offset);
 		free(buf);
 	}
 
@@ -363,29 +387,31 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 
 	log_flush();
 
-	msg = malloc(WIDE_STRING_LIMIT);
+	msg = malloc(EXCEPTION_MSG_SIZE);
+	if (!msg)
+		return EXCEPTION_CONTINUE_SEARCH;
 
 	dllname = convert_address_to_dll_name_and_offset(eip, &offset);
 
-	sprintf(msg, "Exception Caught! PID: %u EIP:", GetCurrentProcessId());
+	_snprintf_s(msg, EXCEPTION_MSG_SIZE, _TRUNCATE, "Exception Caught! PID: %u EIP:", GetCurrentProcessId());
 	if (dllname) {
 		PCHAR FunctionName;
 		FunctionName = ScanForExport((PVOID)eip, 0x50);
 		if (FunctionName)
-			snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)", dllname, FunctionName, offset);
+			append_msg(msg, EXCEPTION_MSG_SIZE, " %s::%s(0x%x)", dllname, FunctionName, offset);
 		else
-			snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+0x%x", dllname, offset);
+			append_msg(msg, EXCEPTION_MSG_SIZE, " %s+0x%x", dllname, offset);
 	}
 
 	sehname = convert_address_to_dll_name_and_offset(seh, &offset);
 	if (sehname)
-		snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " SEH: %s+0x%x", sehname, offset);
+		append_msg(msg, EXCEPTION_MSG_SIZE, " SEH: %s+0x%x", sehname, offset);
 
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), " %.08Ix, Fault Address: %.08Ix, Esp: %.08Ix, Exception Code: %08x\n",
+	append_msg(msg, EXCEPTION_MSG_SIZE, " %.08Ix, Fault Address: %.08Ix, Esp: %.08Ix, Exception Code: %08x\n",
 		eip, ExceptionInfo->ExceptionRecord->ExceptionInformation[1], (ULONG_PTR)stack, ExceptionInfo->ExceptionRecord->ExceptionCode);
 
 #ifdef _WIN64
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1,
+	append_msg(msg, EXCEPTION_MSG_SIZE,
 		"RAX 0x%I64x RBX 0x%I64x RCX 0x%I64x RDX 0x%I64x RSI 0x%I64x RDI 0x%I64x\nR8 0x%I64x R9 0x%I64x R10 0x%I64x R11 0x%I64x R12 0x%I64x R13 0x%I64x R14 0x%I64x R15 0x%I64x RSP 0x%I64x RBP 0x%I64x\n",
 		ExceptionInfo->ContextRecord->Rax, ExceptionInfo->ContextRecord->Rbx, ExceptionInfo->ContextRecord->Rcx, ExceptionInfo->ContextRecord->Rdx,
 		ExceptionInfo->ContextRecord->Rsi, ExceptionInfo->ContextRecord->Rdi, ExceptionInfo->ContextRecord->R8, ExceptionInfo->ContextRecord->R9,
@@ -393,7 +419,7 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 		ExceptionInfo->ContextRecord->R14, ExceptionInfo->ContextRecord->R15, ExceptionInfo->ContextRecord->Rsp, ExceptionInfo->ContextRecord->Rbp
 		);
 #else
-	snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1,
+	append_msg(msg, EXCEPTION_MSG_SIZE,
 		"EAX 0x%x EBX 0x%x ECX 0x%x EDX 0x%x ESI 0x%x EDI 0x%x\n ESP 0x%x EBP 0x%x\n",
 		ExceptionInfo->ContextRecord->Eax, ExceptionInfo->ContextRecord->Ebx, ExceptionInfo->ContextRecord->Ecx, ExceptionInfo->ContextRecord->Edx,
 		ExceptionInfo->ContextRecord->Esi, ExceptionInfo->ContextRecord->Edi, ExceptionInfo->ContextRecord->Esp, ExceptionInfo->ContextRecord->Ebp
@@ -413,18 +439,18 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 				PCHAR funcname = NULL;
 				funcname = ScanForExport((PVOID)eip, 0x50);
 				if (funcname)
-					snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s::%s(0x%x)\n", buf, funcname, offset);
+					append_msg(msg, EXCEPTION_MSG_SIZE, " %s::%s(0x%x)\n", buf, funcname, offset);
 				else
-					snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg) - 1, " %s+0x%x\n", buf, offset);
+					append_msg(msg, EXCEPTION_MSG_SIZE, " %s+0x%x\n", buf, offset);
 				free(buf);
 			}
-			if (sizeof(msg) - strlen(msg) < 0x200)
+			if (EXCEPTION_MSG_SIZE - strnlen(msg, EXCEPTION_MSG_SIZE) < STACK_TRACE_MIN_FREE)
 				goto next;
 		}
-		strcat(msg, ", ");
+		append_msg(msg, EXCEPTION_MSG_SIZE, ", ");
 	}
 	else {
-		strcat(msg, "invalid stack, ");
+		append_msg(msg, EXCEPTION_MSG_SIZE, "invalid stack, ");
 	}
 next:
 #endif
