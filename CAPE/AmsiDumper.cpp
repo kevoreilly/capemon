@@ -38,6 +38,9 @@ https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/AmsiProvi
 #define AMSIBUFFER 0x6a
 #define AMSISTREAM 0x6b
 
+// Maximum AMSI stream size (64 MB) to allocate and dump.
+#define AMSI_MAX_STREAM_SIZE 0x4000000
+
 using namespace Microsoft::WRL;
 using namespace std;
 
@@ -47,6 +50,7 @@ extern "C" int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 extern "C" BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
 extern "C" BOOL IsAmsiActive(void);
+extern "C" BOOL DumpAmsiBuffer(DWORD DumpType, PVOID Buffer, SIZE_T Size, const char *Caller);
 
 HMODULE g_currentModule;
 
@@ -90,45 +94,42 @@ HRESULT AmsiDumper::Scan(_In_ IAmsiStream* stream, _Out_ AMSI_RESULT* result)
 
     if (contentAddress)
     {
-		DebugOutput("AmsiDumper: Dumping AMSI buffer at 0x%p, size 0x%x\n", contentAddress, contentSize);
-		SetCapeMetaData(AMSIBUFFER, NULL, NULL, NULL);
-		DumpMemoryRaw(contentAddress, (SIZE_T)contentSize);
+		DumpAmsiBuffer(AMSIBUFFER, contentAddress, (SIZE_T)contentSize, "AmsiDumper");
     }
-    else if (contentSize)
+    else if (contentSize && contentSize <= AMSI_MAX_STREAM_SIZE)
     {
         BYTE chunk[1024];
-        ULONG readSize;
+        ULONG readSize = 0;
 		ULONGLONG position;
 		PBYTE streamCopy = (PBYTE)malloc((SIZE_T)contentSize);
 
 		if (streamCopy == NULL)
 		{
-			DebugOutput("AmsiDumper: Failed to allocate 0x%x bytes for stream copy.\n", contentSize);
+			DebugOutput("AmsiDumper: Failed to allocate 0x%llx bytes for stream copy.\n", contentSize);
 			goto end;
 		}
 
 		for (position = 0; position < contentSize; position += readSize)
 		{
-			HRESULT hr = stream->Read(position, sizeof(chunk), chunk, &readSize);
-			if (SUCCEEDED(hr))
+			ULONG toRead = (ULONG)((contentSize - position) < sizeof(chunk) ? (contentSize - position) : sizeof(chunk));
+			readSize = 0;
+			HRESULT hr = stream->Read(position, toRead, chunk, &readSize);
+			if (SUCCEEDED(hr) && readSize > 0 && readSize <= toRead)
 				memcpy(streamCopy + position, chunk, readSize);
 			else
 			{
 				DebugOutput("AmsiDumper: Failed to copy stream.\n");
+				free(streamCopy);
 				goto end;
 			}
 		}
 
 		if (position)
-		{
+			DumpAmsiBuffer(AMSISTREAM, streamCopy, (SIZE_T)position, "AmsiDumper");
 
-			DebugOutput("AmsiDumper: Dumping AMSI stream at 0x%p, size 0x%x", streamCopy, contentSize);
-			SetCapeMetaData(AMSISTREAM, NULL, NULL, NULL);
-			DumpMemoryRaw(streamCopy, (SIZE_T)contentSize);
-			free(streamCopy);
-		}
+		free(streamCopy);
     }
-	else
+	else if (!contentSize)
 		DebugOutput("AmsiDumper: AMSI scan request unhandled; contentAddress & contentSize both zero.\n");
 end:
     *result = AMSI_RESULT_NOT_DETECTED;
