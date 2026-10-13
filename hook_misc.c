@@ -97,6 +97,39 @@ HOOKDEF(BOOL, WINAPI, UnhookWindowsHookEx,
 	return ret;
 }
 
+HOOKDEF(HWINEVENTHOOK, WINAPI, SetWinEventHook,
+	__in  UINT eventMin,
+	__in  UINT eventMax,
+	__in  HMODULE hmodWinEventProc,
+	__in  WINEVENTPROC pfnWinEventProc,
+	__in  DWORD idProcess,
+	__in  DWORD idThread,
+	__in  UINT dwFlags
+) {
+
+	HWINEVENTHOOK ret;
+
+	// An in-context hook with a module handle injects hmodWinEventProc into the
+	// target process(es), so follow the target as we do for SetWindowsHookEx.
+	if (hmodWinEventProc && (dwFlags & WINEVENT_INCONTEXT)) {
+		if (idProcess) {
+			if (idProcess != GetCurrentProcessId())
+				ProcessMessage(idProcess, 0);
+		}
+		else if (idThread) {
+			DWORD pid = get_pid_by_tid(idThread);
+			if (pid != GetCurrentProcessId())
+				ProcessMessage(pid, 0);
+		}
+	}
+
+	ret = Old_SetWinEventHook(eventMin, eventMax, hmodWinEventProc, pfnWinEventProc, idProcess, idThread, dwFlags);
+	LOQ_nonnull("system", "iippiii", "EventMin", eventMin, "EventMax", eventMax,
+		"ModuleAddress", hmodWinEventProc, "ProcedureAddress", pfnWinEventProc,
+		"ProcessId", idProcess, "ThreadId", idThread, "Flags", dwFlags);
+	return ret;
+}
+
 HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	_In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 ) {
