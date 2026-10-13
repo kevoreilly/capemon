@@ -409,6 +409,7 @@ hook_t full_hooks[] = {
 	HOOK(user32, ChangeWindowMessageFilter),
 	HOOK(user32, SetWindowsHookExA),
 	HOOK(user32, SetWindowsHookExW),
+	HOOK(user32, SetWinEventHook),
 	HOOK(user32, UnhookWindowsHookEx),
 	HOOK(kernel32, SetUnhandledExceptionFilter),
 	HOOK(kernel32, UnhandledExceptionFilter),
@@ -1115,6 +1116,7 @@ hook_t min_hooks[] = {
 	HOOK(user32, SetWindowLongPtrW),
 	HOOK(user32, SetWindowsHookExA),
 	HOOK(user32, SetWindowsHookExW),
+	HOOK(user32, SetWinEventHook),
 
 	HOOK(ntdll, NtCreateFile),
 	HOOK(ntdll, NtOpenFile),
@@ -1435,6 +1437,7 @@ hook_t office_hooks[] = {
 	HOOK(user32, ChangeWindowMessageFilter),
 	HOOK(user32, SetWindowsHookExA),
 	HOOK(user32, SetWindowsHookExW),
+	HOOK(user32, SetWinEventHook),
 	HOOK(user32, UnhookWindowsHookEx),
 	HOOK(kernel32, SetUnhandledExceptionFilter),
 	HOOK(ntdll, RtlAddVectoredExceptionHandler),
@@ -1739,6 +1742,7 @@ hook_t ie_hooks[] = {
 
 	HOOK(user32, SetWindowsHookExA),
 	HOOK(user32, SetWindowsHookExW),
+	HOOK(user32, SetWinEventHook),
 
 	HOOK(ntdll, NtCreateFile),
 	//HOOK(ntdll, NtOpenFile),
