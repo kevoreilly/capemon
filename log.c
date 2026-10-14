@@ -1067,7 +1067,7 @@ void loq(int index, const char *category, const char *name,
 					}
 					if (!found_doublenull)
 						goto buffer_log;
-					p = (char *)malloc(size + (strcnt * 4));
+					p = (char *)malloc((size * 4) + 1);  // worst case: every byte escaped to \x00
 					if (p == NULL)
 						goto buffer_log;
 					for (i = 0, x = 0; i < size - 1; i++) {
@@ -1086,7 +1086,7 @@ void loq(int index, const char *category, const char *name,
 						}
 					}
 					p[x] = '\0';
-					len = (int)strnlen(p, size + (strcnt * 4));
+					len = (int)strnlen(p, (size * 4) + 1);
 					log_string(p, len);
 					free(p);
 				}
@@ -1108,7 +1108,7 @@ void loq(int index, const char *category, const char *name,
 					}
 					if (!found_doublenull)
 						goto buffer_log;
-					p = (wchar_t *)malloc(size + (strcnt * 4 * sizeof(wchar_t)));
+					p = (wchar_t *)malloc((size * 4) + sizeof(wchar_t));  // worst case: every wchar escaped
 					if (p == NULL)
 						goto buffer_log;
 					for (i = 0, x = 0; i < (size/sizeof(wchar_t)) - 1; i++) {
@@ -1127,7 +1127,7 @@ void loq(int index, const char *category, const char *name,
 						}
 					}
 					p[x] = L'\0';
-					len = (int)wcsnlen(p, (size/sizeof(wchar_t)) + (strcnt * 4));
+					len = (int)wcsnlen(p, ((size/sizeof(wchar_t)) * 4) + 1);
 					log_wstring(p, len);
 					free(p);
 				}
