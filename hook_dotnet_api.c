@@ -552,6 +552,8 @@ BOOL DotNetApiBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	DOTNET_API_ENTRY **Slot;
 	PCONTEXT Context;
 	hook_info_t *hookinfo;
+	lasterror_t lasterror;
+	unsigned int saved_disable_count = 0;
 	ULONG_PTR saved_retaddr = 0, saved_main_caller = 0, saved_parent_caller = 0;
 
 	if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord || !ExceptionInfo->ContextRecord)
@@ -561,10 +563,12 @@ BOOL DotNetApiBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	if (!Slot || !*Slot)
 		return FALSE;
 
+	get_lasterrors(&lasterror);
 	Context = ExceptionInfo->ContextRecord;
 	hookinfo = hook_info();
 	if (hookinfo) {
 		PULONG_PTR Sp;
+		saved_disable_count = hookinfo->disable_count;
 		saved_retaddr = hookinfo->return_address;
 		saved_main_caller = hookinfo->main_caller_retaddr;
 		saved_parent_caller = hookinfo->parent_caller_retaddr;
@@ -587,13 +591,14 @@ BOOL DotNetApiBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		DebugOutput("DotNetApi: exception decoding %s.%s at 0x%p.\n", (*Slot)->Class, (*Slot)->Method, ExceptionInfo->ExceptionRecord->ExceptionAddress);
 	}
-	hook_enable();
 
 	if (hookinfo) {
+		hookinfo->disable_count = saved_disable_count;
 		hookinfo->return_address = saved_retaddr;
 		hookinfo->main_caller_retaddr = saved_main_caller;
 		hookinfo->parent_caller_retaddr = saved_parent_caller;
 	}
+	set_lasterrors(&lasterror);
 
 	return TRUE;
 }
