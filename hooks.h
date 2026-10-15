@@ -1005,6 +1005,100 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationAtom,
 	OUT PULONG ReturnLength OPTIONAL
 );
 
+HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletion,
+	__in		HANDLE IoCompletionHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletionEx,
+	__in		HANDLE IoCompletionHandle,
+	__in_opt	HANDLE IoCompletionPacketHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtAssociateWaitCompletionPacket,
+	__in		HANDLE WaitCompletionPacketHandle,
+	__in		HANDLE IoCompletionHandle,
+	__in		HANDLE TargetObjectHandle,
+	__in_opt	PVOID KeyContext,
+	__in_opt	PVOID ApcContext,
+	__in		NTSTATUS IoStatus,
+	__in		ULONG_PTR IoStatusInformation,
+	__out_opt	PBOOLEAN AlreadySignaled
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocWait,
+	__out		PVOID *WaitReturn,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
+HOOKDEF(VOID, WINAPI, TpSetWait,
+	__inout		PVOID Wait,
+	__in_opt	HANDLE Handle,
+	__in_opt	PLARGE_INTEGER Timeout
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpSetWaitEx,
+	__inout		PVOID Wait,
+	__in_opt	HANDLE Handle,
+	__in_opt	PLARGE_INTEGER Timeout,
+	__in_opt	PVOID Reserved
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocWork,
+	__out		PVOID *WorkReturn,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
+HOOKDEF(VOID, WINAPI, TpPostWork,
+	__inout		PVOID Work
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpSimpleTryPost,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocTimer,
+	__out		PVOID *Timer,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
+HOOKDEF(VOID, WINAPI, TpSetTimer,
+	__inout		PVOID Timer,
+	__in_opt	PLARGE_INTEGER DueTime,
+	__in		ULONG Period,
+	__in_opt	ULONG WindowLength
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpSetTimerEx,
+	__inout		PVOID Timer,
+	__in_opt	PLARGE_INTEGER DueTime,
+	__in		ULONG Period,
+	__in_opt	PVOID Parameters
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocIoCompletion,
+	__out		PVOID *IoReturn,
+	__in		HANDLE File,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
 //
 // Process Hooks
 //
@@ -4235,5 +4329,25 @@ HOOKDEF(DWORD, WINAPI, MapFileAndCheckSumA,
 	_Out_ PDWORD HeaderSum,
 	_Out_ PDWORD CheckSum
 );
+
+HOOKDEF(HRESULT, WINAPI, AmsiScanBuffer,
+	_In_     PVOID        amsiContext,
+	_In_     PVOID        buffer,
+	_In_     ULONG        length,
+	_In_opt_ LPCWSTR      contentName,
+	_In_opt_ PVOID        amsiSession,
+	_Out_    PVOID        result
+);
+
+HOOKDEF(HRESULT, WINAPI, AmsiScanString,
+	_In_     PVOID        amsiContext,
+	_In_     LPCWSTR      string,
+	_In_opt_ LPCWSTR      contentName,
+	_In_opt_ PVOID        amsiSession,
+	_Out_    PVOID        result
+);
+
+BOOL IsAmsiActive(void);
+void SetAmsiActive(BOOL val);
 
 #include "hook_vbscript.h"

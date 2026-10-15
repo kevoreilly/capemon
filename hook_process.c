@@ -1245,7 +1245,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	if (BaseAddress)
 		module_name = get_module_name((ULONG_PTR)*BaseAddress);
 
-	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
+	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
 		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
 			NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
@@ -1324,7 +1324,7 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	DWORD OriginalNewProtect = 0;
 	UNICODE_STRING *module_name = get_module_name((ULONG_PTR)lpAddress);
 
-	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
+	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
 		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
 			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
@@ -1462,12 +1462,12 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 			break;
 		case DbgLoadDllStateChange:
 			{
-				wchar_t *fname = calloc(32768, sizeof(wchar_t));
+				wchar_t *fname = path_scratch_acquire();
 
 				path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
 				// we could continue ourselves here and skip notification to the malware of capemon loading
 				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
-				free(fname);
+				path_scratch_release(fname);
 			}
 			break;
 		default:
