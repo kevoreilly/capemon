@@ -4342,4 +4342,10 @@ void InitWmiSpoofStrings(void);
 BOOL IsHookViaWbemLocator(void);
 void SetHookViaWbemLocator(BOOL val);
 
+HOOKDEF(PVOID, WINAPI, nLoadImage,
+	_In_     PVOID        pArrayObject,
+	_In_opt_ PVOID        pAppDomain,
+	_Inout_  PVOID*       pAssembly
+);
+
 #include "hook_vbscript.h"
