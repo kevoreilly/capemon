@@ -84,6 +84,22 @@ void DumpStrings(void);
 BOOL ProcessDumped;
 unsigned int DumpCount, DotNetCacheDumpCount;
 
+typedef struct {
+	ULONG_PTR ModuleBase;
+	DWORD     MetadataRVA;
+	DWORD     MetadataSize;
+} dotnet_module_cache_t;
+
+void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize);
+dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase);
+
+// Lock-free claim/release of one of the g_config.jit_dumps slots shared by the
+// compileMethod hook (JIT worker threads) and DumpInterestingRegions(). CAS on
+// DotNetCacheDumpCount; no critical section. CapeMetaData is a process-wide
+// scratch struct written without a lock by every dump path in the monitor.
+BOOL ReserveDotNetCacheDump(void);
+void ReleaseDotNetCacheDump(void);
+
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
 
