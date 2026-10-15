@@ -42,6 +42,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define HOOK_RATE_LIMIT 0x100
 
 static lookup_t g_hook_info;
+static lookup_t g_hook_thread_state;
 static lookup_t g_force_hook_threads;
 
 extern BOOL inside_hook(LPVOID Address);
@@ -461,10 +462,202 @@ void set_lasterrors(lasterror_t *errors)
 
 void hook_enable()
 {
-	hook_info()->disable_count = 0;
+	if (hook_info()->disable_count > 0)
+		hook_info()->disable_count--;
 }
 
 void hook_disable()
 {
-	hook_info()->disable_count = 1;
+	hook_info()->disable_count++;
+}
+
+// ---------------------------------------------------------------------------
+// Alternate (capemon-owned) stack
+//
+// Callbacks reached from code running on a stack the target controls must not consume that stack:
+// goroutine stacks are heap allocations with no guard page and only ~stackGuard bytes of headroom below
+// SP after a split check (928 + 4096 on Windows); pivoted/scratch stacks have no guarantee at all. A
+// CONTEXT (1232 bytes on x64) plus loq's 2 KB buffer already exceed that, and the overflow is silent.
+//
+// The switch itself is a byte-coded thunk (MSVC x64 has no inline asm). It must not be unwound through,
+// so alt_stack_entry wraps fn in __try/__except. TEB StackBase/StackLimit are redirected to the
+// alternate stack while on it: x64 RtlDispatchException rejects establisher frames outside those
+// bounds, which would turn any __try inside fn into an unhandled exception.
+// ---------------------------------------------------------------------------
+
+#ifdef _WIN64
+typedef void (*alt_stack_thunk_t)(alt_stack_fn_t fn, void *arg, PVOID stack_top);
+static const unsigned char alt_stack_thunk_code[] = {
+	0x55,                   // push rbp
+	0x48, 0x89, 0xE5,       // mov rbp, rsp
+	0x48, 0x89, 0xC8,       // mov rax, rcx         (fn)
+	0x48, 0x89, 0xD1,       // mov rcx, rdx         (arg)
+	0x4C, 0x89, 0xC4,       // mov rsp, r8          (stack_top, 16-byte aligned)
+	0x48, 0x83, 0xEC, 0x20, // sub rsp, 0x20        (Win64 shadow space; keeps rsp 16-aligned before the call)
+	0xFF, 0xD0,             // call rax
+	0x48, 0x89, 0xEC,       // mov rsp, rbp
+	0x5D,                   // pop rbp
+	0xC3                    // ret
+};
+#else
+typedef void (__cdecl *alt_stack_thunk_t)(alt_stack_fn_t fn, void *arg, PVOID stack_top);
+static const unsigned char alt_stack_thunk_code[] = {
+	0x55,                   // push ebp
+	0x89, 0xE5,             // mov ebp, esp
+	0x8B, 0x45, 0x08,       // mov eax, [ebp+8]     (fn)
+	0x8B, 0x4D, 0x0C,       // mov ecx, [ebp+12]    (arg)
+	0x8B, 0x65, 0x10,       // mov esp, [ebp+16]    (stack_top)
+	0x51,                   // push ecx
+	0xFF, 0xD0,             // call eax             (cdecl; argument discarded by the mov below)
+	0x89, 0xEC,             // mov esp, ebp
+	0x5D,                   // pop ebp
+	0xC3                    // ret
+};
+#endif
+
+static alt_stack_thunk_t g_alt_stack_thunk;
+
+typedef struct _alt_stack_call_t {
+	alt_stack_fn_t fn;
+	void *arg;
+} alt_stack_call_t;
+
+static void __cdecl alt_stack_entry(void *p)
+{
+	alt_stack_call_t *call = (alt_stack_call_t *)p;
+
+	__try {
+		call->fn(call->arg);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		DebugOutput("hook_call_on_alt_stack: exception 0x%x escaped callback at 0x%p.\n", GetExceptionCode(), call->fn);
+	}
+}
+
+hook_thread_state_t *hook_thread_state(void)
+{
+	hook_thread_state_t *ptr;
+	lasterror_t lasterror;
+
+	get_lasterrors(&lasterror);
+
+	ptr = (hook_thread_state_t *)lookup_get(&g_hook_thread_state, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (ptr == NULL) {
+		ptr = (hook_thread_state_t *)lookup_add(&g_hook_thread_state, (ULONG_PTR)GetCurrentThreadId(), sizeof(hook_thread_state_t));
+		if (ptr != NULL)
+			memset(ptr, 0, sizeof(*ptr));
+	}
+
+	set_lasterrors(&lasterror);
+
+	return ptr;
+}
+
+static BOOL alt_stack_init(hook_thread_state_t *state)
+{
+	// VirtualAlloc/VirtualProtect are hooked: keep our own allocations out of the behaviour log
+	hook_disable();
+
+	if (g_alt_stack_thunk == NULL) {
+		PVOID page = VirtualAlloc(NULL, 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		if (page != NULL) {
+			DWORD old_prot;
+			memcpy(page, alt_stack_thunk_code, sizeof(alt_stack_thunk_code));
+			if (VirtualProtect(page, 0x1000, PAGE_EXECUTE_READ, &old_prot)) {
+				FlushInstructionCache(GetCurrentProcess(), page, sizeof(alt_stack_thunk_code));
+				if (InterlockedCompareExchangePointer((PVOID volatile *)&g_alt_stack_thunk, page, NULL) != NULL)
+					VirtualFree(page, 0, MEM_RELEASE);   // lost the race: another thread published its copy
+			}
+			else
+				VirtualFree(page, 0, MEM_RELEASE);
+		}
+	}
+
+	if (state->alt_stack == NULL)
+		state->alt_stack = VirtualAlloc(NULL, HOOK_ALT_STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+	hook_enable();
+
+	return g_alt_stack_thunk != NULL && state->alt_stack != NULL;
+}
+
+BOOL hook_on_alt_stack(void)
+{
+	hook_thread_state_t *state = hook_thread_state();
+	return state != NULL && state->alt_stack_depth > 0;
+}
+
+BOOL hook_get_orig_stack_bounds(ULONG_PTR *bottom, ULONG_PTR *top)
+{
+	hook_thread_state_t *state = hook_thread_state();
+	if (state != NULL && state->alt_stack_depth > 0 && state->orig_stack_base != NULL && state->orig_stack_limit != NULL) {
+		if (bottom != NULL)
+			*bottom = (ULONG_PTR)state->orig_stack_limit;
+		if (top != NULL)
+			*top = (ULONG_PTR)state->orig_stack_base;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL hook_call_on_alt_stack(alt_stack_fn_t fn, void *arg)
+{
+	hook_thread_state_t *state = hook_thread_state();
+	alt_stack_call_t call;
+	PNT_TIB tib;
+	PVOID saved_base, saved_limit, stack_top;
+#ifndef _WIN64
+	PVOID saved_exc_list;
+#endif
+
+	if (fn == NULL || state == NULL)
+		return FALSE;
+
+	// Already on our stack (nested hook or callback on the same thread)
+	if (state->alt_stack_depth > 0) {
+		fn(arg);
+		return TRUE;
+	}
+
+	// Everything up to the switch runs on the caller's stack: keep it to a few small frames
+	if (!alt_stack_init(state))
+		return FALSE;
+
+	call.fn = fn;
+	call.arg = arg;
+	stack_top = (PVOID)(((ULONG_PTR)state->alt_stack + HOOK_ALT_STACK_SIZE) & ~(ULONG_PTR)0xF);
+
+	tib = (PNT_TIB)NtCurrentTeb();
+	saved_base = tib->StackBase;
+	saved_limit = tib->StackLimit;
+#ifndef _WIN64
+	// On x86 SEH registration records are chained from fs:[0] and validated against [StackLimit, StackBase].
+	// Terminate the chain at EXCEPTION_CHAIN_END before switching so alt_stack_entry's __try starts a clean
+	// chain entirely within the alternate stack.
+	saved_exc_list = tib->ExceptionList;
+#endif
+
+	state->orig_stack_base = saved_base;
+	state->orig_stack_limit = saved_limit;
+	state->alt_stack_orig_sp = (ULONG_PTR)&call;
+	state->alt_stack_depth = 1;
+	tib->StackBase = stack_top;
+	tib->StackLimit = state->alt_stack;
+#ifndef _WIN64
+	tib->ExceptionList = (PVOID)(ULONG_PTR)-1;
+#endif
+
+	g_alt_stack_thunk(alt_stack_entry, &call, stack_top);
+
+#ifndef _WIN64
+	tib->ExceptionList = saved_exc_list;
+#endif
+	tib->StackBase = saved_base;
+	tib->StackLimit = saved_limit;
+	state->alt_stack_depth = 0;
+	state->alt_stack_orig_sp = 0;
+	state->orig_stack_base = NULL;
+	state->orig_stack_limit = NULL;
+
+	return TRUE;
 }

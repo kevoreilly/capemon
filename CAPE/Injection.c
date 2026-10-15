@@ -525,7 +525,7 @@ __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT
 #endif
 	}
 
-	if (g_config.debugger && Pid == GetCurrentProcessId())
+	if (g_config.debugger && Pid == GetCurrentProcessId() && Context && (Context->ContextFlags & CONTEXT_DEBUG_REGISTERS))
 	{
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
 		if (ThreadBreakpoints)
@@ -560,7 +560,7 @@ __declspec(noinline) void GetThreadContextHandler(HANDLE ThreadHandle, LPCONTEXT
 
 __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *Context)
 {
-	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
+	if (!Context || !(Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_DEBUG_REGISTERS)))
 		return;
 
 	DWORD Pid = pid_from_thread_handle(ThreadHandle);
@@ -569,7 +569,7 @@ __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *
 	if (Pid != GetCurrentProcessId())
 		ProcessMessage(Pid, 0);
 
-	if (g_config.debugger && Pid == GetCurrentProcessId())
+	if (g_config.debugger && Pid == GetCurrentProcessId() && (Context->ContextFlags & CONTEXT_DEBUG_REGISTERS))
 	{
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
 		if (ThreadBreakpoints)
@@ -582,15 +582,19 @@ __declspec(noinline) void SetThreadContextHandler(HANDLE ThreadHandle, CONTEXT *
 				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
 			)
 			{
-				DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+				if (Tid == GetCurrentThreadId())
+					DebugOutput("SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
 				ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
 			}
 		}
 #ifdef DEBUG_COMMENTS
-		else
+		else if (Tid == GetCurrentThreadId())
 			DebugOutput("SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
 #endif
 	}
+
+	if (!(Context->ContextFlags & CONTEXT_CONTROL))
+		return;
 
 	MEMORY_BASIC_INFORMATION MemoryInfo;
 	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
@@ -650,7 +654,7 @@ __declspec(noinline) void Wow64GetThreadContextHandler(HANDLE ThreadHandle, PWOW
 			CurrentInjectionInfo->StackPointer = (PVOID)(DWORD_PTR)Context->Esp;
 	}
 
-	if (g_config.debugger && Pid == GetCurrentProcessId())
+	if (g_config.debugger && Pid == GetCurrentProcessId() && Context && (Context->ContextFlags & CONTEXT_DEBUG_REGISTERS))
 	{
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
 		if (ThreadBreakpoints)
@@ -685,7 +689,7 @@ __declspec(noinline) void Wow64GetThreadContextHandler(HANDLE ThreadHandle, PWOW
 
 __declspec(noinline) void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context)
 {
-	if (!Context || !(Context->ContextFlags & CONTEXT_CONTROL))
+	if (!Context || !(Context->ContextFlags & (CONTEXT_CONTROL | CONTEXT_DEBUG_REGISTERS)))
 		return;
 
 	DWORD Pid = pid_from_thread_handle(ThreadHandle);
@@ -694,7 +698,7 @@ __declspec(noinline) void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW
 	if (Pid != GetCurrentProcessId())
 		ProcessMessage(Pid, 0);
 
-	if (g_config.debugger && Pid == GetCurrentProcessId())
+	if (g_config.debugger && Pid == GetCurrentProcessId() && (Context->ContextFlags & CONTEXT_DEBUG_REGISTERS))
 	{
 		PTHREADBREAKPOINTS ThreadBreakpoints = GetThreadBreakpoints(Tid);
 		if (ThreadBreakpoints)
@@ -707,15 +711,19 @@ __declspec(noinline) void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW
 				(ThreadBreakpoints->BreakpointInfo[3].Address && (DWORD_PTR)ThreadBreakpoints->BreakpointInfo[3].Address != Context->Dr3)
 			)
 			{
-				DebugOutput("Wow64SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
+				if (Tid == GetCurrentThreadId())
+					DebugOutput("Wow64SetThreadContextHandler: Protecting breakpoints for thread %d: 0x%p, 0x%p, 0x%p, 0x%p.\n", Tid, ThreadBreakpoints->BreakpointInfo[0].Address, ThreadBreakpoints->BreakpointInfo[1].Address, ThreadBreakpoints->BreakpointInfo[2].Address, ThreadBreakpoints->BreakpointInfo[3].Address);
 				//ContextSetThreadBreakpointsEx(Context, ThreadBreakpoints, TRUE);
 			}
 		}
 #ifdef DEBUG_COMMENTS
-		else
+		else if (Tid == GetCurrentThreadId())
 			DebugOutput("Wow64SetThreadContextHandler hook: No breakpoints to protect for thread %d.\n", Tid);
 #endif
 	}
+
+	if (!(Context->ContextFlags & CONTEXT_CONTROL))
+		return;
 
 	MEMORY_BASIC_INFORMATION MemoryInfo;
 	struct InjectionInfo *CurrentInjectionInfo = GetInjectionInfo(Pid);
