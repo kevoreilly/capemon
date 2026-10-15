@@ -140,6 +140,8 @@ extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
 extern char *our_process_name;
+extern char *our_dll_path;
+extern const char g_capemon_version[];
 extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
@@ -1781,6 +1783,33 @@ BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	return 1;
 }
 
+BOOL GetSelfHash(char* OutputBuffer)
+{
+    HANDLE Handle = CreateFile(our_dll_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+
+    if (Handle == INVALID_HANDLE_VALUE)
+		return 0;
+
+    DWORD Size = GetFileSize(Handle, NULL);
+
+    unsigned char* Buffer = (unsigned char*)malloc(Size);
+
+    if (!Buffer)
+	{
+		CloseHandle(Handle);
+		return 0;
+	}
+
+    DWORD Read;
+
+    BOOL Result = ReadFile(Handle, Buffer, Size, &Read, NULL) && Read == Size && GetSHA256(Buffer, Size, OutputBuffer);
+
+    free(Buffer);
+
+	CloseHandle(Handle);
+
+    return Result;
+}
 //**************************************************************************************
 double GetEntropy(PUCHAR Buffer)
 //**************************************************************************************
@@ -3852,6 +3881,16 @@ void CAPE_post_init()
 	if (g_config.wowmon)
 		LoadWowMonitor();
 #endif
+
+	DebugOutput("%s-bit monitor loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", sizeof(void*) == 8 ? "64" : "86", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+
+	char hash[65] = {0};
+	GetSelfHash(hash);
+	DebugOutput("Monitor version: \"%s\" (x%s) SHA-256: %s\n", g_capemon_version, sizeof(void*) == 8 ? "64" : "86", hash);
+
+	char CommandLine[MAX_UNICODE_PATH];
+	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
+	DebugOutput("Commandline: %s\n", CommandLine);
 }
 
 void CAPE_init()
@@ -3934,16 +3973,6 @@ Finish:
 
 	if (g_config.amsidump && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
 		AmsiDumperInit((HMODULE)g_our_dll_base);
-
-#ifdef _WIN64
-	DebugOutput("Monitor initialised: 64-bit capemon loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
-#else
-	DebugOutput("Monitor initialised: 32-bit capemon loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
-#endif
-
-	char CommandLine[MAX_UNICODE_PATH];
-	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
-	DebugOutput("Commandline: %s\n", CommandLine);
 
 	return;
 }

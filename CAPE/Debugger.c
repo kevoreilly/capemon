@@ -2248,10 +2248,7 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 {
 	DWORD OldProtect;
 
-	if (!Address || !IsAddressExecutable(Address))
-		return FALSE;
-
-	if (GetAllocationBase(Address) == GetModuleHandle("ntdll"))
+	if (!Address || GetAllocationBase(Address) == GetModuleHandle("ntdll"))
 		return FALSE;
 
 	if (lookup_get(BPs, (ULONG_PTR)Address, 0))
