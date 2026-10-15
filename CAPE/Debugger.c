@@ -474,17 +474,24 @@ BOOL RestoreSoftwareBreakpoint(struct _EXCEPTION_POINTERS* ExceptionInfo)
 		if (remaining == 0 && IsAddressAccessible(Address) && SoftBP->InstructionByte == *Address)
 		{
 			DWORD OldProtect;
+			lasterror_t lasterror;
+			get_lasterrors(&lasterror);
+			lasterror.Eflags = 0;
+			hook_disable();
 			if (VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 			{
 #ifdef DEBUG_COMMENTS
 				DebugOutput("RestoreSoftwareBreakpoint: Restoring software breakpoint at 0x%p\n", Address);
 #endif
 				*(PBYTE)Address = 0xCC;
+				FlushInstructionCache(GetCurrentProcess(), Address, 1);
 				VirtualProtect(Address, 1, OldProtect, &OldProtect);
 				Restored = TRUE;
 			}
 			else
 				DebugOutput("RestoreSoftwareBreakpoint: Unable to change memory protection at 0x%p\n", Address);
+			hook_enable();
+			set_lasterrors(&lasterror);
 		}
 		else if (remaining > 0)
 			Restored = TRUE;
@@ -527,15 +534,24 @@ BOOL SoftwareBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo)
 #endif
 	if (InsByte == 0xCC)
 	{
+		lasterror_t lasterror;
+		get_lasterrors(&lasterror);
+		lasterror.Eflags = 0;
+		hook_disable();
 		if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 		{
+			hook_enable();
+			set_lasterrors(&lasterror);
 			DebugOutput("SoftwareBreakpointHandler: Unable to change memory protection at 0x%p", Address);
 			return FALSE;
 		}
 
 		*(PBYTE)Address = SoftBP->InstructionByte;
+		FlushInstructionCache(GetCurrentProcess(), Address, 1);
 
 		VirtualProtect(Address, 1, OldProtect, &OldProtect);
+		hook_enable();
+		set_lasterrors(&lasterror);
 	}
 
 #ifdef _WIN64
@@ -2247,15 +2263,29 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 //**************************************************************************************
 {
 	DWORD OldProtect;
+	lasterror_t lasterror;
 
-	if (!Address || GetAllocationBase(Address) == GetModuleHandle("ntdll"))
+	if (!Address)
 		return FALSE;
+
+	get_lasterrors(&lasterror);
+	lasterror.Eflags = 0;
+	hook_disable();
+
+	if (GetAllocationBase(Address) == GetModuleHandle("ntdll"))
+	{
+		hook_enable();
+		set_lasterrors(&lasterror);
+		return FALSE;
+	}
 
 	if (lookup_get(BPs, (ULONG_PTR)Address, 0))
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already in software breakpoint list", Address);
 #endif
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return FALSE;
 	}
 
@@ -2265,6 +2295,8 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 #ifdef DEBUG_COMMENTS
 		DebugOutput("SetSoftwareBreakpoint: Address 0x%p already contains 0xCC byte", Address);
 #endif
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return FALSE;
 	}
 
@@ -2272,6 +2304,8 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 
 	if (!SoftBP)
 	{
+		hook_enable();
+		set_lasterrors(&lasterror);
 		DebugOutput("SetSoftwareBreakpoint: Unable to store software breakpoint info for address 0x%p", Address);
 		return FALSE;
 	}
@@ -2288,6 +2322,9 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
+		lookup_del(BPs, (ULONG_PTR)Address);
+		hook_enable();
+		set_lasterrors(&lasterror);
 		DebugOutput("SetSoftwareBreakpoint: Unable to change memory protection at 0x%p", Address);
 		return FALSE;
 	}
@@ -2297,11 +2334,14 @@ BOOL SetSoftwareBreakpointEx(lookup_t *BPs, LPVOID Address, PVOID Callback, BOOL
 #endif
 
 	*(PBYTE)Address = 0xCC;
+	FlushInstructionCache(GetCurrentProcess(), Address, 1);
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("SetSoftwareBreakpoint: New instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);
 #endif
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+	hook_enable();
+	set_lasterrors(&lasterror);
 
 	return TRUE;
 }
@@ -2340,8 +2380,15 @@ BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 	DebugOutput("ClearSoftwareBreakpoint: Instruction length at 0x%p: %d", Address, SoftBP->Length);
 #endif
 
+	lasterror_t lasterror;
+	get_lasterrors(&lasterror);
+	lasterror.Eflags = 0;
+	hook_disable();
+
 	if (!VirtualProtect(Address, 1, PAGE_EXECUTE_READWRITE, &OldProtect))
 	{
+		hook_enable();
+		set_lasterrors(&lasterror);
 		DebugOutput("ClearSoftwareBreakpoint: Unable to change memory protection at 0x%p", Address);
 		return FALSE;
 	}
@@ -2351,8 +2398,11 @@ BOOL ClearSoftwareBreakpoint(lookup_t *BPs, LPVOID Address)
 #endif
 
 	*(PBYTE)Address = SoftBP->InstructionByte;
+	FlushInstructionCache(GetCurrentProcess(), Address, 1);
 
 	VirtualProtect(Address, 1, OldProtect, &OldProtect);
+	hook_enable();
+	set_lasterrors(&lasterror);
 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("ClearSoftwareBreakpoint: Restored instruction byte at 0x%p: 0x%x", Address, *(PBYTE)Address);

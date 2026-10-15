@@ -86,6 +86,7 @@ typedef struct _GO_TLS_RETURN_STATE {
 } GO_TLS_RETURN_STATE;
 
 static lookup_t g_go_tls_return_table = {0};
+static volatile LONG g_go_tls_init_lock = 0;
 
 extern lookup_t SoftBPs;
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -471,8 +472,18 @@ static BOOL GoBreakpointCallback(PBREAKPOINTINFO pBreakpointInfo, struct _EXCEPT
 #endif
                 if (IsAddressAccessible(pStack) && pStack[0] != 0) {
                     PVOID retAddr = (PVOID)pStack[0];
-                    GO_TLS_RETURN_STATE* tlsState = (GO_TLS_RETURN_STATE*)lookup_get_or_create(
-                        &g_go_tls_return_table, (ULONG_PTR)retAddr, sizeof(GO_TLS_RETURN_STATE));
+                    GO_TLS_RETURN_STATE* tlsState = (GO_TLS_RETURN_STATE*)lookup_get(
+                        &g_go_tls_return_table, (ULONG_PTR)retAddr, NULL);
+                    if (!tlsState) {
+                        while (InterlockedCompareExchange(&g_go_tls_init_lock, 1, 0) != 0)
+                            YieldProcessor();
+                        tlsState = (GO_TLS_RETURN_STATE*)lookup_get(
+                            &g_go_tls_return_table, (ULONG_PTR)retAddr, NULL);
+                        if (!tlsState)
+                            tlsState = (GO_TLS_RETURN_STATE*)lookup_add(
+                                &g_go_tls_return_table, (ULONG_PTR)retAddr, sizeof(GO_TLS_RETURN_STATE));
+                        InterlockedExchange(&g_go_tls_init_lock, 0);
+                    }
                     if (tlsState)
                         GoTlsAddPending(tlsState, retAddr, (ULONG_PTR)pStack, (PVOID)pData,
                                         // Under Stack ABI, return value n (int) is at [SP_on_entry + 5*ptrSize]
@@ -618,8 +629,13 @@ static void GoTlsAddPending(GO_TLS_RETURN_STATE* tlsState, PVOID retAddr, ULONG_
     InterlockedExchangePointer((PVOID volatile*)&slot->EntrySP, (PVOID)entrySP);
 
     // Persistent return breakpoint, armed once per return site (re-armed here if ClearAllBreakpoints removed it)
-    if (!lookup_get(&SoftBPs, (ULONG_PTR)retAddr, NULL))
-        SetSoftwareBreakpointEx(&SoftBPs, retAddr, GoBreakpointHandler, TRUE);
+    if (!lookup_get(&SoftBPs, (ULONG_PTR)retAddr, NULL)) {
+        while (InterlockedCompareExchange(&g_go_tls_init_lock, 1, 0) != 0)
+            YieldProcessor();
+        if (!lookup_get(&SoftBPs, (ULONG_PTR)retAddr, NULL))
+            SetSoftwareBreakpointEx(&SoftBPs, retAddr, GoBreakpointHandler, TRUE);
+        InterlockedExchange(&g_go_tls_init_lock, 0);
+    }
 }
 
 // Software breakpoint callback registered via SetSoftwareBreakpoint for Go hooks
@@ -725,9 +741,13 @@ static void __cdecl GoBreakpointHandlerOnStack(void* p) {
 // alternate stack. If none is available the body runs in place: an unacknowledged breakpoint would be passed
 // on to the Go runtime as a fatal exception, which is worse than the overflow risk.
 BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
+    lasterror_t lasterror;
+
     if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord)
         return FALSE;
 
+    get_lasterrors(&lasterror);
+    lasterror.Eflags = 0;
     hook_disable();
 
     GO_BP_CALL call;
@@ -737,6 +757,7 @@ BOOL GoBreakpointHandler(struct _EXCEPTION_POINTERS* ExceptionInfo) {
         GoBreakpointHandlerOnStack(&call);
 
     hook_enable();
+    set_lasterrors(&lasterror);
     return call.Handled;
 }
 
@@ -842,9 +863,13 @@ void GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
 #else
 void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* regs) {
 #endif
+    lasterror_t lasterror;
+
     if (!hookEntry || !regs)
         return;
 
+    get_lasterrors(&lasterror);
+    lasterror.Eflags = 0;
     hook_disable();
 
     GO_INLINE_CALL call;
@@ -857,6 +882,7 @@ void __stdcall GoInlineHookDispatch(GO_HOOK_ENTRY* hookEntry, GO_INLINE_REGS* re
     }
 
     hook_enable();
+    set_lasterrors(&lasterror);
 }
 
 // Locate the safe inline-hook site for a Go function:
@@ -1678,6 +1704,10 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
     PBYTE pclntab = Pclntab;
     PBYTE buildinfo = Buildinfo;
     GO_HOOK_CANDIDATE* candidates = NULL;
+    lasterror_t lasterror;
+
+    get_lasterrors(&lasterror);
+    hook_disable();
 
     __try {
         // The PE header is optional: it only refines the text start and the preferred base used to relocate
@@ -1693,7 +1723,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
         ULONG_PTR preferredBase = pNt ? (ULONG_PTR)pNt->OptionalHeader.ImageBase : (ULONG_PTR)ImageBase;
         PBYTE pImageEnd = (PBYTE)ImageBase + sizeOfImage;
         if (!sizeOfImage || pclntab < (PBYTE)ImageBase || pclntab + 64 > pImageEnd)
-            return;
+            __leave;
 
         ULONG_PTR textSectionVA = 0;
         if (pNt) {
@@ -1713,7 +1743,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
         if (!modInfo) {
             modInfo = (GO_MODULE_INFO*)lookup_add(&g_go_recovered_pclntab, (ULONG_PTR)pclntab, sizeof(GO_MODULE_INFO));
             if (!modInfo)
-                return;
+                __leave;
             modInfo->GoMinor = -1;
             modInfo->NoRegAbiExp = FALSE;
             modInfo->RegAbi = FALSE;
@@ -1776,7 +1806,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
 
         // 3. Walk function table and hook high-value security/networking/crypto APIs
         if (!functab || !funcdata || !funcnametab || nfunc == 0 || nfunc > 500000) {
-            return;
+            __leave;
         }
 
         // Keep the functab for PC -> function name resolution (Go caller attribution for syscall targets)
@@ -1800,7 +1830,7 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
 
         candidates = (GO_HOOK_CANDIDATE*)calloc(GO_MAX_HOOK_CANDIDATES, sizeof(GO_HOOK_CANDIDATE));
         if (!candidates)
-            return;
+            __leave;
         DWORD nCandidates = 0;
 #ifdef _WIN64
         DWORD abiRegVotes = 0, abiStackVotes = 0;
@@ -1927,6 +1957,9 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
 
     if (candidates)
         free(candidates);
+
+    hook_enable();
+    set_lasterrors(&lasterror);
 }
 
 // Called from CAPE_post_init once the debugger is initialised: instrument Go modules detected by the
