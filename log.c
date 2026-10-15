@@ -1043,7 +1043,7 @@ void loq(int index, const char *category, const char *name,
 					int len = (int)wcsnlen(wdata, size / sizeof(wchar_t));
 					log_wstring(wdata, len);
 				}
-            } else if (type == REG_MULTI_SZ) {
+			} else if (type == REG_MULTI_SZ) {
 				if (data == NULL) {
 					bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY,
 						(const char *)data, 0);
