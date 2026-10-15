@@ -1845,8 +1845,13 @@ HOOKDEF(DWORD, WINAPI, GetEnvironmentVariableA,
 	LPSTR  lpBuffer,
 	DWORD  nSize
 ) {
-	if (lpName) {
-		if (!_stricmp(lpName, "COR_PROFILER") || !_stricmp(lpName, "COR_ENABLE_PROFILING") || !_stricmp(lpName, "CORECLR_PROFILER")) {
+	if (g_profiler_initialized && lpName && !our_isbadreadptr(lpName, 1)) {
+		if (!_stricmp(lpName, "COR_PROFILER") ||
+		    !_stricmp(lpName, "COR_PROFILER_PATH") ||
+		    !_stricmp(lpName, "COR_ENABLE_PROFILING") ||
+		    !_stricmp(lpName, "CORECLR_PROFILER") ||
+		    !_stricmp(lpName, "CORECLR_PROFILER_PATH") ||
+		    !_stricmp(lpName, "CORECLR_ENABLE_PROFILING")) {
 			SetLastError(ERROR_ENVVAR_NOT_FOUND);
 			return 0;
 		}
@@ -1859,8 +1864,13 @@ HOOKDEF(DWORD, WINAPI, GetEnvironmentVariableW,
 	LPWSTR  lpBuffer,
 	DWORD   nSize
 ) {
-	if (lpName) {
-		if (!_wcsicmp(lpName, L"COR_PROFILER") || !_wcsicmp(lpName, L"COR_ENABLE_PROFILING") || !_wcsicmp(lpName, L"CORECLR_PROFILER")) {
+	if (g_profiler_initialized && lpName && !our_isbadreadptr(lpName, sizeof(WCHAR))) {
+		if (!_wcsicmp(lpName, L"COR_PROFILER") ||
+		    !_wcsicmp(lpName, L"COR_PROFILER_PATH") ||
+		    !_wcsicmp(lpName, L"COR_ENABLE_PROFILING") ||
+		    !_wcsicmp(lpName, L"CORECLR_PROFILER") ||
+		    !_wcsicmp(lpName, L"CORECLR_PROFILER_PATH") ||
+		    !_wcsicmp(lpName, L"CORECLR_ENABLE_PROFILING")) {
 			SetLastError(ERROR_ENVVAR_NOT_FOUND);
 			return 0;
 		}

@@ -657,7 +657,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD dwReason, LPVOID lpReserved)
 #if !CUCKOODBG
 		hide_module_from_peb(hModule);
 #endif
-		scrub_profiler_env_vars();
 
 		// obtain all protected pids
 		pipe2(pids, &length, "GETPIDS:");

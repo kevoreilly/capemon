@@ -5,13 +5,82 @@
 extern "C" int DumpMemoryRaw(PVOID Buffer, SIZE_T Size);
 extern "C" BOOL SetCapeMetaData(DWORD DumpType, DWORD TargetPid, HANDLE hTargetProcess, PVOID Address);
 
-// Defined in hook_clr.c / capemon.c
+#define MIN_MSIL_SIZE_THRESHOLD 32
+
+// Defined in hook_clr.c / capemon.c / misc.c
 extern "C" {
     #include "hooking.h"
+    #include "misc.h"
+    #include "config.h"
     extern unsigned int DotNetCacheDumpCount;
     extern lookup_t g_dotnet_jit;
-    extern lookup_t g_dotnet_jit_lock;
-    extern struct _g_config g_config;
+}
+
+static BOOL ReserveProfilerJitDump()
+{
+    for (;;) {
+        LONG cur = *(volatile LONG *)&DotNetCacheDumpCount;
+        if ((unsigned int)cur >= g_config.jit_dumps)
+            return FALSE;
+        if (InterlockedCompareExchange((volatile LONG *)&DotNetCacheDumpCount, cur + 1, cur) == cur)
+            return TRUE;
+    }
+}
+
+static void ReleaseProfilerJitDump()
+{
+    for (;;) {
+        LONG cur = *(volatile LONG *)&DotNetCacheDumpCount;
+        if (cur <= 0)
+            return;
+        if (InterlockedCompareExchange((volatile LONG *)&DotNetCacheDumpCount, cur - 1, cur) == cur)
+            return;
+    }
+}
+
+static BOOL HasSystemDotNetPrefixW(const WCHAR *Name)
+{
+    static const WCHAR *Prefixes[] = {
+        L"System",
+        L"Microsoft",
+        L"Internal",
+        L"Interop",
+        L"MS",
+        L"Windows",
+    };
+    if (!Name || !*Name)
+        return FALSE;
+    for (size_t i = 0; i < ARRAYSIZE(Prefixes); i++) {
+        size_t len = wcslen(Prefixes[i]);
+        if (!_wcsnicmp(Name, Prefixes[i], len) && (Name[len] == L'\0' || Name[len] == L'.'))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL IsSystemDotNetModule(ICorProfilerInfo *pInfo, ModuleID moduleId)
+{
+    LPCBYTE pBaseLoadAddress = nullptr;
+    WCHAR modulePath[MAX_PATH] = {0};
+    ULONG cchModulePath = 0;
+
+    if (!pInfo || FAILED(pInfo->GetModuleInfo(moduleId, &pBaseLoadAddress, ARRAYSIZE(modulePath), &cchModulePath, modulePath, nullptr)))
+        return FALSE;
+
+    if (pBaseLoadAddress && is_in_dll_range((ULONG_PTR)pBaseLoadAddress))
+        return TRUE;
+
+    modulePath[MAX_PATH - 1] = L'\0';
+    if (modulePath[0] && (
+        path_is_system(modulePath) ||
+        wcsistr(modulePath, L"\\windows\\microsoft.net\\") ||
+        wcsistr(modulePath, L"\\windows\\assembly\\") ||
+        wcsistr(modulePath, L"\\program files\\dotnet\\") ||
+        wcsistr(modulePath, L"\\program files (x86)\\dotnet\\") ||
+        wcsistr(modulePath, L"\\dotnet\\shared\\")))
+        return TRUE;
+
+    return FALSE;
 }
 
 // Global profiler CLSID: {F39DABDF-BA6B-41E8-AB2A-16BE2E111005}
@@ -61,12 +130,26 @@ ULONG STDMETHODCALLTYPE CorProfiler::Release()
 
 HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk)
 {
+    lasterror_t lasterror;
+    hook_info_t *hookinfo = hook_info();
+    unsigned int saved_disable_count = hookinfo ? hookinfo->disable_count : 0;
+
+    get_lasterrors(&lasterror);
+    hook_disable();
+
+    // Now that the CLR has loaded our profiler, scrub the profiler environment
+    // variables from the PEB and hide them from subsequent GetEnvironmentVariable calls.
+    scrub_profiler_env_vars();
+
     DebugOutput("CorProfiler: Initialize called\n");
 
     HRESULT hr = pICorProfilerInfoUnk->QueryInterface(IID_ICorProfilerInfo, (void**)&pCorProfilerInfo);
     if (FAILED(hr))
     {
         ErrorOutput("CorProfiler: Failed to query ICorProfilerInfo\n");
+        if (hookinfo)
+            hookinfo->disable_count = saved_disable_count;
+        set_lasterrors(&lasterror);
         return hr;
     }
 
@@ -76,10 +159,16 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
     if (FAILED(hr))
     {
         ErrorOutput("CorProfiler: Failed to set event mask\n");
+        if (hookinfo)
+            hookinfo->disable_count = saved_disable_count;
+        set_lasterrors(&lasterror);
         return hr;
     }
 
     DebugOutput("CorProfiler: Initialization successful\n");
+    if (hookinfo)
+        hookinfo->disable_count = saved_disable_count;
+    set_lasterrors(&lasterror);
     return S_OK;
 }
 
@@ -97,19 +186,36 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
 {
     if (!pCorProfilerInfo) return S_OK;
 
-    ModuleID moduleId;
-    mdToken methodToken;
+    lasterror_t lasterror;
+    hook_info_t *hookinfo = hook_info();
+    unsigned int saved_disable_count = hookinfo ? hookinfo->disable_count : 0;
+
+    get_lasterrors(&lasterror);
+    hook_disable();
+
+    ModuleID moduleId = 0;
+    mdToken methodToken = 0;
     HRESULT hr = pCorProfilerInfo->GetFunctionInfo(functionId, nullptr, &moduleId, &methodToken);
-    if (FAILED(hr)) return S_OK;
+    if (FAILED(hr) || IsSystemDotNetModule(pCorProfilerInfo, moduleId)) {
+        if (hookinfo)
+            hookinfo->disable_count = saved_disable_count;
+        set_lasterrors(&lasterror);
+        return S_OK;
+    }
 
     // Get metadata import interface
     IMetaDataImport* pMetaDataImport = nullptr;
     hr = pCorProfilerInfo->GetModuleMetaData(moduleId, ofRead, IID_IMetaDataImport, (IUnknown**)&pMetaDataImport);
-    if (FAILED(hr)) return S_OK;
+    if (FAILED(hr) || !pMetaDataImport) {
+        if (hookinfo)
+            hookinfo->disable_count = saved_disable_count;
+        set_lasterrors(&lasterror);
+        return S_OK;
+    }
 
-    WCHAR methodName[256];
-    ULONG nameLength;
-    mdTypeDef classToken;
+    WCHAR methodName[256] = {0};
+    ULONG nameLength = 0;
+    mdTypeDef classToken = mdTypeDefNil;
     hr = pMetaDataImport->GetMethodProps(methodToken, &classToken, methodName, ARRAYSIZE(methodName), &nameLength, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     WCHAR className[256] = {0};
@@ -119,36 +225,34 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
     }
     pMetaDataImport->Release();
 
+    if (HasSystemDotNetPrefixW(className)) {
+        if (hookinfo)
+            hookinfo->disable_count = saved_disable_count;
+        set_lasterrors(&lasterror);
+        return S_OK;
+    }
+
     // Now get the IL code
-    LPCBYTE pMethodHeader;
-    ULONG cbMethodSize;
+    LPCBYTE pMethodHeader = nullptr;
+    ULONG cbMethodSize = 0;
     hr = pCorProfilerInfo->GetILFunctionBody(moduleId, methodToken, &pMethodHeader, &cbMethodSize);
 
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && pMethodHeader && cbMethodSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(pMethodHeader, cbMethodSize))
     {
         DebugOutput("CorProfiler JIT: %S.%S (Size: 0x%x)\n", className, methodName, cbMethodSize);
-        // We reuse the existing CAPE meta logging that hook_clr uses.
-        // We can't do Native break-on-jit easily from here because the Native code hasn't been generated yet (this is JITCompilationStarted).
-        // But we can dump the IL bytecode under a lock to protect CapeMetaData.
-        if (DotNetCacheDumpCount < g_config.jit_dumps) {
-            DWORD* lock = LOOKUP_SHARED(&g_dotnet_jit_lock, DWORD);
-            if (lock) {
-                while (InterlockedCompareExchange((LONG*)lock, 1, 0) != 0) {
-                    Sleep(0);
-                }
-            }
+        if (g_config.procdump && ReserveProfilerJitDump()) {
             CapeMetaData->ModulePath = NULL;
             CapeMetaData->DumpType = 0;
             CapeMetaData->TypeString = ".NET Profiler MSIL bytecode";
             CapeMetaData->Address = (PVOID)pMethodHeader;
-            DumpMemoryRaw((PVOID)pMethodHeader, (SIZE_T)cbMethodSize);
-            DotNetCacheDumpCount++;
-            if (lock) {
-                InterlockedExchange((LONG*)lock, 0);
-            }
+            if (!DumpMemoryRaw((PVOID)pMethodHeader, (SIZE_T)cbMethodSize))
+                ReleaseProfilerJitDump();
         }
     }
 
+    if (hookinfo)
+        hookinfo->disable_count = saved_disable_count;
+    set_lasterrors(&lasterror);
     return S_OK;
 }
 
