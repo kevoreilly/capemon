@@ -54,8 +54,14 @@ extern "C" BOOL DumpAmsiBuffer(DWORD DumpType, PVOID Buffer, SIZE_T Size, const 
 
 HMODULE g_currentModule;
 
+extern "C" HRESULT STDMETHODCALLTYPE ProfilerDllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID* ppv);
+
 STDAPI DllGetClassObject(_In_ REFCLSID rclsid, _In_ REFIID riid, _Outptr_ LPVOID FAR* ppv)
 {
+    HRESULT hr = ProfilerDllGetClassObject(rclsid, riid, ppv);
+    if (SUCCEEDED(hr))
+        return hr;
+
     return Module<InProc>::GetModule().GetClassObject(rclsid, riid, ppv);
 }
 
