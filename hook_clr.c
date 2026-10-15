@@ -27,12 +27,6 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 // safe without external locking. Entries are never removed.
 lookup_t g_dotnet_jit;
 
-// Serialises the .NET JIT *dump* path against itself across concurrent CLR JIT
-// worker threads and the teardown scan (DumpInterestingRegions): the jit_dumps
-// counter check+bump and the writes to the shared CapeMetaData scratch struct.
-// g_dotnet_jit above is lock-free and is NOT covered by this. Init in DllMain.
-CRITICAL_SECTION g_jit_dump_lock;
-
 // The CORINFO_METHOD_INFO structure is passed to compileMethod by the CLR JIT engine.
 // The first four fields are extremely stable and consistent across all .NET versions.
 typedef struct {
@@ -92,11 +86,13 @@ typedef enum {
 
 static dotnet_runtime_t g_dotnet_runtime = DOTNET_RT_UNKNOWN;
 static char g_dotnet_version[64] = {0};   // best-effort, taken from the module directory
-static int  g_dotnet_major = 0;           // major version parsed from the above (Core only)
-static int  g_dotnet_minor = 0;           // minor version parsed from the above (Core only)
+static int  g_dotnet_major = 0;           // file version major (resource; dir-name fallback for Core)
+static int  g_dotnet_minor = 0;           // file version minor
+static int  g_dotnet_build = 0;           // file version build (log only)
+static int  g_dotnet_revision = 0;        // file version revision (log only)
 static int  g_getmethodname_slot = -1;    // -1 => unknown layout, name resolution disabled
 static method_name_abi_t g_method_name_abi = METHOD_NAME_ABI_NONE;
-static BOOL g_dotnet_runtime_resolved = FALSE;
+static volatile LONG g_dotnet_runtime_resolved = 0;
 
 // Resolves the ICorJitInfo vtable index of the name accessor for the detected
 // runtime and the ABI to call it with. Returns -1 (and *abi = NONE) when the
@@ -117,6 +113,10 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 	case DOTNET_RT_CORE:
 		switch (major) {
 		case 1:
+			// 1.0.1 / 1.0.2-rc2 = 102, 1.0.2+ = 105: not separable at
+			// major.minor granularity, so 1.0 is left unresolved.
+			if (minor != 1)
+				return -1;
 			*abi = METHOD_NAME_ABI_FRAMEWORK_V2;
 			return 105; // CoreCLR 1.1.x
 		case 2:
@@ -181,9 +181,10 @@ static int GetMethodNameSlot(dotnet_runtime_t rt, int major, int minor, method_n
 				*abi = METHOD_NAME_ABI_CORE_V3;
 				return 113; // .NET 4.8 - 4.8.1
 			default:
-				// Fallback to 113 (.NET 4.8) as default
-				*abi = METHOD_NAME_ABI_CORE_V3;
-				return 113;
+				// clr.dll file-version minors are exactly 0 (4.0-4.5.2), 6, 7
+				// and 8, and 4.8.1 is the final Framework release. Any other
+				// minor is a misread version, not a layout we know.
+				return -1;
 			}
 		default:
 			return -1;
@@ -216,10 +217,12 @@ typedef struct {
 	DWORD dwFileDateLS;
 } VS_FIXEDFILEINFO_LOCAL;
 
-static void GetDllVersion(HMODULE hMod, int* major, int* minor)
+static void GetDllVersion(HMODULE hMod, int* major, int* minor, int* build, int* revision)
 {
 	*major = 0;
 	*minor = 0;
+	*build = 0;
+	*revision = 0;
 
 	if (!hMod)
 		return;
@@ -240,6 +243,8 @@ static void GetDllVersion(HMODULE hMod, int* major, int* minor)
 							VS_FIXEDFILEINFO_LOCAL* pFileInfo = (VS_FIXEDFILEINFO_LOCAL*)pDword;
 							*major = HIWORD(pFileInfo->dwFileVersionMS);
 							*minor = LOWORD(pFileInfo->dwFileVersionMS);
+							*build = HIWORD(pFileInfo->dwFileVersionLS);
+							*revision = LOWORD(pFileInfo->dwFileVersionLS);
 							break;
 						}
 						pDword++;
@@ -256,18 +261,30 @@ static void GetDllVersion(HMODULE hMod, int* major, int* minor)
 static void ResolveDotNetRuntime(void)
 {
 	HMODULE hMod = NULL;
+	const char *ModuleName = "?";
+	dotnet_runtime_t rt = DOTNET_RT_UNKNOWN;
+	char version[64] = {0};
+	int major = 0, minor = 0, build = 0, revision = 0;
+	method_name_abi_t abi = METHOD_NAME_ABI_NONE;
+	int slot = -1;
 
-	// First-writer-wins, no lock: resolution is idempotent (every JIT thread
-	// derives the same runtime/version/slot from the loaded CLR), so a race just
-	// repeats identical work and identical writes. g_dotnet_runtime_resolved is
-	// published last, after the slot/ABI it gates on.
+	// Resolve into stack locals first so a racing JIT worker thread never zeroes
+	// or partially overwrites globals that another thread is reading.
 	if (g_dotnet_runtime_resolved)
 		return;
 
-	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL)
-		g_dotnet_runtime = DOTNET_RT_CORE;
-	else if ((hMod = GetModuleHandleA("clr.dll")) != NULL || (hMod = GetModuleHandleA("mscorwks.dll")) != NULL)
-		g_dotnet_runtime = DOTNET_RT_FRAMEWORK;
+	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL) {
+		rt = DOTNET_RT_CORE;
+		ModuleName = "coreclr.dll";
+	}
+	else if ((hMod = GetModuleHandleA("clr.dll")) != NULL) {
+		rt = DOTNET_RT_FRAMEWORK;
+		ModuleName = "clr.dll";
+	}
+	else if ((hMod = GetModuleHandleA("mscorwks.dll")) != NULL) {
+		rt = DOTNET_RT_FRAMEWORK;
+		ModuleName = "mscorwks.dll";
+	}
 
 	// Both runtimes ship inside a version-named directory
 	// (...\Framework64\v4.0.30319\clr.dll, ...\Microsoft.NETCore.App\8.0.11\coreclr.dll),
@@ -281,40 +298,61 @@ static void ResolveDotNetRuntime(void)
 				*end = '\0';
 				char *dir = strrchr(path, '\\');
 				if (dir) {
-					strncpy(g_dotnet_version, dir + 1, sizeof(g_dotnet_version) - 1);
-					g_dotnet_version[sizeof(g_dotnet_version) - 1] = '\0';
+					strncpy(version, dir + 1, sizeof(version) - 1);
+					version[sizeof(version) - 1] = '\0';
 				}
 			}
 		}
 	}
 
 	if (hMod) {
-		GetDllVersion(hMod, &g_dotnet_major, &g_dotnet_minor);
+		GetDllVersion(hMod, &major, &minor, &build, &revision);
 	}
 
-	// Fallback to directory-name parsing if GetDllVersion didn't resolve version
-	if (g_dotnet_major == 0 && g_dotnet_version[0]) {
-		int major = 0, minor = 0;
-		// Skip leading 'v' if present (e.g. "v4.0.30319")
-		const char* verStr = g_dotnet_version;
-		if (verStr[0] == 'v' || verStr[0] == 'V') verStr++;
-		if (sscanf(verStr, "%d.%d", &major, &minor) == 2) {
-			g_dotnet_major = major;
-			g_dotnet_minor = minor;
-		} else if (sscanf(verStr, "%d", &major) == 1) {
-			g_dotnet_major = major;
-			g_dotnet_minor = 0;
+	// Fallback to directory-name parsing if GetDllVersion didn't resolve the
+	// version. CoreCLR only: its directory is the real runtime version
+	// (Microsoft.NETCore.App\8.0.11). Framework's is v4.0.30319 for every
+	// 4.x release, so parsing it would mislabel 4.6/4.7/4.8 as 4.0 and pick
+	// the wrong slot and ABI; without a resource version Framework stays
+	// unresolved (slot -1).
+	if (major == 0 && rt == DOTNET_RT_CORE && version[0]) {
+		int dir_major = 0, dir_minor = 0;
+		if (sscanf(version, "%d.%d", &dir_major, &dir_minor) == 2) {
+			major = dir_major;
+			minor = dir_minor;
+		} else if (sscanf(version, "%d", &dir_major) == 1) {
+			major = dir_major;
+			minor = 0;
 		}
 	}
 
-	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, g_dotnet_minor, &g_method_name_abi);
-	g_dotnet_runtime_resolved = TRUE;
+	slot = GetMethodNameSlot(rt, major, minor, &abi);
 
-	DebugOutput("compileMethod: .NET runtime = %s %d.%d (%s, name accessor vtable slot %d)\n",
-		g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
-		g_dotnet_runtime == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown",
-		g_dotnet_major, g_dotnet_minor,
-		g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
+	g_dotnet_runtime = rt;
+	memcpy(g_dotnet_version, version, sizeof(g_dotnet_version));
+	g_dotnet_major = major;
+	g_dotnet_minor = minor;
+	g_dotnet_build = build;
+	g_dotnet_revision = revision;
+	g_method_name_abi = abi;
+	g_getmethodname_slot = slot;
+
+	if (InterlockedCompareExchange(&g_dotnet_runtime_resolved, 1, 0) != 0)
+		return;
+
+	const char *RuntimeName = rt == DOTNET_RT_CORE ? "CoreCLR" :
+		rt == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown";
+
+	if (slot < 0 && rt != DOTNET_RT_UNKNOWN)
+		// Everything needed to add a GetMethodNameSlot() entry: runtime family,
+		// module, full file version and the install directory.
+		DebugOutput("compileMethod: UNSUPPORTED .NET runtime - %s %s file version %d.%d.%d.%d (dir %s): no verified getMethodName slot, method name resolution disabled. Add this version to GetMethodNameSlot().\n",
+			RuntimeName, ModuleName, major, minor, build, revision,
+			version[0] ? version : "?");
+	else
+		DebugOutput("compileMethod: .NET runtime = %s %s %d.%d.%d.%d (%s, name accessor vtable slot %d)\n",
+			RuntimeName, ModuleName, major, minor, build, revision,
+			version[0] ? version : "?", slot);
 }
 
 // Bounded, fault-tolerant check that s is a readable, NUL-terminated string
@@ -452,6 +490,19 @@ HOOKDEF(int, WINAPI, compileMethod,
 
 	int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
+		lasterror_t lasterror;
+		hook_info_t *hookinfo = hook_info();
+		unsigned int saved_disable_count = hookinfo->disable_count;
+
+		// Disable hooks across post-JIT introspection and dumping so helper
+		// calls (VirtualQuery, GetModuleFileNameA, compHnd->getMethodName,
+		// YaraScan, DumpMemoryRaw) do not enter enter_hook() -> our_stackwalk() ->
+		// RtlLookupFunctionEntry() while this thread is mid-JIT with managed
+		// frames on its stack, and preserve the thread's LastError across lazy
+		// prestub compilation.
+		get_lasterrors(&lasterror);
+		hook_disable();
+
 		ResolveDotNetRuntime();
 
 		const char* className = NULL;
@@ -462,6 +513,8 @@ HOOKDEF(int, WINAPI, compileMethod,
 			if (g_config.jit_trace_all) {
 				LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
 					"Class", className ? className : "UnknownClass", "Method", methodName);
+				// loq() calls hook_enable() on exit; re-disable for the remaining helpers.
+				hook_disable();
 				DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
 					namespaceName ? namespaceName : "", namespaceName ? "." : "",
 					className ? className : "UnknownClass", methodName);
@@ -470,22 +523,25 @@ HOOKDEF(int, WINAPI, compileMethod,
 			// High-Signal Callstack Correlation Alerts
 			// We check the resolved class and method names for critical capability triggers (Network, Cryptography, Assembly Loading)
 			if (className != NULL) {
-				if (strstr(className, "System.Net.WebClient") || 
+				if (strstr(className, "System.Net.WebClient") ||
 					strstr(className, "System.Net.Http.HttpClient") ||
 					strstr(className, "System.Net.Sockets.Socket")) {
 					LOQ_void("behavior", "ss", "Event", "Initiating .NET Network Capability", "Details", className);
+					hook_disable();
 					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Network Capability inside %s.%s\n", className, methodName);
 				}
-				else if (strstr(className, "System.Security.Cryptography") || 
+				else if (strstr(className, "System.Security.Cryptography") ||
 						 strstr(className, "Rijndael") ||
 						 strstr(className, "AesManaged")) {
 					LOQ_void("behavior", "ss", "Event", "Initiating .NET Cryptographic Operation", "Details", className);
+					hook_disable();
 					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Cryptographic Operation inside %s.%s\n", className, methodName);
 				}
-				else if (strstr(className, "System.Reflection.Assembly") || 
+				else if (strstr(className, "System.Reflection.Assembly") ||
 						 strstr(className, "System.Reflection.Emit") ||
 						 strstr(className, "System.Diagnostics.Process")) {
 					LOQ_void("behavior", "ss", "Event", "Initiating .NET Process/Payload Injection", "Details", className);
+					hook_disable();
 					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Process/Payload Injection inside %s.%s\n", className, methodName);
 				}
 			}
@@ -528,20 +584,18 @@ HOOKDEF(int, WINAPI, compileMethod,
 		}
 
 		if (g_config.procdump && info && info->ILCode && info->ILCodeSize >= MIN_MSIL_SIZE_THRESHOLD && !our_isbadreadptr(info->ILCode, info->ILCodeSize)) {
-			// Held across the whole sequence so the jit_dumps counter and the
-			// shared CapeMetaData scratch fields stay consistent against other
-			// JIT threads and the teardown scan. Runs at most jit_dumps times.
-			EnterCriticalSection(&g_jit_dump_lock);
-			if (DotNetCacheDumpCount < g_config.jit_dumps) {
+			// jit_dumps budget is shared with DumpInterestingRegions() and claimed
+			// atomically; no lock. Runs at most jit_dumps times process-wide.
+			if (ReserveDotNetCacheDump()) {
 				CapeMetaData->ModulePath = NULL;
 				CapeMetaData->DumpType = 0;
 				CapeMetaData->TypeString = ".NET JIT MSIL bytecode";
 				CapeMetaData->Address = info->ILCode;
-				DumpMemoryRaw(info->ILCode, info->ILCodeSize);
-				DotNetCacheDumpCount++;
-				DebugOutput("compileMethod: Dumped decrypted .NET JIT MSIL bytecode at 0x%p (size 0x%x).\n", info->ILCode, info->ILCodeSize);
+				if (DumpMemoryRaw(info->ILCode, info->ILCodeSize))
+					DebugOutput("compileMethod: Dumped decrypted .NET JIT MSIL bytecode at 0x%p (size 0x%x).\n", info->ILCode, info->ILCodeSize);
+				else
+					ReleaseDotNetCacheDump();
 			}
-			LeaveCriticalSection(&g_jit_dump_lock);
 		}
 
 		if (g_config.break_on_jit && nativeCode) {
@@ -551,6 +605,9 @@ HOOKDEF(int, WINAPI, compileMethod,
 			else
 				DebugOutput("compileMethod: failed to set JIT native breakpoint.\n");
 		}
+
+		hookinfo->disable_count = saved_disable_count;
+		set_lasterrors(&lasterror);
 	}
 	return ret;
 }
@@ -564,32 +621,42 @@ HOOKDEF(int, WINAPI, compileMethod,
 #define ARRAY_DATA_OFFSET 8
 #endif
 
+#define NLOAD_MAX_DUMP_SIZE 0x4000000
+
 HOOKDEF(PVOID, WINAPI, nLoadImage,
 	_In_     PVOID        pArrayObject,
 	_In_opt_ PVOID        pAppDomain,
 	_Inout_  PVOID*       pAssembly
 ) {
 	if (pArrayObject != NULL && g_config.procdump && g_config.dotnet_nload) {
+		lasterror_t lasterror;
+		hook_info_t *hookinfo = hook_info();
+		unsigned int saved_disable_count = hookinfo->disable_count;
+
+		get_lasterrors(&lasterror);
+		hook_disable();
 		__try {
-			PDWORD pLength = (PDWORD)((PBYTE)pArrayObject + ARRAY_LENGTH_OFFSET);
-			PBYTE pRawData = (PBYTE)pArrayObject + ARRAY_DATA_OFFSET;
+			if (!our_isbadreadptr(pArrayObject, ARRAY_DATA_OFFSET)) {
+				DWORD len = *(PDWORD)((PBYTE)pArrayObject + ARRAY_LENGTH_OFFSET);
+				PBYTE pRawData = (PBYTE)pArrayObject + ARRAY_DATA_OFFSET;
 
-			if (pLength && *pLength > 0 && IsAddressAccessible(pRawData)) {
-				DebugOutput("nLoadImage: Intercepted in-memory assembly byte array loading of size %u at 0x%p (Inspired by ExtremeDumper)\n", *pLength, pRawData);
+				if (len >= 2 && len <= NLOAD_MAX_DUMP_SIZE && !our_isbadreadptr(pRawData, len)) {
+					DebugOutput("nLoadImage: Intercepted in-memory assembly byte array loading of size %u at 0x%p (Inspired by ExtremeDumper)\n", len, pRawData);
 
-				EnterCriticalSection(&g_jit_dump_lock);
-				CapeMetaData->ModulePath = NULL;
-				CapeMetaData->DumpType = 0;
-				CapeMetaData->TypeString = ".NET Reflective Load PE";
-				CapeMetaData->Address = pRawData;
+					CapeMetaData->ModulePath = NULL;
+					CapeMetaData->DumpType = 0;
+					CapeMetaData->TypeString = ".NET Reflective Load PE";
+					CapeMetaData->Address = pRawData;
 
-				DumpMemoryRaw(pRawData, (SIZE_T)*pLength);
-				LeaveCriticalSection(&g_jit_dump_lock);
+					DumpMemoryRaw(pRawData, (SIZE_T)len);
+				}
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
 			DebugOutput("nLoadImage: Exception occurred parsing managed U1Array.\n");
 		}
+		hookinfo->disable_count = saved_disable_count;
+		set_lasterrors(&lasterror);
 	}
 
 	return Old_nLoadImage(pArrayObject, pAppDomain, pAssembly);

@@ -90,17 +90,15 @@ typedef struct {
 	DWORD     MetadataSize;
 } dotnet_module_cache_t;
 
-extern dotnet_module_cache_t g_dotnet_modules[1024];
-extern int g_dotnet_modules_count;
-
 void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize);
 dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase);
 
-// Defined in hook_clr.c, initialised in DllMain. Serialises the .NET JIT dump
-// path - the compileMethod hook and DumpInterestingRegions() below - which share
-// the DotNetCacheDumpCount counter and the CapeMetaData scratch struct. The
-// g_dotnet_jit lookup set is lock-free and is not covered by this.
-extern CRITICAL_SECTION g_jit_dump_lock;
+// Lock-free claim/release of one of the g_config.jit_dumps slots shared by the
+// compileMethod hook (JIT worker threads) and DumpInterestingRegions(). CAS on
+// DotNetCacheDumpCount; no critical section. CapeMetaData is a process-wide
+// scratch struct written without a lock by every dump path in the monitor.
+BOOL ReserveDotNetCacheDump(void);
+void ReleaseDotNetCacheDump(void);
 
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;

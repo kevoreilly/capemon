@@ -139,6 +139,8 @@ extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
 extern char *our_process_name;
+extern char *our_dll_path;
+extern const char g_capemon_version[];
 extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
@@ -160,31 +162,25 @@ extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 extern lookup_t g_dotnet_jit;
 
-dotnet_module_cache_t g_dotnet_modules[1024] = {0};
-int g_dotnet_modules_count = 0;
+static lookup_t g_dotnet_modules;
 
 void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize) {
-	if (g_dotnet_modules_count >= 1024) return;
-	// Prevent duplicate caching
-	for (int i = 0; i < g_dotnet_modules_count; i++) {
-		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
-			return;
-		}
-	}
-	g_dotnet_modules[g_dotnet_modules_count].ModuleBase = ModuleBase;
-	g_dotnet_modules[g_dotnet_modules_count].MetadataRVA = MetadataRVA;
-	g_dotnet_modules[g_dotnet_modules_count].MetadataSize = MetadataSize;
-	g_dotnet_modules_count++;
+	dotnet_module_cache_t *entry;
+	if (!ModuleBase || lookup_get(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t)))
+		return;
+	entry = (dotnet_module_cache_t *)lookup_add(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t));
+	if (!entry)
+		return;
+	entry->ModuleBase = ModuleBase;
+	entry->MetadataRVA = MetadataRVA;
+	entry->MetadataSize = MetadataSize;
 	DebugOutput("CacheDotNetModule: Cached module base 0x%p (Metadata RVA 0x%x, Size 0x%x).\n", (PVOID)ModuleBase, MetadataRVA, MetadataSize);
 }
 
 dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase) {
-	for (int i = 0; i < g_dotnet_modules_count; i++) {
-		if (g_dotnet_modules[i].ModuleBase == ModuleBase) {
-			return &g_dotnet_modules[i];
-		}
-	}
-	return NULL;
+	if (!ModuleBase)
+		return NULL;
+	return (dotnet_module_cache_t *)lookup_get(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t));
 }
 extern char* StringsFile;
 extern HANDLE Strings;
@@ -1802,6 +1798,33 @@ BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	return 1;
 }
 
+BOOL GetSelfHash(char* OutputBuffer)
+{
+    HANDLE Handle = CreateFile(our_dll_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+
+    if (Handle == INVALID_HANDLE_VALUE)
+		return 0;
+
+    DWORD Size = GetFileSize(Handle, NULL);
+
+    unsigned char* Buffer = (unsigned char*)malloc(Size);
+
+    if (!Buffer)
+	{
+		CloseHandle(Handle);
+		return 0;
+	}
+
+    DWORD Read;
+
+    BOOL Result = ReadFile(Handle, Buffer, Size, &Read, NULL) && Read == Size && GetSHA256(Buffer, Size, OutputBuffer);
+
+    free(Buffer);
+
+	CloseHandle(Handle);
+
+    return Result;
+}
 //**************************************************************************************
 double GetEntropy(PUCHAR Buffer)
 //**************************************************************************************
@@ -3370,7 +3393,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
@@ -3443,6 +3466,28 @@ int DumpCurrentProcess()
 }
 
 //**************************************************************************************
+BOOL ReserveDotNetCacheDump(void)
+//**************************************************************************************
+{
+	LONG Count;
+
+	do {
+		Count = (LONG)DotNetCacheDumpCount;
+		if ((unsigned int)Count >= g_config.jit_dumps)
+			return FALSE;
+	} while (InterlockedCompareExchange((volatile LONG *)&DotNetCacheDumpCount, Count + 1, Count) != Count);
+
+	return TRUE;
+}
+
+//**************************************************************************************
+void ReleaseDotNetCacheDump(void)
+//**************************************************************************************
+{
+	InterlockedDecrement((volatile LONG *)&DotNetCacheDumpCount);
+}
+
+//**************************************************************************************
 void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 //**************************************************************************************
 {
@@ -3458,25 +3503,22 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 	char ModulePath[MAX_PATH];
 	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), MemInfo.AllocationBase, ModulePath, MAX_PATH);
 
-	// g_dotnet_jit is a lock-free set (lookup.c) - lookup_get is safe against the
-	// compileMethod hook adding to it concurrently. g_jit_dump_lock serialises the
-	// CapeMetaData scratch writes and the DotNetCacheDumpCount counter below
-	// against that hook, which shares both.
 	if (IsDotNetImage(MemInfo.BaseAddress) && !MappedModule && MemInfo.Protect == PAGE_READWRITE && MemInfo.Type == MEM_MAPPED && MemInfo.State == MEM_COMMIT)
 	{
-		EnterCriticalSection(&g_jit_dump_lock);
+		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
+
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = UNPACKED_PE;
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		DebugOutput("DumpInterestingRegions: Dumping .NET image at 0x%p.\n", MemInfo.BaseAddress);
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
-		LeaveCriticalSection(&g_jit_dump_lock);
 	}
 
+	// g_dotnet_jit is a lock-free set (lookup.c): lookup_get is safe against the
+	// compileMethod hook adding to it concurrently. The jit_dumps budget is
+	// shared with that hook and claimed atomically via ReserveDotNetCacheDump().
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
-		EnterCriticalSection(&g_jit_dump_lock);
 		CapeMetaData->ModulePath = NULL;
 		CapeMetaData->DumpType = 0;
 #ifdef _WIN64
@@ -3486,16 +3528,14 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 #endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
-		{
-			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
-			DotNetCacheDumpCount++;
-		}
-		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
-			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
-		else if (!g_config.jit_dumps)
+		if (!g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
-		LeaveCriticalSection(&g_jit_dump_lock);
+		else if (!ReserveDotNetCacheDump())
+			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
+		else if (DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
+			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+		else
+			ReleaseDotNetCacheDump();
 	}
 }
 
@@ -3869,6 +3909,16 @@ void CAPE_post_init()
 	if (g_config.wowmon)
 		LoadWowMonitor();
 #endif
+
+	DebugOutput("%s-bit monitor loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", sizeof(void*) == 8 ? "64" : "86", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+
+	char hash[65] = {0};
+	GetSelfHash(hash);
+	DebugOutput("Monitor version: \"%s\" (x%s) SHA-256: %s\n", g_capemon_version, sizeof(void*) == 8 ? "64" : "86", hash);
+
+	char CommandLine[MAX_UNICODE_PATH];
+	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
+	DebugOutput("Commandline: %s\n", CommandLine);
 }
 
 void CAPE_init()
@@ -3951,16 +4001,6 @@ Finish:
 
 	if (g_config.amsidump && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
 		AmsiDumperInit((HMODULE)g_our_dll_base);
-
-#ifdef _WIN64
-	DebugOutput("Monitor initialised: 64-bit capemon loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
-#else
-	DebugOutput("Monitor initialised: 32-bit capemon loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
-#endif
-
-	char CommandLine[MAX_UNICODE_PATH];
-	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
-	DebugOutput("Commandline: %s\n", CommandLine);
 
 	return;
 }

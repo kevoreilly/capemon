@@ -382,17 +382,23 @@ void NewThreadHandler(PVOID StartAddress)
 		return;
 	}
 
+	if (is_in_dll_range((ULONG_PTR)StartAddress))
+		return;
+
 	TrackedRegion = GetTrackedRegion((PVOID)StartAddress);
 
 	if (TrackedRegion == NULL)
 		return;
 
-	DebugOutput("NewThreadHandler: Address: 0x%p.\n", StartAddress);
+	if (TrackedRegion->AllocationBase == ImageBase || TrackedRegion->AllocationBase == GetModuleHandle(NULL))
+		return;
 
 	hook_disable();
 
 	if (ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)) && !TrackedRegion->PagesDumped)
 	{
+		TrackedRegion->CanDump = TRUE;
+
 		ProcessTrackedRegion(TrackedRegion);
 
 		if (TrackedRegion->PagesDumped)
@@ -400,8 +406,6 @@ void NewThreadHandler(PVOID StartAddress)
 		else
 			DebugOutput("NewThreadHandler: Failed to dump new thread's executable memory range at 0x%p .\n", TrackedRegion->AllocationBase);
 	}
-
-	ClearTrackedRegion(TrackedRegion);
 
 	hook_enable();
 

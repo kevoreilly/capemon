@@ -221,7 +221,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
@@ -243,7 +243,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 						//break;
 					}
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 
 				if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
 				{
@@ -404,47 +404,55 @@ fail:
 }
 
 static void HealDotNetPEHeaders(DWORD_PTR Buffer) {
-	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)Buffer;
-	
-	// 1. Heal DOS Signature ("MZ" = 0x5A4D)
-	if (pDos->e_magic != IMAGE_DOS_SIGNATURE) {
-		pDos->e_magic = IMAGE_DOS_SIGNATURE;
-		pDos->e_lfanew = 0x80; // Standard NT header offset
-	}
+	DWORD OldProtect = 0;
+	BOOL Protected = FALSE;
 
-	PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((PBYTE)Buffer + pDos->e_lfanew);
-	
-	// 2. Heal NT Signature ("PE\0\0" = 0x00004550)
-	if (pNt->Signature != IMAGE_NT_SIGNATURE) {
-		pNt->Signature = IMAGE_NT_SIGNATURE;
+	if (!Buffer || !IsAddressAccessible((PVOID)Buffer))
+		return;
+
+	__try {
+		PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)Buffer;
+
+		Protected = VirtualProtect((PVOID)Buffer, 0x1000, PAGE_EXECUTE_READWRITE, &OldProtect);
+
+		// 1. Heal DOS Signature ("MZ" = 0x5A4D) and bounds-check e_lfanew
+		if (pDos->e_magic != IMAGE_DOS_SIGNATURE || pDos->e_lfanew <= 0 || pDos->e_lfanew > (LONG)(0x1000 - sizeof(IMAGE_NT_HEADERS)) || (pDos->e_lfanew & 3) != 0) {
+			pDos->e_magic = IMAGE_DOS_SIGNATURE;
+			pDos->e_lfanew = 0x80; // Standard NT header offset
+		}
+
+		PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((PBYTE)Buffer + pDos->e_lfanew);
+
+		// 2. Heal NT Signature ("PE\0\0" = 0x00004550)
+		if (pNt->Signature != IMAGE_NT_SIGNATURE) {
+			pNt->Signature = IMAGE_NT_SIGNATURE;
 #ifdef _WIN64
-		pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64; // Set to standard 64-bit AMD64 machine target
-		pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+			pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64;
+			pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
 #else
-		pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_I386;  // Set to standard 32-bit x86 machine target
-		pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR32_MAGIC;
+			pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_I386;
+			pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR32_MAGIC;
 #endif
-		pNt->FileHeader.NumberOfSections = 3; // Standard fallback section count
-	}
+			pNt->FileHeader.NumberOfSections = 3; // Standard fallback section count
+		}
 
-	// 3. Heal CLR COM Descriptor Directory (index 14)
-	PIMAGE_DATA_DIRECTORY pClrDir = &pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR];
-	if (pClrDir->VirtualAddress == 0 || pClrDir->Size == 0) {
-		dotnet_module_cache_t* pCache = FindCachedDotNetModule((ULONG_PTR)Buffer);
-		DWORD metadataRVA = pCache ? pCache->MetadataRVA : 0;
-		DWORD metadataSize = pCache ? pCache->MetadataSize : 0;
+		// 3. Heal CLR COM Descriptor Directory (index 14)
+		PIMAGE_DATA_DIRECTORY pClrDir = &pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR];
+		if (pClrDir->VirtualAddress == 0 || pClrDir->Size == 0) {
+			dotnet_module_cache_t* pCache = FindCachedDotNetModule((ULONG_PTR)Buffer);
+			DWORD metadataRVA = pCache ? pCache->MetadataRVA : 0;
+			DWORD metadataSize = pCache ? pCache->MetadataSize : 0;
 
 			// If no cached metadata RVA exists, dynamically scan the buffer for IMAGE_COR20_HEADER
 			// Standard IMAGE_COR20_HEADER has Size of 72 bytes (0x48) and MajorRuntimeVersion 2.
 			if (metadataRVA == 0) {
 				__try {
 					PBYTE pStart = (PBYTE)Buffer;
-					
 					DWORD imageSize = pNt->OptionalHeader.SizeOfImage;
 					if (imageSize == 0 || imageSize > 0x2000000) {
-						imageSize = 0x2000000; // Cap at 32MB instead of blind hardcoded 2MB segment limit
+						imageSize = 0x2000000; // Cap at 32MB
 					}
-					
+
 					PBYTE pEnd = pStart + imageSize;
 					for (PBYTE p = pStart + 0x200; p < pEnd - 8; p += 4) {
 						PDWORD pdw = (PDWORD)p;
@@ -462,12 +470,19 @@ static void HealDotNetPEHeaders(DWORD_PTR Buffer) {
 				}
 			}
 
-		if (metadataRVA != 0) {
-			pClrDir->VirtualAddress = metadataRVA;
-			pClrDir->Size = metadataSize;
-			DebugOutput("HealDotNetPEHeaders: Successfully healed zeroed CLR Data Directory to RVA 0x%x (Size 0x%x).\n", metadataRVA, metadataSize);
+			if (metadataRVA != 0) {
+				pClrDir->VirtualAddress = metadataRVA;
+				pClrDir->Size = metadataSize;
+				DebugOutput("HealDotNetPEHeaders: Successfully healed zeroed CLR Data Directory to RVA 0x%x (Size 0x%x).\n", metadataRVA, metadataSize);
+			}
 		}
 	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		DebugOutput("HealDotNetPEHeaders: Exception occurred healing PE headers at 0x%p.\n", (PVOID)Buffer);
+	}
+
+	if (Protected)
+		VirtualProtect((PVOID)Buffer, 0x1000, OldProtect, &OldProtect);
 }
 
 //**************************************************************************************
@@ -630,7 +645,7 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 		return SectionBasedFileSize;
 	}
 
-	for (unsigned int SectionIndex = NumberOfSections-1; SectionIndex >= 0; SectionIndex--)
+	for (unsigned int SectionIndex = NumberOfSections; SectionIndex-- > 0;)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput

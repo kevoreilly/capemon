@@ -21,6 +21,8 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `terminate-event` | String | Name of the event set by the analyzer to signal termination. |
 | `terminate-processes` | Boolean | If `true`, terminate processes when `terminate-event` is signaled. |
 | `monitor` | PID/String | Inject the monitor into a specific PID or `explorer` (for interactive mode). |
+| `watchdog` | Boolean | Enable watchdog thread to periodically sample execution contexts and stack traces of application threads. |
+| `watchdog-interval` | Integer | Sampling interval in milliseconds for the watchdog thread (default: 5000). |
 
 ## Logging & Output
 

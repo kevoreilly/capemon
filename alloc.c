@@ -81,8 +81,11 @@ void *cm_alloc(size_t size)
 	hdr->Used = size + CM_ALLOC_METASIZE;
 	hdr->Max = RegionSize - 0x1000;
 
-	// add a guard page to the end of every allocation
-	assert(VirtualProtect((PCHAR)BaseAddress + RegionSize - 0x1000, 0x1000, PAGE_NOACCESS, &oldprot));
+	// Add a guard page to the end of every allocation. This call used to be
+	// the argument of an assert(), so defining NDEBUG would have deleted the
+	// guard page along with the check. The result is deliberately not logged:
+	// this is the allocator the logger itself runs on.
+	(void)VirtualProtect((PCHAR)BaseAddress + RegionSize - 0x1000, 0x1000, PAGE_NOACCESS, &oldprot);
 	set_lasterrors(&lasterror);
 	return (PCHAR)BaseAddress + CM_ALLOC_METASIZE;
 }
