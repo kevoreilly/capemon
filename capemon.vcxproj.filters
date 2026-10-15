@@ -294,6 +294,9 @@
     <ClCompile Include="hook_clr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_dotnet_api.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hook_lang.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -318,6 +321,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hooks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hook_dotnet_api.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hook_file.h">
