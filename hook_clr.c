@@ -98,7 +98,7 @@ static int  g_dotnet_build = 0;           // file version build (log only)
 static int  g_dotnet_revision = 0;        // file version revision (log only)
 static int  g_getmethodname_slot = -1;    // -1 => unknown layout, name resolution disabled
 static method_name_abi_t g_method_name_abi = METHOD_NAME_ABI_NONE;
-static BOOL g_dotnet_runtime_resolved = FALSE;
+static volatile LONG g_dotnet_runtime_resolved = 0;
 
 // Resolves the ICorJitInfo vtable index of the name accessor for the detected
 // runtime and the ABI to call it with. Returns -1 (and *abi = NONE) when the
@@ -268,24 +268,27 @@ static void ResolveDotNetRuntime(void)
 {
 	HMODULE hMod = NULL;
 	const char *ModuleName = "?";
+	dotnet_runtime_t rt = DOTNET_RT_UNKNOWN;
+	char version[64] = {0};
+	int major = 0, minor = 0, build = 0, revision = 0;
+	method_name_abi_t abi = METHOD_NAME_ABI_NONE;
+	int slot = -1;
 
-	// First-writer-wins, no lock: resolution is idempotent (every JIT thread
-	// derives the same runtime/version/slot from the loaded CLR), so a race just
-	// repeats identical work and identical writes. g_dotnet_runtime_resolved is
-	// published last, after the slot/ABI it gates on.
+	// Resolve into stack locals first so a racing JIT worker thread never zeroes
+	// or partially overwrites globals that another thread is reading.
 	if (g_dotnet_runtime_resolved)
 		return;
 
 	if ((hMod = GetModuleHandleA("coreclr.dll")) != NULL) {
-		g_dotnet_runtime = DOTNET_RT_CORE;
+		rt = DOTNET_RT_CORE;
 		ModuleName = "coreclr.dll";
 	}
 	else if ((hMod = GetModuleHandleA("clr.dll")) != NULL) {
-		g_dotnet_runtime = DOTNET_RT_FRAMEWORK;
+		rt = DOTNET_RT_FRAMEWORK;
 		ModuleName = "clr.dll";
 	}
 	else if ((hMod = GetModuleHandleA("mscorwks.dll")) != NULL) {
-		g_dotnet_runtime = DOTNET_RT_FRAMEWORK;
+		rt = DOTNET_RT_FRAMEWORK;
 		ModuleName = "mscorwks.dll";
 	}
 
@@ -301,15 +304,15 @@ static void ResolveDotNetRuntime(void)
 				*end = '\0';
 				char *dir = strrchr(path, '\\');
 				if (dir) {
-					strncpy(g_dotnet_version, dir + 1, sizeof(g_dotnet_version) - 1);
-					g_dotnet_version[sizeof(g_dotnet_version) - 1] = '\0';
+					strncpy(version, dir + 1, sizeof(version) - 1);
+					version[sizeof(version) - 1] = '\0';
 				}
 			}
 		}
 	}
 
 	if (hMod) {
-		GetDllVersion(hMod, &g_dotnet_major, &g_dotnet_minor, &g_dotnet_build, &g_dotnet_revision);
+		GetDllVersion(hMod, &major, &minor, &build, &revision);
 	}
 
 	// Fallback to directory-name parsing if GetDllVersion didn't resolve the
@@ -318,33 +321,44 @@ static void ResolveDotNetRuntime(void)
 	// 4.x release, so parsing it would mislabel 4.6/4.7/4.8 as 4.0 and pick
 	// the wrong slot and ABI; without a resource version Framework stays
 	// unresolved (slot -1).
-	if (g_dotnet_major == 0 && g_dotnet_runtime == DOTNET_RT_CORE && g_dotnet_version[0]) {
-		int major = 0, minor = 0;
-		if (sscanf(g_dotnet_version, "%d.%d", &major, &minor) == 2) {
-			g_dotnet_major = major;
-			g_dotnet_minor = minor;
-		} else if (sscanf(g_dotnet_version, "%d", &major) == 1) {
-			g_dotnet_major = major;
-			g_dotnet_minor = 0;
+	if (major == 0 && rt == DOTNET_RT_CORE && version[0]) {
+		int dir_major = 0, dir_minor = 0;
+		if (sscanf(version, "%d.%d", &dir_major, &dir_minor) == 2) {
+			major = dir_major;
+			minor = dir_minor;
+		} else if (sscanf(version, "%d", &dir_major) == 1) {
+			major = dir_major;
+			minor = 0;
 		}
 	}
 
-	g_getmethodname_slot = GetMethodNameSlot(g_dotnet_runtime, g_dotnet_major, g_dotnet_minor, &g_method_name_abi);
-	g_dotnet_runtime_resolved = TRUE;
+	slot = GetMethodNameSlot(rt, major, minor, &abi);
 
-	const char *RuntimeName = g_dotnet_runtime == DOTNET_RT_CORE ? "CoreCLR" :
-		g_dotnet_runtime == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown";
+	g_dotnet_runtime = rt;
+	memcpy(g_dotnet_version, version, sizeof(g_dotnet_version));
+	g_dotnet_major = major;
+	g_dotnet_minor = minor;
+	g_dotnet_build = build;
+	g_dotnet_revision = revision;
+	g_method_name_abi = abi;
+	g_getmethodname_slot = slot;
 
-	if (g_getmethodname_slot < 0 && g_dotnet_runtime != DOTNET_RT_UNKNOWN)
+	if (InterlockedCompareExchange(&g_dotnet_runtime_resolved, 1, 0) != 0)
+		return;
+
+	const char *RuntimeName = rt == DOTNET_RT_CORE ? "CoreCLR" :
+		rt == DOTNET_RT_FRAMEWORK ? "Framework" : "unknown";
+
+	if (slot < 0 && rt != DOTNET_RT_UNKNOWN)
 		// Everything needed to add a GetMethodNameSlot() entry: runtime family,
 		// module, full file version and the install directory.
 		DebugOutput("compileMethod: UNSUPPORTED .NET runtime - %s %s file version %d.%d.%d.%d (dir %s): no verified getMethodName slot, method name resolution disabled. Add this version to GetMethodNameSlot().\n",
-			RuntimeName, ModuleName, g_dotnet_major, g_dotnet_minor, g_dotnet_build, g_dotnet_revision,
-			g_dotnet_version[0] ? g_dotnet_version : "?");
+			RuntimeName, ModuleName, major, minor, build, revision,
+			version[0] ? version : "?");
 	else
 		DebugOutput("compileMethod: .NET runtime = %s %s %d.%d.%d.%d (%s, name accessor vtable slot %d)\n",
-			RuntimeName, ModuleName, g_dotnet_major, g_dotnet_minor, g_dotnet_build, g_dotnet_revision,
-			g_dotnet_version[0] ? g_dotnet_version : "?", g_getmethodname_slot);
+			RuntimeName, ModuleName, major, minor, build, revision,
+			version[0] ? version : "?", slot);
 }
 
 // Bounded, fault-tolerant check that s is a readable, NUL-terminated string
@@ -545,6 +559,19 @@ HOOKDEF(int, WINAPI, compileMethod,
 
 	int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
+		lasterror_t lasterror;
+		hook_info_t *hookinfo = hook_info();
+		unsigned int saved_disable_count = hookinfo->disable_count;
+
+		// Disable hooks across post-JIT introspection and dumping so helper
+		// calls (VirtualQuery, GetModuleFileNameA, compHnd->getMethodName,
+		// YaraScan, DumpMemoryRaw) do not enter enter_hook() -> our_stackwalk() ->
+		// RtlLookupFunctionEntry() while this thread is mid-JIT with managed
+		// frames on its stack, and preserve the thread's LastError across lazy
+		// prestub compilation.
+		get_lasterrors(&lasterror);
+		hook_disable();
+
 		ResolveDotNetRuntime();
 
 		const char* className = NULL;
@@ -555,6 +582,8 @@ HOOKDEF(int, WINAPI, compileMethod,
 		if (!isSystemMethod && methodName != NULL) {
 			LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
 				"Class", className ? className : "UnknownClass", "Method", methodName);
+			// loq() calls hook_enable() on exit; re-disable for the remaining helpers.
+			hook_disable();
 			DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
 				namespaceName ? namespaceName : "", namespaceName ? "." : "",
 				className ? className : "UnknownClass", methodName);
@@ -621,6 +650,9 @@ HOOKDEF(int, WINAPI, compileMethod,
 			else
 				DebugOutput("compileMethod: failed to set JIT native breakpoint.\n");
 		}
+
+		hookinfo->disable_count = saved_disable_count;
+		set_lasterrors(&lasterror);
 	}
 	return ret;
 }

@@ -30,6 +30,7 @@ typedef LONG(WINAPI *_NtSetInformationProcess)(HANDLE ProcessHandle,
 typedef LONG(WINAPI *_NtQueryInformationThread)(HANDLE ThreadHandle,
 	ULONG ThreadInformationClass, PVOID ThreadInformation,
 	ULONG ThreadInformationLength, PULONG ReturnLength);
+extern _NtQueryInformationThread pNtQueryInformationThread;
 typedef BOOLEAN(WINAPI *_RtlGenRandom)(PVOID RandomBuffer,
 	ULONG RandomBufferLength);
 typedef NTSTATUS(WINAPI *_NtQueryAttributesFile)(
