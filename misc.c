@@ -1063,6 +1063,36 @@ UNICODE_STRING* get_module_name(ULONG_PTR addr)
 	return NULL;
 }
 
+BOOL module_in_exe_dir(HMODULE hmod)
+{
+	static wchar_t exe_dir[MAX_PATH];
+	static size_t exe_dir_len;
+	wchar_t modpath[MAX_PATH];
+	DWORD len;
+
+	if (!exe_dir_len) {
+		wchar_t *slash;
+		len = GetModuleFileNameW(NULL, exe_dir, MAX_PATH);
+		if (len == 0 || len >= MAX_PATH)
+			return FALSE;
+		slash = wcsrchr(exe_dir, L'\\');
+		if (!slash)
+			return FALSE;
+		slash[1] = L'\0';
+		exe_dir_len = (size_t)(slash + 1 - exe_dir);
+	}
+
+	if (path_is_system(exe_dir))
+		return FALSE;
+
+	len = GetModuleFileNameW(hmod, modpath, MAX_PATH);
+	if (len == 0 || len >= MAX_PATH)
+		return FALSE;
+
+	return !_wcsnicmp(modpath, exe_dir, exe_dir_len) &&
+	       wcschr(modpath + exe_dir_len, L'\\') == NULL;
+}
+
 // hide our module from PEB
 // http://www.openrce.org/blog/view/844/How_to_hide_dll
 

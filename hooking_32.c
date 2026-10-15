@@ -665,6 +665,11 @@ int hook_api(hook_t *h, int type)
 		if (hmod == NULL)
 			return 0;
 
+		if (module_in_exe_dir(hmod)) {
+			DebugOutput("hook_api: skipping %ws::%s - dll is in executable directory, likely side-loaded\n", h->library, h->funcname);
+			return 0;
+		}
+
 		if (!strcmp(h->funcname, "RtlDispatchException")) {
 			// RtlDispatchException is the first relative call in KiUserExceptionDispatcher
 			unsigned char *baseaddr = (unsigned char *)GetProcAddress(hmod, "KiUserExceptionDispatcher");
