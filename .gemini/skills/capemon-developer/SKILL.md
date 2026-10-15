@@ -101,6 +101,35 @@ capemon has one established way of doing each of the following. New code MUST pl
 5. Is it gated by a config option and documented in `docs/configuration.md`?
 6. Does each hit produce at most one behaviour log record?
 
+### G. Target Runtime Internals & Re-entrancy Audit (MANDATORY before hooking a runtime or subsystem)
+Before writing any hook, callback, or instrumentation for a target runtime (Win32/NT loader, .NET CLR/CoreCLR, Go runtime, scripting engines, thread pools), research and verify the runtime's internal execution invariants along five axes:
+
+1. **Lock Hierarchy & Hook Re-entrancy (`hook_disable` / `enter_hook`)**:
+   - Every hooked Win32/NT API (`VirtualAlloc`, `VirtualProtect`, `VirtualQuery`, `CreateFile`, etc.) called while `hook_info()->disable_count == 0` enters `enter_hook()` -> `operate_on_backtrace()` -> `our_stackwalk()` -> `RtlLookupFunctionEntry()` (acquires the Windows loader lock / `LdrpInvertedFunctionTableSRWLock` on x64) and invokes unpacker handlers (`AllocationHandler`, `ProtectionHandler`).
+   - Any non-HOOKDEF callback (CLR `compileMethod`, `ICorProfilerCallback`, VEH `CAPEExceptionFilter` / `SoftwareBreakpointHandler` / `RestoreSoftwareBreakpoint`, Go inline/breakpoint dispatch, APC callbacks) MUST wrap internal Win32/NT/dump calls in `hook_disable()` / `hook_enable()` and preserve `lasterror_t` (`get_lasterrors` / `set_lasterrors`, with `lasterror.Eflags = 0` inside exception filters).
+   - **Critical `loq()` caveat**: On `upstream/capemon`, `loq()` ends with `hook_enable()`, which resets `hook_info()->disable_count = 0` (until PR #181's refcounted `disable_count++`/`--` lands upstream). Any `LOQ_*` call inside a `hook_disable()` region MUST be followed by `hook_disable()` if subsequent code calls hooked APIs (`DumpMemory`, `DumpPesInRange`, `VirtualQuery`), and exit must restore the caller's saved `disable_count`.
+
+2. **No `CRITICAL_SECTION` Inside Hooks or Runtime Callbacks (`lookup.h` + Atomics)**:
+   - Never introduce `EnterCriticalSection` inside hooks, JIT callbacks, or VEH handlers: a thread holding a custom lock while calling a Win32 API (or triggering `RtlLookupFunctionEntry` / `LdrLoadDll`) causes lock-order inversion deadlocks against the OS loader lock, CLR JIT locks (`JitListLock`), or GC stop-the-world suspension.
+   - Replace locks with `lookup.h` (`lookup_t`) and atomic primitives:
+     - **Per-thread state**: `LOOKUP_THREAD(&table, type)` (`lookup_get_or_create` keyed by `GetCurrentThreadId()`). Never use `TlsAlloc`/`TlsGetValue` (clobbers `LastError = 0`) and never add fields to `hook_info_t` (clobbered by `tmphookinfo` and `memcpy` in `hook_file.c`/`hook_special.c`).
+     - **Deduplication sets**: `LOOKUP_MARK_SEEN(&table, key)` or `lookup_get` + `lookup_add`.
+     - **Counters & budgets**: `InterlockedIncrement` / `InterlockedCompareExchange` on `volatile LONG`.
+     - **`lookup_get_or_create` shared-key trap**: `lookup_get_or_create` is ONLY safe for per-thread (`TID`) keys. On shared keys across threads (`LOOKUP_SHARED`), concurrent misses both call `lookup_add` and insert duplicate nodes. For shared keys, fast-path `lookup_get`, and on miss guard `lookup_get` + `lookup_add` with a short `InterlockedCompareExchange` spinlock.
+
+3. **Stack Geometry & Unwind/SEH Constraints**:
+   - Check what stack the target runtime executes on: Go goroutines run on 2 KB heap-allocated split stacks (`_StackMin = 2048`) with no guard page and `~stackGuard` bytes (`928 + 4096`) headroom; `CONTEXT` (1232B) + `loq()` (2KB) overflows them silently into adjacent heap memory.
+   - Callbacks on runtime-managed stacks must switch to `hook_call_on_alt_stack` (updating `TEB->StackBase`/`StackLimit` on x64 and `NtTib.ExceptionList` on x86 so `RtlDispatchException` accepts `__try/__except` frames).
+
+4. **Initialization Ordering & Environment Latching**:
+   - `DllMain` (`DLL_PROCESS_ATTACH`) runs under the OS loader lock before delay-loaded DLLs (`oleaut32.dll`) or target runtimes (`clr.dll`, `coreclr.dll`) initialize.
+   - Never call `oleaut32.dll` (`SysAllocString*`) in `DllMain`.
+   - Never scrub environment variables (`COR_ENABLE_PROFILING`, `COR_PROFILER`) in `DllMain` before the target runtime (`clr.dll`) loads and latches them; defer scrubbing to the runtime's initialization callback (`CorProfiler::Initialize`).
+
+5. **Runtime Object Layout & Vtable Versioning**:
+   - Never assume internal runtime structs (`ICorJitCompiler`, `ICorJitInfo`, `MethodTable`, Go `pclntab`) are stable across versions.
+   - Verify vtable slots and header magic across all supported runtime versions (e.g., .NET Framework 4.0–4.8.1 vs CoreCLR 1.0–10.0; Go 1.2/1.16/1.18/1.20 `pclntab` and register vs stack ABI), fail closed (`-1` / skip) on unknown versions, and validate object headers (`MethodTable` flags, unclamped lengths, `[addr, addr+len)` accessibility via `IsBufferAccessible` / `our_isbadreadptr`) before reading or passing buffers to `loq()` (which holds `g_mutex` without `__finally`).
+
 ### Case study: Go hooking (kevoreilly review, PR #181)
 - **Rejected:** `GoRecoverSymbols(GetModuleHandle(NULL))` called from `CAPE_post_init()`, a hand-written C pclntab scanner, and `GoBreakpointHandler` dispatched from `SoftwareBreakpointHandler` for every software breakpoint. Missed all UPX-packed Go samples.
 - **Accepted:** `rule golang` in `InternalYara` -> `cape_options = "golang"` -> `YaraCallback` -> `GoRecoverSymbols(base, ...)`; Go hooks registered with `SetSoftwareBreakpoint(..., GoBreakpointHandler)`.
