@@ -1043,7 +1043,7 @@ void loq(int index, const char *category, const char *name,
 					int len = (int)wcsnlen(wdata, size / sizeof(wchar_t));
 					log_wstring(wdata, len);
 				}
-			} else if (type == REG_MULTI_SZ) {
+            } else if (type == REG_MULTI_SZ) {
 				if (data == NULL) {
 					bson_append_binary(g_bson, g_istr, BSON_BIN_BINARY,
 						(const char *)data, 0);
@@ -1053,14 +1053,11 @@ void loq(int index, const char *category, const char *name,
 				// ascii strings
 				else if (key == 'r') {
 					unsigned long i, x;
-					unsigned int strcnt = 0;
 					int found_doublenull = 0;
 					char *p;
 					int len;
 					for (i = 0; i < size - 1; i++) {
-						if (data[i] == '\0')
-							strcnt++;
-						if (data[i + 1] == '\0') {
+						if (data[i] == '\0' && data[i + 1] == '\0') {
 							found_doublenull = 1;
 							break;
 						}
@@ -1093,15 +1090,12 @@ void loq(int index, const char *category, const char *name,
 				// unicode strings
 				else {
 					unsigned long i, x;
-					unsigned int strcnt = 0;
 					int found_doublenull = 0;
 					const wchar_t *wdata = (const wchar_t *)data;
 					wchar_t *p;
 					int len;
 					for (i = 0; i < (size/sizeof(wchar_t)) - 1; i++) {
-						if (wdata[i] == L'\0')
-							strcnt++;
-						if (wdata[i + 1] == L'\0') {
+						if (wdata[i] == L'\0' && wdata[i + 1] == L'\0') {
 							found_doublenull = 1;
 							break;
 						}
