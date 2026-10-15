@@ -177,8 +177,7 @@
       <ModuleDefinitionFile>capemon.def</ModuleDefinitionFile>
     </Link>
     <PreBuildEvent>
-      <Command>
-      </Command>
+      <Command>call "$(ProjectDir)gen_version.cmd" "$(ProjectDir)git_version.h"</Command>
     </PreBuildEvent>
     <MASM>
       <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
@@ -214,8 +213,7 @@
       <DelayLoadDLLs>advapi32.dll;user32.dll;ws2_32.dll;crypt32.dll;shlwapi.dll;ole32.dll;shell32.dll;oleaut32.dll;netapi32.dll;bcrypt.dll</DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>
-      </Command>
+      <Command>call "$(ProjectDir)gen_version.cmd" "$(ProjectDir)git_version.h"</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -436,6 +434,7 @@
     </ClCompile>
     <ClCompile Include="unhook.c" />
     <ClCompile Include="utf8.c" />
+    <ClCompile Include="version.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="alloc.h" />

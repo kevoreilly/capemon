@@ -1050,6 +1050,11 @@ int hook_api(hook_t *h, int type)
 		if (hmod == NULL)
 			return 0;
 
+		if (module_in_exe_dir(hmod)) {
+			DebugOutput("hook_api: skipping %ws::%s - dll is in executable directory, likely side-loaded\n", h->library, h->funcname);
+			return 0;
+		}
+
 		if (!wcscmp(h->library, L"kernel32") && GetProcAddress(GetModuleHandle("KernelBase"), h->funcname))
 			hmod = GetModuleHandle("KernelBase");
 
