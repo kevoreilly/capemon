@@ -1053,21 +1053,18 @@ void loq(int index, const char *category, const char *name,
 				// ascii strings
 				else if (key == 'r') {
 					unsigned long i, x;
-					unsigned int strcnt = 0;
 					int found_doublenull = 0;
 					char *p;
 					int len;
 					for (i = 0; i < size - 1; i++) {
-						if (data[i] == '\0')
-							strcnt++;
-						if (data[i + 1] == '\0') {
+						if (data[i] == '\0' && data[i + 1] == '\0') {
 							found_doublenull = 1;
 							break;
 						}
 					}
 					if (!found_doublenull)
 						goto buffer_log;
-					p = (char *)malloc(size + (strcnt * 4));
+					p = (char *)malloc((size * 4) + 1);  // worst case: every byte escaped to \x00
 					if (p == NULL)
 						goto buffer_log;
 					for (i = 0, x = 0; i < size - 1; i++) {
@@ -1086,29 +1083,26 @@ void loq(int index, const char *category, const char *name,
 						}
 					}
 					p[x] = '\0';
-					len = (int)strnlen(p, size + (strcnt * 4));
+					len = (int)strnlen(p, (size * 4) + 1);
 					log_string(p, len);
 					free(p);
 				}
 				// unicode strings
 				else {
 					unsigned long i, x;
-					unsigned int strcnt = 0;
 					int found_doublenull = 0;
 					const wchar_t *wdata = (const wchar_t *)data;
 					wchar_t *p;
 					int len;
 					for (i = 0; i < (size/sizeof(wchar_t)) - 1; i++) {
-						if (wdata[i] == L'\0')
-							strcnt++;
-						if (wdata[i + 1] == L'\0') {
+						if (wdata[i] == L'\0' && wdata[i + 1] == L'\0') {
 							found_doublenull = 1;
 							break;
 						}
 					}
 					if (!found_doublenull)
 						goto buffer_log;
-					p = (wchar_t *)malloc(size + (strcnt * 4 * sizeof(wchar_t)));
+					p = (wchar_t *)malloc((size * 4) + sizeof(wchar_t));  // worst case: every wchar escaped
 					if (p == NULL)
 						goto buffer_log;
 					for (i = 0, x = 0; i < (size/sizeof(wchar_t)) - 1; i++) {
@@ -1127,7 +1121,7 @@ void loq(int index, const char *category, const char *name,
 						}
 					}
 					p[x] = L'\0';
-					len = (int)wcsnlen(p, (size/sizeof(wchar_t)) + (strcnt * 4));
+					len = (int)wcsnlen(p, ((size/sizeof(wchar_t)) * 4) + 1);
 					log_wstring(p, len);
 					free(p);
 				}
