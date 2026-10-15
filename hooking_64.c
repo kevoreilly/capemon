@@ -1050,6 +1050,9 @@ int hook_api(hook_t *h, int type)
 		if (hmod == NULL)
 			return 0;
 
+		if (is_sideloaded_dll(hmod))
+			return 0;
+
 		if (!wcscmp(h->library, L"kernel32") && GetProcAddress(GetModuleHandle("KernelBase"), h->funcname))
 			hmod = GetModuleHandle("KernelBase");
 

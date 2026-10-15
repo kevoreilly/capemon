@@ -665,6 +665,9 @@ int hook_api(hook_t *h, int type)
 		if (hmod == NULL)
 			return 0;
 
+		if (is_sideloaded_dll(hmod))
+			return 0;
+
 		if (!strcmp(h->funcname, "RtlDispatchException")) {
 			// RtlDispatchException is the first relative call in KiUserExceptionDispatcher
 			unsigned char *baseaddr = (unsigned char *)GetProcAddress(hmod, "KiUserExceptionDispatcher");

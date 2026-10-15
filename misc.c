@@ -32,6 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 
 extern char *our_process_name;
+extern wchar_t *our_dll_path_w;
 
 static _NtQueryInformationProcess pNtQueryInformationProcess;
 static _RtlGenRandom pRtlGenRandom;
@@ -997,6 +998,49 @@ void add_all_dlls_to_dll_ranges(void)
 
 exit:
 	free(ProcessPath.Buffer);
+}
+
+// A module loaded from the exe's (non-system) directory that shadows a system dll of the
+// same name: likely a trojanized sideload. Resolving hooks in it via GetProcAddress would
+// run its DllMain early if the loader has not initialised it yet.
+BOOL is_sideloaded_dll(HMODULE hmod)
+{
+	static HMODULE last_logged;
+	PEB *peb = (PEB *)get_peb();
+	PLIST_ENTRY head = &peb->LoaderData->InLoadOrderModuleList, entry;
+	LDR_DATA_TABLE_ENTRY *exe = CONTAINING_RECORD(head->Flink, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList), *mod;
+	unsigned int dirlen = (exe->FullDllName.Length - exe->BaseDllName.Length) / sizeof(WCHAR);
+	wchar_t syspath[MAX_PATH];
+	UINT len;
+
+	for (entry = head->Flink->Flink; entry != head; entry = entry->Flink) {
+		mod = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+		if (mod->BaseAddress != (PVOID)hmod)
+			continue;
+
+		if ((mod->FullDllName.Length - mod->BaseDllName.Length) / sizeof(WCHAR) != dirlen
+			|| wcsnicmp(mod->FullDllName.Buffer, exe->FullDllName.Buffer, dirlen) || path_is_system(mod->FullDllName.Buffer))
+			return FALSE;
+
+		// the analyzer's own version.dll proxy sits alongside capemon and forwards to the system copy
+		if (our_dll_path_w && !wcsnicmp(our_dll_path_w, exe->FullDllName.Buffer, dirlen) && !wcschr(our_dll_path_w + dirlen, L'\\')
+			&& mod->BaseDllName.Length == sizeof(L"version.dll") - sizeof(WCHAR) && !wcsnicmp(mod->BaseDllName.Buffer, L"version.dll", 11))
+			return FALSE;
+
+		len = GetSystemDirectoryW(syspath, MAX_PATH);
+		if (!len || len >= MAX_PATH
+			|| _snwprintf_s(syspath + len, MAX_PATH - len, _TRUNCATE, L"\\%.*s", (int)(mod->BaseDllName.Length / sizeof(WCHAR)), mod->BaseDllName.Buffer) < 0
+			|| GetFileAttributesW(syspath) == INVALID_FILE_ATTRIBUTES)
+			return FALSE;
+
+		if (hmod != last_logged) {
+			last_logged = hmod;
+			DebugOutput("hook_api: not hooking sideloaded %ws (shadows a system dll)", mod->FullDllName.Buffer);
+		}
+		return TRUE;
+	}
+
+	return FALSE;
 }
 
 char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset)

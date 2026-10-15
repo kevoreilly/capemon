@@ -264,6 +264,7 @@ DWORD get_pid_by_tid(DWORD tid);
 DWORD our_getprocessid(HANDLE Process);
 BOOL is_in_dll_range(ULONG_PTR addr);
 void add_all_dlls_to_dll_ranges(void);
+BOOL is_sideloaded_dll(HMODULE hmod);
 void add_dll_range(ULONG_PTR start, ULONG_PTR end);
 
 wchar_t *get_matching_unicode_specialname(const wchar_t *path, unsigned int *matchlen);
