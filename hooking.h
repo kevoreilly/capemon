@@ -137,6 +137,22 @@ typedef struct _hook_info_t {
 	ULONG_PTR parent_caller_retaddr;
 } hook_info_t;
 
+// Per-thread state kept outside hook_info_t so hooks that save/restore *hook_info() across Old_* calls
+// (and the shared tmphookinfo fallback) cannot clobber or alias it.
+typedef struct _hook_thread_state_t {
+	// capemon-owned stack for callbacks that must not run on a stack the target controls
+	// (goroutine stacks, pivoted/scratch stacks). Lowest address; NULL until first use; never freed
+	// (capemon unlinks itself from the PEB module list, so DLL_THREAD_DETACH is not delivered).
+	PVOID alt_stack;
+	int alt_stack_depth;          // > 0 while this thread executes on alt_stack
+	ULONG_PTR alt_stack_orig_sp;  // approximate SP of the hooked thread at switch time (valid while alt_stack_depth > 0)
+	PVOID orig_stack_base;        // saved TEB StackBase while alt_stack_depth > 0
+	PVOID orig_stack_limit;       // saved TEB StackLimit while alt_stack_depth > 0
+	// software breakpoint this thread disarmed and is single-stepping over (NULL = none), see Debugger.c
+	PVOID softbp_stepping;
+	BOOL softbp_chain_step;       // TF was already set when that breakpoint was hit: hand the step on afterwards
+} hook_thread_state_t;
+
 
 typedef struct _lasterror_t {
 	DWORD Win32Error;
@@ -153,6 +169,18 @@ hook_data_t *alloc_hookdata_near(void *addr);
 int hook_api(hook_t *h, int type);
 
 hook_info_t* hook_info();
+
+// Alternate stack: run fn(arg) on a per-thread capemon-owned stack (HOOK_ALT_STACK_SIZE bytes, fully committed,
+// no guard page). TEB StackBase/StackLimit are pointed at the alternate stack for the duration so SEH dispatch
+// inside fn works; exceptions escaping fn are caught (they must not unwind through the switch thunk).
+// Nested calls on a thread already running on its alternate stack are plain calls.
+// Returns FALSE (fn not called) if the thunk or the stack could not be allocated.
+#define HOOK_ALT_STACK_SIZE (256 * 1024)
+typedef void (__cdecl *alt_stack_fn_t)(void *arg);
+hook_thread_state_t* hook_thread_state(void);
+BOOL hook_call_on_alt_stack(alt_stack_fn_t fn, void *arg);
+BOOL hook_on_alt_stack(void);
+BOOL hook_get_orig_stack_bounds(ULONG_PTR *bottom, ULONG_PTR *top);
 void hook_enable();
 void hook_disable();
 int called_by_hook(void);
