@@ -2,7 +2,12 @@
 
 #include <Windows.h>
 
+// The libyara backend (YaraHarness.c) needs libyara's header; the YARA-X
+// backend (YaraHarnessX.c, built when CAPE_USE_YARA_X is defined) does not,
+// and nothing in this header depends on a YR_* type.
+#ifndef CAPE_USE_YARA_X
 #include "yara.h"
+#endif
 
 typedef struct
 {
