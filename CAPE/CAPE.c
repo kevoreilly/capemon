@@ -161,6 +161,27 @@ extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 extern lookup_t g_dotnet_jit;
+
+static lookup_t g_dotnet_modules;
+
+void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize) {
+	dotnet_module_cache_t *entry;
+	if (!ModuleBase || lookup_get(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t)))
+		return;
+	entry = (dotnet_module_cache_t *)lookup_add(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t));
+	if (!entry)
+		return;
+	entry->ModuleBase = ModuleBase;
+	entry->MetadataRVA = MetadataRVA;
+	entry->MetadataSize = MetadataSize;
+	DebugOutput("CacheDotNetModule: Cached module base 0x%p (Metadata RVA 0x%x, Size 0x%x).\n", (PVOID)ModuleBase, MetadataRVA, MetadataSize);
+}
+
+dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase) {
+	if (!ModuleBase)
+		return NULL;
+	return (dotnet_module_cache_t *)lookup_get(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t));
+}
 extern char* StringsFile;
 extern HANDLE Strings;
 
@@ -831,7 +852,7 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	}
 
 
-	if (!FunctionAddress && ModuleBase == GetModuleHandle("clr"))
+	if (!FunctionAddress && (ModuleBase == GetModuleHandle("clr") || ModuleBase == GetModuleHandle("mscorwks") || ModuleBase == GetModuleHandle("coreclr")))
 		return GetCLRAddress(ModuleBase, FunctionName);
 
 	if (!FunctionAddress && ModuleBase == GetModuleHandle("clrjit"))
@@ -3445,6 +3466,28 @@ int DumpCurrentProcess()
 }
 
 //**************************************************************************************
+BOOL ReserveDotNetCacheDump(void)
+//**************************************************************************************
+{
+	LONG Count;
+
+	do {
+		Count = (LONG)DotNetCacheDumpCount;
+		if ((unsigned int)Count >= g_config.jit_dumps)
+			return FALSE;
+	} while (InterlockedCompareExchange((volatile LONG *)&DotNetCacheDumpCount, Count + 1, Count) != Count);
+
+	return TRUE;
+}
+
+//**************************************************************************************
+void ReleaseDotNetCacheDump(void)
+//**************************************************************************************
+{
+	InterlockedDecrement((volatile LONG *)&DotNetCacheDumpCount);
+}
+
+//**************************************************************************************
 void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 //**************************************************************************************
 {
@@ -3471,6 +3514,9 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 		DumpImageInCurrentProcess(MemInfo.BaseAddress);
 	}
 
+	// g_dotnet_jit is a lock-free set (lookup.c): lookup_get is safe against the
+	// compileMethod hook adding to it concurrently. The jit_dumps budget is
+	// shared with that hook and claimed atomically via ReserveDotNetCacheDump().
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)MemInfo.BaseAddress, 0))
 	{
 		CapeMetaData->ModulePath = NULL;
@@ -3482,15 +3528,14 @@ void DumpInterestingRegions(MEMORY_BASIC_INFORMATION MemInfo)
 #endif
 		CapeMetaData->Address = MemInfo.BaseAddress;
 
-		if (DotNetCacheDumpCount < g_config.jit_dumps && DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
-		{
-			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
-			DotNetCacheDumpCount++;
-		}
-		else if (g_config.jit_dumps && DotNetCacheDumpCount >= g_config.jit_dumps)
-			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
-		else if (!g_config.jit_dumps)
+		if (!g_config.jit_dumps)
 			DebugOutput("DumpInterestingRegions: Skipping .NET JIT native cache at 0x%p (jit-dumps=0)\n", MemInfo.BaseAddress);
+		else if (!ReserveDotNetCacheDump())
+			DebugOutput("DumpInterestingRegions: .NET JIT native cache dump limit hit: %d", g_config.jit_dumps);
+		else if (DumpMemory(MemInfo.BaseAddress, GetAccessibleSize(MemInfo.BaseAddress)))
+			DebugOutput("DumpInterestingRegions: Dumped .NET JIT native cache at 0x%p.\n", MemInfo.BaseAddress);
+		else
+			ReleaseDotNetCacheDump();
 	}
 }
 

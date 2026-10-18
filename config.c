@@ -1113,6 +1113,21 @@ void parse_config_line(char* line)
 			if (g_config.trace_all)
 				DebugOutput("Config: Trace all enabled.\n");
 		}
+		else if (!stricmp(key, "jit-trace-all")) {
+			g_config.jit_trace_all = value[0] == '1';
+			if (g_config.jit_trace_all)
+				DebugOutput("Config: JIT verbose tracing enabled.\n");
+		}
+		else if (!stricmp(key, "dotnet-heal")) {
+			g_config.dotnet_heal = value[0] == '1';
+			if (g_config.dotnet_heal)
+				DebugOutput("Config: .NET in-memory PE header healing enabled.\n");
+		}
+		else if (!stricmp(key, "dotnet-nload")) {
+			g_config.dotnet_nload = value[0] == '1';
+			if (g_config.dotnet_nload)
+				DebugOutput("Config: .NET in-memory assembly loading interception enabled.\n");
+		}
 		else if (!stricmp(key, "trace-into-api")) {
 			unsigned int x = 0;
 			char *p2;
