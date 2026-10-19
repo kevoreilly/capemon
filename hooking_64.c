@@ -34,6 +34,7 @@ extern PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 extern SIZE_T GetAllocationSize(PVOID Address);
 
 PVOID LdrpInvertedFunctionTableSRWLock;
+PVOID LdrpMrdataLock;
 
 // length disassembler engine
 int lde(void *addr)
@@ -1244,9 +1245,13 @@ int already_hooked(void)
 
 BOOL srw_lock_held()
 {
-	if (!LdrpInvertedFunctionTableSRWLock)
-		return FALSE;
-	if (*(PVOID*)LdrpInvertedFunctionTableSRWLock)
+	if (LdrpInvertedFunctionTableSRWLock && *(PVOID*)LdrpInvertedFunctionTableSRWLock)
+		return TRUE;
+	// LdrProtectMrdata holds LdrpMrdataLock across its (hooked) NtProtectVirtualMemory call, while
+	// RtlAddFunctionTable/RtlDeleteFunctionTable take RtlpDynamicFunctionTableLock then LdrpMrdataLock.
+	// Unwinding here takes RtlpDynamicFunctionTableLock (shared) and would invert that order, deadlocking
+	// processes that register dynamic function tables (e.g. .NET JIT).
+	if (LdrpMrdataLock && *(PVOID*)LdrpMrdataLock)
 		return TRUE;
 	return FALSE;
 }
@@ -1271,7 +1276,7 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 
 		for (frame = 0; frame < count; frame++) {
 			backtrace[frame] = (PVOID)ctx.Rip;
-			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock on Win10
+			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock and RtlpDynamicFunctionTableLock on Win10
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
 				if (our_isbadreadptr((PVOID)ctx.Rsp, sizeof(PVOID)))

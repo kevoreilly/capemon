@@ -39,7 +39,7 @@ extern BOOL BreakpointsHit, TraceRunning;
 YR_RULES* Rules = NULL;
 BOOL YaraActivated, YaraLogging;
 #ifdef _WIN64
-extern PVOID LdrpInvertedFunctionTableSRWLock;
+extern PVOID LdrpInvertedFunctionTableSRWLock, LdrpMrdataLock;
 #endif
 
 static char NewLine[MAX_PATH];
@@ -69,6 +69,9 @@ char InternalYara[] =
 	"$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
 	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
 	"$10_0_10240_16384 = {48 8D 0D [4] 48 8B E8 E8 [4] 33 C9 E8 [4] 8B 15 [4] 3B 15 [4] 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule LdrProtectMrdata"
+	"{strings:$10_0_19041_2788 = {48 8D 0D [4] E8 [4] 8B 3D [4] 85 DB 75 ?? 85 FF 75 ?? 8D 4B 04 E8}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule LdrpCallInitRoutine"
 	"{strings:$10_0_26100_3476 = {40 53 56 57 41 54 41 55 [65-85] 84 03 FE 7F}"
@@ -726,6 +729,12 @@ BOOL YaraInit()
 		{
 			LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
 			DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
+		}
+		PVOID LdrProtectMrdata = GetAddressByYara(GetModuleHandleA("ntdll"), "LdrProtectMrdata");
+		if (LdrProtectMrdata)
+		{
+			LdrpMrdataLock = (PVOID)((PBYTE)LdrProtectMrdata + *(DWORD*)((PBYTE)LdrProtectMrdata + 3) + 7);
+			DebugOutput("LdrProtectMrdata 0x%p, LdrpMrdataLock 0x%p", LdrProtectMrdata, LdrpMrdataLock);
 		}
 	}
 #endif
