@@ -97,6 +97,39 @@ HOOKDEF(BOOL, WINAPI, UnhookWindowsHookEx,
 	return ret;
 }
 
+HOOKDEF(HWINEVENTHOOK, WINAPI, SetWinEventHook,
+	__in  UINT eventMin,
+	__in  UINT eventMax,
+	__in  HMODULE hmodWinEventProc,
+	__in  WINEVENTPROC pfnWinEventProc,
+	__in  DWORD idProcess,
+	__in  DWORD idThread,
+	__in  UINT dwFlags
+) {
+
+	HWINEVENTHOOK ret;
+
+	// An in-context hook with a module handle injects hmodWinEventProc into the
+	// target process(es), so follow the target as we do for SetWindowsHookEx.
+	if (hmodWinEventProc && (dwFlags & WINEVENT_INCONTEXT)) {
+		if (idProcess) {
+			if (idProcess != GetCurrentProcessId())
+				ProcessMessage(idProcess, 0);
+		}
+		else if (idThread) {
+			DWORD pid = get_pid_by_tid(idThread);
+			if (pid != GetCurrentProcessId())
+				ProcessMessage(pid, 0);
+		}
+	}
+
+	ret = Old_SetWinEventHook(eventMin, eventMax, hmodWinEventProc, pfnWinEventProc, idProcess, idThread, dwFlags);
+	LOQ_nonnull("system", "iippiii", "EventMin", eventMin, "EventMax", eventMax,
+		"ModuleAddress", hmodWinEventProc, "ProcedureAddress", pfnWinEventProc,
+		"ProcessId", idProcess, "ThreadId", idThread, "Flags", dwFlags);
+	return ret;
+}
+
 HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	_In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 ) {
@@ -287,6 +320,14 @@ HOOKDEF(NTSTATUS, WINAPI, LdrGetProcedureAddressForCaller,
 		DebugOutput("LdrGetProcedureAddress: Patched export address to 0x%p", *FunctionAddress);
 		ret = 0;
 	}
+
+	// Opt-in per-sample via YARA cape_options (loaderlock-settle=1). Trojanized sideload DLLs
+	// (AxolotlLoader/dui70.dll) crash under monitoring because a reentrant DllMain bootstrap re-clobbers a
+	// dispatch-table slot back to a -1 sentinel mid-resolver, so the consumer calls slot[0]==-1 (RIP=~0).
+	// The resolver runs with the loader lock released, so a loader_lock_held() gate never covered it; yield
+	// on every resolution while active to spread the bootstrap/resolver timing apart and avoid the clobber.
+	if (g_config.loaderlock_settle)
+		Sleep(1);
 
 	LOQ_ntstatus("system", "opSiP", "ModuleName", get_basename_of_module(ModuleHandle), "ModuleHandle", ModuleHandle,
 		"FunctionName", FunctionName != NULL ? FunctionName->Length : 0, FunctionName != NULL ? FunctionName->Buffer : NULL,
