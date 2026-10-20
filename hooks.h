@@ -1417,7 +1417,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 	_In_		PVOID	_this,
 	_In_		LPCWSTR	wszName,
 	_In_		LONG	lFlags,
-	_Out_		VARIANT	*pVal,
+	_Inout_		VARIANT	*pVal,
 	_Out_opt_	CIMTYPE	*pType,
 	_Out_opt_	LONG	*plFlavor
 );

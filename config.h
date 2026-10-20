@@ -353,6 +353,9 @@ struct _g_config {
 	char disk_serial[128];
 	char bios_vendor[128];
 	char bios_serial[128];
+	int wmi_cache_size;
+	int wmi_voltage_reading;
+	int wmi_temperature_reading;
 	int sleep_skip_seconds;
 	int go_hooks;
 	int watchdog;
