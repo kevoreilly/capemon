@@ -1924,7 +1924,7 @@ HOOKDEF(BOOL, WINAPI, EnumDisplayDevicesW,
 		}
 	}
 
-	LOQ_bool("windows", "uiu", "Device", lpDevice, "DevNum", iDevNum, "DeviceString", lpDisplayDevice->DeviceString);
+	LOQ_bool("windows", "uiu", "Device", lpDevice, "DevNum", iDevNum, "DeviceString", lpDisplayDevice ? lpDisplayDevice->DeviceString : NULL);
 	return ret;
 }
 
@@ -2123,7 +2123,7 @@ static void OverwriteMemoryPattern(PBYTE buf, DWORD size, const char* pPattern, 
 	if (!buf || size == 0 || !pPattern || !pReplace) return;
 	size_t patLen = strlen(pPattern);
 	size_t repLen = strlen(pReplace);
-	if (patLen != repLen || patLen == 0) return;
+	if (patLen != repLen || patLen == 0 || (size_t)size < patLen) return;
 
 	for (DWORD i = 0; i <= size - patLen; i++) {
 		if (memcmp(&buf[i], pPattern, patLen) == 0) {
@@ -2163,7 +2163,9 @@ HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
 	_In_  DWORD BufferSize
 ) {
 	// If queried for WAET, return 0 (table not found)
-	if (FirmwareTableProviderSignature == 0x41435049 && FirmwareTableID == 0x54454157) {
+	if (!g_config.no_stealth && FirmwareTableProviderSignature == 0x41435049 && FirmwareTableID == 0x54454157) {
+		LOQ_void("misc", "");
+		SetLastError(ERROR_NOT_FOUND);
 		return 0;
 	}
 
