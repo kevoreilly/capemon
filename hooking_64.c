@@ -911,6 +911,7 @@ static hook_data_t *alloc_hookdata_near_locked(void *addr)
 		if (offset < 0 && (ULONG_PTR)addr < (ULONG_PTR)-offset)
 			offset = 0x10000;
 		BaseAddress = (PCHAR)addr + offset;
+		RegionSize = 65536;
 		status = pNtAllocateVirtualMemory(GetCurrentProcess(), &BaseAddress, 0, &RegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 		if (status >= 0) {
 			// Place the metadata directly at the beginning of the newly allocated page
