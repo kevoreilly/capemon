@@ -684,7 +684,7 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 
 int path_is_system(const wchar_t *path_w)
 {
-	if (!path_w)
+	if (!path_w || !path_w[0])
 		return 0;
 
 	if (!wcsnicmp(path_w, L"\\Device\\HarddiskVolume", 22))
@@ -702,7 +702,7 @@ int path_is_system(const wchar_t *path_w)
 
 int path_is_program_files(const wchar_t *path_w)
 {
-	if (!path_w)
+	if (!path_w || !path_w[0])
 		return 0;
 
 	if (((!wcsnicmp(path_w + 1, L":\\program files\\", 16) ||
@@ -1333,6 +1333,7 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		wchar_t stack_tmpout2[2048];
 		wchar_t *tmpout2 = stack_tmpout2;
 		BOOL allocated_tmpout2 = FALSE;
+		unsigned int tmpout2_size = 2048;
 		wchar_t *retstr = get_matching_unicode_specialname(inadj, &matchlen);
 		if (retstr == NULL)
 			goto normal_copy;
@@ -1345,12 +1346,13 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 				allocated_tmpout2 = TRUE;
 			}
 		}
+		tmpout2_size = (path_buf_size > 2048 && !allocated_tmpout2) ? 2048 : path_buf_size;
 
 		// wcsncat's third argument is the count to append, not the buffer
 		// size, and tmpout2 already holds 4 + wcslen(retstr) characters
 		wcscpy(tmpout2, L"\\\\?\\");
-		wcsncat(tmpout2, retstr, path_buf_size - 5);
-		wcsncat(tmpout2, inadj + matchlen, path_buf_size - 1 - lstrlenW(tmpout2));
+		wcsncat(tmpout2, retstr, tmpout2_size - 5);
+		wcsncat(tmpout2, inadj + matchlen, tmpout2_size - 1 - lstrlenW(tmpout2));
 		if (!GetFullPathNameW(tmpout2, path_buf_size, tmpout, NULL)) {
 			if (allocated_tmpout2) free(tmpout2);
 			goto normal_copy;
@@ -1361,6 +1363,7 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		wchar_t stack_tmpout2[2048];
 		wchar_t *tmpout2 = stack_tmpout2;
 		BOOL allocated_tmpout2 = FALSE;
+		unsigned int tmpout2_size = 2048;
 		if (path_buf_size > 2048) {
 			tmpout2 = malloc(path_buf_size * sizeof(wchar_t));
 			if (tmpout2 == NULL) {
@@ -1369,9 +1372,10 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 				allocated_tmpout2 = TRUE;
 			}
 		}
+		tmpout2_size = (path_buf_size > 2048 && !allocated_tmpout2) ? 2048 : path_buf_size;
 
 		wcscpy(tmpout2, L"\\\\?\\");
-		wcsncat(tmpout2, inadj, path_buf_size - 5);
+		wcsncat(tmpout2, inadj, tmpout2_size - 5);
 		if (!GetFullPathNameW(tmpout2, path_buf_size, tmpout, NULL)) {
 			if (allocated_tmpout2) free(tmpout2);
 			goto normal_copy;
@@ -1400,6 +1404,8 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		if (pathcomponent == NULL)
 			goto normal_copy;
 		pathcomponentlen = lstrlenW(pathcomponent);
+		if (pathcomponentlen > nonexistentidx)
+			goto normal_copy;
 		nonexistentidx -= pathcomponentlen;
 		memcpy(nonexistent + nonexistentidx, pathcomponent, pathcomponentlen * sizeof(wchar_t));
 		*pathcomponent = L'\0';
