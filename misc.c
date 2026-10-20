@@ -684,12 +684,12 @@ DWORD parent_process_id() // By Napalm @ NetCore2K (rohitab.com)
 
 int path_is_system(const wchar_t *path_w)
 {
-	if (!path_w)
+	if (!path_w || !path_w[0])
 		return 0;
 
 	if (!wcsnicmp(path_w, L"\\Device\\HarddiskVolume", 22))
 		path_w += 24;
-	else if (!wcsnicmp(path_w + 1, L":\\", 2))
+	else if (path_w[1] && !wcsnicmp(path_w + 1, L":\\", 2))
 		path_w += 3;
 
 	if (((!wcsnicmp(path_w, L"windows\\system32\\", 17) ||
@@ -702,10 +702,10 @@ int path_is_system(const wchar_t *path_w)
 
 int path_is_program_files(const wchar_t *path_w)
 {
-	if (!path_w)
+	if (!path_w || !path_w[0])
 		return 0;
 
-	if (((!wcsnicmp(path_w + 1, L":\\program files\\", 16) ||
+	if (path_w[1] && ((!wcsnicmp(path_w + 1, L":\\program files\\", 16) ||
 		!wcsnicmp(path_w + 1, L":\\program files (x86)\\", 22))))
 		return 1;
 
@@ -1069,6 +1069,7 @@ BOOL module_in_exe_dir(HMODULE hmod)
 	static size_t exe_dir_len;
 	wchar_t modpath[MAX_PATH];
 	DWORD len;
+	const wchar_t *fname;
 
 	if (!exe_dir_len) {
 		wchar_t *slash;
@@ -1089,8 +1090,20 @@ BOOL module_in_exe_dir(HMODULE hmod)
 	if (len == 0 || len >= MAX_PATH)
 		return FALSE;
 
-	return !_wcsnicmp(modpath, exe_dir, exe_dir_len) &&
-	       wcschr(modpath + exe_dir_len, L'\\') == NULL;
+	if (_wcsnicmp(modpath, exe_dir, exe_dir_len) != 0 ||
+	    wcschr(modpath + exe_dir_len, L'\\') != NULL)
+		return FALSE;
+
+	fname = modpath + exe_dir_len;
+	// Do not skip .NET runtime libraries in self-contained deployments
+	if (!_wcsicmp(fname, L"clrjit.dll") ||
+	    !_wcsicmp(fname, L"coreclr.dll") ||
+	    !_wcsicmp(fname, L"clr.dll") ||
+	    !_wcsicmp(fname, L"mscoree.dll") ||
+	    !_wcsicmp(fname, L"mscorwks.dll"))
+		return FALSE;
+
+	return TRUE;
 }
 
 // hide our module from PEB
