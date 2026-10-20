@@ -724,17 +724,35 @@ BOOL YaraInit()
 #ifdef _WIN64
 	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
 	{
-		PVOID RtlInsertInvertedFunctionTable = GetAddressByYara(GetModuleHandleA("ntdll"), "RtlInsertInvertedFunctionTable");
-		if (RtlInsertInvertedFunctionTable)
+		HMODULE hNtdll = GetModuleHandleA("ntdll");
+		if (hNtdll)
 		{
-			LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
-			DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
-		}
-		PVOID LdrProtectMrdata = GetAddressByYara(GetModuleHandleA("ntdll"), "LdrProtectMrdata");
-		if (LdrProtectMrdata)
-		{
-			LdrpMrdataLock = (PVOID)((PBYTE)LdrProtectMrdata + *(DWORD*)((PBYTE)LdrProtectMrdata + 3) + 7);
-			DebugOutput("LdrProtectMrdata 0x%p, LdrpMrdataLock 0x%p", LdrProtectMrdata, LdrpMrdataLock);
+			PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)hNtdll;
+			PIMAGE_NT_HEADERS nt = (PIMAGE_NT_HEADERS)((PBYTE)hNtdll + dos->e_lfanew);
+			PBYTE ntdll_base = (PBYTE)hNtdll;
+			PBYTE ntdll_end = ntdll_base + nt->OptionalHeader.SizeOfImage;
+			PVOID RtlInsertInvertedFunctionTable = GetAddressByYara(hNtdll, "RtlInsertInvertedFunctionTable");
+			PVOID LdrProtectMrdata;
+
+			if (RtlInsertInvertedFunctionTable)
+			{
+				PVOID resolved = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(LONG*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
+				if ((PBYTE)resolved >= ntdll_base && (PBYTE)resolved <= ntdll_end - sizeof(PVOID))
+				{
+					LdrpInvertedFunctionTableSRWLock = resolved;
+					DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
+				}
+			}
+			LdrProtectMrdata = GetAddressByYara(hNtdll, "LdrProtectMrdata");
+			if (LdrProtectMrdata)
+			{
+				PVOID resolved = (PVOID)((PBYTE)LdrProtectMrdata + *(LONG*)((PBYTE)LdrProtectMrdata + 3) + 7);
+				if ((PBYTE)resolved >= ntdll_base && (PBYTE)resolved <= ntdll_end - sizeof(PVOID))
+				{
+					LdrpMrdataLock = resolved;
+					DebugOutput("LdrProtectMrdata 0x%p, LdrpMrdataLock 0x%p", LdrProtectMrdata, LdrpMrdataLock);
+				}
+			}
 		}
 	}
 #endif
