@@ -234,6 +234,7 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 ) {
 	HRESULT ret;
 	WCHAR szClassName[256] = L"";
+	lasterror_t lasterror;
 
 	if (wszName && _wcsicmp(wszName, L"__CLASS") == 0 && g_last_seen_fake_class != WMI_FAKE_CLASS_NONE) {
 		VariantInit(pVal);
@@ -255,17 +256,6 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 		if (pType) *pType = CIM_STRING;
 		if (plFlavor) *plFlavor = 0;
 		return S_OK;
-	}
-
-	if (wszName && _wcsicmp(wszName, L"__CLASS") != 0) {
-		VARIANT classVariant;
-		VariantInit(&classVariant);
-		IWbemClassObject* pWmiObject = (IWbemClassObject*)_this;
-		HRESULT hr = pWmiObject->lpVtbl->Get(pWmiObject, L"__CLASS", 0, &classVariant, NULL, NULL);
-		if (SUCCEEDED(hr) && classVariant.vt == VT_BSTR) {
-			wcscpy_s(szClassName, _countof(szClassName), classVariant.bstrVal);
-		}
-		VariantClear(&classVariant);
 	}
 
 	ret = Old_WMI_Get(_this, wszName, lFlags, pVal, pType, plFlavor);
@@ -292,7 +282,25 @@ HOOKDEF(HRESULT, WINAPI, WMI_Get,
 		}
 	}
 
-	SpoofWmiData(_this, szClassName, wszName, pVal);
+	if (SUCCEEDED(ret) && pVal != NULL) {
+		get_lasterrors(&lasterror);
+		__try {
+			if (g_last_seen_fake_class == WMI_FAKE_CLASS_NONE && wszName && _wcsicmp(wszName, L"__CLASS") != 0) {
+				VARIANT classVariant;
+				VariantInit(&classVariant);
+				HRESULT hr = Old_WMI_Get ? Old_WMI_Get(_this, L"__CLASS", 0, &classVariant, NULL, NULL)
+				                         : ((IWbemClassObject*)_this)->lpVtbl->Get((IWbemClassObject*)_this, L"__CLASS", 0, &classVariant, NULL, NULL);
+				if (SUCCEEDED(hr) && classVariant.vt == VT_BSTR && classVariant.bstrVal != NULL) {
+					wcsncpy_s(szClassName, _countof(szClassName), classVariant.bstrVal, _TRUNCATE);
+				}
+				VariantClear(&classVariant);
+			}
+			SpoofWmiData(_this, szClassName, wszName, pVal);
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+		}
+		set_lasterrors(&lasterror);
+	}
 
 	// Short circuit, return early for things we don't want to log
 	if (!ret && !g_config.full_logs && wszName) {
@@ -323,6 +331,9 @@ HOOKDEF(HRESULT, WINAPI, WMI_Next,
 	_Out_opt_	LONG	*plFlavor
 ) {
 	HRESULT ret = Old_WMI_Next(_this, lFlags, strName, pVal, pType, plFlavor);
+	WCHAR szClassName[256] = L"";
+	lasterror_t lasterror;
+	VARIANT classVariant;
 
 	// Return early for some cases we don't want to log / spoof
 	if (ret != S_OK)
@@ -338,17 +349,15 @@ HOOKDEF(HRESULT, WINAPI, WMI_Next,
 		return ret;
 
 	// If all is well at this point, we should do the spoofs
-	lasterror_t lasterror;
 	get_lasterrors(&lasterror);
-	VARIANT classVariant;
 	VariantInit(&classVariant);
 
 	__try {
 		IWbemClassObject* pWmiObject = (IWbemClassObject*)_this;
-		HRESULT hr = pWmiObject->lpVtbl->Get(pWmiObject, L"__CLASS", 0, &classVariant, NULL, NULL);
-		WCHAR szClassName[256] = L"";
-		if (SUCCEEDED(hr) && classVariant.vt == VT_BSTR) {
-			wcscpy_s(szClassName, _countof(szClassName), classVariant.bstrVal);
+		HRESULT hr = Old_WMI_Get ? Old_WMI_Get(_this, L"__CLASS", 0, &classVariant, NULL, NULL)
+		                         : pWmiObject->lpVtbl->Get(pWmiObject, L"__CLASS", 0, &classVariant, NULL, NULL);
+		if (SUCCEEDED(hr) && classVariant.vt == VT_BSTR && classVariant.bstrVal != NULL) {
+			wcsncpy_s(szClassName, _countof(szClassName), classVariant.bstrVal, _TRUNCATE);
 		}
 		SpoofWmiData(_this, szClassName, *strName, pVal);
 		LOQ_hresult("system", "unu", "Name", *strName, "Value", pVal, "Class", szClassName);
@@ -370,7 +379,6 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQuery,
 	_In_	IWbemContext			*pCtx,
 	_Out_	IEnumWbemClassObject	**ppEnum
 ) {
-<<<<<<< HEAD
 	HRESULT ret;
 	BSTR queryToExecute = (BSTR)strQuery;
 	g_last_seen_disk_query = 0;
@@ -451,7 +459,6 @@ HOOKDEF(HRESULT, WINAPI, WMI_ExecQueryAsync,
 	_In_	IWbemContext	*pCtx,
 	_In_	IWbemObjectSink	*pResponseHandler
 ) {
-<<<<<<< HEAD
 	HRESULT ret;
 	BSTR queryToExecute = (BSTR)strQuery;
 	g_last_seen_disk_query = 0;
