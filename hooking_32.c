@@ -613,7 +613,7 @@ static ULONG_PTR get_short_rel_target(unsigned char *buf)
 	return 0;
 }
 
-static int hook_api_inner(hook_t *h, int type)
+static int hook_api_internal(hook_t *h, int type)
 {
 	unsigned char *addr;
 	int ret = -1;
@@ -898,7 +898,7 @@ int hook_api(hook_t *h, int type)
 	int ret;
 
 	enter_hooking();
-	ret = hook_api_inner(h, type);
+	ret = hook_api_internal(h, type);
 	leave_hooking();
 	return ret;
 }
