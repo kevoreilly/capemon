@@ -677,9 +677,9 @@ BOOL YaraInit()
 			else
 			{
 				DebugOutput("YaraInit: No usable rules in %s, trying %s\n", yara_dir, analyzer_path);
-				unsigned int fallback_count = YaraAddRuleFiles(Compiler, analyzer_path);
-				if (fallback_count)
-					DebugOutput("YaraInit: Compiled %d rule files\n", fallback_count);
+				count = YaraAddRuleFiles(Compiler, analyzer_path);
+				if (count)
+					DebugOutput("YaraInit: Compiled %d rule files\n", count);
 				else
 					DebugOutput("YaraInit: Found no Yara rules in %s or %s\n", yara_dir, analyzer_path);
 			}
