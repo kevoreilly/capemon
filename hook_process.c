@@ -134,17 +134,17 @@ HOOKDEF(BOOL, WINAPI, Thread32Next,
 ) {
 	BOOL ret = Old_Thread32Next(hSnapshot, lpte);
 
-	if (ret)
-		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
-	else
-		LOQ_bool("process", "");
-
 	// ignore our own threads
 	if (ret && lpte && lpte->th32OwnerProcessID && GetCurrentProcessId() == lpte->th32OwnerProcessID && lpte->th32ThreadID && is_monitor_thread(lpte->th32ThreadID)) {
 		do {
 			ret = Old_Thread32Next(hSnapshot, lpte);
 		} while (ret && lpte && GetCurrentProcessId() == lpte->th32OwnerProcessID && is_monitor_thread(lpte->th32ThreadID));
 	}
+
+	if (ret && lpte)
+		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
+	else
+		LOQ_bool("process", "");
 
 	return ret;
 }
@@ -155,17 +155,17 @@ HOOKDEF(BOOL, WINAPI, Thread32First,
 ) {
 	BOOL ret = Old_Thread32First(hSnapshot, lpte);
 
-	if (ret)
-		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
-	else
-		LOQ_bool("process", "");
-
 	// ignore our own threads
 	if (ret && lpte && lpte->th32OwnerProcessID && GetCurrentProcessId() == lpte->th32OwnerProcessID && lpte->th32ThreadID && is_monitor_thread(lpte->th32ThreadID)) {
 		do {
 			ret = Old_Thread32Next(hSnapshot, lpte);
 		} while (ret && lpte && GetCurrentProcessId() == lpte->th32OwnerProcessID && is_monitor_thread(lpte->th32ThreadID));
 	}
+
+	if (ret && lpte)
+		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
+	else
+		LOQ_bool("process", "");
 
 	return ret;
 }
