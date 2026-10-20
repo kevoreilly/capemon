@@ -1683,7 +1683,6 @@ char* GetTempName()
 BOOL GetMD5(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 //**************************************************************************************
 {
-	DWORD i;
 	DWORD dwStatus = 0;
 	HCRYPTPROV hProv = 0;
 	HCRYPTHASH hHash = 0;

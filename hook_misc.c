@@ -2164,6 +2164,7 @@ HOOKDEF(UINT, WINAPI, GetSystemFirmwareTable,
 ) {
 	// If queried for WAET, return 0 (table not found)
 	if (!g_config.no_stealth && FirmwareTableProviderSignature == 0x41435049 && FirmwareTableID == 0x54454157) {
+		UINT ret = 0;
 		LOQ_void("misc", "");
 		SetLastError(ERROR_NOT_FOUND);
 		return 0;
