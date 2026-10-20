@@ -1462,6 +1462,18 @@ void parse_config_line(char* line)
 			if (g_config.hook_watch)
 				DebugOutput("Config: Hook watch enabled.\n");
 		}
+		else if (!stricmp(key, "wmi-cache-size")) {
+			g_config.wmi_cache_size = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: WMI cache size set to %d.\n", g_config.wmi_cache_size);
+		}
+		else if (!stricmp(key, "wmi-voltage-reading")) {
+			g_config.wmi_voltage_reading = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: WMI voltage reading set to %d.\n", g_config.wmi_voltage_reading);
+		}
+		else if (!stricmp(key, "wmi-temperature-reading")) {
+			g_config.wmi_temperature_reading = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: WMI temperature reading set to %d.\n", g_config.wmi_temperature_reading);
+		}
 		else if (!stricmp(key, "watchdog")) {
 			g_config.watchdog = value[0] == '1';
 			if (g_config.watchdog)
@@ -1522,6 +1534,9 @@ void read_config(void)
 	g_config.loaderlock_scans = 1;
 	g_config.spoofed_cpu_count = SPOOFED_CPU_CORE_NUM;
 	g_config.syscall = 1;
+	g_config.wmi_cache_size = 32768;
+	g_config.wmi_voltage_reading = 12000;
+	g_config.wmi_temperature_reading = 3000;
 	g_config.sleep_skip_seconds = 10;
 	g_config.watchdog = 0;
 	g_config.watchdog_interval = 5000;
