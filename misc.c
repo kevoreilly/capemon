@@ -1282,7 +1282,8 @@ char *ensure_absolute_ascii_path(char *out, const char *in)
 		memcpy(nonexistent + nonexistentidx, pathcomponent, pathcomponentlen * sizeof(char));
 		*pathcomponent = '\0';
 	}
-	strncat(out, nonexistent + nonexistentidx, MAX_PATH - strlen(out));
+	// strncat always appends a NUL, so the bound is one less than the space
+	strncat(out, nonexistent + nonexistentidx, MAX_PATH - strlen(out) - 1);
 	goto out;
 
 normal_copy:
@@ -1298,7 +1299,8 @@ out:
 		memcpy(out, sysnativedir_a, sysnativedir_len);
 	}
 	out[MAX_PATH - 1] = '\0';
-	if (out[1] == ':' && out[2] == '\\')
+	// the SEH path only sets out[0], so out[1..2] may be uninitialised
+	if (out[0] && out[1] == ':' && out[2] == '\\')
 		out[0] = toupper(out[0]);
 
 	set_lasterrors(&lasterror);
@@ -1369,6 +1371,7 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		wchar_t stack_tmpout2[2048];
 		wchar_t *tmpout2 = stack_tmpout2;
 		BOOL allocated_tmpout2 = FALSE;
+		unsigned int tmpout2_size = 2048;
 		wchar_t *retstr = get_matching_unicode_specialname(inadj, &matchlen);
 		if (retstr == NULL)
 			goto normal_copy;
@@ -1381,10 +1384,13 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 				allocated_tmpout2 = TRUE;
 			}
 		}
+		tmpout2_size = (path_buf_size > 2048 && !allocated_tmpout2) ? 2048 : path_buf_size;
 
+		// wcsncat's third argument is the count to append, not the buffer
+		// size, and tmpout2 already holds 4 + wcslen(retstr) characters
 		wcscpy(tmpout2, L"\\\\?\\");
-		wcscat(tmpout2, retstr);
-		wcsncat(tmpout2, inadj + matchlen, path_buf_size - 4 - 3);
+		wcsncat(tmpout2, retstr, tmpout2_size - 5);
+		wcsncat(tmpout2, inadj + matchlen, tmpout2_size - 1 - lstrlenW(tmpout2));
 		if (!GetFullPathNameW(tmpout2, path_buf_size, tmpout, NULL)) {
 			if (allocated_tmpout2) free(tmpout2);
 			goto normal_copy;
@@ -1395,6 +1401,7 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		wchar_t stack_tmpout2[2048];
 		wchar_t *tmpout2 = stack_tmpout2;
 		BOOL allocated_tmpout2 = FALSE;
+		unsigned int tmpout2_size = 2048;
 		if (path_buf_size > 2048) {
 			tmpout2 = malloc(path_buf_size * sizeof(wchar_t));
 			if (tmpout2 == NULL) {
@@ -1403,9 +1410,10 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 				allocated_tmpout2 = TRUE;
 			}
 		}
+		tmpout2_size = (path_buf_size > 2048 && !allocated_tmpout2) ? 2048 : path_buf_size;
 
 		wcscpy(tmpout2, L"\\\\?\\");
-		wcsncat(tmpout2, inadj, path_buf_size - 4);
+		wcsncat(tmpout2, inadj, tmpout2_size - 5);
 		if (!GetFullPathNameW(tmpout2, path_buf_size, tmpout, NULL)) {
 			if (allocated_tmpout2) free(tmpout2);
 			goto normal_copy;
@@ -1434,11 +1442,13 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 		if (pathcomponent == NULL)
 			goto normal_copy;
 		pathcomponentlen = lstrlenW(pathcomponent);
+		if (pathcomponentlen > nonexistentidx)
+			goto normal_copy;
 		nonexistentidx -= pathcomponentlen;
 		memcpy(nonexistent + nonexistentidx, pathcomponent, pathcomponentlen * sizeof(wchar_t));
 		*pathcomponent = L'\0';
 	}
-	wcsncat(out, nonexistent + nonexistentidx, path_buf_size - lstrlenW(out));
+	wcsncat(out, nonexistent + nonexistentidx, path_buf_size - 1 - lstrlenW(out));
 
 	if (!wcsncmp(out, L"\\\\?\\", 4))
 		memmove(out, out + 4, (lstrlenW(out) + 1 - 4) * sizeof(wchar_t));
@@ -1452,7 +1462,7 @@ wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in)
 
 globalroot_copy:
 	wcscpy(out, L"\\??\\");
-	wcsncat(out, inadj, path_buf_size - 4);
+	wcsncat(out, inadj, path_buf_size - 5);
 	goto out;
 
 normal_copy:
@@ -1465,7 +1475,8 @@ out:
 		free(tmpout);
 	if (allocated_nonexistent && nonexistent)
 		free(nonexistent);
-	if (out[1] == L':' && out[2] == L'\\')
+	// the SEH path only sets out[0], so out[1..2] may be uninitialised
+	if (out[0] && out[1] == L':' && out[2] == L'\\')
 		out[0] = toupper(out[0]);
 
 	set_lasterrors(&lasterror);
