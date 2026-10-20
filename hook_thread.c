@@ -665,7 +665,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
 	return ret;
 }
 
-extern DWORD tmphookinfo_threadid;
+// thread-local: see hooking.c. A thread terminating *another* thread no
+// longer needs to clear the claim, because the claim dies with the
+// thread that owns it. The self-termination case below still works.
+extern __declspec(thread) DWORD tmphookinfo_threadid;
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
 	__in  HANDLE ThreadHandle,
