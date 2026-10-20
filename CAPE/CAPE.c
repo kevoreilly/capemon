@@ -1716,15 +1716,15 @@ BOOL GetMD5(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	if (!CryptGetHashParam(hHash, HP_HASHVAL, MD5Hash, &cbHash, 0))
 	{
 		ErrorOutput("CryptGetHashParam failed");
+		CryptDestroyHash(hHash);
+		CryptReleaseContext(hProv, 0);
+		return 0;
 	}
 
 	CryptDestroyHash(hHash);
 	CryptReleaseContext(hProv, 0);
 
-	for (i = 0; i < cbHash; i++)
-	{
-		PrintHexBytes(OutputBuffer, MD5Hash, MD5LEN);
-	}
+	PrintHexBytes(OutputBuffer, MD5Hash, MD5LEN);
 
 	return 1;
 }
@@ -1763,6 +1763,9 @@ BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	if (!CryptGetHashParam(hHash, HP_HASHVAL, Hash, &cbHash, 0))
 	{
 		ErrorOutput("CryptGetHashParam failed");
+		CryptDestroyHash(hHash);
+		CryptReleaseContext(hProv, 0);
+		return 0;
 	}
 
 	CryptDestroyHash(hHash);
@@ -1780,13 +1783,22 @@ BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 BOOL GetSelfHash(char* OutputBuffer)
 {
     HANDLE Handle = CreateFile(our_dll_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    DWORD Size;
+    unsigned char* Buffer;
+    DWORD Read;
+    BOOL Result;
 
     if (Handle == INVALID_HANDLE_VALUE)
 		return 0;
 
-    DWORD Size = GetFileSize(Handle, NULL);
+    Size = GetFileSize(Handle, NULL);
+    if (Size == INVALID_FILE_SIZE || Size == 0)
+    {
+        CloseHandle(Handle);
+        return 0;
+    }
 
-    unsigned char* Buffer = (unsigned char*)malloc(Size);
+    Buffer = (unsigned char*)malloc(Size);
 
     if (!Buffer)
 	{
@@ -1794,9 +1806,7 @@ BOOL GetSelfHash(char* OutputBuffer)
 		return 0;
 	}
 
-    DWORD Read;
-
-    BOOL Result = ReadFile(Handle, Buffer, Size, &Read, NULL) && Read == Size && GetSHA256(Buffer, Size, OutputBuffer);
+    Result = ReadFile(Handle, Buffer, Size, &Read, NULL) && Read == Size && GetSHA256(Buffer, Size, OutputBuffer);
 
     free(Buffer);
 
