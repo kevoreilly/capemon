@@ -611,15 +611,10 @@ static BOOL is_suspended_thread_in_monitor(HANDLE ThreadHandle, DWORD tid)
 	BOOL opened_handle = FALSE;
 	BOOL in_monitor = FALSE;
 	ULONG_PTR ip, sp;
-	PEB *peb;
 
-	// 1. Check if the suspended thread owns the PEB Loader Lock (covers LdrLoadDll -> New_DllLoadNotification -> set_hooks_dll)
-	peb = (PEB *)get_peb();
-	if (peb && peb->LoaderLock) {
-		PRTL_CRITICAL_SECTION loader_lock = (PRTL_CRITICAL_SECTION)peb->LoaderLock;
-		if ((DWORD)(ULONG_PTR)loader_lock->OwningThread == tid)
-			return TRUE;
-	}
+	// 1. Check if the suspended thread is currently hooking or owns the PEB Loader Lock
+	if (is_thread_hooking(tid))
+		return TRUE;
 
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.ContextFlags = CONTEXT_CONTROL;
