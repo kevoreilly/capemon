@@ -93,19 +93,25 @@ void GetPEB64(void *peb) {
 
 uint64_t GetModuleLDREntry(wchar_t *name) {
 	uint64_t ptr;
+	uint64_t start;
 	GetPEB64(&ptr);
 	memcpy64((uint64_t)(unsigned)(&ptr), ptr + 24, 8);//PTR -> PPEB_LDR_DATA LoaderData;
 
-	uint64_t start = ptr + 16;
+	start = ptr + 16;
 	memcpy64((uint64_t)(unsigned)(&ptr), ptr + 16, 8);//PTR -> LIST_ENTRY64 InLoadOrderModuleList.FirstBlink
 
 	while (start != ptr) {
 		uint64_t tmp;
+		uint16_t len = 0;
+		memcpy64((uint64_t)(unsigned)(&len), ptr + 88, 2); //Basename Length
 		memcpy64((uint64_t)(unsigned)(&tmp), ptr + 96, 8); //TMP -> UNICODE_STRING Basename -> Buffer
 
-		if (tmp) {
+		if (tmp && len > 0) {
 			wchar_t kek[32];
-			memcpy64((uint64_t)(unsigned)kek, tmp, 60); //KEK = Basename
+			size_t copy_len = len < 60 ? len : 60;
+			memset(kek, 0, sizeof(kek));
+			memcpy64((uint64_t)(unsigned)kek, tmp, copy_len); //KEK = Basename
+			kek[copy_len / sizeof(wchar_t)] = L'\0';
 
 			if (!lstrcmpiW(name, kek))return ptr;
 		}
@@ -225,23 +231,25 @@ uint64_t X64Call(uint64_t proc, unsigned n, ...) {
 
 uint64_t MyGetProcAddress(uint64_t module, char *func) {
 	IMAGE_DOS_HEADER dos;
-	memcpy64((uint64_t)(unsigned)(&dos), module, sizeof(dos));
-
 	IMAGE_NT_HEADERS64 nt;
-	memcpy64((uint64_t)(unsigned)(&nt), module + dos.e_lfanew, sizeof(nt));
-
 	IMAGE_EXPORT_DIRECTORY exp;
+	DWORD i;
+
+	memcpy64((uint64_t)(unsigned)(&dos), module, sizeof(dos));
+	memcpy64((uint64_t)(unsigned)(&nt), module + dos.e_lfanew, sizeof(nt));
 	memcpy64((uint64_t)(unsigned)(&exp), module + nt.OptionalHeader.DataDirectory[0].VirtualAddress, sizeof(exp));
 
-	for (DWORD i = 0; i < exp.NumberOfNames; i++){
+	for (i = 0; i < exp.NumberOfNames; i++){
 		DWORD nameptr;
-		memcpy64((uint64_t)(unsigned)(&nameptr), module + exp.AddressOfNames + (4 * i), 4);
 		char name[64];
-		memcpy64((uint64_t)(unsigned)name, module + nameptr, 64);
+		memcpy64((uint64_t)(unsigned)(&nameptr), module + exp.AddressOfNames + (4 * i), 4);
+		memset(name, 0, sizeof(name));
+		memcpy64((uint64_t)(unsigned)name, module + nameptr, sizeof(name) - 1);
+		name[sizeof(name) - 1] = '\0';
 		if (!lstrcmpA(name, func)) {
 			WORD ord;
-			memcpy64((uint64_t)(unsigned)(&ord), module + exp.AddressOfNameOrdinals + (2 * i), 2);
 			uint32_t adr;
+			memcpy64((uint64_t)(unsigned)(&ord), module + exp.AddressOfNameOrdinals + (2 * i), 2);
 			memcpy64((uint64_t)(unsigned)(&adr), module + exp.AddressOfFunctions + (4 * ord), 4);
 			return module + adr;
 		}
@@ -279,42 +287,52 @@ uint64_t GetKernel32() {
 		uint64_t NtFreeVirtualMemory = MyGetProcAddress(ntdll, "NtFreeVirtualMemory");
 		wchar_t *dlls[] = { L"kernelbase.dll", L"kernel32.dll", L"user32.dll" };
 
-		for (int i = 1; i < 3; i++) {
+		int i;
+		for (i = 1; i < 3; i++) {
 			uint64_t section = 0;
 			uint64_t base = 0;
 			uint64_t size = 0;
+			IMAGE_DOS_HEADER dos;
+			IMAGE_NT_HEADERS64 nt;
+			uint64_t imagebase;
+			uint64_t zero = 0;
+
 			X64Call(LdrGetKnownDllSectionHandle, 3, (uint64_t)(unsigned)(dlls[i]), (uint64_t)0, (uint64_t)(unsigned)(&section));
 			X64Call(NtMapViewOfSection, 10, section,
 				(uint64_t)-1, (uint64_t)(unsigned)(&base), (uint64_t)0, (uint64_t)0, (uint64_t)0,
 				(uint64_t)(unsigned)(&size), (uint64_t)2, (uint64_t)0, (uint64_t)PAGE_READONLY);
 
-			IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER*)base;
-			IMAGE_NT_HEADERS64 *nt = (IMAGE_NT_HEADERS64*)(base + dos->e_lfanew);
-			uint64_t imagebase = nt->OptionalHeader.ImageBase;
+			memcpy64((uint64_t)(unsigned)(&dos), base, sizeof(dos));
+			memcpy64((uint64_t)(unsigned)(&nt), base + dos.e_lfanew, sizeof(nt));
+			imagebase = nt.OptionalHeader.ImageBase;
 
-			uint64_t zero = 0;
 			X64Call(NtFreeVirtualMemory, 4, (uint64_t)-1, (uint64_t)(unsigned)(&imagebase), (uint64_t)(unsigned)(&zero), (uint64_t)MEM_RELEASE);
 			X64Call(NtUnmapViewOfSection, 2, (uint64_t)-1, (uint64_t)(unsigned)(&base));
 		}
 		
-		X64Call(LdrLoadDll, 4, (uint64_t)0, (uint64_t)0, str, (uint64_t)(unsigned)(&kernel32));
+		X64Call(LdrLoadDll, 4, (uint64_t)0, (uint64_t)0, (uint64_t)(unsigned)str, (uint64_t)(unsigned)(&kernel32));
 
-		for (int i = 0; i < 2; i++) {
-			uint64_t base=GetModuleHandle64(dlls[i]);
-			IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER*)base;
-			IMAGE_NT_HEADERS64 *nt = (IMAGE_NT_HEADERS64*)(base+dos->e_lfanew);
-
-			uint64_t r=X64Call(base + nt->OptionalHeader.AddressOfEntryPoint, 3, base, (uint64_t)DLL_PROCESS_ATTACH, (uint64_t)0);
-
-			uint64_t ldr = GetModuleLDREntry(dlls[i]);
-
+		for (i = 0; i < 2; i++) {
+			uint64_t base = GetModuleHandle64(dlls[i]);
+			IMAGE_DOS_HEADER dos;
+			IMAGE_NT_HEADERS64 nt;
+			uint64_t r;
+			uint64_t ldr;
 			uint64_t flags;
+			WORD loadcount = -1;
+
+			memcpy64((uint64_t)(unsigned)(&dos), base, sizeof(dos));
+			memcpy64((uint64_t)(unsigned)(&nt), base + dos.e_lfanew, sizeof(nt));
+
+			r = X64Call(base + nt.OptionalHeader.AddressOfEntryPoint, 3, base, (uint64_t)DLL_PROCESS_ATTACH, (uint64_t)0);
+
+			ldr = GetModuleLDREntry(dlls[i]);
+
 			memcpy64((uint64_t)(unsigned)(&flags), ldr + 104, 8);
 			flags |= 0x000080000; //LDRP_PROCESS_ATTACH_CALLED
 			flags |= 0x000004000; //LDRP_ENTRY_PROCESSED
 			memcpy64(ldr + 104, (uint64_t)(unsigned)(&flags), 8);
 
-			WORD loadcount = -1;
 			memcpy64(ldr + 112, (uint64_t)(unsigned)(&loadcount), 2);
 		}
 	}
