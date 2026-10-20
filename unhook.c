@@ -160,6 +160,7 @@ void remove_all_hooks(void)
 		if (!VirtualProtect(g_addr[idx], g_length[idx], PAGE_EXECUTE_READWRITE, &old_protect))
 			continue;				/* skip one bad region, keep restoring the rest */
 		memcpy(g_addr[idx], g_orig[idx], g_length[idx]);	/* restore original (pre-hook) bytes */
+		FlushInstructionCache(GetCurrentProcess(), g_addr[idx], g_length[idx]);
 		VirtualProtect(g_addr[idx], g_length[idx], old_protect, &old_protect);
 		/* get the unhook watcher to ignore this region */
 		g_hook_reported[idx] = 1;
@@ -570,32 +571,37 @@ static char *watchdog_get_module_and_offset(ULONG_PTR addr, unsigned int *offset
 	}
 
 	if (peb && peb->LoaderData) {
-		PLIST_ENTRY pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
-		PLIST_ENTRY pListEntry;
+		__try {
+			PLIST_ENTRY pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
+			PLIST_ENTRY pListEntry;
 
-		for (pListEntry = pHeadEntry->Flink; pListEntry != pHeadEntry; pListEntry = pListEntry->Flink) {
-			PLDR_DATA_TABLE_ENTRY mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
-			if (addr >= (ULONG_PTR)mod->BaseAddress && addr < ((ULONG_PTR)mod->BaseAddress + mod->SizeOfImage)) {
-				*offset = (unsigned int)(addr - (ULONG_PTR)mod->BaseAddress);
-				if (peb->ImageBaseAddress && mod->BaseAddress == peb->ImageBaseAddress) {
-					char *buf = calloc(1, 7);
+			for (pListEntry = pHeadEntry->Flink; pListEntry != pHeadEntry; pListEntry = pListEntry->Flink) {
+				PLDR_DATA_TABLE_ENTRY mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
+				if (addr >= (ULONG_PTR)mod->BaseAddress && addr < ((ULONG_PTR)mod->BaseAddress + mod->SizeOfImage)) {
+					*offset = (unsigned int)(addr - (ULONG_PTR)mod->BaseAddress);
+					if (peb->ImageBaseAddress && mod->BaseAddress == peb->ImageBaseAddress) {
+						char *buf = calloc(1, 7);
 					if (buf) {
 						memcpy(buf, "<main>", 7);
 						return buf;
 					}
 					return NULL;
-				} else {
-					size_t len = mod->BaseDllName.Length / sizeof(wchar_t);
-					char *buf = calloc(1, len + 1);
-					if (buf) {
-						size_t i;
-						for (i = 0; i < len; i++)
-							buf[i] = (char)mod->BaseDllName.Buffer[i];
-						return buf;
+					} else {
+						size_t len = mod->BaseDllName.Length / sizeof(wchar_t);
+						char *buf = calloc(1, len + 1);
+						if (buf) {
+							size_t i;
+							for (i = 0; i < len; i++)
+								buf[i] = (char)mod->BaseDllName.Buffer[i];
+							return buf;
+						}
+						return NULL;
 					}
-					return NULL;
 				}
 			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			return NULL;
 		}
 	}
 
