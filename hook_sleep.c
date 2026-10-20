@@ -696,13 +696,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
 	unsigned long milli;
 	FILETIME ft;
 	lasterror_t lasterror;
+	HANDLE first_handle;
 
 	get_lasterrors(&lasterror);
 
+	first_handle = (Count > 0 && Handles && !our_isbadreadptr(Handles, sizeof(HANDLE))) ? Handles[0] : NULL;
+
 	// handle INFINITE wait
-	if (Timeout == NULL || Timeout->QuadPart == 0x8000000000000000ULL) {
+	if (Timeout == NULL || our_isbadreadptr(Timeout, sizeof(LARGE_INTEGER)) || Timeout->QuadPart == 0x8000000000000000ULL) {
 		if (hook_info()->main_caller_retaddr)
-			LOQ_ntstatus("system", "pis", "Handle", Handles ? Handles[0] : NULL, "Milliseconds", -1, "Status", "Infinite");
+			LOQ_ntstatus("system", "pis", "Handle", first_handle, "Milliseconds", -1, "Status", "Infinite");
 		set_lasterrors(&lasterror);
 		return Old_NtWaitForMultipleObjects(Count, Handles, WaitType, Alertable, Timeout);
 	}
@@ -711,7 +714,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
 
 	if (sleep_skip_active && newint.QuadPart > 0LL) {
 		/* convert absolute time to relative time */
-		GetSystemTimeAsFileTime(&ft);
+		if (Old_GetSystemTimeAsFileTime)
+			Old_GetSystemTimeAsFileTime(&ft);
+		else
+			GetSystemTimeAsFileTime(&ft);
 
 		newint.HighPart = ft.dwHighDateTime;
 		newint.LowPart = ft.dwLowDateTime;
@@ -723,7 +729,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
 	interval = -newint.QuadPart;
 	milli = (unsigned long)(interval / 10000);
 
-	GetSystemTimeAsFileTime(&ft);
+	if (Old_GetSystemTimeAsFileTime)
+		Old_GetSystemTimeAsFileTime(&ft);
+	else
+		GetSystemTimeAsFileTime(&ft);
 	li.HighPart = ft.dwHighDateTime;
 	li.LowPart = ft.dwLowDateTime;
 
@@ -731,21 +740,18 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
 	if (sleep_skip_active && milli >= 30000 && milli <= 3600000 && g_config.force_sleepskip != 0) {
 		newint.QuadPart = -get_sleep_skip_ns();
 		time_skipped.QuadPart += interval - get_sleep_skip_ns();
-		LOQ_ntstatus("system", "pis", "Handle", Handles ? Handles[0] : NULL, "Milliseconds", milli, "Status", "Skipped");
+		LOQ_ntstatus("system", "pis", "Handle", first_handle, "Milliseconds", milli, "Status", "Skipped");
 		goto docall;
 	}
 	else if (sleep_skip_active && g_config.force_sleepskip > 0) {
 		time_skipped.QuadPart += interval;
-		LOQ_ntstatus("system", "pis", "Handle", Handles ? Handles[0] : NULL, "Milliseconds", milli, "Status", "Skipped");
+		LOQ_ntstatus("system", "pis", "Handle", first_handle, "Milliseconds", milli, "Status", "Skipped");
 		newint.QuadPart = 0;
 		goto docall;
 	}
-	else {
-		disable_sleep_skip();
-	}
-	if (sleep_skip_active && milli <= 10) {
+	else if (sleep_skip_active && milli <= 10) {
 		if (num_wait_small < 20) {
-			LOQ_ntstatus("system", "pi", "Handle", Handles ? Handles[0] : NULL, "Milliseconds", milli);
+			LOQ_ntstatus("system", "pi", "Handle", first_handle, "Milliseconds", milli);
 			num_wait_small++;
 		}
 		else if (num_wait_small == 20) {
@@ -757,7 +763,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtWaitForMultipleObjects,
 		}
 	}
 	else {
-		LOQ_ntstatus("system", "pi", "Handle", Handles ? Handles[0] : NULL, "Milliseconds", milli);
+		disable_sleep_skip();
+		LOQ_ntstatus("system", "pi", "Handle", first_handle, "Milliseconds", milli);
 	}
 
 docall:
@@ -777,18 +784,24 @@ HOOKDEF(DWORD, WINAPI, IcmpSendEcho,
     _In_     DWORD                  Timeout
 ) {
 	DWORD clamped_timeout = Timeout;
+	BOOL skipped = FALSE;
+	DWORD ret;
 	lasterror_t lasterror;
 	get_lasterrors(&lasterror);
 
 	if (sleep_skip_active && Timeout >= 30000 && Timeout <= 3600000 && g_config.force_sleepskip != 0) {
 		time_skipped.QuadPart += (ULONGLONG)(Timeout - get_sleep_skip_ms()) * 10000ULL;
 		clamped_timeout = get_sleep_skip_ms();
-		DWORD ret = TRUE;
-		LOQ_bool("system", "is", "Milliseconds", Timeout, "Status", "Skipped");
+		skipped = TRUE;
 	}
 
 	set_lasterrors(&lasterror);
-	return Old_IcmpSendEcho(IcmpHandle, DestinationAddress, RequestData, RequestSize, RequestOptions, ReplyBuffer, ReplySize, clamped_timeout);
+	ret = Old_IcmpSendEcho(IcmpHandle, DestinationAddress, RequestData, RequestSize, RequestOptions, ReplyBuffer, ReplySize, clamped_timeout);
+
+	if (skipped)
+		LOQ_bool("system", "is", "Milliseconds", Timeout, "Status", "Skipped");
+
+	return ret;
 }
 
 HOOKDEF(DWORD, WINAPI, IcmpSendEcho2,
@@ -805,16 +818,22 @@ HOOKDEF(DWORD, WINAPI, IcmpSendEcho2,
     _In_     DWORD                  Timeout
 ) {
 	DWORD clamped_timeout = Timeout;
+	BOOL skipped = FALSE;
+	DWORD ret;
 	lasterror_t lasterror;
 	get_lasterrors(&lasterror);
 
 	if (sleep_skip_active && Timeout >= 30000 && Timeout <= 3600000 && g_config.force_sleepskip != 0) {
 		time_skipped.QuadPart += (ULONGLONG)(Timeout - get_sleep_skip_ms()) * 10000ULL;
 		clamped_timeout = get_sleep_skip_ms();
-		DWORD ret = TRUE;
-		LOQ_bool("system", "is", "Milliseconds", Timeout, "Status", "Skipped");
+		skipped = TRUE;
 	}
 
 	set_lasterrors(&lasterror);
-	return Old_IcmpSendEcho2(IcmpHandle, Event, ApcRoutine, ApcContext, DestinationAddress, RequestData, RequestSize, RequestOptions, ReplyBuffer, ReplySize, clamped_timeout);
+	ret = Old_IcmpSendEcho2(IcmpHandle, Event, ApcRoutine, ApcContext, DestinationAddress, RequestData, RequestSize, RequestOptions, ReplyBuffer, ReplySize, clamped_timeout);
+
+	if (skipped)
+		LOQ_bool("system", "is", "Milliseconds", Timeout, "Status", "Skipped");
+
+	return ret;
 }
