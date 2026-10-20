@@ -84,6 +84,13 @@ void DumpStrings(void);
 BOOL ProcessDumped;
 unsigned int DumpCount, DotNetCacheDumpCount;
 
+// Lock-free claim/release of one of the g_config.jit_dumps slots shared by the
+// compileMethod hook (JIT worker threads) and DumpInterestingRegions(). CAS on
+// DotNetCacheDumpCount; no critical section. CapeMetaData is a process-wide
+// scratch struct written without a lock by every dump path in the monitor.
+BOOL ReserveDotNetCacheDump(void);
+void ReleaseDotNetCacheDump(void);
+
 SYSTEM_INFO SystemInfo;
 PVOID CallingModule;
 
@@ -150,6 +157,8 @@ enum {
 	AMSISTREAM = 0x6b,
 
 	STACK_REGION = 0x6c,
+
+	DOTNET_ASSEMBLY = 0x6d,
 
 	TYPE_STRING = 0x100,
 };
