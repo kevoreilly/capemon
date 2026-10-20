@@ -1016,7 +1016,7 @@ out:
 	return addr;
 }
 
-int hook_api(hook_t *h, int type)
+static int hook_api_internal(hook_t *h, int type)
 {
 	DWORD old_protect;
 	int ret = -1;
@@ -1223,6 +1223,16 @@ int hook_api(hook_t *h, int type)
 restore_protect:
 	VirtualProtect(addr, hook_types[type].len, old_protect, &old_protect);
 
+	return ret;
+}
+
+int hook_api(hook_t *h, int type)
+{
+	int ret;
+
+	enter_hooking();
+	ret = hook_api_internal(h, type);
+	leave_hooking();
 	return ret;
 }
 

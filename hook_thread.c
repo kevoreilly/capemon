@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include "ntapi.h"
 #include "hooking.h"
+#include "hooks.h"
 #include "log.h"
 #include "pipe.h"
 #include "misc.h"
@@ -35,6 +36,7 @@ extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void NtContinueHandler(PCONTEXT ThreadContext);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern BOOL BreakpointsSet;
+extern BOOL inside_hook(LPVOID Address);
 
 static lookup_t g_ignored_threads;
 
@@ -603,6 +605,69 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
 }
 #endif
 
+static BOOL is_suspended_thread_in_monitor(HANDLE ThreadHandle, DWORD tid)
+{
+	DECLSPEC_ALIGN(16) CONTEXT ctx;
+	HANDLE hQueryThread = ThreadHandle;
+	BOOL opened_handle = FALSE;
+	BOOL in_monitor = FALSE;
+	ULONG_PTR ip, sp;
+
+	// 1. Check if the suspended thread is currently hooking or owns the PEB Loader Lock
+	if (is_thread_hooking(tid))
+		return TRUE;
+
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.ContextFlags = CONTEXT_CONTROL;
+
+	if (!NT_SUCCESS(Old_NtGetContextThread(hQueryThread, &ctx))) {
+		hQueryThread = OpenThread(THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, tid);
+		if (!hQueryThread)
+			return FALSE;
+		opened_handle = TRUE;
+		ctx.ContextFlags = CONTEXT_CONTROL;
+		if (!NT_SUCCESS(Old_NtGetContextThread(hQueryThread, &ctx))) {
+			CloseHandle(hQueryThread);
+			return FALSE;
+		}
+	}
+
+#ifdef _WIN64
+	ip = (ULONG_PTR)ctx.Rip;
+	sp = (ULONG_PTR)ctx.Rsp;
+#else
+	ip = (ULONG_PTR)ctx.Eip;
+	sp = (ULONG_PTR)ctx.Esp;
+#endif
+
+	// 2. Direct instruction pointer check (capemon DLL image or hook trampolines)
+	if (is_address_in_monitor(ip) || inside_hook((PVOID)ip)) {
+		in_monitor = TRUE;
+		goto out;
+	}
+
+	// 3. Shallow stack scan: catches threads suspended inside ntdll syscalls (VirtualProtect, HeapAlloc, WriteFile) called by capemon
+	if (sp && is_valid_address_range(sp, 64 * sizeof(ULONG_PTR))) {
+		__try {
+			ULONG_PTR *stack = (ULONG_PTR *)sp;
+			unsigned int i;
+			for (i = 0; i < 64; i++) {
+				if (is_address_in_monitor(stack[i])) {
+					in_monitor = TRUE;
+					break;
+				}
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+		}
+	}
+
+out:
+	if (opened_handle)
+		CloseHandle(hQueryThread);
+	return in_monitor;
+}
+
 HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	__in		HANDLE ThreadHandle,
 	__out_opt   ULONG *PreviousSuspendCount
@@ -621,6 +686,29 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		if (pid != GetCurrentProcessId())
 			ProcessMessage(pid, 0);
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
+
+		if (NT_SUCCESS(ret) && pid == GetCurrentProcessId() && tid && tid != GetCurrentThreadId() && *PreviousSuspendCount == 0) {
+			lasterror_t lasterror;
+			int retries;
+
+			get_lasterrors(&lasterror);
+			hook_disable();
+
+			for (retries = 0; retries < 20 && is_suspended_thread_in_monitor(ThreadHandle, tid); retries++) {
+				ULONG dummy_count = 0;
+				DebugOutput("NtSuspendThread: Thread %d suspended inside capemon/loader lock (attempt %d), resuming briefly.\n", tid, retries + 1);
+				if (!NT_SUCCESS(Old_NtResumeThread(ThreadHandle, &dummy_count)))
+					break;
+				raw_sleep(10);
+				ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
+				if (!NT_SUCCESS(ret))
+					break;
+			}
+
+			hook_enable();
+			set_lasterrors(&lasterror);
+		}
+
 		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
 		"ProcessId", pid);
 	}

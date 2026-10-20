@@ -43,6 +43,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 static lookup_t g_hook_info;
 static lookup_t g_force_hook_threads;
+static lookup_t g_hooking_depth;
 
 extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
@@ -467,4 +468,43 @@ void hook_enable()
 void hook_disable()
 {
 	hook_info()->disable_count = 1;
+}
+
+void enter_hooking(void)
+{
+	lasterror_t lasterror;
+	LONG *depth;
+
+	get_lasterrors(&lasterror);
+	depth = LOOKUP_THREAD(&g_hooking_depth, LONG);
+	if (depth)
+		InterlockedIncrement(depth);
+	set_lasterrors(&lasterror);
+}
+
+void leave_hooking(void)
+{
+	lasterror_t lasterror;
+	LONG *depth;
+
+	get_lasterrors(&lasterror);
+	depth = (LONG *)lookup_get(&g_hooking_depth, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (depth && *depth > 0)
+		InterlockedDecrement(depth);
+	set_lasterrors(&lasterror);
+}
+
+BOOL is_thread_hooking(DWORD tid)
+{
+	LONG *depth;
+	PEB *peb = (PEB *)get_peb();
+
+	if (peb && peb->LoaderLock) {
+		PRTL_CRITICAL_SECTION loader_lock = (PRTL_CRITICAL_SECTION)peb->LoaderLock;
+		if ((DWORD)(ULONG_PTR)loader_lock->OwningThread == tid)
+			return TRUE;
+	}
+
+	depth = (LONG *)lookup_get(&g_hooking_depth, (ULONG_PTR)tid, NULL);
+	return (depth != NULL && *depth > 0);
 }

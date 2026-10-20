@@ -135,15 +135,17 @@ VOID CALLBACK New_DllLoadNotification(
 	_In_opt_ PVOID					   Context)
 {
 	PWCHAR dllname, dllpath;
+	int ret = 0;
 	COPY_UNICODE_STRING(library, NotificationData->Loaded.FullDllName);
+
+	enter_hooking();
+
 	dllname = get_dll_basename(library.Buffer);
 	dllpath = wcschr(our_commandline, ' ');
 	if (dllpath && wcsstr(dllpath, L"C:"))
 		dllpath = wcsstr(dllpath, L"C:");
 	else if (dllpath && wcsstr(dllpath, L"c:"))
 		dllpath = wcsstr(dllpath, L"c:");
-
-	int ret = 0;
 	if (!g_config.tlsdump)
 		LOQ_void("system", "sup", "NotificationReason", NotificationReason == 1 ? "load" : "unload", "DllName", library.Buffer, "DllBase", NotificationReason == 1 ? NotificationData->Loaded.DllBase : NotificationData->Unloaded.DllBase);
 
@@ -212,6 +214,8 @@ VOID CALLBACK New_DllLoadNotification(
 			revalidate_all_hooks();
 		}
 	}
+
+	leave_hooking();
 }
 
 static int parse_stack_trace(void *msg, ULONG_PTR addr)
