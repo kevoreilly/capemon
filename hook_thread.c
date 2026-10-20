@@ -696,7 +696,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 
 			for (retries = 0; retries < 20 && is_suspended_thread_in_monitor(ThreadHandle, tid); retries++) {
 				ULONG dummy_count = 0;
+#ifdef DEBUG_COMMENTS
 				DebugOutput("NtSuspendThread: Thread %d suspended inside capemon/loader lock (attempt %d), resuming briefly.\n", tid, retries + 1);
+#endif
 				if (!NT_SUCCESS(Old_NtResumeThread(ThreadHandle, &dummy_count)))
 					break;
 				raw_sleep(10);
