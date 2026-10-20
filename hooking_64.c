@@ -1245,14 +1245,19 @@ int already_hooked(void)
 
 BOOL srw_lock_held()
 {
-	if (LdrpInvertedFunctionTableSRWLock && *(PVOID*)LdrpInvertedFunctionTableSRWLock)
-		return TRUE;
-	// LdrProtectMrdata holds LdrpMrdataLock across its (hooked) NtProtectVirtualMemory call, while
-	// RtlAddFunctionTable/RtlDeleteFunctionTable take RtlpDynamicFunctionTableLock then LdrpMrdataLock.
-	// Unwinding here takes RtlpDynamicFunctionTableLock (shared) and would invert that order, deadlocking
-	// processes that register dynamic function tables (e.g. .NET JIT).
-	if (LdrpMrdataLock && *(PVOID*)LdrpMrdataLock)
-		return TRUE;
+	__try {
+		if (LdrpInvertedFunctionTableSRWLock && *(PVOID*)LdrpInvertedFunctionTableSRWLock)
+			return TRUE;
+		// LdrProtectMrdata holds LdrpMrdataLock across its (hooked) NtProtectVirtualMemory call, while
+		// RtlAddFunctionTable/RtlDeleteFunctionTable take RtlpDynamicFunctionTableLock then LdrpMrdataLock.
+		// Unwinding here takes RtlpDynamicFunctionTableLock (shared) and would invert that order, deadlocking
+		// processes that register dynamic function tables (e.g. .NET JIT).
+		if (LdrpMrdataLock && *(PVOID*)LdrpMrdataLock)
+			return TRUE;
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER) {
+		return FALSE;
+	}
 	return FALSE;
 }
 
@@ -1265,7 +1270,8 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 	KNONVOLATILE_CONTEXT_POINTERS nvctx;
 	PVOID handlerdata;
 	ULONG_PTR establisherframe;
-	unsigned int frame;
+	unsigned int frame = 0;
+	unsigned int frames_captured = 0;
 
 	if (srw_lock_held())
 		return -1;
@@ -1276,6 +1282,7 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 
 		for (frame = 0; frame < count; frame++) {
 			backtrace[frame] = (PVOID)ctx.Rip;
+			frames_captured = frame + 1;
 			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock and RtlpDynamicFunctionTableLock on Win10
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
@@ -1291,7 +1298,7 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 				break;
 		}
 
-		return frame + 1;
+		return (int)frames_captured;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -1300,7 +1307,7 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 		// count of successfully resolved frames. This ensures the first frame (which points 
 		// to the Go binary calling the API, not Capemon) is kept, so operate_on_backtrace correctly 
 		// detects it as an application call rather than a recursive hook call, allowing logging.
-		return (int)frame + 1;
+		return (int)frames_captured;
 	}
 }
 
