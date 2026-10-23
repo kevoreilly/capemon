@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
@@ -23,10 +23,22 @@ jobs:
             platform: x64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+
+    - name: Install Visual Studio 2017 toolset
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        $installPath = & $vswhere -latest -products * -property installationPath
+        $arguments = "modify --installPath `"$installPath`" --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 --quiet --norestart"
+        $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+          throw "Visual Studio Installer exited with code $($process.ExitCode)"
+        }
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.1
+      uses: microsoft/setup-msbuild@v2
       with: 
        msbuild-architecture: ${{ matrix.arch }}
 
@@ -38,12 +50,12 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{ matrix.platform }} ${{env.SOLUTION_FILE_PATH}}
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: capemon_release_${{ matrix.arch }}
         path: D:\a\capemon\capemon\Release\capemon.dll
         if-no-files-found: ignore
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: capemon_release_${{ matrix.arch }}
         path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
