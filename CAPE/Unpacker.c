@@ -202,7 +202,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 		return;
 	}
 
-	if (!(Protect & EXECUTABLE_FLAGS))
+	if (!(Protect & EXECUTABLE_FLAGS) && !((Address == ImageBase || Address == GetModuleHandle(NULL)) && Protect == PAGE_READONLY))
 		return;
 
 	if (is_in_dll_range((ULONG_PTR)Address))
@@ -1545,11 +1545,14 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 
 void UnpackerInit()
 {
+	PTRACKEDREGION TrackedRegion;
+	PVOID MainImageBase;
+
 	if (!InitialiseDebugger())
 		DebugOutput("UnpackerInit: Failed to initialise debugger.\n");
 
 	// Add the monitor to tracked regions but set as dumped
-	PTRACKEDREGION TrackedRegion = AddTrackedRegion((PVOID)g_our_dll_base, 0);
+	TrackedRegion = AddTrackedRegion((PVOID)g_our_dll_base, 0);
 	if (TrackedRegion)
 	{
 #ifdef DEBUG_COMMENTS
@@ -1559,4 +1562,14 @@ void UnpackerInit()
 	}
 	else
 		DebugOutput("UnpackerInit: Error adding monitor image base to tracked regions.\n");
+
+	MainImageBase = ImageBase ? ImageBase : (PVOID)GetModuleHandle(NULL);
+	if (MainImageBase)
+	{
+		TrackedRegion = AddTrackedRegion(MainImageBase, 0);
+#ifdef DEBUG_COMMENTS
+		if (TrackedRegion)
+			DebugOutput("UnpackerInit: Adding main image base 0x%p to tracked regions.\n", MainImageBase);
+#endif
+	}
 }
