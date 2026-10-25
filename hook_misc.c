@@ -832,8 +832,58 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationProcess,
 	IN ULONG ProcessInformationLength,
 	OUT PULONG ReturnLength OPTIONAL
 ) {
+	BOOL is_self;
 	NTSTATUS ret = Old_NtQueryInformationProcess(ProcessHandle, ProcessInformationClass, ProcessInformation, ProcessInformationLength, ReturnLength);
-	LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
+
+	if (!g_config.no_stealth && ProcessInformation != NULL) {
+		is_self = (ProcessHandle == NtCurrentProcess());
+		if (!is_self && ProcessHandle != NULL) {
+			lasterror_t lasterror;
+			get_lasterrors(&lasterror);
+			hook_disable();
+			if (pid_from_process_handle(ProcessHandle) == GetCurrentProcessId())
+				is_self = TRUE;
+			hook_enable();
+			set_lasterrors(&lasterror);
+		}
+
+		if (is_self) {
+			__try {
+				if (ProcessInformationClass == ProcessDebugPort) {
+					if (NT_SUCCESS(ret) && ProcessInformationLength >= sizeof(HANDLE))
+						memset(ProcessInformation, 0, sizeof(HANDLE));
+				}
+				else if (ProcessInformationClass == ProcessDebugObjectHandle) {
+					if (ProcessInformationLength >= sizeof(HANDLE)) {
+						*(PHANDLE)ProcessInformation = NULL;
+						if (NT_SUCCESS(ret))
+							ret = (NTSTATUS)0xC0000353L; /* STATUS_PORT_NOT_SET */
+					}
+				}
+				else if (ProcessInformationClass == ProcessDebugFlags) {
+					if (NT_SUCCESS(ret) && ProcessInformationLength >= sizeof(ULONG))
+						*(PULONG)ProcessInformation = 1; /* PROCESS_DEBUG_INHERIT */
+				}
+				else if (ProcessInformationClass == ProcessInstrumentationCallback) {
+					if (NT_SUCCESS(ret) && g_config.syscall && ProcessInformationLength > 0)
+						memset(ProcessInformation, 0, ProcessInformationLength);
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				;
+			}
+		}
+	}
+
+	if (g_config.full_logs || ProcessInformationClass == ProcessDebugPort ||
+		ProcessInformationClass == ProcessDebugObjectHandle ||
+		ProcessInformationClass == ProcessDebugFlags ||
+		ProcessInformationClass == ProcessInstrumentationCallback ||
+		ProcessInformationClass == ProcessBreakOnTermination ||
+		ProcessInformationClass == ProcessExecuteFlags) {
+		LOQ_ntstatus("process", "ib", "ProcessInformationClass", ProcessInformationClass, "ProcessInformation", ProcessInformationLength, ProcessInformation);
+	}
+
 	return ret;
 }
 
