@@ -40,18 +40,124 @@ extern PVOID ImageBase;
 
 #define SCANMIN 7
 #define SCANMAX 24
+#define SSN_SCANMAX 64
 
 unsigned int ScanForSsn(PVOID Address)
 {
+	unsigned int i;
 	if (!Address)
 		return 0;
 
 	__try
 	{
-		for (unsigned int i = SCANMIN; i < SCANMAX; i++)
+		for (i = SCANMIN; i <= SSN_SCANMAX; i++)
 		{
-			if (*((PBYTE)Address-i) == 0xb8 && !*(PWORD)((PBYTE)Address+3-i))
-				return (unsigned int)*(PWORD)((PBYTE)Address+1-i);
+			PBYTE p = (PBYTE)Address - i;
+
+			// 1. Immediate load: mov eax, imm32 (B8 <ssn_lo> <ssn_hi> 00 00)
+			if (p[0] == 0xb8 && *(PWORD)(p + 3) == 0)
+			{
+				DWORD imm = (DWORD)*(PWORD)(p + 1);
+				if (imm > 0 && imm < 0x2000)
+					return (unsigned int)imm;
+			}
+
+#ifdef _WIN64
+			// 2. SysWhispers4 MSVC/NASM: RIP-relative table load: mov eax, dword ptr [rip + disp32] (8B 05 <disp32>)
+			if (p[0] == 0x8b && p[1] == 0x05)
+			{
+				INT32 disp = *(INT32 *)(p + 2);
+				PDWORD pSsn = (PDWORD)(p + 6 + disp);
+				DWORD ssn = *pSsn;
+				unsigned int f;
+
+				// Scan forward up to 24 bytes for optional SysWhispers4 --encrypt-ssn key XOR logic
+				for (f = 6; f < 30; f++)
+				{
+					PBYTE q = p + f;
+					// Matches: mov r11d, [rip + disp_kp0] (44 8B 1D <disp32>) followed by xor r11d, [rip + disp_kp1] (44 33 1D <disp32>)
+					if (q[0] == 0x44 && q[1] == 0x8b && q[2] == 0x1d &&
+					    q[7] == 0x44 && q[8] == 0x33 && q[9] == 0x1d)
+					{
+						DWORD kp0 = *(PDWORD)(q + 7 + *(INT32 *)(q + 3));
+						DWORD kp1 = *(PDWORD)(q + 14 + *(INT32 *)(q + 10));
+						ssn ^= (kp0 ^ kp1);
+						break;
+					}
+				}
+
+				if (ssn > 0 && ssn < 0x2000)
+					return (unsigned int)ssn;
+			}
+
+			// 3. SysWhispers4 GAS/MinGW: lea rcx/r11, [rip + Table] followed by mov eax, [reg + disp]
+			if ((p[0] == 0x48 || p[0] == 0x4c) && p[1] == 0x8d && (p[2] == 0x0d || p[2] == 0x1d))
+			{
+				INT32 disp_tbl = *(INT32 *)(p + 3);
+				PBYTE pTable = p + 7 + disp_tbl;
+				unsigned int f;
+
+				for (f = 7; f < 24; f++)
+				{
+					PBYTE q = p + f;
+					DWORD offset = 0;
+					BOOL match = FALSE;
+
+					if (q[0] == 0x8b && q[1] == 0x01) { match = TRUE; offset = 0; }
+					else if (q[0] == 0x8b && q[1] == 0x41) { match = TRUE; offset = (DWORD)q[2]; }
+					else if (q[0] == 0x8b && q[1] == 0x81) { match = TRUE; offset = *(DWORD *)(q + 2); }
+					else if (q[0] == 0x41 && q[1] == 0x8b && q[2] == 0x03) { match = TRUE; offset = 0; }
+					else if (q[0] == 0x41 && q[1] == 0x8b && q[2] == 0x43) { match = TRUE; offset = (DWORD)q[3]; }
+					else if (q[0] == 0x41 && q[1] == 0x8b && q[2] == 0x83) { match = TRUE; offset = *(DWORD *)(q + 3); }
+
+					if (match)
+					{
+						DWORD ssn = *(PDWORD)(pTable + offset);
+						// Optional GAS KP0 ^ KP1 decrypt
+						unsigned int g;
+						for (g = 2; g < 32; g++)
+						{
+							PBYTE k = q + g;
+							if (k[0] == 0x4c && k[1] == 0x8d && k[2] == 0x1d &&
+							    k[7] == 0x45 && k[8] == 0x8b && k[9] == 0x1b &&
+							    k[10] == 0x48 && k[11] == 0x8d && k[12] == 0x0d)
+							{
+								DWORD kp0 = *(PDWORD)(*(PBYTE *)(k + 7 + *(INT32 *)(k + 3)));
+								DWORD kp1 = *(PDWORD)(*(PBYTE *)(k + 17 + *(INT32 *)(k + 13)));
+								ssn ^= (kp0 ^ kp1);
+								break;
+							}
+						}
+						if (ssn > 0 && ssn < 0x2000)
+							return (unsigned int)ssn;
+					}
+				}
+			}
+#else
+			// 4. x86 table load: mov eax, [addr32] (A1 <addr32> or 8B 05 <addr32>)
+			if (p[0] == 0xa1 || (p[0] == 0x8b && p[1] == 0x05))
+			{
+				PBYTE addr = (p[0] == 0xa1) ? *(PBYTE *)(p + 1) : *(PBYTE *)(p + 2);
+				if (addr)
+				{
+					DWORD ssn = *(PDWORD)addr;
+					unsigned int f;
+					for (f = 5; f < 25; f++)
+					{
+						PBYTE q = p + f;
+						if (q[0] == 0x8b && q[1] == 0x0d && q[6] == 0x33 && q[7] == 0x0d)
+						{
+							DWORD kp0 = **(PDWORD **)(q + 2);
+							DWORD kp1 = **(PDWORD **)(q + 8);
+							ssn ^= (kp0 ^ kp1);
+							break;
+						}
+					}
+					if (ssn > 0 && ssn < 0x2000)
+						return (unsigned int)ssn;
+				}
+			}
+#endif
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
