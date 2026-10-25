@@ -1433,6 +1433,20 @@ void parse_config_line(char* line)
 			if (g_config.break_on_jit)
 				DebugOutput("Break on .NET JIT native code enabled.\n");
 		}
+		else if (!stricmp(key, "dotnet-api-trace")) {
+			g_config.dotnet_api_trace = value[0] == '1';
+			if (g_config.dotnet_api_trace) {
+				// software breakpoints are dispatched by CAPEExceptionFilter, which
+				// is only installed when the debugger is initialised
+				g_config.debugger = 1;
+				DebugOutput(".NET API tracing enabled.\n");
+			}
+		}
+		else if (!stricmp(key, "dotnet-api-strings")) {
+			g_config.dotnet_api_strings = value[0] == '1';
+			if (g_config.dotnet_api_strings)
+				DebugOutput(".NET API tracing: string helpers enabled.\n");
+		}
 		else if (!stricmp(key, "interactive")) {
 			if (!g_config.interactive)
 				g_config.interactive = value[0] == '1';
