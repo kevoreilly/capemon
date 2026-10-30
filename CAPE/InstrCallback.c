@@ -284,22 +284,80 @@ BOOLEAN IsAddressInFilteredDlls(ULONG_PTR Address)
 #endif
 #define InstrumentationCallbackDisabled		0x1b8
 
+static BOOL IsIndirectSyscall(PVOID CIP, PVOID ReturnAddress, PVOID *OutStubAddress)
+{
+	unsigned int i;
+	if (OutStubAddress)
+		*OutStubAddress = NULL;
+	if (!ReturnAddress || inside_hook(ReturnAddress) || InsideMonitor(NULL, ReturnAddress) || is_in_dll_range((ULONG_PTR)ReturnAddress))
+		return FALSE;
+	__try {
+		PBYTE pRet = (PBYTE)ReturnAddress;
+		// 1. Caller executed 'call rel32' (E8) to a local stub outside filtered system DLLs
+		//    that is not a standard linker import thunk (FF 25)
+		//    (e.g. SysWhispers4 --method indirect / --method randomized).
+		if (pRet[-5] == 0xE8) {
+			INT32 rel = *(INT32 *)(pRet - 4);
+			PBYTE target = pRet + rel;
+			if (!IsAddressInFilteredDlls((ULONG_PTR)target) && !(target[0] == 0xFF && target[1] == 0x25)) {
+				if (OutStubAddress)
+					*OutStubAddress = (PVOID)target;
+				return TRUE;
+			}
+		}
+		// 2. ReturnAddress is in unbacked/dynamically allocated memory (e.g. shellcode/manual map),
+		//    or caller jumped into an ntdll export whose entry point is inline-hooked by capemon.
+		{
+			HMODULE hMod = NULL;
+			if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)ReturnAddress, &hMod) || !hMod) {
+				return TRUE;
+			}
+		}
+		// Check if the ntdll stub containing CIP is hooked at its function entry
+		for (i = 0; i <= SCANMAX; i++) {
+			PBYTE p = (PBYTE)CIP - i;
+			// Capemon inline hooks start with FF 25 (x64 jmp [rip+0]) or E9 (jmp rel32)
+			if ((p[0] == 0xFF && p[1] == 0x25) || p[0] == 0xE9) {
+				if (ScanForExport((PVOID)p, 0) != NULL)
+					return TRUE;
+			}
+		}
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+	}
+	return FALSE;
+}
+
 #ifdef _WIN64
 VOID InstrumentationCallback(PCONTEXT Context)
 {
 	// based on https://gist.github.com/esoterix/df38008568c50d4f83123e3a90b62ebb
 	ULONG_PTR pTEB = (ULONG_PTR)NtCurrentTeb();
+	unsigned int ReturnValue;
+	PVOID ReturnAddress = NULL;
+	PVOID IndirectStub = NULL;
+	PVOID CIP;
 	Context->Rcx = Context->R10;
 	Context->Rsp = *((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousSp));
 	Context->Rip = *((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousPc));
-	unsigned int ReturnValue = (unsigned int)Context->Rax & 0xFFFFFFFF;
-	PVOID ReturnAddress = *(PVOID*)Context->Rsp;
-	PVOID CIP = (PVOID)Context->Rip;
+	ReturnValue = (unsigned int)Context->Rax & 0xFFFFFFFF;
+	__try {
+		ReturnAddress = *(PVOID*)Context->Rsp;
+	} __except(EXCEPTION_EXECUTE_HANDLER) {
+		ReturnAddress = NULL;
+	}
+	CIP = (PVOID)Context->Rip;
 #else
 VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 {
 	ULONG_PTR pTEB = (ULONG_PTR)NtCurrentTeb();
-	PVOID ReturnAddress = *(PVOID*)*((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousSp));
+	PVOID ReturnAddress = NULL;
+	PVOID IndirectStub = NULL;
+	__try {
+		ReturnAddress = *(PVOID*)*((ULONG_PTR*)(pTEB + InstrumentationCallbackPreviousSp));
+	} __except(EXCEPTION_EXECUTE_HANDLER) {
+		ReturnAddress = NULL;
+	}
 #endif
 
 	if (g_config.syscall && !*((BOOLEAN*)pTEB + InstrumentationCallbackDisabled))
@@ -310,6 +368,49 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 		{
 			PUNICODE_STRING ModuleName = get_basename_of_module(GetAllocationBase(CIP));
 			log_syscall(ModuleName, ScanForExport((PVOID)CIP, SCANMAX), (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
+		}
+		else if (IsIndirectSyscall(CIP, ReturnAddress, &IndirectStub))
+		{
+			PVOID AllocationBase = GetAllocationBase(ReturnAddress);
+			PUNICODE_STRING ModuleName = get_basename_of_module((HMODULE)AllocationBase);
+			PCHAR FunctionName = NULL;
+			if (IndirectStub != NULL)
+			{
+				DWORD Ssn = ScanForSsn((PVOID)((ULONG_PTR)IndirectStub + 48));
+				if (!Ssn)
+					Ssn = ScanForSsn((PVOID)((ULONG_PTR)IndirectStub + 24));
+				if (Ssn)
+					FunctionName = GetNameBySsn(Ssn);
+			}
+			if (!FunctionName)
+				FunctionName = ScanForExport((PVOID)CIP, SCANMAX);
+
+			log_syscall(ModuleName, FunctionName, ReturnAddress, (DWORD)(DWORD_PTR)ReturnValue);
+			if (g_config.unpacker)
+			{
+				PTRACKEDREGION TrackedRegion = NULL;
+				TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+				if (!TrackedRegion)
+				{
+					TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
+					if (!TrackedRegion)
+						DebugOutput("InstrumentationCallback: Failed to add indirect region at 0x%p to tracked regions list (thread %d).\n", AllocationBase, GetCurrentThreadId());
+					else
+					{
+						DebugOutput("InstrumentationCallback: Added indirect region at 0x%p (base 0x%p) to tracked regions list (thread %d).\n", ReturnAddress, AllocationBase, GetCurrentThreadId());
+						TrackedRegion->Caller = (PVOID)ReturnAddress;
+						TrackedRegion->Address = AllocationBase;
+					}
+				}
+				if (TrackedRegion)
+					ProcessTrackedRegion(TrackedRegion);
+			}
+
+			if (g_config.debugger && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
+			{
+				DebugOutput("Break-on-return: %s indirect syscall detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
+				BreakpointOnReturn(ReturnAddress);
+			}
 		}
 		else if (!inside_hook(CIP) && !IsAddressInFilteredDlls((ULONG_PTR)CIP))
 		{
