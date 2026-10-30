@@ -2574,6 +2574,16 @@ BOOLEAN is_image_base_remapped(HMODULE BaseAddress)
 	return remapped;
 }
 
+static int g_ntdll_protect_saved = 0;
+
+void restore_ntdll_protect(void)
+{
+	if (g_ntdll_protect_saved) {
+		g_config.ntdll_protect = 1;
+		g_ntdll_protect_saved = 0;
+	}
+}
+
 BOOLEAN prevent_module_unloading(PVOID BaseAddress) {
 	// Some code may attempt to unmap a previously mapped view of, say, ntdll
 	// e.g. Xenos dll injector (https://github.com/DarthTon/Xenos - def1c2f12307d598e42506a55f1a06ed5e652af0d260aac9572469429f10d04d)
@@ -2586,8 +2596,10 @@ BOOLEAN prevent_module_unloading(PVOID BaseAddress) {
 	for (int i = 0; whitelist[i]; i++) {
 		// is this a whitelisted module?
 		HMODULE address = GetModuleHandleW(whitelist[i]);
-		if (address == BaseAddress)
+		if (address == BaseAddress) {
+			restore_ntdll_protect();
 			return FALSE;
+		}
 	}
 
 	return TRUE;
@@ -2635,6 +2647,8 @@ void prevent_module_reloading(PVOID *BaseAddress) {
 			DebugOutput("Sample attempted to remap module '%ws' at 0x%p, returning original module address instead: 0x%p", absolutepath, *BaseAddress, address);
 			pNtUnmapViewOfSection(GetCurrentProcess(), *BaseAddress);
 			*BaseAddress = (LPVOID)address;
+			if (g_config.ntdll_protect)
+				g_ntdll_protect_saved = 1;
 			g_config.ntdll_protect = 0;
 			break;
 		}

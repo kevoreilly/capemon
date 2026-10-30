@@ -199,6 +199,7 @@ struct {
 } g_hkcu;
 
 void hkcu_init(void);
+void restore_ntdll_protect(void);
 
 char *ensure_absolute_ascii_path(char *out, const char *in);
 wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);

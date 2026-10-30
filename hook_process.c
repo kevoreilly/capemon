@@ -860,7 +860,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY)
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE &&
+			(Win32Protect == PAGE_READONLY || Win32Protect == PAGE_EXECUTE_READ || Win32Protect == PAGE_READWRITE || Win32Protect == PAGE_WRITECOPY || Win32Protect == PAGE_EXECUTE_WRITECOPY))
 			prevent_module_reloading(BaseAddress);
 	}
 
@@ -892,7 +893,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE &&
+			(Win32Protect == PAGE_READONLY || Win32Protect == PAGE_EXECUTE_READ || Win32Protect == PAGE_READWRITE || Win32Protect == PAGE_WRITECOPY || Win32Protect == PAGE_EXECUTE_WRITECOPY)) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
@@ -1246,7 +1248,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		module_name = get_module_name((ULONG_PTR)*BaseAddress);
 
 	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
-		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
+		if ((NewAccessProtection & (PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) &&
+			BaseAddress && NumberOfBytesToProtect &&
 			NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
 				(g_config.hook_protect && dll_is_hooked(module_name->Buffer))) {
@@ -1263,8 +1266,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
-		if (meminfo.Protect == PAGE_EXECUTE_READWRITE)
+		if (meminfo.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) {
 			restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
+			restore_ntdll_protect();
+		}
 		set_lasterrors(&lasterrors);
 	}
 
@@ -1325,7 +1330,8 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	UNICODE_STRING *module_name = get_module_name((ULONG_PTR)lpAddress);
 
 	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
-		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
+		if ((flNewProtect & (PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) &&
+			lpAddress && dwSize &&
 			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
 				(g_config.hook_protect && dll_is_hooked(module_name->Buffer))) {
@@ -1342,8 +1348,10 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));
-		if (meminfo.Protect == PAGE_EXECUTE_READWRITE)
+		if (meminfo.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) {
 			restore_hooks_on_range((ULONG_PTR)lpAddress, (ULONG_PTR)lpAddress + dwSize);
+			restore_ntdll_protect();
+		}
 		set_lasterrors(&lasterrors);
 	}
 
