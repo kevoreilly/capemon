@@ -947,11 +947,6 @@ BOOL remove_dll_range(ULONG_PTR addr)
 
 ULONG_PTR base_of_dll_of_interest;
 
-void set_dll_of_interest(ULONG_PTR BaseAddress)
-{
-	base_of_dll_of_interest = BaseAddress;
-}
-
 void add_all_dlls_to_dll_ranges(void)
 {
 	LDR_DATA_TABLE_ENTRY * mod;

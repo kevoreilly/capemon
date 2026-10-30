@@ -275,8 +275,6 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 BOOL is_wow64_process(void);
 int is_wow64_fs_redirection_disabled(void);
 
-void set_dll_of_interest(ULONG_PTR BaseAddress);
-
 PCHAR get_exe_basename(PCHAR ModulePath);
 PWCHAR get_dll_basename(PWCHAR ModulePath);
 void register_dll_notification_manually(PLDR_DLL_NOTIFICATION_FUNCTION notify);

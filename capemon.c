@@ -167,7 +167,7 @@ VOID CALLBACK New_DllLoadNotification(
 		else if ((g_config.file_of_interest && !wcsicmp(library.Buffer, g_config.file_of_interest)) ||
 			(path_is_system(our_process_path_w) && loader_is_allowed(our_process_name) && dllpath && !wcsnicmp(dllpath, library.Buffer, wcslen(library.Buffer)))) {
 			if (!base_of_dll_of_interest)
-				set_dll_of_interest((ULONG_PTR)NotificationData->Loaded.DllBase);
+				base_of_dll_of_interest = (ULONG_PTR)NotificationData->Loaded.DllBase;
 			//ImageBase = (PVOID)base_of_dll_of_interest;
 			if (g_config.file_of_interest == NULL) {
 				g_config.file_of_interest = calloc(1, (wcslen(library.Buffer) + 1) * sizeof(wchar_t));
