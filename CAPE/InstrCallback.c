@@ -147,8 +147,8 @@ unsigned int ScanForSsn(PVOID Address)
 						PBYTE q = p + f;
 						if (q[0] == 0x8b && q[1] == 0x0d && q[6] == 0x33 && q[7] == 0x0d)
 						{
-							DWORD kp0 = **(PDWORD **)(q + 2);
-							DWORD kp1 = **(PDWORD **)(q + 8);
+							DWORD kp0 = *(DWORD *)(*(DWORD **)(q + 2));
+							DWORD kp1 = *(DWORD *)(*(DWORD **)(q + 8));
 							ssn ^= (kp0 ^ kp1);
 							break;
 						}
