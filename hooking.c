@@ -98,27 +98,26 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		return;
 	if (!g_config.unpacker)
 		return;
+
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
 	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
 		return;
 	PTRACKEDREGION TrackedRegion = NULL;
-	if (g_config.unpacker)
-	{
-		TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-		if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
-			return;
+	TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+	if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
+		return;
+	if (!TrackedRegion) {
+		TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 		if (!TrackedRegion) {
-			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
-			if (!TrackedRegion) {
 #ifdef DEBUG_COMMENTS
-				DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+			DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 #endif
-				return;
-			}
-			DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+			return;
 		}
-		TrackedRegion->Caller = (PVOID)addr;
+		DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 	}
+	TrackedRegion->Caller = (PVOID)addr;
+
 	if (g_config.base_on_caller)
 		SetInitialBreakpoints((PVOID)AllocationBase);
 	if (!g_config.loaderlock_scans && loader_lock_held()) {
@@ -127,14 +126,8 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	}
 	else if (loader_lock_held())
 		DebugOutput("caller_dispatch: Scanning calling region at 0x%p...\n", AllocationBase);
-	char ModulePath[MAX_PATH];
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-	if (g_config.unpacker)
-		ProcessTrackedRegion(TrackedRegion);
-	else if (MappedModule)
-		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
-	else
-		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
+
+	ProcessTrackedRegion(TrackedRegion);
 }
 
 static int set_caller_info(void *_hook_info, ULONG_PTR addr)
