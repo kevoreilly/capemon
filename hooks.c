@@ -1002,6 +1002,7 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtUnmapViewOfSectionEx),
 	HOOK(ntdll, NtOpenProcessToken),
 	HOOK(ntdll, NtQueryInformationToken),
+	HOOK(ntdll, NtAdjustPrivilegesToken),
 	HOOK(ntdll, DbgUiWaitStateChange),
 
 	// Thread Hooks
@@ -1010,6 +1011,7 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtTerminateThread),
 	HOOK(ntdll, NtQueueApcThread),
 	HOOK(ntdll, NtQueueApcThreadEx),
+	HOOK(ntdll, NtTestAlert),
 	HOOK(ntdll, NtOpenThread),
 	HOOK(ntdll, NtGetContextThread),
 #ifdef _WIN64
@@ -1365,6 +1367,7 @@ hook_t office_hooks[] = {
 
 	// Process Hooks
 	HOOK(ntdll, NtAllocateVirtualMemory),
+	HOOK(ntdll, NtAllocateVirtualMemoryEx),
 	HOOK(ntdll, NtReadVirtualMemory),
 	HOOK(kernel32, ReadProcessMemory),
 	HOOK(ntdll, NtWriteVirtualMemory),
@@ -1387,7 +1390,12 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, NtMakePermanentObject),
 	HOOK(ntdll, NtOpenSection),
 	HOOK(ntdll, NtMapViewOfSection),
+	HOOK(ntdll, NtMapViewOfSectionEx),
 	HOOK(ntdll, NtUnmapViewOfSection),
+	HOOK(ntdll, NtUnmapViewOfSectionEx),
+	HOOK(ntdll, NtOpenProcessToken),
+	HOOK(ntdll, NtQueryInformationToken),
+	HOOK(ntdll, NtAdjustPrivilegesToken),
 	HOOK(kernel32, WaitForDebugEvent),
 	HOOK(ntdll, DbgUiWaitStateChange),
 	HOOK(advapi32, CreateProcessWithLogonW),
@@ -1411,6 +1419,7 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, NtTerminateThread),
 	HOOK(ntdll, NtQueueApcThread),
 	HOOK(ntdll, NtQueueApcThreadEx),
+	HOOK(ntdll, NtTestAlert),
 	HOOK(ntdll, NtOpenThread),
 	HOOK(ntdll, NtGetContextThread),
 	HOOK(ntdll, NtSetContextThread),
