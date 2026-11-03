@@ -1925,6 +1925,16 @@ HOOKDEF(BOOL, WINAPI, UnhookWindowsHookEx,
 	__in  HHOOK hhk
 );
 
+HOOKDEF(HWINEVENTHOOK, WINAPI, SetWinEventHook,
+	__in  UINT eventMin,
+	__in  UINT eventMax,
+	__in  HMODULE hmodWinEventProc,
+	__in  WINEVENTPROC pfnWinEventProc,
+	__in  DWORD idProcess,
+	__in  DWORD idThread,
+	__in  UINT dwFlags
+);
+
 HOOKDEF(LPTOP_LEVEL_EXCEPTION_FILTER, WINAPI, SetUnhandledExceptionFilter,
 	_In_  LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter
 );
