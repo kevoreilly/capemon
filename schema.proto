@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+message StrMessage {
+    int32 i = 1;
+    bytes name = 2;
+    bytes type = 3;
+    bytes category = 4;
+    bytes args = 5;
+    bytes api_name = 6;
+    bytes arguments = 7;
+}
+
+message RegularCall {
+    int32 i = 1;
+    int32 t = 2;
+    uint64 r = 3;
+    uint64 p = 4;
+    bytes c = 5;
+    bytes args = 6;
+    bytes index = 7;
+    bytes aux = 8;
+    bytes data = 9;
+}
+
+message HookEvent {
+    oneof message_type {
+        StrMessage str = 1;
+        RegularCall regular_call = 2;
+    }
+}
