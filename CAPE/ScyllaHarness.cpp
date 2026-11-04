@@ -34,8 +34,6 @@ typedef unsigned __int64 QWORD;
 #define CREATE_NEW_IAT_IN_SECTION FALSE
 #define OFT_SUPPORT FALSE
 
-#define PE_HEADER_LIMIT 0x200
-
 //**************************************************************************************
 void ScyllaInit(HANDLE hProcess)
 //**************************************************************************************
@@ -141,6 +139,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	SIZE_T SectionBasedSizeOfImage = 0;
 	PeParser *peFile = 0;
 	DWORD_PTR entrypoint = NULL;
+	PBYTE PEImage = NULL;
 
 	bool isAfter = 0;
 	DWORD sizeIAT = 0;
@@ -194,7 +193,6 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	}
 	else if (IsDisguisedPEHeader((LPVOID)ModuleBase))
 	{
-		PBYTE PEImage = NULL;
 		PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 		DebugOutput("DumpProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
@@ -223,7 +221,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
@@ -245,7 +243,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 						//break;
 					}
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 
 				if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
 				{
@@ -266,7 +264,12 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 		if (peFile->isValidPeFile())
 		{
 			if (NewEP)
-				entrypoint = NewEP;
+			{
+				if (ModuleBase && NewEP > ModuleBase)
+					entrypoint = NewEP - ModuleBase;
+				else
+					entrypoint = NewEP;
+			}
 			else
 				entrypoint = peFile->getEntryPoint();
 
@@ -287,10 +290,16 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 					DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 				else
+				{
 					DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+					goto fail;
+				}
 		}
 		else
+		{
 			DebugOutput("DumpProcess: Unable to fix PE image for dumping.\n");
+			goto fail;
+		}
 	}
 	else
 	{
@@ -384,23 +393,44 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			{
 				DebugOutput("DumpProcess: Import table rebuild success.\n");
 				delete peFile;
+				if (PEImage)
+					free(PEImage);
 				return 1;
 			}
 			else
 			{
 				DebugOutput("DumpProcess: Import table rebuild failed, falling back to unfixed dump.\n");
-				peFile->savePeFileToDisk(NULL);
+				if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+					DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+				else
+				{
+					DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+					goto fail;
+				}
 			}
 		}
 		else
-			DebugOutput("DumpProcess: Unable to find IAT in scan.\n");
+		{
+			DebugOutput("DumpProcess: Unable to find IAT in scan, falling back to unfixed dump.\n");
+			if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+				DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+			else
+			{
+				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+				goto fail;
+			}
+		}
 	}
 
 	delete peFile;
+	if (PEImage)
+		free(PEImage);
 
 	return 1;
 fail:
 	delete peFile;
+	if (PEImage)
+		free(PEImage);
 
 	return 0;
 }
@@ -560,7 +590,7 @@ extern "C" SIZE_T GetPESize(PVOID Buffer)
 		return SectionBasedFileSize;
 	}
 
-	for (unsigned int SectionIndex = NumberOfSections-1; SectionIndex >= 0; SectionIndex--)
+	for (unsigned int SectionIndex = NumberOfSections; SectionIndex-- > 0;)
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput

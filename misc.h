@@ -30,6 +30,7 @@ typedef LONG(WINAPI *_NtSetInformationProcess)(HANDLE ProcessHandle,
 typedef LONG(WINAPI *_NtQueryInformationThread)(HANDLE ThreadHandle,
 	ULONG ThreadInformationClass, PVOID ThreadInformation,
 	ULONG ThreadInformationLength, PULONG ReturnLength);
+extern _NtQueryInformationThread pNtQueryInformationThread;
 typedef BOOLEAN(WINAPI *_RtlGenRandom)(PVOID RandomBuffer,
 	ULONG RandomBufferLength);
 typedef NTSTATUS(WINAPI *_NtQueryAttributesFile)(
@@ -182,6 +183,7 @@ DWORD randint(DWORD min, DWORD max);
 BOOL is_directory_objattr(const OBJECT_ATTRIBUTES *obj);
 BOOL file_exists(const OBJECT_ATTRIBUTES *obj);
 UNICODE_STRING* get_module_name(ULONG_PTR addr);
+BOOL module_in_exe_dir(HMODULE hmod);
 void hide_module_from_peb(HMODULE module_handle);
 int path_is_system(const wchar_t *path_w);
 int path_is_program_files(const wchar_t *path_w);
@@ -197,6 +199,7 @@ struct {
 } g_hkcu;
 
 void hkcu_init(void);
+void restore_ntdll_protect(void);
 
 char *ensure_absolute_ascii_path(char *out, const char *in);
 wchar_t *ensure_absolute_unicode_path(wchar_t *out, const wchar_t *in);
@@ -214,6 +217,37 @@ int is_shutting_down();
 #define MAX_PATH_PLUS_TOLERANCE MAX_PATH + 64
 
 #define MAX_KEY_BUFLEN ((16384 + 256) * sizeof(WCHAR))
+
+//
+// Per-thread scratch buffers for path handling.
+//
+// A hooked file or registry call needs one or more WIDE_STRING_LIMIT-sized
+// buffers to normalise a path into, and until now each one was a fresh
+// malloc/calloc of 64 KB. NtQueryInformationFile took two, NtSetInformationFile
+// took three, and the calloc variants zeroed all of it. That is 64-192 KB of
+// allocator traffic per call on paths that run thousands of times a second.
+//
+// path_scratch_acquire() hands out a buffer from a small per-thread pool
+// instead. The buffer is not zeroed, but its first character is, so it starts
+// life as an empty string exactly like the calloc it replaces - callers such as
+// path_from_object_attributes() can return without writing anything and their
+// callers still see "".
+//
+// Rules:
+//   - every acquire needs a matching release; release is NULL-safe
+//   - a buffer must not outlive the call that acquired it, and must not be
+//     stored anywhere that survives the release
+//   - acquire can still return NULL, so the NULL check stays
+//   - contents are whatever the previous user left behind; treat it as
+//     uninitialised past the first character
+//
+// Must stay in step with WIDE_STRING_LIMIT in capemon.c, which is where the
+// 32768 in all the call sites this replaces came from.
+#define PATH_SCRATCH_CHARS  32768
+#define PATH_SCRATCH_SIZE   (PATH_SCRATCH_CHARS * sizeof(wchar_t))
+
+void *path_scratch_acquire(void);
+void path_scratch_release(void *buf);
 
 #ifndef INET_ADDRSTRLEN
 #define INET_ADDRSTRLEN 16
@@ -238,9 +272,8 @@ wchar_t *get_matching_unicode_specialname(const wchar_t *path, unsigned int *mat
 void specialname_map_init(void);
 
 char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offset);
+BOOL is_wow64_process(void);
 int is_wow64_fs_redirection_disabled(void);
-
-void set_dll_of_interest(ULONG_PTR BaseAddress);
 
 PCHAR get_exe_basename(PCHAR ModulePath);
 PWCHAR get_dll_basename(PWCHAR ModulePath);

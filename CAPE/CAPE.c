@@ -52,6 +52,11 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\config.h"
 #include "..\lookup.h"
 
+#ifndef _WIN64
+#include "HeavensGate.h"
+#endif
+
+
 #pragma comment(lib, "Shlwapi.lib")
 
 typedef union _UNWIND_CODE {
@@ -134,6 +139,8 @@ extern ULONG_PTR base_of_dll_of_interest;
 extern wchar_t *our_process_path_w;
 extern wchar_t *our_commandline;
 extern char *our_process_name;
+extern char *our_dll_path;
+extern const char g_capemon_version[];
 extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
@@ -1073,23 +1080,24 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	if (Protect)
 		TrackedRegion->MemInfo.Protect = Protect;
 
-	TrackedRegion->Entropy = GetEntropy((PUCHAR)TrackedRegion->AllocationBase);
-
-	// If the region is a PE image
-	TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
-	if (TrackedRegion->EntryPoint)
+	if (!PageAlreadyTracked)
 	{
-		TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
+		TrackedRegion->Entropy = GetEntropy((PUCHAR)TrackedRegion->AllocationBase);
+
+		// If the region is a PE image
+		TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
+		if (TrackedRegion->EntryPoint)
+		{
+			TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
 #ifdef DEBUG_COMMENTS
-		if (!PageAlreadyTracked)
 			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions: EntryPoint 0x%x, Entropy %e\n", TrackedRegion->AllocationBase, TrackedRegion->EntryPoint, TrackedRegion->Entropy);
 #endif
-
-	}
+		}
 #ifdef DEBUG_COMMENTS
-	else if (!PageAlreadyTracked)
-		DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions.\n", TrackedRegion->AllocationBase);
+		else
+			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions.\n", TrackedRegion->AllocationBase);
 #endif
+	}
 
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)GetAllocationBase(Address), 0))
 	{
@@ -1233,6 +1241,8 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 		DebugOutput("ProcessImageBase: Modified PE size detected at image base 0x%p - new size 0x%x.\n", TrackedRegion->AllocationBase, MinPESize);
 	else if (TrackedRegion->Entropy && EntropyChange > (double)ENTROPY_DELTA)
 		DebugOutput("ProcessImageBase: Modified image detected at image base 0x%p - new entropy %e (change %e).\n", TrackedRegion->AllocationBase, Entropy, EntropyChange);
+	else if (!TrackedRegion->PagesDumped && TrackedRegion->AllocationBase == ImageBase && VerifyHeaders(TrackedRegion->AllocationBase, our_process_path_w) == 0)
+		DebugOutput("ProcessImageBase: Modified PE headers detected at image base 0x%p - dumping.\n", TrackedRegion->AllocationBase);
 	else
 	{
 		DebugOutput("ProcessImageBase: Main module image at 0x%p unmodified (entropy change %e)\n", TrackedRegion->AllocationBase, EntropyChange);
@@ -1245,8 +1255,8 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 
 	SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
-	if (!DumpImageInCurrentProcess(TrackedRegion->AllocationBase))
-		DumpMemory(TrackedRegion->AllocationBase, AccessibleSize);
+	if (DumpImageInCurrentProcess(TrackedRegion->AllocationBase) || DumpMemory(TrackedRegion->AllocationBase, AccessibleSize))
+		TrackedRegion->PagesDumped = TRUE;
 }
 
 //**************************************************************************************
@@ -1370,16 +1380,13 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	}
 	else
 	{
-		if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
-			TrackedRegion->PagesDumped = TRUE;
-
 		if (TraceIsRunning)
 			DebuggerOutput("ProcessTrackedRegion: Failed to dump region at 0x%p ", Address);
 		else
 			DebugOutput("ProcessTrackedRegion: Failed to dump region at 0x%p.\n", Address);
 	}
 
-	if (g_config.yarascan && (!TrackedRegion->PagesDumped || (g_config.dump_limit && DumpCount >= g_config.dump_limit)))
+	if (g_config.yarascan)
 		YaraScan(Address, Size);
 }
 
@@ -1679,7 +1686,6 @@ char* GetTempName()
 BOOL GetMD5(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 //**************************************************************************************
 {
-	DWORD i;
 	DWORD dwStatus = 0;
 	HCRYPTPROV hProv = 0;
 	HCRYPTHASH hHash = 0;
@@ -1712,15 +1718,15 @@ BOOL GetMD5(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	if (!CryptGetHashParam(hHash, HP_HASHVAL, MD5Hash, &cbHash, 0))
 	{
 		ErrorOutput("CryptGetHashParam failed");
+		CryptDestroyHash(hHash);
+		CryptReleaseContext(hProv, 0);
+		return 0;
 	}
 
 	CryptDestroyHash(hHash);
 	CryptReleaseContext(hProv, 0);
 
-	for (i = 0; i < cbHash; i++)
-	{
-		PrintHexBytes(OutputBuffer, MD5Hash, MD5LEN);
-	}
+	PrintHexBytes(OutputBuffer, MD5Hash, MD5LEN);
 
 	return 1;
 }
@@ -1759,6 +1765,9 @@ BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	if (!CryptGetHashParam(hHash, HP_HASHVAL, Hash, &cbHash, 0))
 	{
 		ErrorOutput("CryptGetHashParam failed");
+		CryptDestroyHash(hHash);
+		CryptReleaseContext(hProv, 0);
+		return 0;
 	}
 
 	CryptDestroyHash(hHash);
@@ -1773,6 +1782,40 @@ BOOL GetSHA256(unsigned char* Buffer, unsigned int Size, char* OutputBuffer)
 	return 1;
 }
 
+BOOL GetSelfHash(char* OutputBuffer)
+{
+    HANDLE Handle = CreateFile(our_dll_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    DWORD Size;
+    unsigned char* Buffer;
+    DWORD Read;
+    BOOL Result;
+
+    if (Handle == INVALID_HANDLE_VALUE)
+		return 0;
+
+    Size = GetFileSize(Handle, NULL);
+    if (Size == INVALID_FILE_SIZE || Size == 0)
+    {
+        CloseHandle(Handle);
+        return 0;
+    }
+
+    Buffer = (unsigned char*)malloc(Size);
+
+    if (!Buffer)
+	{
+		CloseHandle(Handle);
+		return 0;
+	}
+
+    Result = ReadFile(Handle, Buffer, Size, &Read, NULL) && Read == Size && GetSHA256(Buffer, Size, OutputBuffer);
+
+    free(Buffer);
+
+	CloseHandle(Handle);
+
+    return Result;
+}
 //**************************************************************************************
 double GetEntropy(PUCHAR Buffer)
 //**************************************************************************************
@@ -2655,7 +2698,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	if (SectionHeaders == NULL)
 	{
 		DebugOutput("VerifyHeaders: Error allocating memory for %d section headers", NtHeaders.FileHeader.NumberOfSections);
-		return RetVal;
+		goto end;
 	}
 
 	SIZE_T SizeOfSectionHeaders = sizeof(IMAGE_SECTION_HEADER) * NtHeaders.FileHeader.NumberOfSections;
@@ -2679,6 +2722,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	{
 		DebugOutput("VerifyHeaders: PE header does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSectionHeaders);
 		RetVal = 0;
+		goto end;
 	}
 
 	SetFilePointer(hFile, FileOffsetFromRVA(ImageBase, NtHeaders.OptionalHeader.AddressOfEntryPoint), 0, FILE_BEGIN);
@@ -2688,7 +2732,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	if (EntryPointBytes == NULL)
 	{
 		DebugOutput("VerifyHeaders: Error allocating memory for entry point check");
-		return RetVal;
+		goto end;
 	}
 
 	if (!ReadFile(hFile, EntryPointBytes, (DWORD)ChunkSize, &bytesRead, NULL))
@@ -2969,7 +3013,7 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPEsInRange: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	BOOL RetVal = FALSE;
@@ -3097,7 +3141,7 @@ int DumpMemory(PVOID Buffer, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpMemory: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (!Size)
@@ -3134,7 +3178,7 @@ BOOL DumpRegion(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRegion: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 	PVOID AllocationBase = GetAllocationBase(Address);
@@ -3203,7 +3247,7 @@ int DumpProcess(HANDLE hProcess, PVOID BaseAddress, PVOID NewEP, BOOL FixImports
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpProcess: Dump at 0x%p skipped due to dump limit %d", BaseAddress, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3227,7 +3271,7 @@ BOOL DumpRange(PVOID Address, SIZE_T Size)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpRange: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return FALSE;
+		return TRUE;
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -3267,7 +3311,7 @@ int DumpPE(PVOID Buffer)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpPE: Dump at 0x%p skipped due to dump limit %d", Buffer, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	__try
@@ -3299,7 +3343,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 	if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 	{
 		DebugOutput("DumpImageInCurrentProcess: Dump at 0x%p skipped due to dump limit %d", Address, g_config.dump_limit);
-		return 0;
+		return 1;
 	}
 
 	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
@@ -3341,7 +3385,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
 						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
-				MachineProbe += sizeof(WORD);
+				MachineProbe++;
 			}
 
 			if (pNtHeader)
@@ -3759,6 +3803,52 @@ static void EnableLoaderSnaps()
 #endif
 }
 
+void LoadWowMonitor()
+{
+	char capemon_x64Path[MAX_PATH] = "", capemon_x64Name[] = "capemon_x64.dll";
+
+#ifdef STANDALONE
+
+#ifndef _WIN64
+    memset(capemon_x64Path, 0, MAX_PATH);
+
+    strncpy_s(capemon_x64Path, MAX_PATH, capemon_x64Name, strlen(capemon_x64Name)+1);
+
+	uint64_t capemon_x64 = LoadLibrary64(capemon_x64Path);
+	if (capemon_x64)
+		DebugOutput("LoadWowMonitor: Successfully loaded capemon_x64: 0x%p\n", capemon_x64);
+    else
+		DebugOutput("LoadWowMonitor: Failed to load capemon_x64.\n");
+#else
+#endif
+
+#else
+
+#ifndef _WIN64
+    // Get path to 64-bit monitor
+	memset(capemon_x64Path, 0, MAX_PATH);
+    strncpy_s(capemon_x64Path, MAX_PATH, g_config.analyzer, strlen(g_config.analyzer)+1);
+
+	if (strlen(capemon_x64Path) + strlen("\\dll\\") + strlen(capemon_x64Name) >= MAX_PATH)
+	{
+		DebugOutput("LoadWowMonitor: Error, monitor directory path too long.\n");
+		return;
+	}
+
+    PathAppend(capemon_x64Path, "\\dll\\");
+    PathAppend(capemon_x64Path, capemon_x64Name);
+
+	uint64_t capemon_x64 = LoadLibrary64(capemon_x64Path);
+
+	if (capemon_x64)
+		DebugOutput("LoadWowMonitor: Successfully loaded capemon_x64: 0x%p\n", capemon_x64);
+    else
+		DebugOutput("LoadWowMonitor: Failed to load capemon_x64.\n");
+#endif
+
+#endif
+}
+
 void CAPE_post_init()
 {
 	if (g_config.syscall && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
@@ -3782,6 +3872,21 @@ void CAPE_post_init()
 
 	// Restore headers in case of IAT patching
 	RestoreHeaders();
+
+#ifndef _WIN64
+	if (g_config.wowmon)
+		LoadWowMonitor();
+#endif
+
+	DebugOutput("%s-bit monitor loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", sizeof(void*) == 8 ? "64" : "32", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+
+	char hash[65] = {0};
+	GetSelfHash(hash);
+	DebugOutput("Monitor version: \"%s\" (%s-bit) SHA-256: %s\n", g_capemon_version, sizeof(void*) == 8 ? "64" : "32", hash);
+
+	char CommandLine[MAX_UNICODE_PATH];
+	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
+	DebugOutput("Commandline: %s\n", CommandLine);
 }
 
 void CAPE_init()
@@ -3864,16 +3969,6 @@ Finish:
 
 	if (g_config.amsidump && ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6))
 		AmsiDumperInit((HMODULE)g_our_dll_base);
-
-#ifdef _WIN64
-	DebugOutput("Monitor initialised: 64-bit capemon loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
-#else
-	DebugOutput("Monitor initialised: 32-bit capemon loaded in process %d at 0x%x, thread %d, image base 0x%x, stack from 0x%x-0x%x\n", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
-#endif
-
-	char CommandLine[MAX_UNICODE_PATH];
-	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
-	DebugOutput("Commandline: %s\n", CommandLine);
 
 	return;
 }

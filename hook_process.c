@@ -134,17 +134,17 @@ HOOKDEF(BOOL, WINAPI, Thread32Next,
 ) {
 	BOOL ret = Old_Thread32Next(hSnapshot, lpte);
 
-	if (ret)
-		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
-	else
-		LOQ_bool("process", "");
-
 	// ignore our own threads
 	if (ret && lpte && lpte->th32OwnerProcessID && GetCurrentProcessId() == lpte->th32OwnerProcessID && lpte->th32ThreadID && is_monitor_thread(lpte->th32ThreadID)) {
 		do {
 			ret = Old_Thread32Next(hSnapshot, lpte);
 		} while (ret && lpte && GetCurrentProcessId() == lpte->th32OwnerProcessID && is_monitor_thread(lpte->th32ThreadID));
 	}
+
+	if (ret && lpte)
+		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
+	else
+		LOQ_bool("process", "");
 
 	return ret;
 }
@@ -155,17 +155,17 @@ HOOKDEF(BOOL, WINAPI, Thread32First,
 ) {
 	BOOL ret = Old_Thread32First(hSnapshot, lpte);
 
-	if (ret)
-		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
-	else
-		LOQ_bool("process", "");
-
 	// ignore our own threads
 	if (ret && lpte && lpte->th32OwnerProcessID && GetCurrentProcessId() == lpte->th32OwnerProcessID && lpte->th32ThreadID && is_monitor_thread(lpte->th32ThreadID)) {
 		do {
 			ret = Old_Thread32Next(hSnapshot, lpte);
 		} while (ret && lpte && GetCurrentProcessId() == lpte->th32OwnerProcessID && is_monitor_thread(lpte->th32ThreadID));
 	}
+
+	if (ret && lpte)
+		LOQ_bool("process", "ii", "ThreadID", lpte->th32ThreadID, "ProcessId", lpte->th32OwnerProcessID);
+	else
+		LOQ_bool("process", "");
 
 	return ret;
 }
@@ -860,7 +860,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSection,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY)
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE &&
+			(Win32Protect == PAGE_READONLY || Win32Protect == PAGE_EXECUTE_READ || Win32Protect == PAGE_READWRITE || Win32Protect == PAGE_WRITECOPY || Win32Protect == PAGE_EXECUTE_WRITECOPY))
 			prevent_module_reloading(BaseAddress);
 	}
 
@@ -892,7 +893,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtMapViewOfSectionEx,
 			ProcessMessage(pid, 0);
 			disable_sleep_skip();
 		}
-		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE && Win32Protect == PAGE_READONLY) {
+		else if (g_config.ntdll_remap && ret == STATUS_IMAGE_NOT_AT_BASE &&
+			(Win32Protect == PAGE_READONLY || Win32Protect == PAGE_EXECUTE_READ || Win32Protect == PAGE_READWRITE || Win32Protect == PAGE_WRITECOPY || Win32Protect == PAGE_EXECUTE_WRITECOPY)) {
 			prevent_module_reloading(BaseAddress);
 		}
 	}
@@ -1245,8 +1247,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 	if (BaseAddress)
 		module_name = get_module_name((ULONG_PTR)*BaseAddress);
 
-	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
-		if (NewAccessProtection == PAGE_EXECUTE_READWRITE && BaseAddress && NumberOfBytesToProtect &&
+	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
+		if ((NewAccessProtection & (PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) &&
+			BaseAddress && NumberOfBytesToProtect &&
 			NtCurrentProcess() == ProcessHandle && is_in_dll_range((ULONG_PTR)*BaseAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
 				(g_config.hook_protect && dll_is_hooked(module_name->Buffer))) {
@@ -1263,8 +1266,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(ProcessHandle, *BaseAddress, &meminfo, sizeof(meminfo));
-		if (meminfo.Protect == PAGE_EXECUTE_READWRITE)
+		if (meminfo.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) {
 			restore_hooks_on_range((ULONG_PTR)*BaseAddress, (ULONG_PTR)*BaseAddress + *NumberOfBytesToProtect);
+			restore_ntdll_protect();
+		}
 		set_lasterrors(&lasterrors);
 	}
 
@@ -1324,8 +1329,9 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 	DWORD OriginalNewProtect = 0;
 	UNICODE_STRING *module_name = get_module_name((ULONG_PTR)lpAddress);
 
-	if (module_name && g_config.ntdll_protect || g_config.hook_protect) {
-		if (flNewProtect == PAGE_EXECUTE_READWRITE && lpAddress && dwSize &&
+	if (module_name && (g_config.ntdll_protect || g_config.hook_protect)) {
+		if ((flNewProtect & (PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) &&
+			lpAddress && dwSize &&
 			GetCurrentProcessId() == our_getprocessid(hProcess) && is_in_dll_range((ULONG_PTR)lpAddress)) {
 			if ((g_config.ntdll_protect && module_name->Length && !wcsncmp(module_name->Buffer, L"ntdll.dll", module_name->Length)) ||
 				(g_config.hook_protect && dll_is_hooked(module_name->Buffer))) {
@@ -1342,8 +1348,10 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		lasterror_t lasterrors;
 		get_lasterrors(&lasterrors);
 		VirtualQueryEx(hProcess, lpAddress, &meminfo, sizeof(meminfo));
-		if (meminfo.Protect == PAGE_EXECUTE_READWRITE)
+		if (meminfo.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) {
 			restore_hooks_on_range((ULONG_PTR)lpAddress, (ULONG_PTR)lpAddress + dwSize);
+			restore_ntdll_protect();
+		}
 		set_lasterrors(&lasterrors);
 	}
 
@@ -1462,12 +1470,12 @@ HOOKDEF(NTSTATUS, WINAPI, DbgUiWaitStateChange,
 			break;
 		case DbgLoadDllStateChange:
 			{
-				wchar_t *fname = calloc(32768, sizeof(wchar_t));
+				wchar_t *fname = path_scratch_acquire();
 
 				path_from_handle(StateChange->StateInfo.LoadDll.FileHandle, fname, 32768);
 				// we could continue ourselves here and skip notification to the malware of capemon loading
 				LOQ_ntstatus("process", "iiiF", "NewState", StateChange->NewState, "ProcessId", pid_from_process_handle(StateChange->AppClientId.UniqueProcess), "ThreadId", tid_from_thread_handle(StateChange->AppClientId.UniqueThread), "DllPath", fname);
-				free(fname);
+				path_scratch_release(fname);
 			}
 			break;
 		default:

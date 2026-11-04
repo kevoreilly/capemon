@@ -43,6 +43,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 static lookup_t g_hook_info;
 static lookup_t g_force_hook_threads;
+static lookup_t g_hooking_depth;
 
 extern BOOL inside_hook(LPVOID Address);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
@@ -97,27 +98,26 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 		return;
 	if (!g_config.unpacker)
 		return;
+
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
 	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
 		return;
 	PTRACKEDREGION TrackedRegion = NULL;
-	if (g_config.unpacker)
-	{
-		TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-		if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
-			return;
+	TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
+	if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
+		return;
+	if (!TrackedRegion) {
+		TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 		if (!TrackedRegion) {
-			TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
-			if (!TrackedRegion) {
 #ifdef DEBUG_COMMENTS
-				DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+			DebugOutput("caller_dispatch: Failed to add region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 #endif
-				return;
-			}
-			DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
+			return;
 		}
-		TrackedRegion->Caller = (PVOID)addr;
+		DebugOutput("caller_dispatch: Added region at 0x%p to tracked regions list (%ws::%s returns to 0x%p, thread %d).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, GetCurrentThreadId());
 	}
+	TrackedRegion->Caller = (PVOID)addr;
+
 	if (g_config.base_on_caller)
 		SetInitialBreakpoints((PVOID)AllocationBase);
 	if (!g_config.loaderlock_scans && loader_lock_held()) {
@@ -126,14 +126,8 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	}
 	else if (loader_lock_held())
 		DebugOutput("caller_dispatch: Scanning calling region at 0x%p...\n", AllocationBase);
-	char ModulePath[MAX_PATH];
-	BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
-	if (g_config.unpacker)
-		ProcessTrackedRegion(TrackedRegion);
-	else if (MappedModule)
-		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p mapped as %s).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr, ModulePath);
-	else
-		DebugOutput("caller_dispatch: Dump of calling region at 0x%p skipped (%ws::%s returns to 0x%p).\n", AllocationBase, hookinfo->current_hook->library, hookinfo->current_hook->funcname, addr);
+
+	ProcessTrackedRegion(TrackedRegion);
 }
 
 static int set_caller_info(void *_hook_info, ULONG_PTR addr)
@@ -214,7 +208,7 @@ static int __called_by_hook(ULONG_PTR stack_pointer, ULONG_PTR frame_pointer)
 {
 	int ret = operate_on_backtrace(stack_pointer, frame_pointer, NULL, addr_in_our_dll_range);
 
-	// if exception operating on backtrace or LdrpInvertedFunctionTableSRWLock held, prevent recursion
+	// if exception operating on backtrace or LdrpInvertedFunctionTableSRWLock/LdrpMrdataLock held, prevent recursion
 	if (ret == -1)
 		return 1;
 
@@ -321,7 +315,6 @@ BOOLEAN force_hook_thread_func(const char* hookname)
 
 static hook_info_t tmphookinfo;
 DWORD tmphookinfo_threadid;
-FILETIME ft;
 
 // returns 1 if we should call our hook, 0 if we should call the original function instead
 // on x86 this is actually: hook, esp, ebp
@@ -353,31 +346,45 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || force_hook_thread_func(h->funcname) || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
+		if ((g_config.api_cap || g_config.api_rate_cap) && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
 			if (h->hook_disabled)
 				return 0;
-			h->counter++;
-			if (g_config.api_cap && h->counter >= g_config.api_cap) {
-				DebugOutput("api-cap: %s hook disabled due to count: %d\n", h->funcname, h->counter);
-				h->hook_disabled = 1;
-				return 0;
-			}
-			if (Old_GetSystemTimeAsFileTime)
-				Old_GetSystemTimeAsFileTime(&ft);
-			else
-				GetSystemTimeAsFileTime(&ft);
-			if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
-				h->rate_counter++;
-				if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
-					DebugOutput("api-rate-cap: %s hook disabled due to rate\n", h->funcname);
-					h->rate_counter = 0;
+
+			if (g_config.api_cap) {
+				unsigned int counter = (unsigned int)InterlockedIncrement((volatile LONG *)&h->counter);
+				if (counter >= g_config.api_cap) {
+					DebugOutput("api-cap: %s hook disabled due to count: %d\n", h->funcname, counter);
 					h->hook_disabled = 1;
 					return 0;
 				}
 			}
-			else {
-				h->rate_counter = 0;
-				h->hook_timer = ft.dwLowDateTime;
+
+			if (g_config.api_rate_cap) {
+				FILETIME ft;
+				ULARGE_INTEGER now;
+				DWORD now_ms;
+				unsigned int rate_counter;
+
+				if (Old_GetSystemTimeAsFileTime)
+					Old_GetSystemTimeAsFileTime(&ft);
+				else
+					GetSystemTimeAsFileTime(&ft);
+				now.LowPart = ft.dwLowDateTime;
+				now.HighPart = ft.dwHighDateTime;
+				now_ms = (DWORD)(now.QuadPart / 10000);
+				if (now_ms - h->hook_timer < HOOK_TIME_SAMPLE) {
+					rate_counter = (unsigned int)InterlockedIncrement((volatile LONG *)&h->rate_counter);
+					if (rate_counter > HOOK_RATE_LIMIT / g_config.api_rate_cap) {
+						DebugOutput("api-rate-cap: %s hook disabled due to rate\n", h->funcname);
+						InterlockedExchange((volatile LONG *)&h->rate_counter, 0);
+						h->hook_disabled = 1;
+						return 0;
+					}
+				}
+				else {
+					InterlockedExchange((volatile LONG *)&h->rate_counter, 0);
+					h->hook_timer = now_ms;
+				}
 			}
 		}
 
@@ -467,4 +474,43 @@ void hook_enable()
 void hook_disable()
 {
 	hook_info()->disable_count = 1;
+}
+
+void enter_hooking(void)
+{
+	lasterror_t lasterror;
+	LONG *depth;
+
+	get_lasterrors(&lasterror);
+	depth = LOOKUP_THREAD(&g_hooking_depth, LONG);
+	if (depth)
+		InterlockedIncrement(depth);
+	set_lasterrors(&lasterror);
+}
+
+void leave_hooking(void)
+{
+	lasterror_t lasterror;
+	LONG *depth;
+
+	get_lasterrors(&lasterror);
+	depth = (LONG *)lookup_get(&g_hooking_depth, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (depth && *depth > 0)
+		InterlockedDecrement(depth);
+	set_lasterrors(&lasterror);
+}
+
+BOOL is_thread_hooking(DWORD tid)
+{
+	LONG *depth;
+	PEB *peb = (PEB *)get_peb();
+
+	if (peb && peb->LoaderLock) {
+		PRTL_CRITICAL_SECTION loader_lock = (PRTL_CRITICAL_SECTION)peb->LoaderLock;
+		if ((DWORD)(ULONG_PTR)loader_lock->OwningThread == tid)
+			return TRUE;
+	}
+
+	depth = (LONG *)lookup_get(&g_hooking_depth, (ULONG_PTR)tid, NULL);
+	return (depth != NULL && *depth > 0);
 }

@@ -105,7 +105,7 @@ static void new_file_path_ascii(const char *fname)
 		return;
 	}
 
-	char *absolutename = malloc(32768);
+	char *absolutename = path_scratch_acquire();
 	if (absolutename != NULL) {
 		unsigned int len;
 		ensure_absolute_ascii_path(absolutename, fname);
@@ -115,6 +115,7 @@ static void new_file_path_ascii(const char *fname)
 #endif
 		pipe("FILE_NEW:%d,%s", GetCurrentProcessId(), len, absolutename);
 		dropped_count++;
+		path_scratch_release(absolutename);
 	}
 }
 
@@ -128,7 +129,7 @@ static void new_file_path_unicode(const wchar_t *fname)
 		return;
 	}
 
-	wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
+	wchar_t *absolutename = path_scratch_acquire();
 	if (absolutename != NULL) {
 		unsigned int len;
 		ensure_absolute_unicode_path(absolutename, fname);
@@ -138,6 +139,7 @@ static void new_file_path_unicode(const wchar_t *fname)
 #endif
 		pipe("FILE_NEW:%d,%S", GetCurrentProcessId(), len, absolutename);
 		dropped_count++;
+		path_scratch_release(absolutename);
 	}
 }
 
@@ -218,8 +220,8 @@ static void check_for_logging_resumption(const OBJECT_ATTRIBUTES *obj)
 	get_lasterrors(&lasterror);
 
 	if (g_config.file_of_interest && g_config.suspend_logging) {
-		wchar_t *fname = calloc(1, 32768 * sizeof(wchar_t));
-		wchar_t *absolutename = malloc(32768 * sizeof(wchar_t));
+		wchar_t *fname = path_scratch_acquire();
+		wchar_t *absolutename = path_scratch_acquire();
 		BOOLEAN ret = FALSE;
 
 		path_from_object_attributes(obj, fname, 32768);
@@ -229,8 +231,8 @@ static void check_for_logging_resumption(const OBJECT_ATTRIBUTES *obj)
 		if (!wcsicmp(absolutename, g_config.file_of_interest))
 			g_config.suspend_logging = FALSE;
 
-		free(absolutename);
-		free(fname);
+		path_scratch_release(absolutename);
+		path_scratch_release(fname);
 	}
 
 	set_lasterrors(&lasterror);
@@ -244,8 +246,8 @@ static void handle_new_file(HANDLE file_handle, const OBJECT_ATTRIBUTES *obj)
 
 	if (is_directory_objattr(obj) == 0) {
 
-		wchar_t *fname = calloc(32768, sizeof(wchar_t));
-		wchar_t *absolutename = calloc(32768, sizeof(wchar_t));
+		wchar_t *fname = path_scratch_acquire();
+		wchar_t *absolutename = path_scratch_acquire();
 
 		path_from_object_attributes(obj, fname, 32768);
 
@@ -256,13 +258,13 @@ static void handle_new_file(HANDLE file_handle, const OBJECT_ATTRIBUTES *obj)
 			// cache this file
 			if (is_ignored_file_unicode(absolutename, len) == 0)
 				cache_file(file_handle, absolutename, len, obj->Attributes);
-			free(absolutename);
+			path_scratch_release(absolutename);
 		}
 		else {
 			if (is_ignored_file_objattr(obj) == 0)
 				cache_file(file_handle, fname, lstrlenW(fname), obj->Attributes);
 		}
-		free(fname);
+		path_scratch_release(fname);
 	}
 
 	set_lasterrors(&lasterror);
@@ -359,7 +361,7 @@ static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
 	if (!wcslen(g_config.w_analyzer))
 		return FALSE;
 	wchar_t path[MAX_PATH_PLUS_TOLERANCE];
-	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+	wchar_t *absolutepath = path_scratch_acquire();
 	if (absolutepath) {
 		path_from_object_attributes(obj, path, MAX_PATH_PLUS_TOLERANCE);
 		ensure_absolute_unicode_path(absolutepath, path);
@@ -368,11 +370,11 @@ static BOOLEAN is_protected_objattr(POBJECT_ATTRIBUTES obj)
 			lasterror.NtstatusError = STATUS_ACCESS_DENIED;
 			lasterror.Win32Error = ERROR_ACCESS_DENIED;
 			lasterror.Eflags = 0;
-			free(absolutepath);
+			path_scratch_release(absolutepath);
 			set_lasterrors(&lasterror);
 			return TRUE;
 		}
-		free(absolutepath);
+		path_scratch_release(absolutepath);
 	}
 	return FALSE;
 }
@@ -505,7 +507,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 	set_special_api(API_NTREADFILE, deletelast);
 
 	if (read_count <= 50) {
-		fname = calloc(32768, sizeof(wchar_t));
+		fname = path_scratch_acquire();
 		path_from_handle(FileHandle, fname, 32768);
 
 		if (!g_config.no_stealth && g_config.ntdll_unhook && InitialBufferLength)
@@ -518,7 +520,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtReadFile,
 			LOQ_ntstatus("filesystem", "pFbls", "FileHandle", FileHandle,
 				"HandleName", fname, "Buffer", InitialBufferLength, InitialBuffer, "Length", AccumulatedLength, "Status", "Maximum logged reads reached for this file");
 
-		free(fname);
+		path_scratch_release(fname);
 	}
 
 	set_lasterrors(&lasterrors);
@@ -563,7 +565,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 
 	if (write_count <= 50) {
 		if (FileHandle && FileHandle != INVALID_HANDLE_VALUE) {
-			wchar_t *fname = calloc(32768, sizeof(wchar_t));
+			wchar_t *fname = path_scratch_acquire();
 			path_from_handle(FileHandle, fname, 32768);
 
 			// Inject into services.exe if we detect a raw RPC request to ntsvcs (e.g. CreateSvcRpc)
@@ -588,7 +590,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtWriteFile,
 					"HandleName", fname, "Buffer", length, Buffer, "Length", length, "Status", "Maximum logged writes reached for this file");
 			}
 
-			free(fname);
+			path_scratch_release(fname);
 		}
 		else {
 			LOQ_ntstatus("filesystem", "pl", "FileHandle", FileHandle, "Length", length);
@@ -605,7 +607,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeleteFile,
 	__in  POBJECT_ATTRIBUTES ObjectAttributes
 ) {
 	wchar_t path[MAX_PATH_PLUS_TOLERANCE];
-	wchar_t *absolutepath = malloc(32768 * sizeof(wchar_t));
+	wchar_t *absolutepath = path_scratch_acquire();
 	NTSTATUS ret;
 
 	path_from_object_attributes(ObjectAttributes, path, MAX_PATH_PLUS_TOLERANCE);
@@ -622,7 +624,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeleteFile,
 	ret = Old_NtDeleteFile(ObjectAttributes);
 	LOQ_ntstatus("filesystem", "u", "FileName", absolutepath);
 
-	free(absolutepath);
+	path_scratch_release(absolutepath);
 
 	return ret;
 }
@@ -717,7 +719,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 	get_lasterrors(&lasterrors);
 
 	wchar_t* fname = NULL;
-	fname = calloc(32768, sizeof(wchar_t));
+	fname = path_scratch_acquire();
 	if (fname) {
 		path_from_handle(FileHandle, fname, 32768);
 	}
@@ -922,7 +924,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtDeviceIoControlFile,
 		free(origbuffer);
 
 	if (fname)
-		free(fname);
+		path_scratch_release(fname);
 
 	set_lasterrors(&lasterrors);
 
@@ -980,8 +982,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationFile,
 	__in   ULONG Length,
 	__in   FILE_INFORMATION_CLASS FileInformationClass
 ) {
-	wchar_t *fname = calloc(32768, sizeof(wchar_t));
-	wchar_t *absolutepath = calloc(32768, sizeof(wchar_t));
+	wchar_t *fname = path_scratch_acquire();
+	wchar_t *absolutepath = path_scratch_acquire();
 	NTSTATUS ret;
 	ULONG_PTR length;
 
@@ -999,8 +1001,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationFile,
 	LOQ_ntstatus("filesystem", "puib", "FileHandle", FileHandle, "HandleName", absolutepath, "FileInformationClass", FileInformationClass,
 		"FileInformation", length, FileInformation);
 
-	free(fname);
-	free(absolutepath);
+	path_scratch_release(fname);
+	path_scratch_release(absolutepath);
 
 	return ret;
 }
@@ -1053,9 +1055,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 	__in   ULONG Length,
 	__in   FILE_INFORMATION_CLASS FileInformationClass
 ) {
-	wchar_t *fname = calloc(32768, sizeof(wchar_t));
-	wchar_t *absolutepath = calloc(32768, sizeof(wchar_t));
-	wchar_t *renamepath = calloc(32768, sizeof(wchar_t));
+	wchar_t *fname = path_scratch_acquire();
+	wchar_t *absolutepath = path_scratch_acquire();
+	wchar_t *renamepath = path_scratch_acquire();
 	NTSTATUS ret;
 
 	path_from_handle(FileHandle, fname, 32768);
@@ -1096,9 +1098,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationFile,
 		LOQ_ntstatus("filesystem", "puib", "FileHandle", FileHandle, "HandleName", absolutepath, "FileInformationClass", FileInformationClass,
 		"FileInformation", Length, FileInformation);
 
-	free(fname);
-	free(absolutepath);
-	free(renamepath);
+	path_scratch_release(fname);
+	path_scratch_release(absolutepath);
+	path_scratch_release(renamepath);
 
 	return ret;
 }
@@ -1182,7 +1184,7 @@ HOOKDEF(BOOL, WINAPI, RemoveDirectoryA,
 HOOKDEF(BOOL, WINAPI, RemoveDirectoryW,
 	__in  LPWSTR lpPathName
 ) {
-	wchar_t *path = malloc(32768 * sizeof(wchar_t));
+	wchar_t *path = path_scratch_acquire();
 	BOOL ret;
 
 	ensure_absolute_unicode_path(path, lpPathName);
@@ -1190,7 +1192,7 @@ HOOKDEF(BOOL, WINAPI, RemoveDirectoryW,
 	ret = Old_RemoveDirectoryW(lpPathName);
 	LOQ_bool("filesystem", "u", "DirectoryName", path);
 
-	free(path);
+	path_scratch_release(path);
 
 	return ret;
 }
@@ -1205,11 +1207,11 @@ HOOKDEF_NOTAIL(WINAPI, MoveFileWithProgressW,
 	BOOL ret = TRUE;
 
 	if (lpProgressRoutine) {
-		wchar_t *path = malloc(32768 * sizeof(wchar_t));
+		wchar_t *path = path_scratch_acquire();
 		ensure_absolute_unicode_path(path, lpExistingFileName);
 		LOQ_bool("filesystem", "uFh", "ExistingFileName", path,
 			"NewFileName", lpNewFileName, "Flags", dwFlags);
-		free(path);
+		path_scratch_release(path);
 		return 0;
 	}
 	return 1;
@@ -1222,7 +1224,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 	__in_opt  LPVOID lpData,
 	__in	  DWORD dwFlags
 ) {
-	wchar_t *path = malloc(32768 * sizeof(wchar_t));
+	wchar_t *path = path_scratch_acquire();
 	BOOL ret;
 
 	ensure_absolute_unicode_path(path, lpExistingFileName);
@@ -1249,7 +1251,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressW,
 		}
 	}
 
-	free(path);
+	path_scratch_release(path);
 
 	return ret;
 }
@@ -1265,11 +1267,11 @@ HOOKDEF_NOTAIL(WINAPI, MoveFileWithProgressTransactedW,
 	BOOL ret = TRUE;
 
 	if (lpProgressRoutine) {
-		wchar_t *path = malloc(32768 * sizeof(wchar_t));
+		wchar_t *path = path_scratch_acquire();
 		ensure_absolute_unicode_path(path, lpExistingFileName);
 		LOQ_bool("filesystem", "uFh", "ExistingFileName", path,
 			"NewFileName", lpNewFileName, "Flags", dwFlags);
-		free(path);
+		path_scratch_release(path);
 		return 0;
 	}
 	return 1;
@@ -1292,7 +1294,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
 
 	if (!called_by_hook()) {
-		wchar_t *path = malloc(32768 * sizeof(wchar_t));
+		wchar_t *path = path_scratch_acquire();
 
 		ensure_absolute_unicode_path(path, lpExistingFileName);
 
@@ -1319,7 +1321,7 @@ HOOKDEF_ALT(BOOL, WINAPI, MoveFileWithProgressTransactedW,
 			}
 		}
 
-		free(path);
+		path_scratch_release(path);
 	}
 
 	return ret;
@@ -1619,7 +1621,7 @@ HOOKDEF(BOOL, WINAPI, DeleteFileA,
 HOOKDEF(BOOL, WINAPI, DeleteFileW,
 	__in  LPWSTR lpFileName
 ) {
-	wchar_t *path = malloc(32768 * sizeof(wchar_t));
+	wchar_t *path = path_scratch_acquire();
 	BOOL ret;
 
 	if (path) {
@@ -1637,7 +1639,7 @@ HOOKDEF(BOOL, WINAPI, DeleteFileW,
 	ret = Old_DeleteFileW(lpFileName);
 	if (path) {
 		LOQ_bool("filesystem", "u", "FileName", path);
-		free(path);
+		path_scratch_release(path);
 	}
 	else {
 		LOQ_bool("filesystem", "u", "FileName", lpFileName);
@@ -1797,8 +1799,8 @@ HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
 	_In_		DWORD                     dwBufferSize
 ) {
 	if (FileInformationClass == FileDispositionInfo && dropped_count < g_config.dropped_limit) {
-		wchar_t *fname = calloc(32768, sizeof(wchar_t));
-		wchar_t *path = calloc(32768, sizeof(wchar_t));
+		wchar_t *fname = path_scratch_acquire();
+		wchar_t *path = path_scratch_acquire();
 
 		path_from_handle(hFile, fname, 32768);
 		ensure_absolute_unicode_path(path, fname);
@@ -1808,8 +1810,8 @@ HOOKDEF(BOOL, WINAPI, SetFileInformationByHandle,
 		pipe("FILE_DEL:%d,%Z", GetCurrentProcessId(), path);
 		dropped_count++;
 
-		free(fname);
-		free(path);
+		path_scratch_release(fname);
+		path_scratch_release(path);
 	}
 
 	BOOL ret = Old_SetFileInformationByHandle(hFile, FileInformationClass, lpFileInformation, dwBufferSize);

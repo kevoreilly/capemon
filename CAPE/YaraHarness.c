@@ -39,7 +39,7 @@ extern BOOL BreakpointsHit, TraceRunning;
 YR_RULES* Rules = NULL;
 BOOL YaraActivated, YaraLogging;
 #ifdef _WIN64
-extern PVOID LdrpInvertedFunctionTableSRWLock;
+extern PVOID LdrpInvertedFunctionTableSRWLock, LdrpMrdataLock;
 #endif
 
 static char NewLine[MAX_PATH];
@@ -69,6 +69,9 @@ char InternalYara[] =
 	"$10_0_19041_662 = {48 8D 0D [4] E8 [4] [7] 8B 44 24 ?? 44 8B CB 4C 8B 44 24 ?? 48 8B D7 89 44 24 ?? E8}"
 	"$10_0_18362_1350 = {48 8D 0D [4] 33 D2 85 C0 48 0F 48 DA E8 [4] 33 C9 E8 [4] 8B 44 24 ?? 44 8B CF 4C 8B C3 89 44 24 ?? 48 8B D6 E8}"
 	"$10_0_10240_16384 = {48 8D 0D [4] 48 8B E8 E8 [4] 33 C9 E8 [4] 8B 15 [4] 3B 15 [4] 0F 84}"
+	"condition:uint16(0) == 0x5a4d and any of them}"
+	"rule LdrProtectMrdata"
+	"{strings:$10_0_19041_2788 = {48 8D 0D [4] E8 [4] 8B 3D [4] 85 DB 75 ?? 85 FF 75 ?? 8D 4B 04 E8}"
 	"condition:uint16(0) == 0x5a4d and any of them}"
 	"rule LdrpCallInitRoutine"
 	"{strings:$10_0_26100_3476 = {40 53 56 57 41 54 41 55 [65-85] 84 03 FE 7F}"
@@ -553,10 +556,74 @@ BOOL ScanForRulesCanary(PVOID Address, SIZE_T Size)
 	return CapemonRulesDetected;
 }
 
+static unsigned int YaraAddRuleFiles(YR_COMPILER* Compiler, const char* dir)
+{
+	char FindString[MAX_PATH], file_name[MAX_PATH];
+	WIN32_FIND_DATA FindFileData;
+	unsigned int count = 0;
+
+	snprintf(FindString, sizeof(FindString), "%s\\*.yar", dir);
+#ifdef DEBUG_COMMENTS
+	DebugOutput("YaraAddRuleFiles: Yara search string: %s", FindString);
+#endif
+	HANDLE hFind = FindFirstFile(FindString, &FindFileData);
+	if (hFind == INVALID_HANDLE_VALUE)
+		return 0;
+
+	do
+	{
+		if (FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			continue;
+
+		snprintf(file_name, sizeof(file_name), "%s\\%s", dir, FindFileData.cFileName);
+
+		FILE* rule_file = fopen(file_name, "r");
+		if (!rule_file)
+			continue;
+
+		char check_buf[4096];
+		size_t bytes_read = fread(check_buf, 1, sizeof(check_buf) - 1, rule_file);
+		check_buf[bytes_read] = '\0';
+
+		if (strstr(check_buf, "cape_options") == NULL)
+		{
+			DebugOutput("YaraAddRuleFiles: File %s lacks cape_options metadata - skipping \n", file_name);
+			fclose(rule_file);
+			continue;
+		}
+
+		fseek(rule_file, 0, SEEK_SET);
+
+		int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
+
+		if (errors == ERROR_COULD_NOT_OPEN_FILE)
+			DebugOutput("YaraAddRuleFiles: Unable to open file %s\n", file_name);
+		else if (errors)
+		{
+			DebugOutput("YaraAddRuleFiles: Unable to compile rule file %s\n", file_name);
+			ScannerError(errors);
+		}
+		else
+		{
+			count++;
+#ifdef DEBUG_COMMENTS
+			DebugOutput("YaraAddRuleFiles: Compiled rule file %s\n", file_name);
+#endif
+		}
+
+		fclose(rule_file);
+	}
+	while (FindNextFile(hFind, &FindFileData));
+
+	FindClose(hFind);
+
+	return count;
+}
+
 BOOL YaraInit()
 {
 	YR_COMPILER* Compiler = NULL;
-	char analyzer_path[MAX_PATH], yara_dir[MAX_PATH], file_name[MAX_PATH], compiled_rules[MAX_PATH];
+	char analyzer_path[MAX_PATH], yara_dir[MAX_PATH], compiled_rules[MAX_PATH];
 	BOOL Result = FALSE, RulesCompiled = FALSE;
 	int flags = 0;
 
@@ -599,70 +666,23 @@ BOOL YaraInit()
 		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)
 			DebugOutput("YaraInit: Failed to add internal yara rules.\n", compiled_rules);
 
+		unsigned int count = 0;
+
 		if (g_config.yarascan)
 		{
-			char FindString[MAX_PATH];
-			WIN32_FIND_DATA FindFileData;
-			sprintf(FindString, "%s\\*.yar", yara_dir);
-#ifdef DEBUG_COMMENTS
-			DebugOutput("YaraInit: Yara search string: %s", FindString);
-#endif
-			HANDLE hFind = FindFirstFile(FindString, &FindFileData);
-			if (hFind != INVALID_HANDLE_VALUE)
-			{
-				unsigned int count = 0;
-				do
-				{
-					snprintf(file_name, sizeof(file_name), "%s\\%s", yara_dir, FindFileData.cFileName);
+			count = YaraAddRuleFiles(Compiler, yara_dir);
 
-					if (!(FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-					{
-						rule_file = fopen(file_name, "r");
-
-						if (rule_file)
-						{
-							char check_buf[4096];
-							size_t bytes_read = fread(check_buf, 1, sizeof(check_buf) - 1, rule_file);
-							check_buf[bytes_read] = '\0';
-
-							if (strstr(check_buf, "cape_options") == NULL)
-							{
-								DebugOutput("YaraInit: File %s lacks cape_options metadata - skipping \n", file_name);
-								fclose(rule_file);
-								continue; // Skip this file if it doesn't have cape metadata
-							}
-
-							fseek(rule_file, 0, SEEK_SET);
-
-							int errors = yr_compiler_add_file(Compiler, rule_file, NULL, file_name);
-
-							if (errors == ERROR_COULD_NOT_OPEN_FILE)
-								DebugOutput("YaraInit: Unable to open file %s\n", file_name);
-							else if (errors)
-							{
-								DebugOutput("YaraInit: Unable to compile rule file %s\n", file_name);
-								ScannerError(errors);
-							}
-							else
-							{
-								count++;
-#ifdef DEBUG_COMMENTS
-								DebugOutput("YaraInit: Compiled rule file %s\n", file_name);
-#endif
-							}
-
-							fclose(rule_file);
-						}
-					}
-				}
-				while (FindNextFile(hFind, &FindFileData));
-
-				FindClose(hFind);
-
+			if (count)
 				DebugOutput("YaraInit: Compiled %d rule files\n", count);
-			}
 			else
-				DebugOutput("YaraInit: Found no Yara rules in %s\n", yara_dir);
+			{
+				DebugOutput("YaraInit: No usable rules in %s, trying %s\n", yara_dir, analyzer_path);
+				count = YaraAddRuleFiles(Compiler, analyzer_path);
+				if (count)
+					DebugOutput("YaraInit: Compiled %d rule files\n", count);
+				else
+					DebugOutput("YaraInit: Found no Yara rules in %s or %s\n", yara_dir, analyzer_path);
+			}
 		}
 
 		Result = yr_compiler_get_rules(Compiler, &Rules);
@@ -673,7 +693,7 @@ BOOL YaraInit()
 			goto exit;
 		}
 
-		if (g_config.yarascan)
+		if (g_config.yarascan && count)
 		{
 			Result = yr_rules_save(Rules, compiled_rules);
 
@@ -704,11 +724,35 @@ BOOL YaraInit()
 #ifdef _WIN64
 	if ((OSVersion.dwMajorVersion == 6 && OSVersion.dwMinorVersion > 1) || OSVersion.dwMajorVersion > 6)
 	{
-		PVOID RtlInsertInvertedFunctionTable = GetAddressByYara(GetModuleHandleA("ntdll"), "RtlInsertInvertedFunctionTable");
-		if (RtlInsertInvertedFunctionTable)
+		HMODULE hNtdll = GetModuleHandleA("ntdll");
+		if (hNtdll)
 		{
-			LdrpInvertedFunctionTableSRWLock = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(DWORD*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
-			DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
+			PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)hNtdll;
+			PIMAGE_NT_HEADERS nt = (PIMAGE_NT_HEADERS)((PBYTE)hNtdll + dos->e_lfanew);
+			PBYTE ntdll_base = (PBYTE)hNtdll;
+			PBYTE ntdll_end = ntdll_base + nt->OptionalHeader.SizeOfImage;
+			PVOID RtlInsertInvertedFunctionTable = GetAddressByYara(hNtdll, "RtlInsertInvertedFunctionTable");
+			PVOID LdrProtectMrdata;
+
+			if (RtlInsertInvertedFunctionTable)
+			{
+				PVOID resolved = (PVOID)((PBYTE)RtlInsertInvertedFunctionTable + *(LONG*)((PBYTE)RtlInsertInvertedFunctionTable + 3) + 7);
+				if ((PBYTE)resolved >= ntdll_base && (PBYTE)resolved <= ntdll_end - sizeof(PVOID))
+				{
+					LdrpInvertedFunctionTableSRWLock = resolved;
+					DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
+				}
+			}
+			LdrProtectMrdata = GetAddressByYara(hNtdll, "LdrProtectMrdata");
+			if (LdrProtectMrdata)
+			{
+				PVOID resolved = (PVOID)((PBYTE)LdrProtectMrdata + *(LONG*)((PBYTE)LdrProtectMrdata + 3) + 7);
+				if ((PBYTE)resolved >= ntdll_base && (PBYTE)resolved <= ntdll_end - sizeof(PVOID))
+				{
+					LdrpMrdataLock = resolved;
+					DebugOutput("LdrProtectMrdata 0x%p, LdrpMrdataLock 0x%p", LdrProtectMrdata, LdrpMrdataLock);
+				}
+			}
 		}
 	}
 #endif

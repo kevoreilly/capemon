@@ -155,6 +155,9 @@ int hook_api(hook_t *h, int type);
 hook_info_t* hook_info();
 void hook_enable();
 void hook_disable();
+void enter_hooking(void);
+void leave_hooking(void);
+BOOL is_thread_hooking(DWORD tid);
 int called_by_hook(void);
 int already_hooked(void);
 int addr_in_our_dll_range(void *unused, ULONG_PTR addr);
@@ -163,6 +166,9 @@ void set_lasterrors(lasterror_t *errors);
 int WINAPI enter_hook(hook_t *h, ULONG_PTR _ebp, ULONG_PTR retaddr);
 void emit_rel(unsigned char *buf, unsigned char *source, unsigned char *target);
 int operate_on_backtrace(ULONG_PTR retaddr, ULONG_PTR _ebp, void *extra, int(*func)(void *, ULONG_PTR));
+#ifdef _WIN64
+BOOL srw_lock_held(void);
+#endif
 
 extern LARGE_INTEGER time_skipped;
 
@@ -276,7 +282,7 @@ static inline BOOLEAN disable_this_hook(hook_t *h)
 {
 	const char *required_apis[] = {
 		"NtCreateThread",
-		"NtCreateThreadEx"
+		"NtCreateThreadEx",
 		"NtCreateProcess",
 		"NtCreateProcessEx",
 		"NtCreateUserProcess",

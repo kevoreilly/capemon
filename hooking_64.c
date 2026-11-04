@@ -34,6 +34,7 @@ extern PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName);
 extern SIZE_T GetAllocationSize(PVOID Address);
 
 PVOID LdrpInvertedFunctionTableSRWLock;
+PVOID LdrpMrdataLock;
 
 // length disassembler engine
 int lde(void *addr)
@@ -132,7 +133,9 @@ static ULONG_PTR get_near_rel_target(unsigned char *buf)
 	else if (buf[0] == 0x0f && buf[1] >= 0x80 && buf[1] < 0x90)
 		return (ULONG_PTR)buf + 6 + *(int *)&buf[2];
 
-	assert(0);
+	// the caller uses the result as a jump target, so returning 0 here
+	// silently retargets to address 0 once NDEBUG removes the assert
+	DebugOutput("get_near_rel_target: unhandled opcode 0x%02x at 0x%p\n", buf[0], (PVOID)buf);
 	return 0;
 }
 
@@ -141,7 +144,7 @@ static ULONG_PTR get_short_rel_target(unsigned char *buf)
 	if (buf[0] == 0xeb || buf[0] == 0xe3 || (buf[0] >= 0x70 && buf[0] < 0x80))
 		return (ULONG_PTR)buf + 2 + *(char *)&buf[1];
 
-	assert(0);
+	DebugOutput("get_short_rel_target: unhandled opcode 0x%02x at 0x%p\n", buf[0], (PVOID)buf);
 	return 0;
 }
 
@@ -152,8 +155,8 @@ static ULONG_PTR get_indirect_target(unsigned char *buf)
 
 static ULONG_PTR get_corresponding_tramp_target(addr_map_t *map, ULONG_PTR addr)
 {
-	unsigned int i = 0;
-	while (map->map[i][1]) {
+	unsigned int i;
+	for (i = 0; i < ARRAYSIZE(map->map) && map->map[i][1]; i++) {
 		if (map->map[i][1] == addr)
 			return map->map[i][0];
 	}
@@ -250,8 +253,11 @@ static int hook_create_trampoline(unsigned char *addr, int len,
 		len -= length;
 		stoleninstrlen += length;
 
+		if (insnidx >= ARRAYSIZE(addrmap.map))
+			goto error;
 		addrmap.map[insnidx][0] = (ULONG_PTR)tramp;
 		addrmap.map[insnidx][1] = (ULONG_PTR)addr;
+		insnidx++;
 
 		// check the type of instruction at this particular address, if it's
 		// a jump or a call instruction, then we have to calculate some fancy
@@ -512,6 +518,13 @@ static void hook_create_pre_tramp(hook_t *h)
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 	};
 
+	// Every byte written below is memcpy'd out of these fixed-size arrays,
+	// so the bound is a compile-time property. This replaces a runtime
+	// assert() that was the only overflow check on pre_tramp and that NDEBUG
+	// deletes. Braces give each C_ASSERT its own scope (it is a typedef).
+	{ C_ASSERT(sizeof(pre_tramp1) + sizeof(pre_tramp12) + sizeof(pre_tramp2) +
+		sizeof(pre_tramp3) <= MAX_PRETRAMP_SIZE); }
+
 	if (disable_this_hook(h)) {
 		memcpy(h->hookdata->pre_tramp, "\xff\x25\x00\x00\x00\x00", 6);
 		*(ULONG_PTR *)(h->hookdata->pre_tramp + 6) = (ULONG_PTR)h->hookdata->tramp;
@@ -538,8 +551,6 @@ static void hook_create_pre_tramp(hook_t *h)
 	*(ULONG_PTR *)(pre_tramp3 + off) = (ULONG_PTR)h->new_func;
 	memcpy(p, pre_tramp3, sizeof(pre_tramp3));
 	p += sizeof(pre_tramp3);
-
-	assert((ULONG_PTR)(p - h->hookdata->pre_tramp) < MAX_PRETRAMP_SIZE);
 
 	/* now add the necessary unwind information so that stack traces at enter_hook work
 	 * properly.  must be modified whenever the assembly above changes
@@ -768,6 +779,14 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 	};
 
+	// One bound per branch of the numargs test below.
+	{ C_ASSERT(sizeof(pre_tramp1) + sizeof(pre_tramp12) + sizeof(pre_tramp2) +
+		sizeof(pre_tramp3_stack) + sizeof(pre_tramp4_stack) +
+		sizeof(pre_tramp5_stack) <= MAX_PRETRAMP_SIZE); }
+	{ C_ASSERT(sizeof(pre_tramp1) + sizeof(pre_tramp12) + sizeof(pre_tramp2) +
+		sizeof(pre_tramp3_nostack) + sizeof(pre_tramp4_nostack) +
+		sizeof(pre_tramp5_nostack) <= MAX_PRETRAMP_SIZE); }
+
 	if (disable_this_hook(h)) {
 		memcpy(h->hookdata->pre_tramp, "\xff\x25\x00\x00\x00\x00", 6);
 		*(ULONG_PTR *)(h->hookdata->pre_tramp + 6) = (ULONG_PTR)h->hookdata->tramp;
@@ -822,8 +841,6 @@ static void hook_create_pre_tramp_notail(hook_t *h)
 		memcpy(p, pre_tramp5_nostack, sizeof(pre_tramp5_nostack));
 		p += sizeof(pre_tramp5_nostack);
 	}
-
-	assert((ULONG_PTR)(p - h->hookdata->pre_tramp) < MAX_PRETRAMP_SIZE);
 
 	/* now add the necessary unwind information so that stack traces at enter_hook work
 	* properly.  must be modified whenever the assembly above changes
@@ -999,7 +1016,7 @@ out:
 	return addr;
 }
 
-int hook_api(hook_t *h, int type)
+static int hook_api_internal(hook_t *h, int type)
 {
 	DWORD old_protect;
 	int ret = -1;
@@ -1033,6 +1050,11 @@ int hook_api(hook_t *h, int type)
 		/* if the DLL isn't loaded, don't bother attempting anything else */
 		if (hmod == NULL)
 			return 0;
+
+		if (module_in_exe_dir(hmod)) {
+			DebugOutput("hook_api: skipping %ws::%s - dll is in executable directory, likely side-loaded\n", h->library, h->funcname);
+			return 0;
+		}
 
 		if (!wcscmp(h->library, L"kernel32") && GetProcAddress(GetModuleHandle("KernelBase"), h->funcname))
 			hmod = GetModuleHandle("KernelBase");
@@ -1152,7 +1174,7 @@ int hook_api(hook_t *h, int type)
 	}
 
 	// check if this is a valid hook type
-	if (type < 0 && type >= ARRAYSIZE(hook_types)) {
+	if (type < 0 || (unsigned int)type >= ARRAYSIZE(hook_types)) {
 		pipe("WARNING: Provided invalid hook type: %d", type);
 		return ret;
 	}
@@ -1204,6 +1226,16 @@ restore_protect:
 	return ret;
 }
 
+int hook_api(hook_t *h, int type)
+{
+	int ret;
+
+	enter_hooking();
+	ret = hook_api_internal(h, type);
+	leave_hooking();
+	return ret;
+}
+
 int already_hooked(void)
 {
 	unsigned char *baseaddr = (unsigned char *)GetProcAddress(GetModuleHandle("ntdll"), "KiUserExceptionDispatcher"), *RtlDispatchException;
@@ -1223,10 +1255,19 @@ int already_hooked(void)
 
 BOOL srw_lock_held()
 {
-	if (!LdrpInvertedFunctionTableSRWLock)
+	__try {
+		if (LdrpInvertedFunctionTableSRWLock && *(PVOID*)LdrpInvertedFunctionTableSRWLock)
+			return TRUE;
+		// LdrProtectMrdata holds LdrpMrdataLock across its (hooked) NtProtectVirtualMemory call, while
+		// RtlAddFunctionTable/RtlDeleteFunctionTable take RtlpDynamicFunctionTableLock then LdrpMrdataLock.
+		// Unwinding here takes RtlpDynamicFunctionTableLock (shared) and would invert that order, deadlocking
+		// processes that register dynamic function tables (e.g. .NET JIT).
+		if (LdrpMrdataLock && *(PVOID*)LdrpMrdataLock)
+			return TRUE;
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER) {
 		return FALSE;
-	if (*(PVOID*)LdrpInvertedFunctionTableSRWLock)
-		return TRUE;
+	}
 	return FALSE;
 }
 
@@ -1239,7 +1280,8 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 	KNONVOLATILE_CONTEXT_POINTERS nvctx;
 	PVOID handlerdata;
 	ULONG_PTR establisherframe;
-	unsigned int frame;
+	unsigned int frame = 0;
+	unsigned int frames_captured = 0;
 
 	if (srw_lock_held())
 		return -1;
@@ -1250,7 +1292,8 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 
 		for (frame = 0; frame < count; frame++) {
 			backtrace[frame] = (PVOID)ctx.Rip;
-			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock on Win10
+			frames_captured = frame + 1;
+			runfunc = RtlLookupFunctionEntry(ctx.Rip, &imgbase, NULL);	// needs LdrpInvertedFunctionTableSRWLock and RtlpDynamicFunctionTableLock on Win10
 			memset(&nvctx, 0, sizeof(nvctx));
 			if (runfunc == NULL) {
 				if (our_isbadreadptr((PVOID)ctx.Rsp, sizeof(PVOID)))
@@ -1265,7 +1308,7 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 				break;
 		}
 
-		return frame + 1;
+		return (int)frames_captured;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -1274,7 +1317,7 @@ static int our_stackwalk(ULONG_PTR _rip, ULONG_PTR sp, PVOID *backtrace, unsigne
 		// count of successfully resolved frames. This ensures the first frame (which points 
 		// to the Go binary calling the API, not Capemon) is kept, so operate_on_backtrace correctly 
 		// detects it as an application call rather than a recursive hook call, allowing logging.
-		return (int)frame + 1;
+		return (int)frames_captured;
 	}
 }
 

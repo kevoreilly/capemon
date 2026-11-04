@@ -25,8 +25,6 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "..\alloc.h"
 #include "..\config.h"
 
-#define PE_HEADER_LIMIT 0x200
-
 #define MAX_PRETRAMP_SIZE 320
 #define MAX_TRAMP_SIZE 128
 
@@ -204,7 +202,7 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 		return;
 	}
 
-	if (!(Protect & EXECUTABLE_FLAGS))
+	if (!(Protect & EXECUTABLE_FLAGS) && !((Address == ImageBase || Address == GetModuleHandle(NULL)) && Protect == PAGE_READONLY))
 		return;
 
 	if (is_in_dll_range((ULONG_PTR)Address))
@@ -384,17 +382,23 @@ void NewThreadHandler(PVOID StartAddress)
 		return;
 	}
 
+	if (is_in_dll_range((ULONG_PTR)StartAddress))
+		return;
+
 	TrackedRegion = GetTrackedRegion((PVOID)StartAddress);
 
 	if (TrackedRegion == NULL)
 		return;
 
-	DebugOutput("NewThreadHandler: Address: 0x%p.\n", StartAddress);
+	if (TrackedRegion->AllocationBase == ImageBase || TrackedRegion->AllocationBase == GetModuleHandle(NULL))
+		return;
 
 	hook_disable();
 
 	if (ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)) && !TrackedRegion->PagesDumped)
 	{
+		TrackedRegion->CanDump = TRUE;
+
 		ProcessTrackedRegion(TrackedRegion);
 
 		if (TrackedRegion->PagesDumped)
@@ -402,8 +406,6 @@ void NewThreadHandler(PVOID StartAddress)
 		else
 			DebugOutput("NewThreadHandler: Failed to dump new thread's executable memory range at 0x%p .\n", TrackedRegion->AllocationBase);
 	}
-
-	ClearTrackedRegion(TrackedRegion);
 
 	hook_enable();
 
@@ -1543,11 +1545,14 @@ BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTER
 
 void UnpackerInit()
 {
+	PTRACKEDREGION TrackedRegion;
+	PVOID MainImageBase;
+
 	if (!InitialiseDebugger())
 		DebugOutput("UnpackerInit: Failed to initialise debugger.\n");
 
 	// Add the monitor to tracked regions but set as dumped
-	PTRACKEDREGION TrackedRegion = AddTrackedRegion((PVOID)g_our_dll_base, 0);
+	TrackedRegion = AddTrackedRegion((PVOID)g_our_dll_base, 0);
 	if (TrackedRegion)
 	{
 #ifdef DEBUG_COMMENTS
@@ -1557,4 +1562,14 @@ void UnpackerInit()
 	}
 	else
 		DebugOutput("UnpackerInit: Error adding monitor image base to tracked regions.\n");
+
+	MainImageBase = ImageBase ? ImageBase : (PVOID)GetModuleHandle(NULL);
+	if (MainImageBase)
+	{
+		TrackedRegion = AddTrackedRegion(MainImageBase, 0);
+#ifdef DEBUG_COMMENTS
+		if (TrackedRegion)
+			DebugOutput("UnpackerInit: Adding main image base 0x%p to tracked regions.\n", MainImageBase);
+#endif
+	}
 }

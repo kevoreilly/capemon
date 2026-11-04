@@ -37,15 +37,31 @@ void safe_string_to_sid(PSID Sid, char *out_str, size_t out_len) {
 	}
 	__try {
 		PISID pSid = (PISID)Sid;
-		size_t offset = snprintf(out_str, out_len, "S-%u-%u", pSid->Revision,
-			(pSid->IdentifierAuthority.Value[0] << 24) |
-			(pSid->IdentifierAuthority.Value[1] << 16) |
-			(pSid->IdentifierAuthority.Value[2] << 8) |
-			(pSid->IdentifierAuthority.Value[3]));
-		
-		for (DWORD i = 0; i < pSid->SubAuthorityCount; i++) {
+		unsigned long long authority = 0;
+		int written;
+		size_t offset;
+		DWORD sub_count;
+		DWORD i;
+		int j;
+
+		for (j = 0; j < 6; j++)
+			authority = (authority << 8) | pSid->IdentifierAuthority.Value[j];
+
+		written = snprintf(out_str, out_len, "S-%u-%llu", pSid->Revision, authority);
+		if (written < 0 || (size_t)written >= out_len)
+			return;
+
+		offset = (size_t)written;
+		sub_count = pSid->SubAuthorityCount;
+		if (sub_count > SID_MAX_SUB_AUTHORITIES)
+			sub_count = SID_MAX_SUB_AUTHORITIES;
+
+		for (i = 0; i < sub_count; i++) {
 			if (offset >= out_len) break;
-			offset += snprintf(out_str + offset, out_len - offset, "-%u", pSid->SubAuthority[i]);
+			written = snprintf(out_str + offset, out_len - offset, "-%lu", (unsigned long)pSid->SubAuthority[i]);
+			if (written < 0 || (size_t)written >= out_len - offset)
+				break;
+			offset += (size_t)written;
 		}
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
@@ -180,7 +196,7 @@ HOOKDEF(ULONG, WINAPI, EnableTraceEx,
 		snprintf(S_SourceId, sizeof(S_SourceId), "%s", "NULL");
     }
 	ULONG ret = Old_EnableTraceEx(ProviderId,SourceId,TraceHandle,IsEnabled,Level,MatchAnyKeyword,MatchAllKeyword,EnableProperty,EnableFilterDesc);
-	LOQ_zero("Trace","ssxixxxi", "ProviderId", S_ProviderId, "SourceId", S_SourceId, "TraceHandle", TraceHandle, "Enabled", IsEnabled, "Level", Level,
+	LOQ_zero("Trace","ssxiixxi", "ProviderId", S_ProviderId, "SourceId", S_SourceId, "TraceHandle", TraceHandle, "Enabled", IsEnabled, "Level", Level,
      "MatchAnyKeyword", MatchAnyKeyword, "MatchAllKeyword", MatchAllKeyword, "EnableProperty", EnableProperty);
 	return ret;
 }
@@ -282,14 +298,15 @@ HOOKDEF(ULONG, WINAPI, StartTraceA,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
 	ULONG ret = Old_StartTraceA(TraceHandle,InstanceName,Properties);
-    char S_GUID[64] = "NULL";
-    if (Properties) {
+	char S_GUID[64] = "NULL";
+	TRACEHANDLE hTrace = (TraceHandle && !our_isbadreadptr(TraceHandle, sizeof(TRACEHANDLE))) ? *TraceHandle : 0;
+	if (Properties) {
 		safe_string_to_guid(S_GUID, sizeof(S_GUID), &Properties->Wnode.Guid);
 	}
-    if(ret == ERROR_SUCCESS)
-	    LOQ_zero("Trace", "xss","TraceHandle", TraceHandle ? *TraceHandle : 0,"InstanceName", InstanceName, "GUID", S_GUID);
-    else
-        LOQ_zero("Trace", "ss","InstanceName", InstanceName, "GUID", S_GUID);
+	if (ret == ERROR_SUCCESS)
+		LOQ_zero("Trace", "xss", "TraceHandle", hTrace, "InstanceName", InstanceName, "GUID", S_GUID);
+	else
+		LOQ_zero("Trace", "ss", "InstanceName", InstanceName, "GUID", S_GUID);
 	return ret;
 }
 
@@ -300,13 +317,14 @@ HOOKDEF(ULONG, WINAPI, StartTraceW,
 ) {
 	ULONG ret = Old_StartTraceW(TraceHandle,InstanceName,Properties);
 	char S_GUID[64] = "NULL";
-    if (Properties) {
+	TRACEHANDLE hTrace = (TraceHandle && !our_isbadreadptr(TraceHandle, sizeof(TRACEHANDLE))) ? *TraceHandle : 0;
+	if (Properties) {
 		safe_string_to_guid(S_GUID, sizeof(S_GUID), &Properties->Wnode.Guid);
 	}
-    if(ret == ERROR_SUCCESS)
-	    LOQ_zero("Trace", "xus","TraceHandle", TraceHandle ? *TraceHandle : 0,"InstanceName", InstanceName, "GUID", S_GUID);
-    else
-        LOQ_zero("Trace", "us","InstanceName", InstanceName, "GUID", S_GUID);
+	if (ret == ERROR_SUCCESS)
+		LOQ_zero("Trace", "xus", "TraceHandle", hTrace, "InstanceName", InstanceName, "GUID", S_GUID);
+	else
+		LOQ_zero("Trace", "us", "InstanceName", InstanceName, "GUID", S_GUID);
 	return ret;
 }
 
@@ -350,13 +368,23 @@ HOOKDEF(ULONG, WINAPI, UpdateTraceA,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
 	ULONG ret = Old_UpdateTraceA(TraceHandle,InstanceName,Properties);
-	if(Properties && Properties->LogFileNameOffset != 0){
-        char *NewLogFileName = (char *)Properties + Properties->LogFileNameOffset;
-        LOQ_zero("Trace", "xsis","TraceHandle", TraceHandle,"InstanceName", InstanceName,"EnableFlags", Properties->EnableFlags, "NewLogFileName", NewLogFileName ); 
-    }
-    else if (Properties) {
-        LOQ_zero("Trace", "xsi","TraceHandle", TraceHandle,"InstanceName", InstanceName,"EnableFlags", Properties->EnableFlags); 
-    }
+	char *NewLogFileName = NULL;
+	if (Properties && !our_isbadreadptr(Properties, sizeof(EVENT_TRACE_PROPERTIES))) {
+		__try {
+			if (Properties->LogFileNameOffset >= sizeof(EVENT_TRACE_PROPERTIES) &&
+			    Properties->LogFileNameOffset < Properties->Wnode.BufferSize) {
+				NewLogFileName = (char *)Properties + Properties->LogFileNameOffset;
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			NewLogFileName = NULL;
+		}
+		if (NewLogFileName) {
+			LOQ_zero("Trace", "xsis", "TraceHandle", TraceHandle, "InstanceName", InstanceName, "EnableFlags", Properties->EnableFlags, "NewLogFileName", NewLogFileName);
+		} else {
+			LOQ_zero("Trace", "xsi", "TraceHandle", TraceHandle, "InstanceName", InstanceName, "EnableFlags", Properties->EnableFlags);
+		}
+	}
 	return ret;
 }
 
@@ -366,13 +394,23 @@ HOOKDEF(ULONG, WINAPI, UpdateTraceW,
 	_Inout_ PEVENT_TRACE_PROPERTIES Properties
 ) {
 	ULONG ret = Old_UpdateTraceW(TraceHandle,InstanceName,Properties);
-	if(Properties && Properties->LogFileNameOffset != 0){
-        wchar_t *NewLogFileName = (wchar_t *)((char *)Properties + Properties->LogFileNameOffset);
-        LOQ_zero("Trace", "xuis","TraceHandle", TraceHandle,"InstanceName", InstanceName,"EnableFlags", Properties->EnableFlags, "NewLogFileName", NewLogFileName ); 
-    }
-    else if (Properties) {
-        LOQ_zero("Trace", "xui","TraceHandle", TraceHandle,"InstanceName", InstanceName,"EnableFlags", Properties->EnableFlags); 
-    }
+	wchar_t *NewLogFileName = NULL;
+	if (Properties && !our_isbadreadptr(Properties, sizeof(EVENT_TRACE_PROPERTIES))) {
+		__try {
+			if (Properties->LogFileNameOffset >= sizeof(EVENT_TRACE_PROPERTIES) &&
+			    Properties->LogFileNameOffset < Properties->Wnode.BufferSize) {
+				NewLogFileName = (wchar_t *)((char *)Properties + Properties->LogFileNameOffset);
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			NewLogFileName = NULL;
+		}
+		if (NewLogFileName) {
+			LOQ_zero("Trace", "xuiu", "TraceHandle", TraceHandle, "InstanceName", InstanceName, "EnableFlags", Properties->EnableFlags, "NewLogFileName", NewLogFileName);
+		} else {
+			LOQ_zero("Trace", "xui", "TraceHandle", TraceHandle, "InstanceName", InstanceName, "EnableFlags", Properties->EnableFlags);
+		}
+	}
 	return ret;
 }
 
@@ -397,7 +435,7 @@ HOOKDEF(ULONG, WINAPI, EventAccessControl,
     safe_string_to_guid(S_GUID, sizeof(S_GUID), Guid);
     char S_SID[128] = "NULL";
     safe_string_to_sid(Sid, S_SID, sizeof(S_SID));
-	LOQ_zero("Trace", "sxshi", "GUID", S_GUID, "Operation", Operation, "SID", S_SID, "Rights", Rights, "Allow_OR_Deny", AllowOrDeny);
+	LOQ_zero("Trace", "sishi", "GUID", S_GUID, "Operation", Operation, "SID", S_SID, "Rights", Rights, "Allow_OR_Deny", AllowOrDeny);
 	return ret;
 }
 
