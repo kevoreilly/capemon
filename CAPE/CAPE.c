@@ -1255,7 +1255,13 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 
 	SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
-	if (DumpImageInCurrentProcess(TrackedRegion->AllocationBase) || DumpMemory(TrackedRegion->AllocationBase, AccessibleSize))
+	BOOL Dumped = FALSE;
+	if (g_config.import_reconstruction)
+		Dumped = DumpImageInCurrentProcessFixImports(TrackedRegion->AllocationBase, 0);
+	else
+		Dumped = DumpImageInCurrentProcess(TrackedRegion->AllocationBase);
+
+	if (Dumped || DumpMemory(TrackedRegion->AllocationBase, AccessibleSize))
 		TrackedRegion->PagesDumped = TRUE;
 }
 
@@ -3748,13 +3754,16 @@ void RestoreHeaders()
 	ImportsVA = (PBYTE)BaseAddress + ImportsRVA;
 
 	// Check if we have a PE header after import table
-	if (*(DWORD*)((PBYTE)ImportsVA + ImportsSize) != IMAGE_NT_SIGNATURE)
+	if (!ImportsRVA || !ImportsSize || !IsAddressAccessible((PBYTE)ImportsVA + ImportsSize) || *(DWORD*)((PBYTE)ImportsVA + ImportsSize) != IMAGE_NT_SIGNATURE)
 		return;
+
+	hook_disable();
 
 	// Set page permissions to allow writing of original headers
 	if (!VirtualProtect((PBYTE)BaseAddress, SizeOfHeaders, PAGE_EXECUTE_READWRITE, &dwProtect))
 	{
 		ErrorOutput("RestoreHeaders: Failed to modify memory page protection of NtHeaders");
+		hook_enable();
 		return;
 	}
 
@@ -3764,6 +3773,7 @@ void RestoreHeaders()
 	if (!VirtualProtect((PBYTE)BaseAddress, SizeOfHeaders, dwProtect, &dwProtect))
 	{
 		ErrorOutput("RestoreHeaders: Failed to restore previous memory page protection");
+		hook_enable();
 		return;
 	}
 
@@ -3771,8 +3781,11 @@ void RestoreHeaders()
 	if (!VirtualFree(ImportsVA, 0, MEM_RELEASE))
 	{
 		ErrorOutput("RestoreHeaders: Failed to free memory for patched IAT");
+		hook_enable();
 		return;
 	}
+
+	hook_enable();
 
 	DebugOutput("RestoreHeaders: Restored original import table.\n");
 }
@@ -3867,11 +3880,11 @@ void CAPE_post_init()
 		DebugOutput("Post-init: Failed to initialise debugger.\n");
 #endif
 
-	if (g_config.unpacker)
-		UnpackerInit();
-
 	// Restore headers in case of IAT patching
 	RestoreHeaders();
+
+	if (g_config.unpacker)
+		UnpackerInit();
 
 #ifndef _WIN64
 	if (g_config.wowmon)

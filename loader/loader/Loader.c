@@ -933,7 +933,7 @@ rebase:
 	OriginalNumberOfDescriptors = Size / sizeof(IMAGE_IMPORT_DESCRIPTOR);
 	NewSizeOfImportDescriptors = Size + sizeof(IMAGE_IMPORT_DESCRIPTOR);
 	if (NewSizeOfImportDescriptors % sizeof(DWORD_PTR))
-		NewSizeOfImportDescriptors += sizeof(DWORD_PTR);
+		NewSizeOfImportDescriptors += sizeof(DWORD_PTR) - (NewSizeOfImportDescriptors % sizeof(DWORD_PTR));
 
 	// Two for OriginalFirstThunk, NULL, then two for FirstThunk, NULL.
 	SizeOfTables = NewSizeOfImportDescriptors + (4 * sizeof(IMAGE_THUNK_DATAXX));
@@ -961,6 +961,7 @@ rebase:
 	for (i = 0; i < NtHeader.FileHeader.NumberOfSections; i++)
 	{
 		IMAGE_SECTION_HEADER SectionHeader;
+		DWORD SectionSize;
 		memset(&SectionHeader, 0, sizeof(SectionHeader));
 
 		if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + SizeOfHeaders + sizeof(SectionHeader) * i, &SectionHeader, sizeof(SectionHeader), &BytesRead) || BytesRead < sizeof(SectionHeader))
@@ -970,8 +971,9 @@ rebase:
 			goto out;
 		}
 
+		SectionSize = SectionHeader.Misc.VirtualSize ? max(SectionHeader.SizeOfRawData, SectionHeader.Misc.VirtualSize) : SectionHeader.SizeOfRawData;
 		if (NtHeader.IMPORT_DIRECTORY.VirtualAddress >= SectionHeader.VirtualAddress &&
-			NtHeader.IMPORT_DIRECTORY.VirtualAddress < SectionHeader.VirtualAddress + SectionHeader.SizeOfRawData)
+			NtHeader.IMPORT_DIRECTORY.VirtualAddress < SectionHeader.VirtualAddress + SectionSize)
 			ImportsSection = SectionHeader;
 	}
 
@@ -980,7 +982,7 @@ rebase:
 	{
 		DWORD ImportsRVA, ImportsSize, NtSignature;
 		ImportsRVA = NtHeader.IMPORT_DIRECTORY.VirtualAddress;
-		ImportsSize = Size + (DWORD)DllPathLength + (4 * sizeof(IMAGE_THUNK_DATAXX));
+		ImportsSize = NtHeader.IMPORT_DIRECTORY.Size;
 
 		if (!ReadProcessMemory(ProcessHandle, (PBYTE)BaseAddress + ImportsRVA + ImportsSize, &NtSignature, sizeof(DWORD), &BytesRead) || BytesRead < sizeof(DWORD))
 			ErrorOutput("InjectDllViaIAT: Failed to check for PE header after existing import table at 0x%p", (PBYTE)BaseAddress + ImportsRVA + ImportsSize);
@@ -1013,7 +1015,10 @@ rebase:
 	memcpy(NewImportDirectory + NewImportDirectorySize, &NtHeader, sizeof(NtHeader));
 
 	// Scan address space from EXE image base for a free region to contain our new import directory
-	EndOfImage = BaseAddress + NtHeader.OptionalHeader.BaseOfCode + NtHeader.OptionalHeader.SizeOfCode + NtHeader.OptionalHeader.SizeOfInitializedData + NtHeader.OptionalHeader.SizeOfUninitializedData;
+	if (NtHeader.OptionalHeader.SizeOfImage)
+		EndOfImage = BaseAddress + NtHeader.OptionalHeader.SizeOfImage;
+	else
+		EndOfImage = BaseAddress + NtHeader.OptionalHeader.BaseOfCode + NtHeader.OptionalHeader.SizeOfCode + NtHeader.OptionalHeader.SizeOfInitializedData + NtHeader.OptionalHeader.SizeOfUninitializedData;
 
 	TargetImportTable = NULL;
 

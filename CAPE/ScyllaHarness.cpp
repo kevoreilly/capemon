@@ -315,11 +315,16 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 
 		// Enumerate DLLs and imported functions
 		apiReader.readApisFromModuleList();
-		IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, FALSE);
+		if (entrypoint)
+			IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, FALSE);
+		if (!IAT_Found)
+			IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, FALSE);
 
 		// Try advanced search
 		if (!IAT_Found)
 			IAT_Found = iatSearch.searchImportAddressTableInProcess(ModuleBase, &addressIAT, &sizeIAT, TRUE);
+		if (!IAT_Found && entrypoint)
+			IAT_Found = iatSearch.searchImportAddressTableInProcess(entrypoint, &addressIAT, &sizeIAT, TRUE);
 
 		if (addressIAT && sizeIAT)
 		{
