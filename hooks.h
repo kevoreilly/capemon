@@ -4338,4 +4338,10 @@ HOOKDEF(HRESULT, WINAPI, AmsiScanString,
 BOOL IsAmsiActive(void);
 void SetAmsiActive(BOOL val);
 
+HOOKDEF(PVOID, WINAPI, nLoadImage,
+	_In_     PVOID        pArrayObject,
+	_In_opt_ PVOID        pAppDomain,
+	_Inout_  PVOID*       pAssembly
+);
+
 #include "hook_vbscript.h"
