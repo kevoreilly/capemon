@@ -904,27 +904,64 @@ BOOL file_exists(const OBJECT_ATTRIBUTES *obj)
 	return FALSE;
 }
 
-DWORD loaded_dlls;
-struct dll_range dll_ranges[MAX_DLLS];
+// DLL load/unload notifications arrive on arbitrary target threads while
+// is_in_dll_range is read from the hook path (once per backtrace frame).
+// Both writers and readers are lock-free:
+//
+//   - A slot's 'start' transitions 0 -> DllBase at most once via CAS, so a
+//     reader can never observe 'start' from one module and 'end' from another.
+//   - 'end' is the validity marker (0 while unpopulated or retired).
+//   - Readers load 'start' and 'end' into locals and require start != 0 &&
+//     addr >= start && addr < end.
+volatile LONG loaded_dlls;
+volatile struct dll_range dll_ranges[MAX_DLLS];
 
 void add_dll_range(ULONG_PTR start, ULONG_PTR end)
 {
-	DWORD tmp_loaded_dlls = loaded_dlls;
-	if (tmp_loaded_dlls >= MAX_DLLS)
-		return;
-	if (is_in_dll_range(start))
-		return;
-	dll_ranges[tmp_loaded_dlls].start = start;
-	dll_ranges[tmp_loaded_dlls].end = end;
+	LONG i, cur_count;
 
-	loaded_dlls++;
+	if (!start || start >= end)
+		return;
+
+	for (i = 0; i < MAX_DLLS; i++) {
+		ULONG_PTR slot_start = dll_ranges[i].start;
+		ULONG_PTR slot_end = dll_ranges[i].end;
+
+		if (slot_start != 0) {
+			if (start >= slot_start && start < slot_end)
+				return;
+			if (slot_start != start)
+				continue;
+		}
+		else {
+			ULONG_PTR prev = (ULONG_PTR)InterlockedCompareExchangePointer(
+				(PVOID volatile *)&dll_ranges[i].start, (PVOID)start, NULL);
+			if (prev != 0 && prev != start)
+				continue;
+		}
+
+		InterlockedExchangePointer((PVOID volatile *)&dll_ranges[i].end, (PVOID)end);
+
+		while ((cur_count = loaded_dlls) <= i) {
+			if (InterlockedCompareExchange(&loaded_dlls, i + 1, cur_count) == cur_count)
+				break;
+		}
+		return;
+	}
 }
 
 BOOL is_in_dll_range(ULONG_PTR addr)
 {
-	DWORD i;
-	for (i = 0; i < loaded_dlls; i++) {
-		if (addr >= dll_ranges[i].start && addr < dll_ranges[i].end)
+	LONG count = loaded_dlls;
+	LONG i;
+
+	if (count > MAX_DLLS)
+		count = MAX_DLLS;
+
+	for (i = 0; i < count; i++) {
+		ULONG_PTR start = dll_ranges[i].start;
+		ULONG_PTR end = dll_ranges[i].end;
+		if (start && addr >= start && addr < end)
 			return TRUE;
 	}
 	return FALSE;
@@ -932,16 +969,20 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 
 BOOL remove_dll_range(ULONG_PTR addr)
 {
-    DWORD i;
-    for (i = 0; i < loaded_dlls; i++) {
-        if (addr < dll_ranges[i].start || addr >= dll_ranges[i].end)
-            continue;
-		dll_ranges[i] = dll_ranges[loaded_dlls - 1];
-		dll_ranges[loaded_dlls - 1].start = 0;
-		dll_ranges[loaded_dlls - 1].end = 0;
-		loaded_dlls--;
+	LONG count = loaded_dlls;
+	LONG i;
+
+	if (count > MAX_DLLS)
+		count = MAX_DLLS;
+
+	for (i = 0; i < count; i++) {
+		ULONG_PTR start = dll_ranges[i].start;
+		ULONG_PTR end = dll_ranges[i].end;
+		if (!start || addr < start || addr >= end)
+			continue;
+		InterlockedExchangePointer((PVOID volatile *)&dll_ranges[i].end, NULL);
 		return TRUE;
-    }
+	}
 	return FALSE;
 }
 

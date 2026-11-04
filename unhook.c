@@ -243,7 +243,7 @@ static DWORD WINAPI _unhook_detect_thread(LPVOID param)
 		}
 
 		for (idx = 0; idx < g_index; idx++) {
-			if (g_unhook_hooks[idx]->is_hooked && g_hook_reported[idx] == 0) {
+			if (g_unhook_hooks[idx]->is_hooked == 1 && g_hook_reported[idx] == 0) {
 				char *tmpbuf = NULL;
 				if (!is_valid_address_range((ULONG_PTR)g_addr[idx], g_length[idx]))
 					continue;

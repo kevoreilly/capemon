@@ -755,7 +755,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
 	return ret;
 }
 
-extern DWORD tmphookinfo_threadid;
+extern void tmphookinfo_release(DWORD tid);
 
 HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
 	__in  HANDLE ThreadHandle,
@@ -766,9 +766,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateThread,
 	DWORD tid = tid_from_thread_handle(ThreadHandle);
 	NTSTATUS ret = 0;
 
-	if (tmphookinfo_threadid && tid == tmphookinfo_threadid) {
-		tmphookinfo_threadid = 0;
-	}
+	if (tid)
+		tmphookinfo_release(tid);
 
 	//remove_ignored_thread(tid);
 

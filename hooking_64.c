@@ -893,25 +893,33 @@ static int hook_api_native_push_retn(hook_t *h, unsigned char *from, unsigned ch
 typedef struct _hook_page_arena_t {
 	PVOID BaseAddress;
 	SIZE_T CommittedSize;
-	SIZE_T NextFreeOffset;
+	volatile SIZE_T NextFreeOffset;
 	struct _hook_page_arena_t *next;
 } hook_page_arena_t;
 
-static hook_page_arena_t *g_hook_arenas = NULL;
+static hook_page_arena_t * volatile g_hook_arenas = NULL;
 
 hook_data_t *alloc_hookdata_near(void *addr)
 {
-	hook_page_arena_t *curr = g_hook_arenas;
+	hook_page_arena_t *curr = (hook_page_arena_t *)g_hook_arenas;
 	SIZE_T requested_size = sizeof(hook_data_t);
 
-	// 1. Scan current arenas for an existing chunk within 1GB of 'addr' with free slots
+	// 1. Scan current arenas for an existing chunk within 1GB of 'addr' with free slots.
+	// Arenas are never freed or unlinked; NextFreeOffset is bumped with a CAS loop so
+	// concurrent hook installs on different threads cannot claim the same slot.
 	while (curr != NULL) {
 		LONG_PTR distance = (LONG_PTR)curr->BaseAddress - (LONG_PTR)addr;
 		if (distance >= -((LONG_PTR)1024*1024*1024) && distance <= ((LONG_PTR)1024*1024*1024)) {
-			if (curr->NextFreeOffset + requested_size <= curr->CommittedSize) {
-				hook_data_t *allocated = (hook_data_t *)((PBYTE)curr->BaseAddress + curr->NextFreeOffset);
-				curr->NextFreeOffset += requested_size;
-				return allocated;
+			for (;;) {
+				SIZE_T free_offset = curr->NextFreeOffset;
+				if (free_offset + requested_size > curr->CommittedSize)
+					break;
+				if ((SIZE_T)InterlockedCompareExchangePointer(
+						(PVOID volatile *)&curr->NextFreeOffset,
+						(PVOID)(free_offset + requested_size),
+						(PVOID)free_offset) == free_offset) {
+					return (hook_data_t *)((PBYTE)curr->BaseAddress + free_offset);
+				}
 			}
 		}
 		curr = curr->next;
@@ -927,21 +935,23 @@ hook_data_t *alloc_hookdata_near(void *addr)
 		if (offset < 0 && (ULONG_PTR)addr < (ULONG_PTR)-offset)
 			offset = 0x10000;
 		BaseAddress = (PCHAR)addr + offset;
+		RegionSize = 65536;
 		status = pNtAllocateVirtualMemory(GetCurrentProcess(), &BaseAddress, 0, &RegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 		if (status >= 0) {
-			// Place the metadata directly at the beginning of the newly allocated page
+			// Place the metadata directly at the beginning of the newly allocated page.
+			// Claim the first slot at offset 128 before publishing new_arena to g_hook_arenas.
 			hook_page_arena_t *new_arena = (hook_page_arena_t *)BaseAddress;
+			hook_data_t *allocated = (hook_data_t *)((PBYTE)BaseAddress + 128);
 			new_arena->BaseAddress = BaseAddress;
 			new_arena->CommittedSize = RegionSize;
 			
-			// NextFreeOffset starts after metadata (128-byte aligned for performance and safety)
-			new_arena->NextFreeOffset = 128;
+			// NextFreeOffset starts after metadata (128-byte aligned) plus the caller's slot
+			new_arena->NextFreeOffset = 128 + requested_size;
 			
-			new_arena->next = g_hook_arenas;
-			g_hook_arenas = new_arena;
+			do {
+				new_arena->next = (hook_page_arena_t *)g_hook_arenas;
+			} while (InterlockedCompareExchangePointer((PVOID volatile *)&g_hook_arenas, new_arena, new_arena->next) != new_arena->next);
 			
-			hook_data_t *allocated = (hook_data_t *)((PBYTE)new_arena->BaseAddress + new_arena->NextFreeOffset);
-			new_arena->NextFreeOffset += requested_size;
 			return allocated;
 		}
 		offset += 0x10000;
@@ -1033,11 +1043,6 @@ static int hook_api_internal(hook_t *h, int type)
 		/* HOOK_JMP_INDIRECT */{ &hook_api_jmp_indirect, 6 },
 		/* HOOK_PUSH_RETN */{ &hook_api_push_retn, 6 },
 	};
-
-	// is this address already hooked?
-	if (h->is_hooked != 0) {
-		return 0;
-	}
 
 	if (hook_is_excluded(h))
 		return 0;
@@ -1215,8 +1220,8 @@ static int hook_api_internal(hook_t *h, int type)
 	if (ret == 0) {
 		if (h->old_func)
 			*h->old_func = h->hookdata->tramp;
-		h->is_hooked = 1;
 		h->hook_addr = addr;
+		InterlockedExchange((volatile LONG *)&h->is_hooked, 1);
 		add_dll_range((ULONG_PTR)hmod, (ULONG_PTR)hmod + GetAllocationSize(hmod));
 	}
 
@@ -1230,9 +1235,24 @@ int hook_api(hook_t *h, int type)
 {
 	int ret;
 
+	// Claim the hook: is_hooked 0 -> -1 ("install in progress"). This
+	// replaces a plain "if (h->is_hooked != 0) return 0;" at the top of
+	// the body. set_hooks_dll runs from the loader notification callback
+	// and from hook_special.c on arbitrary target threads, so two threads
+	// could both pass that test and install over each other.
+	if (InterlockedCompareExchange((volatile LONG *)&h->is_hooked, -1, 0) != 0)
+		return 0;
+
 	enter_hooking();
 	ret = hook_api_internal(h, type);
 	leave_hooking();
+
+	// The body sets is_hooked to 1 on success. On any other outcome the
+	// claim has to be released, because delay-loaded DLLs rely on a later
+	// set_hooks_dll retrying the install.
+	if (h->is_hooked != 1)
+		InterlockedExchange((volatile LONG *)&h->is_hooked, 0);
+
 	return ret;
 }
 
