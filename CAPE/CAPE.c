@@ -1080,23 +1080,24 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	if (Protect)
 		TrackedRegion->MemInfo.Protect = Protect;
 
-	TrackedRegion->Entropy = GetEntropy((PUCHAR)TrackedRegion->AllocationBase);
-
-	// If the region is a PE image
-	TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
-	if (TrackedRegion->EntryPoint)
+	if (!PageAlreadyTracked)
 	{
-		TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
+		TrackedRegion->Entropy = GetEntropy((PUCHAR)TrackedRegion->AllocationBase);
+
+		// If the region is a PE image
+		TrackedRegion->EntryPoint = GetEntryPoint(TrackedRegion->AllocationBase);
+		if (TrackedRegion->EntryPoint)
+		{
+			TrackedRegion->MinPESize = GetMinPESize(TrackedRegion->AllocationBase);
 #ifdef DEBUG_COMMENTS
-		if (!PageAlreadyTracked)
 			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions: EntryPoint 0x%x, Entropy %e\n", TrackedRegion->AllocationBase, TrackedRegion->EntryPoint, TrackedRegion->Entropy);
 #endif
-
-	}
+		}
 #ifdef DEBUG_COMMENTS
-	else if (!PageAlreadyTracked)
-		DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions.\n", TrackedRegion->AllocationBase);
+		else
+			DebugOutput("AddTrackedRegion: New region at 0x%p added to tracked regions.\n", TrackedRegion->AllocationBase);
 #endif
+	}
 
 	if (lookup_get(&g_dotnet_jit, (ULONG_PTR)GetAllocationBase(Address), 0))
 	{
@@ -1240,6 +1241,8 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 		DebugOutput("ProcessImageBase: Modified PE size detected at image base 0x%p - new size 0x%x.\n", TrackedRegion->AllocationBase, MinPESize);
 	else if (TrackedRegion->Entropy && EntropyChange > (double)ENTROPY_DELTA)
 		DebugOutput("ProcessImageBase: Modified image detected at image base 0x%p - new entropy %e (change %e).\n", TrackedRegion->AllocationBase, Entropy, EntropyChange);
+	else if (!TrackedRegion->PagesDumped && TrackedRegion->AllocationBase == ImageBase && VerifyHeaders(TrackedRegion->AllocationBase, our_process_path_w) == 0)
+		DebugOutput("ProcessImageBase: Modified PE headers detected at image base 0x%p - dumping.\n", TrackedRegion->AllocationBase);
 	else
 	{
 		DebugOutput("ProcessImageBase: Main module image at 0x%p unmodified (entropy change %e)\n", TrackedRegion->AllocationBase, EntropyChange);
@@ -1252,8 +1255,8 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion)
 
 	SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
 
-	if (!DumpImageInCurrentProcess(TrackedRegion->AllocationBase))
-		DumpMemory(TrackedRegion->AllocationBase, AccessibleSize);
+	if (DumpImageInCurrentProcess(TrackedRegion->AllocationBase) || DumpMemory(TrackedRegion->AllocationBase, AccessibleSize))
+		TrackedRegion->PagesDumped = TRUE;
 }
 
 //**************************************************************************************
@@ -2695,7 +2698,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	if (SectionHeaders == NULL)
 	{
 		DebugOutput("VerifyHeaders: Error allocating memory for %d section headers", NtHeaders.FileHeader.NumberOfSections);
-		return RetVal;
+		goto end;
 	}
 
 	SIZE_T SizeOfSectionHeaders = sizeof(IMAGE_SECTION_HEADER) * NtHeaders.FileHeader.NumberOfSections;
@@ -2719,6 +2722,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	{
 		DebugOutput("VerifyHeaders: PE header does not match, 0x%x of 0x%x matching\n", Matching, SizeOfSectionHeaders);
 		RetVal = 0;
+		goto end;
 	}
 
 	SetFilePointer(hFile, FileOffsetFromRVA(ImageBase, NtHeaders.OptionalHeader.AddressOfEntryPoint), 0, FILE_BEGIN);
@@ -2728,7 +2732,7 @@ int VerifyHeaders(PVOID ImageBase, LPCWSTR Path)
 	if (EntryPointBytes == NULL)
 	{
 		DebugOutput("VerifyHeaders: Error allocating memory for entry point check");
-		return RetVal;
+		goto end;
 	}
 
 	if (!ReadFile(hFile, EntryPointBytes, (DWORD)ChunkSize, &bytesRead, NULL))

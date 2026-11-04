@@ -139,6 +139,7 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	SIZE_T SectionBasedSizeOfImage = 0;
 	PeParser *peFile = 0;
 	DWORD_PTR entrypoint = NULL;
+	PBYTE PEImage = NULL;
 
 	bool isAfter = 0;
 	DWORD sizeIAT = 0;
@@ -192,7 +193,6 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 	}
 	else if (IsDisguisedPEHeader((LPVOID)ModuleBase))
 	{
-		PBYTE PEImage = NULL;
 		PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 		DebugOutput("DumpProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
@@ -264,7 +264,12 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 		if (peFile->isValidPeFile())
 		{
 			if (NewEP)
-				entrypoint = NewEP;
+			{
+				if (ModuleBase && NewEP > ModuleBase)
+					entrypoint = NewEP - ModuleBase;
+				else
+					entrypoint = NewEP;
+			}
 			else
 				entrypoint = peFile->getEntryPoint();
 
@@ -285,10 +290,16 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
 					DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
 				else
+				{
 					DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+					goto fail;
+				}
 		}
 		else
+		{
 			DebugOutput("DumpProcess: Unable to fix PE image for dumping.\n");
+			goto fail;
+		}
 	}
 	else
 	{
@@ -382,23 +393,44 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 			{
 				DebugOutput("DumpProcess: Import table rebuild success.\n");
 				delete peFile;
+				if (PEImage)
+					free(PEImage);
 				return 1;
 			}
 			else
 			{
 				DebugOutput("DumpProcess: Import table rebuild failed, falling back to unfixed dump.\n");
-				peFile->savePeFileToDisk(NULL);
+				if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+					DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+				else
+				{
+					DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+					goto fail;
+				}
 			}
 		}
 		else
-			DebugOutput("DumpProcess: Unable to find IAT in scan.\n");
+		{
+			DebugOutput("DumpProcess: Unable to find IAT in scan, falling back to unfixed dump.\n");
+			if (peFile->dumpProcess(ModuleBase, entrypoint, NULL))
+				DebugOutput("DumpProcess: Module image dump success - dump size 0x%x.\n", peFile->dumpSize);
+			else
+			{
+				DebugOutput("DumpProcess: Failed to dump image at 0x%p.\n", ModuleBase);
+				goto fail;
+			}
+		}
 	}
 
 	delete peFile;
+	if (PEImage)
+		free(PEImage);
 
 	return 1;
 fail:
 	delete peFile;
+	if (PEImage)
+		free(PEImage);
 
 	return 0;
 }
