@@ -15,6 +15,7 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `pythonpath` | Path | Directory for Python (used for Python-based analysis tools). |
 | `shutdown-mutex` | String | Name of the mutex that signals a shutdown/termination. |
 | `first-process` | Boolean | (Internal) Flag indicating if this is the first process in the analysis tree. |
+| `loaded-process-identity` | Boolean | (Internal) Flag indicating that the analyzer accepts `LOADED:<pid>,i:<FILETIME>` acknowledgements tagged with the process creation time. |
 | `startup-time` | Integer | System startup time in milliseconds. |
 | `debug` | Integer | Debug level: `1` = Report critical exceptions, `2` = Report all exceptions. |
 | `lang` | Integer | Override the system language code (LCID). |
