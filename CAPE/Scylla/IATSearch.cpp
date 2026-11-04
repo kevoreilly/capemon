@@ -415,6 +415,15 @@ void IATSearch::findExecutableMemoryPagesByStartAddress( DWORD_PTR startAddress,
 		return;
 	}
 
+	while (!isPageExecutable(memBasic.Protect))
+	{
+		tempAddress = (DWORD_PTR)memBasic.BaseAddress + memBasic.RegionSize;
+		if (!targetImageBase || tempAddress >= targetImageBase + targetSizeOfImage)
+			return;
+		if (VirtualQueryEx(hProcess, (LPCVOID)tempAddress, &memBasic, sizeof(MEMORY_BASIC_INFORMATION)) != sizeof(MEMORY_BASIC_INFORMATION))
+			return;
+	}
+
 	//search down
 	do
 	{
