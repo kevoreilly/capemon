@@ -3878,11 +3878,11 @@ void CAPE_post_init()
 		LoadWowMonitor();
 #endif
 
-	DebugOutput("%s-bit monitor loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", sizeof(void*) == 8 ? "64" : "86", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
+	DebugOutput("%s-bit monitor loaded in process %d at 0x%p, thread %d, image base 0x%p, stack from 0x%p-0x%p\n", sizeof(void*) == 8 ? "64" : "32", CapeMetaData->Pid, g_our_dll_base, GetCurrentThreadId(), ImageBase, get_stack_bottom(), get_stack_top());
 
 	char hash[65] = {0};
 	GetSelfHash(hash);
-	DebugOutput("Monitor version: \"%s\" (x%s) SHA-256: %s\n", g_capemon_version, sizeof(void*) == 8 ? "64" : "86", hash);
+	DebugOutput("Monitor version: \"%s\" (%s-bit) SHA-256: %s\n", g_capemon_version, sizeof(void*) == 8 ? "64" : "32", hash);
 
 	char CommandLine[MAX_UNICODE_PATH];
 	SanitiseString(CommandLine, GetCommandLineA(), sizeof(CommandLine));
