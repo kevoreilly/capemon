@@ -25,18 +25,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install Visual Studio 2017 toolset
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-        $installPath = & $vswhere -latest -products * -property installationPath
-        $arguments = "modify --installPath `"$installPath`" --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 --quiet --norestart"
-        $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-        if ($process.ExitCode -ne 0) {
-          throw "Visual Studio Installer exited with code $($process.ExitCode)"
-        }
-
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
       with: 
