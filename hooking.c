@@ -315,7 +315,6 @@ BOOLEAN force_hook_thread_func(const char* hookname)
 
 static hook_info_t tmphookinfo;
 DWORD tmphookinfo_threadid;
-FILETIME ft;
 
 // returns 1 if we should call our hook, 0 if we should call the original function instead
 // on x86 this is actually: hook, esp, ebp
@@ -347,31 +346,45 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	if ((hookinfo->disable_count < 1) && (h->allow_hook_recursion || force_hook_thread_func(h->funcname) || (!__called_by_hook(sp, ebp_or_rip) /*&& !is_ignored_thread(GetCurrentThreadId())*/))) {
 
-		if (g_config.api_rate_cap && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
+		if ((g_config.api_cap || g_config.api_rate_cap) && h->new_func != &New_RtlDispatchException && h->new_func != &New_NtContinue) {
 			if (h->hook_disabled)
 				return 0;
-			h->counter++;
-			if (g_config.api_cap && h->counter >= g_config.api_cap) {
-				DebugOutput("api-cap: %s hook disabled due to count: %d\n", h->funcname, h->counter);
-				h->hook_disabled = 1;
-				return 0;
-			}
-			if (Old_GetSystemTimeAsFileTime)
-				Old_GetSystemTimeAsFileTime(&ft);
-			else
-				GetSystemTimeAsFileTime(&ft);
-			if (ft.dwLowDateTime - h->hook_timer < HOOK_TIME_SAMPLE) {
-				h->rate_counter++;
-				if (h->rate_counter > HOOK_RATE_LIMIT/g_config.api_rate_cap) {
-					DebugOutput("api-rate-cap: %s hook disabled due to rate\n", h->funcname);
-					h->rate_counter = 0;
+
+			if (g_config.api_cap) {
+				unsigned int counter = (unsigned int)InterlockedIncrement((volatile LONG *)&h->counter);
+				if (counter >= g_config.api_cap) {
+					DebugOutput("api-cap: %s hook disabled due to count: %d\n", h->funcname, counter);
 					h->hook_disabled = 1;
 					return 0;
 				}
 			}
-			else {
-				h->rate_counter = 0;
-				h->hook_timer = ft.dwLowDateTime;
+
+			if (g_config.api_rate_cap) {
+				FILETIME ft;
+				ULARGE_INTEGER now;
+				DWORD now_ms;
+				unsigned int rate_counter;
+
+				if (Old_GetSystemTimeAsFileTime)
+					Old_GetSystemTimeAsFileTime(&ft);
+				else
+					GetSystemTimeAsFileTime(&ft);
+				now.LowPart = ft.dwLowDateTime;
+				now.HighPart = ft.dwHighDateTime;
+				now_ms = (DWORD)(now.QuadPart / 10000);
+				if (now_ms - h->hook_timer < HOOK_TIME_SAMPLE) {
+					rate_counter = (unsigned int)InterlockedIncrement((volatile LONG *)&h->rate_counter);
+					if (rate_counter > HOOK_RATE_LIMIT / g_config.api_rate_cap) {
+						DebugOutput("api-rate-cap: %s hook disabled due to rate\n", h->funcname);
+						InterlockedExchange((volatile LONG *)&h->rate_counter, 0);
+						h->hook_disabled = 1;
+						return 0;
+					}
+				}
+				else {
+					InterlockedExchange((volatile LONG *)&h->rate_counter, 0);
+					h->hook_timer = now_ms;
+				}
 			}
 		}
 
