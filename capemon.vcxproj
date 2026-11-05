@@ -227,8 +227,8 @@
       <Command>call "$(ProjectDir)gen_version.cmd" "$(ProjectDir)git_version.h"</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <!-- yara_x_capi.dll is loaded at runtime, not just link time: it must sit next to capemon_x64.dll. -->
-      <Command>copy /y "$(ProjectDir)docs\yara-x\bin\x64\yara_x_capi.dll" "$(TargetDir)"</Command>
+      <!-- yara_x_capi_x64.dll is loaded at runtime alongside capemon_x64.dll (renamed so x86 yara_x_capi.dll and x64 yara_x_capi_x64.dll can coexist in analyzer\windows\dll\). -->
+      <Command>copy /y "$(ProjectDir)docs\yara-x\bin\x64\yara_x_capi.dll" "$(TargetDir)yara_x_capi_x64.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

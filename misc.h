@@ -288,6 +288,8 @@ BOOLEAN is_valid_address_range(ULONG_PTR start, DWORD len);
 
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
+extern ULONG_PTR g_yara_dll_base;
+extern DWORD g_yara_dll_size;
 
 BOOLEAN is_address_in_monitor(ULONG_PTR address);
 BOOLEAN is_address_in_ntdll(ULONG_PTR address);

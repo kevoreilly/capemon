@@ -1,6 +1,6 @@
 # YARA-X backend for the in-monitor scanner
 
-Status: **work in progress / opt-in**. libyara remains the default.
+Status: **enabled in `Release|Win32` and `Release|x64`** (`Debug` configurations retain `libyara`).
 
 capemon's in-monitor YARA scanning lives entirely behind `CAPE/YaraHarness.h`
 (7 functions + the `NameByAddress` struct). This change adds a second
@@ -18,11 +18,11 @@ Nothing outside the harness changes: every caller (`hook_clr.c`, `Trace.c`,
 
 | Path | Purpose |
 |---|---|
-| `CAPE/YaraHarness.c` | libyara backend (unchanged, still the default) |
-| `CAPE/YaraHarnessX.c` | **new** — YARA-X backend, identical public API |
+| `CAPE/YaraHarness.c` | libyara backend (used in `Debug\|Win32` and `Debug\|x64`) |
+| `CAPE/YaraHarnessX.c` | **new** — YARA-X backend, identical public API (used in `Release\|Win32` and `Release\|x64`) |
 | `CAPE/YaraHarness.h` | `#include "yara.h"` is now skipped when `CAPE_USE_YARA_X` is set |
 | `yara-x/include/yara_x.h` | vendored YARA-X C API header (v1.20.0) |
-| `docs/yara-x/bin/{x32,x64}/` | prebuilt `yara_x_capi.dll` + import lib + PDB — this is what `capemon.vcxproj` actually links/loads today (see `docs/yara-x/readme.md`); **Step 1 below (a static lib in `yara-x/lib/`) is an alternative build path that is not currently wired into the project** |
+| `docs/yara-x/bin/{x32,x64}/` | prebuilt `yara_x_capi.dll` + import lib + PDB — `Release\|Win32` deploys `yara_x_capi.dll` and `Release\|x64` deploys `yara_x_capi_x64.dll` so both architectures can coexist in `analyzer\windows\dll\` (see `docs/yara-x/readme.md`) |
 
 The `yara-x/` layout deliberately mirrors `libyara/` (`include/` + `lib/`).
 
