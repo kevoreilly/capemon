@@ -393,8 +393,11 @@ LONG WINAPI capemon_exception_handler(__in struct _EXCEPTION_POINTERS *Exception
 	log_flush();
 
 	msg = malloc(EXCEPTION_MSG_SIZE);
-	if (!msg)
+	if (!msg) {
+		set_lasterrors(&lasterror);
+		hook_enable();
 		return EXCEPTION_CONTINUE_SEARCH;
+	}
 
 	dllname = convert_address_to_dll_name_and_offset(eip, &offset);
 
