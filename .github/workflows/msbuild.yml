@@ -19,8 +19,10 @@ jobs:
         include:
           - arch: x86
             platform: Win32
+            artifact_path: Release/capemon.dll
           - arch: x64
             platform: x64
+            artifact_path: x64/Release/capemon_x64.dll
 
     steps:
     - uses: actions/checkout@v4
@@ -41,13 +43,8 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: capemon_release_${{ matrix.arch }}
-        path: D:\a\capemon\capemon\Release\capemon.dll
-        if-no-files-found: ignore
-    - uses: actions/upload-artifact@v4
-      with:
-        name: capemon_release_${{ matrix.arch }}
-        path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
-        if-no-files-found: ignore
+        path: ${{ matrix.artifact_path }}
+        if-no-files-found: error
 
   publish:
     if: github.event_name == 'push'
@@ -59,9 +56,9 @@ jobs:
         The rolling release triggered on \`${{ github.ref_name }}\`. [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
         " > ${{ github.workspace }}-release-body.md
 
-    - uses: actions/download-artifact@v4.1.7
+    - uses: actions/download-artifact@v4
 
-    - uses: softprops/action-gh-release@v1
+    - uses: softprops/action-gh-release@v2
       with:
         tag_name: rolling
         files: |
