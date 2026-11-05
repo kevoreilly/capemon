@@ -39,6 +39,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include <delayimp.h>
 #include "Shlwapi.h"
 #include "CAPE.h"
 #include "Debugger.h"
@@ -49,16 +50,41 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 
 #include "yara_x.h"
 
+typedef struct _lasterror_t {
+	DWORD Win32Error;
+	DWORD NtstatusError;
+	DWORD_PTR Eflags;
+} lasterror_t;
+
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern BOOL SetInitialBreakpoints(PVOID ImageBase), DumpRegion(PVOID Address);
 extern BOOL remove_dll_range(ULONG_PTR addr);
+extern void add_dll_range(ULONG_PTR start, ULONG_PTR end);
+extern DWORD get_image_size(ULONG_PTR base);
+extern void hide_module_from_peb(HMODULE module_handle);
+extern void hook_disable();
+extern void hook_enable();
+extern void get_lasterrors(lasterror_t *errors);
+extern void set_lasterrors(lasterror_t *errors);
 extern char Action0[MAX_PATH], Action1[MAX_PATH], Action2[MAX_PATH], Action3[MAX_PATH];
 extern void parse_config_line(char* line);
 extern int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size);
 extern SIZE_T GetAccessibleSize(PVOID Buffer);
 extern char *our_dll_path;
+extern ULONG_PTR g_yara_dll_base;
+extern DWORD g_yara_dll_size;
 extern BOOL BreakpointsHit, TraceRunning;
+
+static FARPROC WINAPI YaraDelayLoadHook(unsigned dliNotify, PDelayLoadInfo pdli)
+{
+	if (dliNotify == dliNotePreLoadLibrary && pdli && pdli->szDll &&
+		!_stricmp(pdli->szDll, "yara_x_capi.dll") && g_yara_dll_base)
+	{
+		return (FARPROC)g_yara_dll_base;
+	}
+	return NULL;
+}
 
 static YRX_RULES* Rules = NULL;
 BOOL YaraActivated, YaraLogging;
@@ -334,8 +360,11 @@ static void PatternCollectCallback(const struct YRX_PATTERN* Pattern, void* user
 	yrx_pattern_iter_matches(Pattern, MatchCollectCallback, mc);
 }
 
+#define MAX_CAPE_OPTIONS 16
+
 typedef struct {
-	char* CapeOptions;   // heap copy owned by ConfigRuleCallback (see below)
+	char* CapeOptions[MAX_CAPE_OPTIONS];   // heap copies owned by ConfigRuleCallback (see below)
+	int   Count;
 } MetaScan;
 
 static void MetaScanCallback(const struct YRX_METADATA* Meta, void* user_data)
@@ -344,11 +373,15 @@ static void MetaScanCallback(const struct YRX_METADATA* Meta, void* user_data)
 
 	// The YRX_METADATA (and every pointer inside it) is freed as soon as this
 	// callback returns, so the value must be copied out here, not aliased.
-	if (ms->CapeOptions)
+	if (!ms || ms->Count >= MAX_CAPE_OPTIONS)
 		return;
 	if (Meta && Meta->value_type == YRX_STRING && Meta->identifier &&
 		!strcmp(Meta->identifier, "cape_options") && Meta->value.string)
-		ms->CapeOptions = strdup(Meta->value.string);
+	{
+		char* copy = _strdup(Meta->value.string);
+		if (copy)
+			ms->CapeOptions[ms->Count++] = copy;
+	}
 }
 
 // --- matching-rule callbacks ---------------------------------------------------
@@ -359,11 +392,11 @@ static void ConfigRuleCallback(const struct YRX_RULE* Rule, void* user_data)
 	const uint8_t* rid = NULL;
 	size_t ridlen = 0;
 	BOOL SetBreakpoints = FALSE;
-	MetaScan ms = { NULL };
+	MetaScan ms;
 	MatchCollector* mc;
 	SIZE_T length;
 	char* OptionLine;
-	int i;
+	int i, opt_idx;
 
 	if (yrx_rule_identifier(Rule, &rid, &ridlen) != YRX_SUCCESS || !rid)
 		return;
@@ -379,14 +412,16 @@ static void ConfigRuleCallback(const struct YRX_RULE* Rule, void* user_data)
 	if (TraceRunning)
 		DebuggerOutput("YaraScan hit: %s ", RuleId);
 
+	memset(&ms, 0, sizeof(ms));
 	yrx_rule_iter_metadata(Rule, MetaScanCallback, &ms);
-	if (!ms.CapeOptions)
+	if (ms.Count == 0)
 		return;
 
 	mc = (MatchCollector*)calloc(1, sizeof(MatchCollector));
 	if (!mc)
 	{
-		free(ms.CapeOptions);
+		for (opt_idx = 0; opt_idx < ms.Count; opt_idx++)
+			free(ms.CapeOptions[opt_idx]);
 		return;
 	}
 
@@ -399,74 +434,82 @@ static void ConfigRuleCallback(const struct YRX_RULE* Rule, void* user_data)
 			DebuggerOutput("YaraScan match: %s (0x%x) ", mc->Items[i].Identifier, (unsigned)mc->Items[i].Offset);
 	}
 
-	length = (SIZE_T)strlen(ms.CapeOptions);
-	OptionLine = ms.CapeOptions;
-	while (OptionLine && OptionLine < ms.CapeOptions + length)
+	for (opt_idx = 0; opt_idx < ms.Count; opt_idx++)
 	{
-		char* p = strchr(OptionLine, ',');
-		if (p)
-			*p = 0;
+		char* CapeOptions = ms.CapeOptions[opt_idx];
+		if (!CapeOptions)
+			continue;
 
-		if (!strchr(OptionLine, '$'))
-			parse_config_line(OptionLine);
-		else
+		length = (SIZE_T)strlen(CapeOptions);
+		OptionLine = CapeOptions;
+		while (OptionLine && OptionLine < CapeOptions + length)
 		{
-			for (i = 0; i < mc->Count; i++)
-				ParseOptionLine(OptionLine, mc->Items[i].Identifier, mc->Items[i].Offset, mc->Items[i].Length, user_data);
-		}
+			char* p = strchr(OptionLine, ',');
+			if (p)
+				*p = 0;
 
-		if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
-			SetBreakpoints = TRUE;
-
-		if (!_stricmp("dump", OptionLine))
-		{
-			DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
-			if (TraceRunning)
-				DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara ", user_data);
-			DumpRegion(user_data);
-		}
-		if (!_stricmp("coverage", OptionLine))
-		{
-			if (remove_dll_range((ULONG_PTR)user_data))
-				DebugOutput("YaraScan: Region at 0x%p removed from dll range for coverage.", user_data);
+			if (!strchr(OptionLine, '$'))
+				parse_config_line(OptionLine);
 			else
-				DebugOutput("YaraScan: Failed to remove region at 0x%p from dll range for coverage.", user_data);
-		}
-		if (!_stricmp("clear", OptionLine))
-		{
-			BreakpointsHit = FALSE;
-			g_config.bp0 = NULL;
-			g_config.bp1 = NULL;
-			g_config.bp2 = NULL;
-			g_config.bp3 = NULL;
-			g_config.br0 = NULL;
-			g_config.br1 = NULL;
-			g_config.br2 = NULL;
-			g_config.br3 = NULL;
-			g_config.hc0 = 0;
-			g_config.hc1 = 0;
-			g_config.hc2 = 0;
-			g_config.hc3 = 0;
-			memset(Action0, 0, MAX_PATH);
-			memset(Action1, 0, MAX_PATH);
-			memset(Action2, 0, MAX_PATH);
-			memset(Action3, 0, MAX_PATH);
+			{
+				for (i = 0; i < mc->Count; i++)
+					ParseOptionLine(OptionLine, mc->Items[i].Identifier, mc->Items[i].Offset, mc->Items[i].Length, user_data);
+			}
+
+			if (!_strnicmp(OptionLine, "bp", 2) || !strncmp(OptionLine, "br", 2) || !strncmp(OptionLine, "sysbp", 5))
+				SetBreakpoints = TRUE;
+
+			if (!_stricmp("dump", OptionLine))
+			{
+				DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
+				if (TraceRunning)
+					DebuggerOutput("YaraScan: Dump of region at 0x%p triggered by Yara ", user_data);
+				DumpRegion(user_data);
+			}
+			if (!_stricmp("coverage", OptionLine))
+			{
+				if (remove_dll_range((ULONG_PTR)user_data))
+					DebugOutput("YaraScan: Region at 0x%p removed from dll range for coverage.", user_data);
+				else
+					DebugOutput("YaraScan: Failed to remove region at 0x%p from dll range for coverage.", user_data);
+			}
+			if (!_stricmp("clear", OptionLine))
+			{
+				BreakpointsHit = FALSE;
+				g_config.bp0 = NULL;
+				g_config.bp1 = NULL;
+				g_config.bp2 = NULL;
+				g_config.bp3 = NULL;
+				g_config.br0 = NULL;
+				g_config.br1 = NULL;
+				g_config.br2 = NULL;
+				g_config.br3 = NULL;
+				g_config.hc0 = 0;
+				g_config.hc1 = 0;
+				g_config.hc2 = 0;
+				g_config.hc3 = 0;
+				memset(Action0, 0, MAX_PATH);
+				memset(Action1, 0, MAX_PATH);
+				memset(Action2, 0, MAX_PATH);
+				memset(Action3, 0, MAX_PATH);
+			}
+
+			if (p)
+			{
+				*p = ',';
+				OptionLine = p + 1;
+			}
+			else
+				OptionLine = NULL;
 		}
 
-		if (p)
-		{
-			*p = ',';
-			OptionLine = p + 1;
-		}
-		else
-			OptionLine = NULL;
+		free(CapeOptions);
 	}
 
 	if (DebuggerInitialised && SetBreakpoints)
 		SetInitialBreakpoints(user_data);
 
 	free(mc);
-	free(ms.CapeOptions);
 }
 
 static void AddressRuleCallback(const struct YRX_RULE* Rule, void* user_data)
@@ -547,9 +590,13 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 {
 	ThreadScannerContext* ctx;
 	enum YRX_RESULT Result = YRX_SUCCESS;
+	lasterror_t lasterror;
 
 	if (!YaraActivated || !Size)
 		return;
+
+	get_lasterrors(&lasterror);
+	hook_disable();
 
 	ctx = (ThreadScannerContext*)lookup_get(&g_yrx_scanners, (ULONG_PTR)GetCurrentThreadId(), NULL);
 	if (ctx && ctx->Scanning)
@@ -557,17 +604,25 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 #ifdef DEBUG_COMMENTS
 		DebugOutput("YaraScan (%s): re-entrant scan on same thread skipped\n", Where);
 #endif
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return;
 	}
 
 	if (InterlockedCompareExchange(&g_shutting_down, 0, 0) != 0)
+	{
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return;
+	}
 
 	InterlockedIncrement(&g_active_scans);
 
 	if (!YaraActivated || InterlockedCompareExchange(&g_shutting_down, 0, 0) != 0)
 	{
 		InterlockedDecrement(&g_active_scans);
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return;
 	}
 
@@ -575,12 +630,16 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 	if (!ctx || !ctx->Scanner)
 	{
 		InterlockedDecrement(&g_active_scans);
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return;
 	}
 
 	if (yrx_scanner_on_matching_rule(ctx->Scanner, Callback, CallbackData) != YRX_SUCCESS)
 	{
 		InterlockedDecrement(&g_active_scans);
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return;
 	}
 
@@ -595,6 +654,8 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 		InterlockedDecrement(&g_active_scans);
 		if (YaraLogging)
 			DebugOutput("YaraScan (%s): exception scanning 0x%p\n", Where, Address);
+		hook_enable();
+		set_lasterrors(&lasterror);
 		return;
 	}
 	ctx->Scanning = 0;
@@ -602,6 +663,9 @@ static void YaraScanInternal(PVOID Address, SIZE_T Size, YRX_RULE_CALLBACK Callb
 
 	if (Result != YRX_SUCCESS)
 		ScannerError(Result, Where);
+
+	hook_enable();
+	set_lasterrors(&lasterror);
 }
 
 void YaraScan(PVOID Address, SIZE_T Size)
@@ -818,30 +882,100 @@ BOOL YaraInit()
 	char dll_dir[MAX_PATH], yara_dll[MAX_PATH];
 	uint32_t compiler_flags = YRX_RELAXED_RE_SYNTAX | YRX_ENABLE_CONDITION_OPTIMIZATION;
 	enum YRX_RESULT rc;
+	lasterror_t lasterror;
 
-	// In injected process contexts, yara_x_capi.dll sits next to our monitor DLL
-	// (capemon.dll / capemon_x64.dll), which is not in the default Windows DLL search path.
-	// Explicitly preload yara_x_capi.dll by absolute path so delay-load calls resolve immediately.
-	if (our_dll_path && our_dll_path[0])
+#ifdef _WIN64
+	static const char* const yara_dll_candidates[] = {
+		"yara_x_capi_x64.dll",
+		"x64\\yara_x_capi.dll",
+		"yara_x_capi.dll"
+	};
+#else
+	static const char* const yara_dll_candidates[] = {
+		"yara_x_capi.dll",
+		"yara_x_capi_x86.dll",
+		"x32\\yara_x_capi.dll"
+	};
+#endif
+
+	get_lasterrors(&lasterror);
+	hook_disable();
+
+	__pfnDliNotifyHook2 = YaraDelayLoadHook;
+
+	// In injected process contexts, the YARA-X C API DLL sits next to our monitor DLL
+	// (capemon.dll / capemon_x64.dll in analyzer\windows\dll\), which is not in the
+	// default Windows DLL search path. Preload it by absolute path, bind all delay-loaded
+	// imports upfront via __HrLoadAllImportsForDll, register its image range as part of
+	// the monitor, and unlink it from the PEB module lists for stealth.
+	if (!g_yara_dll_base)
 	{
-		strncpy(dll_dir, our_dll_path, sizeof(dll_dir) - 1);
-		dll_dir[sizeof(dll_dir) - 1] = 0;
-		PathRemoveFileSpecA(dll_dir);
-		snprintf(yara_dll, sizeof(yara_dll), "%s\\yara_x_capi.dll", dll_dir);
-		if (!GetModuleHandleA("yara_x_capi.dll") && !LoadLibraryA(yara_dll))
+		HMODULE hYaraDll = NULL;
+		size_t i;
+
+		if (our_dll_path && our_dll_path[0])
 		{
-			DebugOutput("YaraInit: Unable to preload %s (error %d)\n", yara_dll, GetLastError());
+			strncpy(dll_dir, our_dll_path, sizeof(dll_dir) - 1);
+			dll_dir[sizeof(dll_dir) - 1] = 0;
+			PathRemoveFileSpecA(dll_dir);
+		}
+		else
+		{
+			snprintf(dll_dir, sizeof(dll_dir), "%s\\dll", g_config.analyzer);
+			dll_dir[sizeof(dll_dir) - 1] = 0;
+		}
+
+		for (i = 0; i < ARRAYSIZE(yara_dll_candidates); i++)
+		{
+			snprintf(yara_dll, sizeof(yara_dll), "%s\\%s", dll_dir, yara_dll_candidates[i]);
+			yara_dll[sizeof(yara_dll) - 1] = 0;
+			hYaraDll = LoadLibraryA(yara_dll);
+			if (hYaraDll)
+				break;
+		}
+
+		if (!hYaraDll)
+		{
+			DebugOutput("YaraInit: Unable to preload YARA-X DLL from %s (error %d)\n", dll_dir, GetLastError());
+			hook_enable();
+			set_lasterrors(&lasterror);
 			return FALSE;
 		}
+
+		g_yara_dll_base = (ULONG_PTR)hYaraDll;
+		g_yara_dll_size = get_image_size(g_yara_dll_base);
+		add_dll_range(g_yara_dll_base, g_yara_dll_base + g_yara_dll_size);
+
+		if (FAILED(__HrLoadAllImportsForDll("yara_x_capi.dll")))
+		{
+			DebugOutput("YaraInit: Failed to resolve delay-loaded imports from %s\n", yara_dll);
+			hook_enable();
+			set_lasterrors(&lasterror);
+			return FALSE;
+		}
+
+#if !CUCKOODBG
+		hide_module_from_peb(hYaraDll);
+#endif
 	}
 
-	strncpy(analyzer_path, our_dll_path, sizeof(analyzer_path) - 1);
-	analyzer_path[sizeof(analyzer_path) - 1] = 0;
-	if (!g_config.standalone)
+	if (our_dll_path && our_dll_path[0])
+	{
+		strncpy(analyzer_path, our_dll_path, sizeof(analyzer_path) - 1);
+		analyzer_path[sizeof(analyzer_path) - 1] = 0;
+		if (!g_config.standalone)
+			PathRemoveFileSpec(analyzer_path);
 		PathRemoveFileSpec(analyzer_path);
-	PathRemoveFileSpec(analyzer_path);
-	sprintf(yara_dir, "%s\\data\\yara", analyzer_path);
-	sprintf(compiled_rules, "%s\\capemon.yrx", yara_dir);
+	}
+	else
+	{
+		strncpy(analyzer_path, g_config.analyzer, sizeof(analyzer_path) - 1);
+		analyzer_path[sizeof(analyzer_path) - 1] = 0;
+	}
+	snprintf(yara_dir, sizeof(yara_dir), "%s\\data\\yara", analyzer_path);
+	yara_dir[sizeof(yara_dir) - 1] = 0;
+	snprintf(compiled_rules, sizeof(compiled_rules), "%s\\capemon.yrx", yara_dir);
+	compiled_rules[sizeof(compiled_rules) - 1] = 0;
 
 	// 1) Try the compiled-rule cache.
 	{
@@ -893,6 +1027,7 @@ BOOL YaraInit()
 			for (dir_idx = 0; dir_idx < 2 && count == 0; dir_idx++)
 			{
 				const char* current_dir = search_dirs[dir_idx];
+				yrx_compiler_add_include_dir(Compiler, current_dir);
 				snprintf(FindString, sizeof(FindString), "%s\\*.yar", current_dir);
 #ifdef DEBUG_COMMENTS
 				DebugOutput("YaraInit: Yara search string: %s", FindString);
@@ -944,8 +1079,13 @@ BOOL YaraInit()
 					while (FindNextFile(hFind, &FindFileData));
 
 					FindClose(hFind);
-					DebugOutput("YaraInit: Compiled %d rule files from %s\n", count, current_dir);
+					if (count > 0)
+						DebugOutput("YaraInit: Compiled %d rule files from %s\n", count, current_dir);
+					else if (dir_idx == 0)
+						DebugOutput("YaraInit: No usable rules in %s, trying %s\n", yara_dir, analyzer_path);
 				}
+				else if (dir_idx == 0)
+					DebugOutput("YaraInit: No usable rules in %s, trying %s\n", yara_dir, analyzer_path);
 				else
 					DebugOutput("YaraInit: Found no Yara rules in %s\n", current_dir);
 			}
@@ -992,6 +1132,8 @@ BOOL YaraInit()
 		if (!GetVersionEx(&OSVersion))
 		{
 			ErrorOutput("YaraInit: Failed to get OS version");
+			hook_enable();
+			set_lasterrors(&lasterror);
 			return TRUE;
 		}
 
@@ -1032,6 +1174,8 @@ BOOL YaraInit()
 #endif
 	}
 
+	hook_enable();
+	set_lasterrors(&lasterror);
 	return TRUE;
 
 fail:
@@ -1042,5 +1186,7 @@ fail:
 		yrx_rules_destroy(Rules);
 		Rules = NULL;
 	}
+	hook_enable();
+	set_lasterrors(&lasterror);
 	return FALSE;
 }

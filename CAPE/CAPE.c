@@ -144,6 +144,8 @@ extern const char g_capemon_version[];
 extern HANDLE g_terminate_event_handle;
 extern ULONG_PTR g_our_dll_base;
 extern DWORD g_our_dll_size;
+extern ULONG_PTR g_yara_dll_base;
+extern DWORD g_yara_dll_size;
 
 extern void NirvanaInit();
 extern void AmsiDumperInit(HMODULE module);
@@ -191,6 +193,13 @@ BOOL InsideMonitor(PVOID* ReturnAddress, PVOID Address)
 //**************************************************************************************
 {
 	if ((ULONG_PTR)Address >= g_our_dll_base && (ULONG_PTR)Address < (g_our_dll_base + g_our_dll_size))
+	{
+		if (ReturnAddress)
+			*ReturnAddress = Address;
+		return TRUE;
+	}
+
+	if (g_yara_dll_base && (ULONG_PTR)Address >= g_yara_dll_base && (ULONG_PTR)Address < (g_yara_dll_base + g_yara_dll_size))
 	{
 		if (ReturnAddress)
 			*ReturnAddress = Address;

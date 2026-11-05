@@ -41,12 +41,16 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: capemon_release_${{ matrix.arch }}
-        path: D:\a\capemon\capemon\Release\capemon.dll
+        path: |
+          D:\a\capemon\capemon\Release\capemon.dll
+          D:\a\capemon\capemon\Release\yara_x_capi.dll
         if-no-files-found: ignore
     - uses: actions/upload-artifact@v4
       with:
         name: capemon_release_${{ matrix.arch }}
-        path: D:\a\capemon\capemon\x64\Release\capemon_x64.dll
+        path: |
+          D:\a\capemon\capemon\x64\Release\capemon_x64.dll
+          D:\a\capemon\capemon\x64\Release\yara_x_capi_x64.dll
         if-no-files-found: ignore
 
   publish:
@@ -66,13 +70,17 @@ jobs:
         tag_name: rolling
         files: |
          capemon_release_x86/capemon.dll
+         capemon_release_x86/yara_x_capi.dll
          capemon_release_x64/capemon_x64.dll
+         capemon_release_x64/yara_x_capi_x64.dll
         body_path: ${{ github.workspace }}-release-body.md
 
     - run: |
         mkdir temp
         mv capemon_release_x86/capemon.dll temp/capemon.dll
+        mv capemon_release_x86/yara_x_capi.dll temp/yara_x_capi.dll
         mv capemon_release_x64/capemon_x64.dll temp/capemon_x64.dll
+        mv capemon_release_x64/yara_x_capi_x64.dll temp/yara_x_capi_x64.dll
 
     - name: Push to CAPEv2 repository
       uses: cpina/github-action-push-to-another-repository@v1.4.2

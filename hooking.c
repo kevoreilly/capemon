@@ -201,6 +201,8 @@ int addr_in_our_dll_range(void *unused, ULONG_PTR addr)
 	if (addr >= g_our_dll_base && addr < (g_our_dll_base + g_our_dll_size))
 		if (addr < (ULONG_PTR)&start_transparent_hooks || addr >= (ULONG_PTR)&end_transparent_hooks)
 			return 1;
+	if (g_yara_dll_base && addr >= g_yara_dll_base && addr < (g_yara_dll_base + g_yara_dll_size))
+		return 1;
 	return 0;
 }
 

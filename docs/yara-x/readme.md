@@ -47,11 +47,11 @@ When attempting to build YARA-X with Pulley to reduce binary size or strip JIT c
 Prerelease-ready, size-optimized binaries built with Pulley and Link-Time Optimization (LTO) have been generated and integrated into this project's workspace for immediate linking or loading:
 
 *   **x64 (64-bit Target):** Located under `docs/yara-x/bin/x64/`
-    *   `yara_x_capi.dll` (Approx. 20.2 MB) — Standard Windows x64 DLL.
-    *   `yara_x_capi.dll.lib` — Import library for compilation linkage.
+    *   `yara_x_capi.dll` (Approx. 20.2 MB) — Standard Windows x64 DLL (copied to `$(TargetDir)yara_x_capi_x64.dll` during `Release|x64` post-build so it can coexist alongside 32-bit `yara_x_capi.dll` in `analyzer\windows\dll\`).
+    *   `yara_x_capi.dll.lib` — Import library for compilation linkage (`__pfnDliNotifyHook2` in `CAPE/YaraHarnessX.c` binds delay-loaded `"yara_x_capi.dll"` imports to the preloaded `yara_x_capi_x64.dll` handle).
     *   `yara_x_capi.pdb` — Full debug symbols (PDB format).
 *   **x32 (32-bit Target):** Located under `docs/yara-x/bin/x32/`
-    *   `yara_x_capi.dll` (Approx. 16.8 MB) — Standard Windows x32 DLL.
+    *   `yara_x_capi.dll` (Approx. 16.8 MB) — Standard Windows x32 DLL (deployed as `yara_x_capi.dll` alongside `capemon.dll` in `analyzer\windows\dll\`).
     *   `yara_x_capi.dll.lib` — Import library for compilation linkage.
     *   `yara_x_capi.pdb` — Full debug symbols (PDB format).
 
@@ -59,7 +59,11 @@ Prerelease-ready, size-optimized binaries built with Pulley and Link-Time Optimi
 
 ## Compilation Guide: Multi-Architecture Build Commands
 
-Use the following commands inside the `yara-x` directory to build the size-optimized release binaries manually. Ensure `$env:RUSTFLAGS="-C target-feature=+crt-static"` is set so the CRT is statically linked (avoiding runtime dependencies on `VCRUNTIME140.dll` / Universal CRT). If `cargo` is not in your global system `PATH`, locate it at `$env:USERPROFILE\.cargo\bin\cargo.exe`.
+Use the following commands inside the `yara-x` directory to build the size-optimized release binaries manually. Ensure `$env:RUSTFLAGS="-C target-feature=+crt-static"` is set (or configured under `[target.x86_64-pc-windows-msvc]` / `[target.i686-pc-windows-msvc]` in `.cargo/config.toml`) and run `cargo clean` before building so both `rustc` and `cc`-compiled `wasmtime` C helpers statically link `libcmt.lib` rather than dynamically importing `VCRUNTIME140.dll` and `api-ms-win-crt-*.dll`. Verify the resulting DLLs with `dumpbin /dependents` (only OS system DLLs such as `KERNEL32.dll`, `ntdll.dll`, `bcryptprimitives.dll`, and `WS2_32.dll` should appear).
+
+> **Note:** The currently checked-in `docs/yara-x/bin/{x32,x64}/yara_x_capi.dll` binaries still import `VCRUNTIME140.dll` and Universal CRT forwarders (`api-ms-win-crt-*.dll`); rebuild from a clean tree with `+crt-static` enabled to eliminate the VC++ Redistributable dependency on bare guest VMs.
+
+If `cargo` is not in your global system `PATH`, locate it at `$env:USERPROFILE\.cargo\bin\cargo.exe`.
 
 ### 1. Compile for x64 (64-bit Release with Pulley)
 ```powershell
