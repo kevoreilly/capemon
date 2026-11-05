@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <psapi.h>
 #include "hooking.h"
+#include <psapi.h>
 #include "log.h"
 #include "pipe.h"
 #include "misc.h"
