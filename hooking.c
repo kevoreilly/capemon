@@ -313,8 +313,58 @@ BOOLEAN force_hook_thread_func(const char* hookname)
 	return FALSE;
 }
 
-static hook_info_t tmphookinfo;
-DWORD tmphookinfo_threadid;
+// Per-thread temporary hook_info_t slots used when a thread enters
+// New_NtAllocateVirtualMemory before its g_hook_info entry is allocated (or
+// when lookup_add's HeapAlloc call triggers a nested NtAllocateVirtualMemory).
+// Stored in a fixed-size static .bss table claimed with CAS rather than
+// __declspec(thread) so it works before LdrpAllocateTls on thread startup,
+// after LdrpFreeTls during LdrShutdownThread -> NtTerminateThread, and under
+// reflective injection where static TLS is not initialized.
+#define TMP_HOOK_INFO_SLOTS 16
+
+typedef struct _tmp_hook_info_slot_t {
+	volatile LONG thread_id;
+	hook_info_t info;
+} tmp_hook_info_slot_t;
+
+static tmp_hook_info_slot_t g_tmphookinfo[TMP_HOOK_INFO_SLOTS];
+static hook_info_t g_tmphookinfo_fallback;
+
+static hook_info_t *tmphookinfo_get(DWORD tid)
+{
+	int i;
+	if (!tid)
+		return NULL;
+	for (i = 0; i < TMP_HOOK_INFO_SLOTS; i++) {
+		if ((DWORD)g_tmphookinfo[i].thread_id == tid)
+			return &g_tmphookinfo[i].info;
+	}
+	return NULL;
+}
+
+static void tmphookinfo_claim(DWORD tid)
+{
+	int i;
+	if (!tid || tmphookinfo_get(tid) != NULL)
+		return;
+	for (i = 0; i < TMP_HOOK_INFO_SLOTS; i++) {
+		if (InterlockedCompareExchange(&g_tmphookinfo[i].thread_id, (LONG)tid, 0) == 0) {
+			memset(&g_tmphookinfo[i].info, 0, sizeof(g_tmphookinfo[i].info));
+			return;
+		}
+	}
+}
+
+void tmphookinfo_release(DWORD tid)
+{
+	int i;
+	if (!tid)
+		return;
+	for (i = 0; i < TMP_HOOK_INFO_SLOTS; i++) {
+		if ((DWORD)g_tmphookinfo[i].thread_id == tid)
+			InterlockedExchange(&g_tmphookinfo[i].thread_id, 0);
+	}
+}
 
 // returns 1 if we should call our hook, 0 if we should call the original function instead
 // on x86 this is actually: hook, esp, ebp
@@ -328,15 +378,14 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 
 	if (h->new_func == &New_NtAllocateVirtualMemory) {
 		lasterror_t lasterrors;
+		DWORD tid = GetCurrentThreadId();
 		get_lasterrors(&lasterrors);
-		if (lookup_get(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), NULL) == NULL && (!tmphookinfo_threadid || tmphookinfo_threadid != GetCurrentThreadId())) {
-			memset(&tmphookinfo, 0, sizeof(tmphookinfo));
-			tmphookinfo_threadid = GetCurrentThreadId();
-		}
+		if (lookup_get(&g_hook_info, (ULONG_PTR)tid, NULL) == NULL)
+			tmphookinfo_claim(tid);
 		set_lasterrors(&lasterrors);
 	}
-	else if (tmphookinfo_threadid) {
-		tmphookinfo_threadid = 0;
+	else {
+		tmphookinfo_release(GetCurrentThreadId());
 	}
 
 	hookinfo = hook_info();
@@ -414,18 +463,23 @@ int WINAPI enter_hook(hook_t *h, ULONG_PTR sp, ULONG_PTR ebp_or_rip)
 hook_info_t *hook_info()
 {
 	hook_info_t *ptr;
-
+	DWORD tid = GetCurrentThreadId();
 	lasterror_t lasterror;
 
-	if (tmphookinfo_threadid && tmphookinfo_threadid == GetCurrentThreadId())
-		return &tmphookinfo;
+	ptr = tmphookinfo_get(tid);
+	if (ptr != NULL)
+		return ptr;
 
 	get_lasterrors(&lasterror);
 
-	ptr = (hook_info_t *)lookup_get(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	ptr = (hook_info_t *)lookup_get(&g_hook_info, (ULONG_PTR)tid, NULL);
 	if (ptr == NULL) {
-		ptr = lookup_add(&g_hook_info, (ULONG_PTR)GetCurrentThreadId(), sizeof(hook_info_t));
-		memset(ptr, 0, sizeof(*ptr));
+		ptr = lookup_add(&g_hook_info, (ULONG_PTR)tid, sizeof(hook_info_t));
+		tmphookinfo_release(tid);
+		if (ptr != NULL)
+			memset(ptr, 0, sizeof(*ptr));
+		else
+			ptr = &g_tmphookinfo_fallback;
 	}
 
 	set_lasterrors(&lasterror);
