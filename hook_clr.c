@@ -582,8 +582,6 @@ HOOKDEF(int, WINAPI, compileMethod,
 		if (!isSystemMethod && methodName != NULL) {
 			LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
 				"Class", className ? className : "UnknownClass", "Method", methodName);
-			// loq() calls hook_enable() on exit; re-disable for the remaining helpers.
-			hook_disable();
 			DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
 				namespaceName ? namespaceName : "", namespaceName ? "." : "",
 				className ? className : "UnknownClass", methodName);
