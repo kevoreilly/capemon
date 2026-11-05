@@ -87,6 +87,8 @@ void resolve_runtime_apis(void)
 
 ULONG_PTR g_our_dll_base;
 DWORD g_our_dll_size;
+ULONG_PTR g_yara_dll_base;
+DWORD g_yara_dll_size;
 
 BOOLEAN is_address_in_monitor(ULONG_PTR address)
 {
@@ -98,6 +100,13 @@ BOOLEAN is_address_in_monitor(ULONG_PTR address)
 
 	if (address >= g_our_dll_base && address < (g_our_dll_base + g_our_dll_size))
 		return TRUE;
+
+	if (g_yara_dll_base) {
+		if (!g_yara_dll_size)
+			g_yara_dll_size = get_image_size(g_yara_dll_base);
+		if (address >= g_yara_dll_base && address < (g_yara_dll_base + g_yara_dll_size))
+			return TRUE;
+	}
 
 	return FALSE;
 }
@@ -1013,6 +1022,21 @@ char *convert_address_to_dll_name_and_offset(ULONG_PTR addr, unsigned int *offse
 			return NULL;
 		strcpy(buf, our_dll_name);
 		*offset = (unsigned int)(addr - g_our_dll_base);
+		return buf;
+	}
+
+	if (g_yara_dll_base && addr >= g_yara_dll_base && addr < (g_yara_dll_base + g_yara_dll_size))
+	{
+#ifdef _WIN64
+		char yara_dll_name[] = "yara_x_capi_x64.dll";
+#else
+		char yara_dll_name[] = "yara_x_capi.dll";
+#endif
+		char *buf = calloc(1, strlen(yara_dll_name) + 1);
+		if (buf == NULL)
+			return NULL;
+		strcpy(buf, yara_dll_name);
+		*offset = (unsigned int)(addr - g_yara_dll_base);
 		return buf;
 	}
 
