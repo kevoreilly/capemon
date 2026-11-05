@@ -698,19 +698,12 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 		*PreviousSuspendCount = 0;
 		LOQ_ntstatus("threading", "pIsi", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "Alert", "Attempted to suspend capemon thread", "ProcessId", pid);
 	}
-	else if (pid == GetCurrentProcessId()) {
-		// Same-process target: log before suspending. Once suspended, the target may hold
-		// g_writing_log_buffer_mutex, g_mutex or the heap lock, so no logging may happen until it is resumed.
-		// Go runtime.preemptM traffic is omitted (see go_runtime_thread_op).
-		if (!go_runtime_thread_op(pid, tid)) {
-			ret = STATUS_SUCCESS;
-			LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
-			"ProcessId", pid);
-		}
-		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
-	}
 	else {
-		ProcessMessage(pid, 0);
+		BOOL in_monitor = FALSE;
+
+		if (pid != GetCurrentProcessId())
+			ProcessMessage(pid, 0);
+
 		ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
 
 		if (NT_SUCCESS(ret) && pid == GetCurrentProcessId() && tid && tid != GetCurrentThreadId() && *PreviousSuspendCount == 0) {
@@ -720,7 +713,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 			get_lasterrors(&lasterror);
 			hook_disable();
 
-			for (retries = 0; retries < 20 && is_suspended_thread_in_monitor(ThreadHandle, tid); retries++) {
+			for (retries = 0; retries < 20 && (in_monitor = is_suspended_thread_in_monitor(ThreadHandle, tid)); retries++) {
 				ULONG dummy_count = 0;
 #ifdef DEBUG_COMMENTS
 				DebugOutput("NtSuspendThread: Thread %d suspended inside capemon/loader lock (attempt %d), resuming briefly.\n", tid, retries + 1);
@@ -729,16 +722,24 @@ HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 					break;
 				raw_sleep(10);
 				ret = Old_NtSuspendThread(ThreadHandle, PreviousSuspendCount);
-				if (!NT_SUCCESS(ret))
+				if (!NT_SUCCESS(ret)) {
+					in_monitor = FALSE;
 					break;
+				}
 			}
+			if (retries == 20 && NT_SUCCESS(ret))
+				in_monitor = is_suspended_thread_in_monitor(ThreadHandle, tid);
 
 			hook_enable();
 			set_lasterrors(&lasterror);
 		}
 
-		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
-		"ProcessId", pid);
+		// Skip logging if the suspended same-process thread is still inside capemon after retries
+		// (it may hold g_mutex, g_writing_log_buffer_mutex, or the heap lock) or if this is Go runtime.preemptM traffic.
+		if (!in_monitor && !go_runtime_thread_op(pid, tid)) {
+			LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", PreviousSuspendCount, "ThreadId", tid,
+			"ProcessId", pid);
+		}
 	}
 	return ret;
 }

@@ -177,10 +177,20 @@ static volatile LONG g_last_assembly_length;
 typedef struct _DECODED_ARG {
 	dotnet_arg_kind_t Kind;
 	BOOL Decoded;
+	BOOL TypeMismatch;	// non-NULL object failed type validation (different overload signature)
 	int Length;		// WCHARs for strings, bytes for arrays
 	PVOID Data;
 	int Value;
 } DECODED_ARG;
+
+typedef struct _DOTNET_LAST_CALL {
+	DOTNET_API_ENTRY *Entry;
+	PVOID Arg0Data;
+	ULONG_PTR Sp;
+	ULONG_PTR RetAddr;
+} DOTNET_LAST_CALL;
+
+static lookup_t g_dotnet_last_call;
 
 //**************************************************************************************
 static ULONG_PTR GetManagedArg(PCONTEXT Context, unsigned int Slot, unsigned int StackArgsX86)
@@ -379,17 +389,26 @@ static void DecodeArg(DOTNET_API_ENTRY *Entry, PCONTEXT Context, unsigned int i,
 
 	switch (Entry->ArgKind[i]) {
 	case DNARG_STRING:
-		if (!ReadManagedString(Raw, FALSE, Arg))
+		if (!ReadManagedString(Raw, FALSE, Arg)) {
 			Arg->Length = 0, Arg->Data = NULL;
+			if (Raw != 0)
+				Arg->TypeMismatch = TRUE;
+		}
 		break;
 	case DNARG_STRING_PROBE:
 		Arg->Kind = DNARG_STRING;
-		if (!ReadManagedString(Raw, TRUE, Arg))
+		if (!ReadManagedString(Raw, TRUE, Arg)) {
 			Arg->Length = 0, Arg->Data = NULL;
+			if (Raw != 0)
+				Arg->TypeMismatch = TRUE;
+		}
 		break;
 	case DNARG_BYTES:
-		if (!ReadManagedByteArray(Raw, DOTNET_API_BUFFER_LOG_MAX, TRUE, Arg))
+		if (!ReadManagedByteArray(Raw, DOTNET_API_BUFFER_LOG_MAX, TRUE, Arg)) {
 			Arg->Length = 0, Arg->Data = NULL;
+			if (Raw != 0)
+				Arg->TypeMismatch = TRUE;
+		}
 		break;
 	case DNARG_BYTES_PE_DUMP:
 		Arg->Kind = DNARG_INT;
@@ -493,12 +512,40 @@ static void LogDotNetApiCall(DOTNET_API_ENTRY *Entry, PCONTEXT Context)
 	}
 	Fmt[n + 1] = '\0';
 
-	// Skip non-matching or self-delegated overloads whose primary managed object
-	// argument did not match the expected type (e.g. WebClient/HttpClient Uri
-	// overloads delegated from the string overload, parameterless TcpClient..ctor
-	// or CreateDecryptor(), or Assembly.Load(AssemblyName)).
-	if (n > 0 && !Arg[0].Decoded)
-		return;
+	// Skip non-matching or self-delegated overloads whose managed object
+	// arguments did not match the expected type (e.g. WebClient/HttpClient Uri
+	// overloads delegated from the string overload, WebClient.UploadData(string, string, byte[]),
+	// parameterless TcpClient..ctor or CreateDecryptor(), or Assembly.Load(AssemblyName)),
+	// or where an outer overload delegates directly to another overload of the same method
+	// on the same primary buffer while the outer frame is still on the stack
+	// (e.g. Encoding.GetString(byte[]) -> Encoding.GetString(byte[], int, int)).
+	if (n > 0) {
+		DOTNET_LAST_CALL *Last;
+		ULONG_PTR Sp;
+#ifdef _WIN64
+		Sp = (ULONG_PTR)Context->Rsp;
+#else
+		Sp = (ULONG_PTR)Context->Esp;
+#endif
+		if (!Arg[0].Decoded)
+			return;
+		for (i = 1; i < n; i++) {
+			if (Arg[i].TypeMismatch)
+				return;
+		}
+
+		Last = LOOKUP_THREAD(&g_dotnet_last_call, DOTNET_LAST_CALL);
+		if (Last) {
+			if (Last->Entry == Entry && Arg[0].Data != NULL && Last->Arg0Data == Arg[0].Data &&
+			    Sp < Last->Sp && (Last->Sp - Sp) < 0x1000 &&
+			    !our_isbadreadptr((PVOID)Last->Sp, sizeof(ULONG_PTR)) && *(ULONG_PTR *)Last->Sp == Last->RetAddr)
+				return;
+			Last->Entry = Entry;
+			Last->Arg0Data = Arg[0].Data;
+			Last->Sp = Sp;
+			Last->RetAddr = !our_isbadreadptr((PVOID)Sp, sizeof(ULONG_PTR)) ? *(ULONG_PTR *)Sp : 0;
+		}
+	}
 
 	LogIndex = GetDotNetApiLogIndex(Entry);
 	_snprintf_s(Method, sizeof(Method), _TRUNCATE, "%s.%s", Entry->Class, Entry->Method);
