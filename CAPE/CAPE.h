@@ -28,6 +28,7 @@ extern CHAR s_szDllPath[MAX_PATH];
 #define PE_MAX_SECTIONS 0xFFFF
 #define REGISTRY_VALUE_SIZE_MIN 1024
 #define ENTROPY_DELTA  0.005
+#define REGION_DUMP_LIMIT 3
 
 typedef PVOID(WINAPI *_getJit)(void);
 
@@ -171,6 +172,7 @@ typedef struct TrackedRegion
 	MEMORY_BASIC_INFORMATION	MemInfo;
 	BOOL						Committed;
 	BOOL						PagesDumped;
+	unsigned int				DumpCount;
 	BOOL						CanDump;
 	BOOL						SubAllocation;
 	DWORD						EntryPoint;
