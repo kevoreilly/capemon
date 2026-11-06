@@ -378,13 +378,25 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 
 	memset(&_ProcessParameters, 0, sizeof(_ProcessParameters));
 
-	if (AttributeList)
+	// TotalLength, Size and ValuePtr are all caller-controlled. TotalLength
+	// below the size of its own header underflowed the loop bound, and
+	// ValuePtr was written through unchecked.
+	if (AttributeList && AttributeList->TotalLength > sizeof(SIZE_T))
 	{
 		PPS_ATTRIBUTE attributes = &AttributeList->Attributes[0];
-		for (unsigned int i = 0; i < (AttributeList->TotalLength - sizeof(unsigned int))/sizeof(PS_ATTRIBUTE); i++)
+		SIZE_T attribute_count = (AttributeList->TotalLength - sizeof(SIZE_T)) / sizeof(PS_ATTRIBUTE);
+		for (SIZE_T i = 0; i < attribute_count; i++)
 		{
-			if (attributes->Attribute == PsAttributeValue(PsAttributeMitigationOptions, FALSE, TRUE, FALSE))
-				*(PULONGLONG)attributes->ValuePtr &= ~PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+			if (attributes->Attribute == PsAttributeValue(PsAttributeMitigationOptions, FALSE, TRUE, FALSE) &&
+				attributes->ValuePtr != NULL && attributes->Size >= sizeof(ULONGLONG))
+			{
+				__try {
+					*(PULONGLONG)attributes->ValuePtr &= ~PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+				}
+				__except (EXCEPTION_EXECUTE_HANDLER) {
+					;
+				}
+			}
 			attributes++;
 		}
 	}
