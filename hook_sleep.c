@@ -160,11 +160,16 @@ HOOKDEF(NTSTATUS, WINAPI, NtDelayExecution,
 
 	get_lasterrors(&lasterror);
 
-	if (!IsAddressAccessible(DelayInterval))
+	// both of these returned without restoring the caller's last error
+	if (!IsAddressAccessible(DelayInterval)) {
+		set_lasterrors(&lasterror);
 		return STATUS_ACCESS_VIOLATION;
+	}
 
-	if (!is_aligned(DelayInterval, 4))
+	if (!is_aligned(DelayInterval, 4)) {
+		set_lasterrors(&lasterror);
 		return STATUS_DATATYPE_MISALIGNMENT;
+	}
 
 	newint.QuadPart = DelayInterval->QuadPart;
 	// handle INFINITE sleep

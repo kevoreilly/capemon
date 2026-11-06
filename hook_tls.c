@@ -60,13 +60,19 @@ void HexEncode(char *Dest, const uint8_t *Source, uint32_t Length)
 void LogTls(char* ClientRandomRepr, char* ServerRandomRepr, char* MasterSecretRepr)
 {
 	SIZE_T LastWriteLength = 0;
-	char *FullPathName = GetResultsPath("tlsdump");
-	PathAppend(FullPathName, "tlsdump.log");
-	if (!Logged) {
+	char *FullPathName = NULL;
+	HANDLE hLog = TlsLog;
+	// the path is only needed to open the file, and was leaked per secret
+	if (hLog == NULL || !Logged) {
+		FullPathName = GetResultsPath("tlsdump");
+		if (FullPathName == NULL)
+			return;
+		PathAppend(FullPathName, "tlsdump.log");
+	}
+	if (!Logged && FullPathName) {
 		Logged = TRUE;
 		DebugOutput("TLS 1.2 secrets logged to: %s", FullPathName);
 	}
-	HANDLE hLog = TlsLog;
 	if (hLog == NULL) {
 		HANDLE hFile = CreateFile(FullPathName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hFile != INVALID_HANDLE_VALUE) {
@@ -83,19 +89,26 @@ void LogTls(char* ClientRandomRepr, char* ServerRandomRepr, char* MasterSecretRe
 		_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "client_random: %s, server_random: %s, master_secret: %s\n", ClientRandomRepr, ServerRandomRepr, MasterSecretRepr);
 		WriteFile(hLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
 	}
+	free(FullPathName);
 }
 
 // Log TLS 1.3 traffic secrets in NSS SSLKEYLOGFILE format
 void LogTls13(const char* Label, const char* ClientRandomRepr, const char* SecretRepr)
 {
 	SIZE_T LastWriteLength = 0;
-	char *FullPathName = GetResultsPath("tlsdump");
-	PathAppend(FullPathName, "tlsdump.log");
-	if (!LoggedTLS13) {
+	char *FullPathName = NULL;
+	HANDLE hLog = TlsLog;
+	// the path is only needed to open the file, and was leaked per secret
+	if (hLog == NULL || !LoggedTLS13) {
+		FullPathName = GetResultsPath("tlsdump");
+		if (FullPathName == NULL)
+			return;
+		PathAppend(FullPathName, "tlsdump.log");
+	}
+	if (!LoggedTLS13 && FullPathName) {
 		LoggedTLS13 = TRUE;
 		DebugOutput("TLS 1.3 secrets logged to: %s", FullPathName);
 	}
-	HANDLE hLog = TlsLog;
 	if (hLog == NULL) {
 		HANDLE hFile = CreateFile(FullPathName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hFile != INVALID_HANDLE_VALUE) {
@@ -112,6 +125,7 @@ void LogTls13(const char* Label, const char* ClientRandomRepr, const char* Secre
 		_snprintf_s(SecretsLine, BUFFER_SIZE, _TRUNCATE, "%s %s %s\n", Label, ClientRandomRepr, SecretRepr);
 		WriteFile(hLog, SecretsLine, (DWORD)strlen(SecretsLine), (LPDWORD)&LastWriteLength, NULL);
 	}
+	free(FullPathName);
 }
 
 BOOL GetRandoms(PNCryptBufferDesc pParameterList, char* ClientRandomRepr, char* ServerRandomRepr)
