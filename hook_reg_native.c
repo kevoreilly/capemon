@@ -295,8 +295,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryKey,
 		KeyInformation, Length, ResultLength);
 	if (KeyInformationClass == KeyNameInformation && KeyInformation) {
 		PKEY_NAME_INFORMATION info = (PKEY_NAME_INFORMATION)KeyInformation;
+		// KeyName is not written when the call fails (e.g. BUFFER_TOO_SMALL)
 		LOQ_ntstatus("registry", "pUl", "KeyHandle", KeyHandle,
-			"KeyInformation", info->KeyNameLength/sizeof(WCHAR), info->KeyName,
+			"KeyInformation", NT_SUCCESS(ret) ? info->KeyNameLength/sizeof(WCHAR) : 0, info->KeyName,
 			"KeyInformationClass", KeyInformationClass);
 	} else {
 		LOQ_ntstatus("registry", "pSl", "KeyHandle", KeyHandle,
