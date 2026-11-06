@@ -561,11 +561,11 @@ void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 		// In case the header until and including 'PE' has been zeroed (e.g. Ursnif)
 		PIMAGE_NT_HEADERS pNtHeader = NULL;
 		WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-		while ((PUCHAR)MachineProbe < (PUCHAR)&pDosHeader + (size - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+		while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (size - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
 		{
 			if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
 				pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-			MachineProbe += sizeof(WORD);
+			MachineProbe++;
 		}
 
 		if (pNtHeader)
@@ -586,7 +586,7 @@ void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 					pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
 				}
 			}
-			MachineProbe += sizeof(WORD);
+			MachineProbe++;
 
 			if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader)
 			{
@@ -607,7 +607,7 @@ void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 		}
 	}
 
-	if (pDosHeader->e_lfanew && pDosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+	if (pDosHeader->e_lfanew)
 	{
 		PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
 
@@ -639,32 +639,22 @@ DWORD PeParser::calcCorrectPeHeaderSize(bool readSectionHeaders)
 	PIMAGE_NT_HEADERS NtHeaders;
 	if (isPE32())
 		NtHeaders = (PIMAGE_NT_HEADERS)pNTHeader32;
-	else
+	else if (isPE64())
 		NtHeaders = (PIMAGE_NT_HEADERS)pNTHeader64;
+	else
+		return 0;
 
-	DWORD correctSize = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + NtHeaders->FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * (NtHeaders->FileHeader.NumberOfSections));
+	DWORD correctSize = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + NtHeaders->FileHeader.SizeOfOptionalHeader;
 
 	if (readSectionHeaders)
 	{
 		correctSize += getNumberOfSections() * sizeof(IMAGE_SECTION_HEADER);
 	}
 
-	if (isPE32())
-	{
-		correctSize += sizeof(IMAGE_NT_HEADERS32);
-	}
-	else if(isPE64())
-	{
-		correctSize += sizeof(IMAGE_NT_HEADERS64);
-	}
-	else
-	{
-		correctSize = 0; //not a valid PE
-	}
+	if (NtHeaders->OptionalHeader.FileAlignment)
+		correctSize = (correctSize + NtHeaders->OptionalHeader.FileAlignment - 1) & ~(NtHeaders->OptionalHeader.FileAlignment - 1);
 
-    correctSize = (correctSize + NtHeaders->OptionalHeader.FileAlignment - 1) & ~(NtHeaders->OptionalHeader.FileAlignment - 1);
-
-    return correctSize;
+	return correctSize;
 }
 
 DWORD PeParser::getInitialHeaderReadSize(bool readSectionHeaders)
@@ -1358,6 +1348,12 @@ bool PeParser::saveCompletePeToDisk(const CHAR *newFile)
 	{
 		retValue = false;
 	}
+	else if (pDosHeader && pDosHeader->e_lfanew > 0 && (DWORD)pDosHeader->e_lfanew + sizeof(DWORD) <= dwWriteSize)
+	{
+		ProcessAccessHelp::writeMemoryToFile(hFile, 0, sizeof(IMAGE_DOS_HEADER), pDosHeader);
+		if (pNTHeader32)
+			ProcessAccessHelp::writeMemoryToFile(hFile, (DWORD)pDosHeader->e_lfanew, sizeof(DWORD), &pNTHeader32->Signature);
+	}
 
 	SetEndOfFile(hFile);
 	dumpSize = dwWriteSize;
@@ -1429,6 +1425,13 @@ bool PeParser::saveCompletePeToHandle(HANDLE FileHandle)
 	{
 		DebugOutput("saveCompletePeToHandle: writeMemoryToFile failed.\n");
 		return false;
+	}
+
+	if (pDosHeader && pDosHeader->e_lfanew > 0 && (DWORD)pDosHeader->e_lfanew + sizeof(DWORD) <= dwWriteSize)
+	{
+		ProcessAccessHelp::writeMemoryToFile(FileHandle, 0, sizeof(IMAGE_DOS_HEADER), pDosHeader);
+		if (pNTHeader32)
+			ProcessAccessHelp::writeMemoryToFile(FileHandle, (DWORD)pDosHeader->e_lfanew, sizeof(DWORD), &pNTHeader32->Signature);
 	}
 
 	//SetEndOfFile(FileHandle);

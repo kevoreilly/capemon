@@ -78,9 +78,14 @@ extern "C" DWORD_PTR FileOffsetToVA(DWORD_PTR ModuleBase, DWORD_PTR dwOffset)
 	peFile = new PeParser(ModuleBase, true);
 
 	if (!peFile->isValidPeFile())
+	{
+		delete peFile;
 		return NULL;
+	}
 
-	return peFile->convertOffsetToRVAVector(dwOffset) + ModuleBase;
+	DWORD_PTR ret = peFile->convertOffsetToRVAVector(dwOffset) + ModuleBase;
+	delete peFile;
+	return ret;
 }
 
 //**************************************************************************************
@@ -463,6 +468,7 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 		if (NumberOfSections == 0)
 		{
 			DebugOutput("DumpPE: no sections in PE image, ignoring.\n");
+			delete peFile;
 			return 0;
 		}
 
@@ -471,6 +477,7 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 		if (!PointerToLastSection)
 		{
 			DebugOutput("DumpPE: failed to obtain pointer to last section.\n");
+			delete peFile;
 			return 0;
 		}
 
@@ -481,6 +488,7 @@ extern "C" int ScyllaDumpPE(DWORD_PTR Buffer)
 		if (!SizeOfLastSection)
 		{
 			DebugOutput("DumpPE: failed to obtain size of last section.\n");
+			delete peFile;
 			return 0;
 		}
 
