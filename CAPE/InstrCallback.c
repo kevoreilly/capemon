@@ -1294,7 +1294,6 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 				FunctionName = ScanForExport((PVOID)CIP, SCANMAX);
 
 			log_syscall(ModuleName, FunctionName, ReturnAddress, (DWORD)(DWORD_PTR)ReturnValue);
-			hook_disable();
 
 			TrackSyscallCallerRegion(AllocationBase, ReturnAddress, TRUE);
 
@@ -1333,7 +1332,6 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 			DebugOutput("InstrumentationCallback: Returns to 0x%p, return value %d, ssn %d -> %s)\n", CIP, ReturnValue, Ssn, FunctionName);
 #endif
 			log_syscall(ModuleName, FunctionName, (PVOID)CIP, (DWORD)(DWORD_PTR)ReturnValue);
-			hook_enable();
 
 			TrackSyscallCallerRegion(AllocationBase, (PVOID)CIP, FALSE);
 
