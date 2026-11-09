@@ -1311,6 +1311,14 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 	if (!SystemInfo.dwPageSize)
 		GetSystemInfo(&SystemInfo);
 
+	if (TrackedRegion->PagesDumped && TrackedRegion->DumpCount >= REGION_DUMP_LIMIT)
+	{
+#ifdef DEBUG_COMMENTS
+		DebugOutput("ProcessTrackedRegion: Region at 0x%p reached per-region dump limit (%d), skipping\n", Address, REGION_DUMP_LIMIT);
+#endif
+		return;
+	}
+
 #ifdef DEBUG_COMMENTS
 	DebugOutput("ProcessTrackedRegion: Address 0x%p Base 0x%p Size %d sub-allocation %d dump count %d\n", TrackedRegion->Caller, Address, Size, TrackedRegion->SubAllocation, DumpCount);
 #endif
@@ -1379,6 +1387,7 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 
 	if (TrackedRegion->PagesDumped)
 	{
+		TrackedRegion->DumpCount++;
 		if (TraceIsRunning)
 			DebuggerOutput("ProcessTrackedRegion: Dumped region at 0x%p ", Address);
 		else
@@ -1942,7 +1951,7 @@ int ScanPageForNonZero(PVOID Address)
 SIZE_T ScanForAccess(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-	SIZE_T p, AllocationSize;
+	SIZE_T p, AccessibleSize;
 	char c = 0;
 
 	if (!Buffer)
@@ -1951,9 +1960,9 @@ SIZE_T ScanForAccess(PVOID Buffer, SIZE_T Size)
 		return 0;
 	}
 
-	AllocationSize = GetAllocationSize(Buffer);
-	if (AllocationSize < Size)
-		Size = AllocationSize;
+	AccessibleSize = GetAccessibleSize(Buffer);
+	if (AccessibleSize < Size)
+		Size = AccessibleSize;
 
 	__try
 	{
@@ -2032,7 +2041,7 @@ int ScanForNonZero(PVOID Buffer, SIZE_T Size)
 int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size)
 //**************************************************************************************
 {
-	SIZE_T p;
+	SIZE_T p, AccessibleSize;
 
 	if (!Buffer)
 	{
@@ -2048,20 +2057,27 @@ int ReverseScanForNonZero(PVOID Buffer, SIZE_T Size)
 
 	if (!IsAddressAccessible((PUCHAR)Buffer+Size-1))
 	{
-		DebugOutput("ReverseScanForNonZero: Error - Supplied address inaccessible: 0x%p\n", (PUCHAR)Buffer+Size-1);
-		return 0;
+		AccessibleSize = GetAccessibleSize(Buffer);
+		if (AccessibleSize && AccessibleSize < Size)
+			Size = AccessibleSize;
+
+		if (!Size || !IsAddressAccessible((PUCHAR)Buffer+Size-1))
+		{
+			DebugOutput("ReverseScanForNonZero: Error - Supplied address inaccessible: 0x%p\n", (PUCHAR)Buffer+Size-1);
+			return 0;
+		}
 	}
 
 	__try
 	{
-		for (p = Size - 1; p > 0; p--)
-			if (*((char*)Buffer+p) != 0)
-				return (int)p + 1;
+		for (p = Size; p > 0; p--)
+			if (*((char*)Buffer + p - 1) != 0)
+				return (int)p;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("ReverseScanForNonZero: Exception occurred reading memory address 0x%p (buffer at 0x%p, size 0x%x)\n", (char*)Buffer+p, Buffer, Size);
-		GetMemoryInfo((char*)Buffer+p);
+		DebugOutput("ReverseScanForNonZero: Exception occurred reading memory address 0x%p (buffer at 0x%p, size 0x%x)\n", (char*)Buffer + (p ? p - 1 : 0), Buffer, Size);
+		GetMemoryInfo((char*)Buffer + (p ? p - 1 : 0));
 		return 0;
 	}
 
@@ -3058,13 +3074,23 @@ BOOL DumpPEsInRange(PVOID Buffer, SIZE_T Size)
 
 	__try
 	{
-		while (ScanForDisguisedPE(PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), &PEPointer))
+		while ((DWORD_PTR)PEPointer < (DWORD_PTR)Buffer + Size &&
+		       ScanForDisguisedPE(PEPointer, Size - ((DWORD_PTR)PEPointer - (DWORD_PTR)Buffer), &PEPointer))
 		{
 			RetVal = DumpImageInCurrentProcess(PEPointer);
-			if (!RetVal)
+			if (RetVal)
+			{
+				Count++;
+				SIZE_T MinSize = GetMinPESize((PIMAGE_DOS_HEADER)PEPointer);
+				(BYTE*)PEPointer += (MinSize > 0x1000) ? MinSize : 0x1000;
+			}
+			else
+			{
+				(BYTE*)PEPointer += sizeof(DWORD);
+			}
+
+			if (g_config.dump_limit && DumpCount >= g_config.dump_limit)
 				break;
-			Count++;
-			(BYTE*)PEPointer += 0x1000;
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
@@ -3298,7 +3324,7 @@ BOOL DumpRange(PVOID Address, SIZE_T Size)
 	if (!(CapeMetaData->TypeString && strlen(CapeMetaData->TypeString)) && (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE))
 		CapeMetaData->DumpType = UNPACKED_PE;
 
-	if (DumpPEsInRange(Address, Size) && (IsDisguisedPEHeader(Address)) > 0)
+	if (DumpPEsInRange(Address, Size))
 	{
 		DebugOutput("DumpRange: Dumped PE image(s) from address 0x%p, size %d bytes.\n", Address, Size);
 		return TRUE;
@@ -3348,7 +3374,7 @@ int DumpImageInCurrentProcess(PVOID Address)
 //**************************************************************************************
 {
 	PIMAGE_DOS_HEADER pDosHeader;
-	PIMAGE_NT_HEADERS pNtHeader;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
 	PVOID RegionCopy = NULL;
 	DWORD dwProtect = 0;
 	int RetVal = 0;
@@ -3418,11 +3444,13 @@ int DumpImageInCurrentProcess(PVOID Address)
 	}
 
 
-	if (IsPeImageRaw(Address))
+	if (IsPeImageRaw(RegionCopy ? RegionCopy : Address))
 	{
 		DebugOutput("DumpImageInCurrentProcess: Attempting to dump 'raw' PE image (process %d)\n", GetCurrentProcessId());
 
-		if (!DumpPE(Address))
+		CapeMetaData->Address = Address;
+
+		if (!DumpPE(RegionCopy ? RegionCopy : Address))
 			DebugOutput("DumpImageInCurrentProcess: Failed to dump 'raw' PE image from 0x%p, dumping memory region.\n", Address);
 		else
 			RetVal = 1;
@@ -3430,6 +3458,8 @@ int DumpImageInCurrentProcess(PVOID Address)
 	else
 	{
 		DebugOutput("DumpImageInCurrentProcess: Attempting to dump virtual PE image.\n");
+
+		CapeMetaData->Address = Address;
 
 		if (!DumpProcess(GetCurrentProcess(), Address, 0, FALSE))
 			DebugOutput("DumpImageInCurrentProcess: Failed to dump virtual PE image from 0x%p, dumping memory region.\n", Address);
