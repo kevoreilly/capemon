@@ -3239,7 +3239,8 @@ BOOL DumpRegion(PVOID Address)
 	if (!(CapeMetaData->TypeString && strlen(CapeMetaData->TypeString)) && (!CapeMetaData->DumpType || CapeMetaData->DumpType == UNPACKED_SHELLCODE))
 		CapeMetaData->DumpType = UNPACKED_PE;
 
-	if (DumpPEsInRange(AllocationBase, AccessibleSize))
+	// If PEs in range but not at AllocationBase dump as shellcode
+	if (DumpPEsInRange(AllocationBase, AccessibleSize) && (IsDisguisedPEHeader(AllocationBase)) > 0)
 	{
 		DebugOutput("DumpRegion: Dumped PE image(s) from base address 0x%p, size %d bytes.\n", AllocationBase, AccessibleSize);
 		return TRUE;
