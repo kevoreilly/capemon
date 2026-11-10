@@ -347,6 +347,9 @@ static DWORD WINAPI _terminate_event_thread(LPVOID param)
 
 	DumpStrings();
 
+	if (g_config.unpacker)
+		DumpPendingPagedPERegions();
+
 	if (g_config.procdump || g_config.procmemdump) {
 		if (!ProcessDumped) {
 			DebugOutput("Terminate Event: Attempting to dump process %d\n", ProcessId);

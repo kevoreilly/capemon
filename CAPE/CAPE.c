@@ -913,6 +913,624 @@ BOOL IsAddressExecutable(PVOID Address)
 }
 
 //**************************************************************************************
+static void AcquireShadowLock(volatile LONG *Lock)
+//**************************************************************************************
+{
+	while (InterlockedCompareExchange(Lock, 1, 0) != 0)
+		YieldProcessor();
+}
+
+//**************************************************************************************
+static void ReleaseShadowLock(volatile LONG *Lock)
+//**************************************************************************************
+{
+	InterlockedExchange(Lock, 0);
+}
+
+//**************************************************************************************
+static PIMAGE_NT_HEADERS GetPagedPENtHeader(PVOID Buffer)
+//**************************************************************************************
+{
+	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
+	PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+	if (!Buffer || !IsAddressAccessible(Buffer))
+		return NULL;
+
+	__try
+	{
+		if (pDosHeader->e_lfanew > 0 && (ULONG)pDosHeader->e_lfanew <= PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
+		{
+			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+			if (TestPERequirements(pNtHeader))
+				return pNtHeader;
+		}
+		else if (!pDosHeader->e_lfanew)
+		{
+			WORD *MachineProbe = (WORD *)pDosHeader;
+			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+			{
+				if ((*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64) &&
+					(PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + sizeof(DWORD))
+				{
+					PIMAGE_NT_HEADERS Candidate = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - sizeof(DWORD));
+					if (TestPERequirements(Candidate))
+						return Candidate;
+				}
+				MachineProbe++;
+			}
+		}
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		return NULL;
+	}
+
+	return NULL;
+}
+
+//**************************************************************************************
+BOOL IsPagedPERegion(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	return TrackedRegion ? TrackedRegion->PagedPE : FALSE;
+}
+
+//**************************************************************************************
+void FreeTrackedRegionShadow(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	PBYTE ShadowToFree, BitmapToFree;
+
+	if (!TrackedRegion)
+		return;
+
+	AcquireShadowLock(&TrackedRegion->ShadowLock);
+	ShadowToFree = TrackedRegion->ShadowImage;
+	BitmapToFree = TrackedRegion->ShadowPageBitmap;
+	TrackedRegion->ShadowImage = NULL;
+	TrackedRegion->ShadowPageBitmap = NULL;
+	TrackedRegion->ShadowImageSize = 0;
+	TrackedRegion->ShadowPagesCount = 0;
+	TrackedRegion->FirstExecAddr = NULL;
+	TrackedRegion->PagedPE = FALSE;
+	TrackedRegion->HeaderlessPagedPE = FALSE;
+	TrackedRegion->PagedPEDumped = FALSE;
+	ReleaseShadowLock(&TrackedRegion->ShadowLock);
+
+	if (ShadowToFree)
+		free(ShadowToFree);
+	if (BitmapToFree)
+		free(BitmapToFree);
+}
+
+//**************************************************************************************
+static BOOL DetectPagedPEImage(PVOID AllocationBase, ULONG OldProtect, PSIZE_T OutAlignedImageSize, PBOOL OutHeaderless)
+//**************************************************************************************
+{
+	MEMORY_BASIC_INFORMATION BaseMemInfo, MemInfo;
+	PIMAGE_NT_HEADERS pNtHeader;
+	SIZE_T PageSize, AlignedImageSize, CommittedSpan = 0, TotalSpan = 0;
+	ULONG_PTR ImageStart, ImageEnd, Current;
+	BOOL HasInaccessible = ((OldProtect & (PAGE_NOACCESS | PAGE_GUARD)) != 0);
+	BOOL HasDataAfterCode = FALSE;
+
+	if (!AllocationBase || !OutAlignedImageSize || !OutHeaderless)
+		return FALSE;
+
+	if (AllocationBase == ImageBase || AllocationBase == GetModuleHandle(NULL) || AllocationBase == (PVOID)base_of_dll_of_interest)
+		return FALSE;
+
+	if (is_in_dll_range((ULONG_PTR)AllocationBase) || lookup_get(&g_dotnet_jit, (ULONG_PTR)AllocationBase, 0))
+		return FALSE;
+
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
+	PageSize = SystemInfo.dwPageSize ? (SIZE_T)SystemInfo.dwPageSize : 0x1000;
+
+	if (!VirtualQuery(AllocationBase, &BaseMemInfo, sizeof(BaseMemInfo)) || BaseMemInfo.AllocationBase != AllocationBase || !BaseMemInfo.RegionSize)
+		return FALSE;
+
+	ImageStart = (ULONG_PTR)AllocationBase;
+	pNtHeader = GetPagedPENtHeader(AllocationBase);
+
+	if (pNtHeader && pNtHeader->OptionalHeader.SizeOfImage >= PE_MIN_SIZE && pNtHeader->OptionalHeader.SizeOfImage <= SHADOW_IMAGE_MAX_SIZE)
+	{
+		AlignedImageSize = ((SIZE_T)pNtHeader->OptionalHeader.SizeOfImage + PageSize - 1) & ~(PageSize - 1);
+		ImageEnd = ImageStart + AlignedImageSize;
+		Current = ImageStart;
+
+		while (Current < ImageEnd && VirtualQuery((LPCVOID)Current, &MemInfo, sizeof(MemInfo)) &&
+			MemInfo.AllocationBase == AllocationBase && MemInfo.State != MEM_FREE && MemInfo.RegionSize)
+		{
+			ULONG_PTR RegionEnd = (ULONG_PTR)MemInfo.BaseAddress + MemInfo.RegionSize;
+			if (RegionEnd <= Current)
+				break;
+			if (MemInfo.State == MEM_COMMIT)
+			{
+				CommittedSpan += (RegionEnd < ImageEnd ? RegionEnd : ImageEnd) - Current;
+				if ((MemInfo.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0 || !(MemInfo.Protect & 0xFF))
+					HasInaccessible = TRUE;
+			}
+			Current = RegionEnd;
+		}
+
+		if (CommittedSpan >= 2 * PageSize && HasInaccessible)
+		{
+			*OutAlignedImageSize = AlignedImageSize;
+			*OutHeaderless = FALSE;
+			return TRUE;
+		}
+		return FALSE;
+	}
+
+	if (BaseMemInfo.Type != MEM_PRIVATE)
+		return FALSE;
+
+	if (BaseMemInfo.State == MEM_COMMIT)
+	{
+		if ((BaseMemInfo.Protect & EXECUTABLE_FLAGS) || !IsAddressAccessible(AllocationBase) || ScanForNonZero(AllocationBase, PageSize))
+			return FALSE;
+	}
+	else if (!(BaseMemInfo.State == MEM_RESERVE && BaseMemInfo.RegionSize == PageSize))
+		return FALSE;
+
+	Current = ImageStart;
+	while (Current - ImageStart <= SHADOW_IMAGE_MAX_SIZE && VirtualQuery((LPCVOID)Current, &MemInfo, sizeof(MemInfo)) &&
+		MemInfo.AllocationBase == AllocationBase && MemInfo.State != MEM_FREE && MemInfo.RegionSize)
+	{
+		ULONG_PTR RegionEnd = (ULONG_PTR)MemInfo.BaseAddress + MemInfo.RegionSize;
+		if (RegionEnd <= Current || RegionEnd - ImageStart > SHADOW_IMAGE_MAX_SIZE)
+		{
+			TotalSpan = SHADOW_IMAGE_MAX_SIZE + PageSize;
+			break;
+		}
+
+		TotalSpan = RegionEnd - ImageStart;
+		if (MemInfo.State == MEM_COMMIT)
+		{
+			CommittedSpan += RegionEnd - Current;
+			if (RegionEnd > ImageStart + PageSize && ((MemInfo.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0 || !(MemInfo.Protect & 0xFF)))
+				HasInaccessible = TRUE;
+			if (RegionEnd > ImageStart + 2 * PageSize && !(MemInfo.Protect & (EXECUTABLE_FLAGS | PAGE_NOACCESS | PAGE_GUARD)) &&
+				(MemInfo.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY)))
+				HasDataAfterCode = TRUE;
+		}
+		Current = RegionEnd;
+	}
+
+	if (TotalSpan >= 4 * PageSize && TotalSpan <= SHADOW_IMAGE_MAX_SIZE && CommittedSpan >= 4 * PageSize && HasInaccessible && HasDataAfterCode)
+	{
+		*OutAlignedImageSize = (TotalSpan + PageSize - 1) & ~(PageSize - 1);
+		*OutHeaderless = TRUE;
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+//**************************************************************************************
+BOOL HarvestPagedPEPages(PTRACKEDREGION TrackedRegion, PVOID Address, SIZE_T Size, ULONG Protect, ULONG OldProtect)
+//**************************************************************************************
+{
+	SIZE_T PageSize, AlignedSize = 0, NumPages, p;
+	ULONG_PTR ImageStart, ImageEnd, RangeStart, RangeEnd, PageAddr;
+	BYTE PageCopy[0x1000];
+
+	if (!TrackedRegion || !TrackedRegion->AllocationBase || !Address || !(Protect & EXECUTABLE_FLAGS))
+		return FALSE;
+
+	if (!SystemInfo.dwPageSize)
+		GetSystemInfo(&SystemInfo);
+	PageSize = SystemInfo.dwPageSize ? (SIZE_T)SystemInfo.dwPageSize : 0x1000;
+	if (PageSize != sizeof(PageCopy))
+		return FALSE;
+
+	if (!TrackedRegion->PagedPE)
+	{
+		BOOL IsHeaderless = FALSE;
+		PBYTE ShadowBuf, BitmapBuf;
+
+		if (!DetectPagedPEImage(TrackedRegion->AllocationBase, OldProtect, &AlignedSize, &IsHeaderless))
+			return FALSE;
+
+		NumPages = AlignedSize / PageSize;
+		ShadowBuf = (PBYTE)calloc(AlignedSize, 1);
+		BitmapBuf = (PBYTE)calloc(NumPages, 1);
+		if (!ShadowBuf || !BitmapBuf)
+		{
+			if (ShadowBuf) free(ShadowBuf);
+			if (BitmapBuf) free(BitmapBuf);
+			return FALSE;
+		}
+
+		if (!IsHeaderless && IsAddressAccessible(TrackedRegion->AllocationBase))
+		{
+			__try
+			{
+				SIZE_T HeaderSize = PageSize;
+				PIMAGE_NT_HEADERS pNt = GetPagedPENtHeader(TrackedRegion->AllocationBase);
+				if (pNt && pNt->OptionalHeader.SizeOfHeaders > PageSize)
+					HeaderSize = ((SIZE_T)pNt->OptionalHeader.SizeOfHeaders + PageSize - 1) & ~(PageSize - 1);
+				if (HeaderSize > 0x4000)
+					HeaderSize = 0x4000;
+				if (HeaderSize > AlignedSize)
+					HeaderSize = AlignedSize;
+
+				for (p = 0; p * PageSize < HeaderSize; p++)
+				{
+					PVOID HdrPage = (PUCHAR)TrackedRegion->AllocationBase + (p * PageSize);
+					if (!IsAddressAccessible(HdrPage))
+						break;
+					memcpy(ShadowBuf + (p * PageSize), HdrPage, PageSize);
+					BitmapBuf[p] |= SHADOW_PAGE_HEADER;
+				}
+			}
+			__except(EXCEPTION_EXECUTE_HANDLER)
+			{
+			}
+		}
+
+		AcquireShadowLock(&TrackedRegion->ShadowLock);
+		if (!TrackedRegion->PagedPE)
+		{
+			TrackedRegion->ShadowImage = ShadowBuf;
+			TrackedRegion->ShadowPageBitmap = BitmapBuf;
+			TrackedRegion->ShadowImageSize = AlignedSize;
+			TrackedRegion->ShadowPagesCount = 0;
+			TrackedRegion->HeaderlessPagedPE = IsHeaderless;
+			TrackedRegion->PagedPE = TRUE;
+			TrackedRegion->PagedPEDumped = FALSE;
+			TrackedRegion->Committed = TRUE;
+			TrackedRegion->CanDump = TRUE;
+			ShadowBuf = NULL;
+			BitmapBuf = NULL;
+		}
+		ReleaseShadowLock(&TrackedRegion->ShadowLock);
+
+		if (ShadowBuf) free(ShadowBuf);
+		if (BitmapBuf) free(BitmapBuf);
+	}
+
+	if (!TrackedRegion->ShadowImageSize || !TrackedRegion->ShadowImage || !TrackedRegion->ShadowPageBitmap)
+		return FALSE;
+
+	ImageStart = (ULONG_PTR)TrackedRegion->AllocationBase;
+	ImageEnd = ImageStart + TrackedRegion->ShadowImageSize;
+	RangeStart = (ULONG_PTR)Address & ~(PageSize - 1);
+	RangeEnd = Size ? (((ULONG_PTR)Address + Size + PageSize - 1) & ~(PageSize - 1)) : (RangeStart + PageSize);
+	if (RangeStart < ImageStart) RangeStart = ImageStart;
+	if (RangeEnd > ImageEnd) RangeEnd = ImageEnd;
+
+	for (PageAddr = RangeStart; PageAddr < RangeEnd; PageAddr += PageSize)
+	{
+		SIZE_T PageIdx = (PageAddr - ImageStart) / PageSize;
+		BOOL ReadOk = FALSE;
+
+		if (!IsAddressAccessible((PVOID)PageAddr))
+			continue;
+
+		__try
+		{
+			memcpy(PageCopy, (PVOID)PageAddr, PageSize);
+			ReadOk = TRUE;
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+		}
+
+		if (!ReadOk)
+			continue;
+
+		AcquireShadowLock(&TrackedRegion->ShadowLock);
+		if (TrackedRegion->PagedPE && TrackedRegion->ShadowImage && TrackedRegion->ShadowPageBitmap &&
+			PageIdx < TrackedRegion->ShadowImageSize / PageSize)
+		{
+			memcpy(TrackedRegion->ShadowImage + (PageIdx * PageSize), PageCopy, PageSize);
+			if (!(TrackedRegion->ShadowPageBitmap[PageIdx] & SHADOW_PAGE_EXEC))
+			{
+				TrackedRegion->ShadowPageBitmap[PageIdx] |= SHADOW_PAGE_EXEC;
+				TrackedRegion->ShadowPagesCount++;
+			}
+			TrackedRegion->PagedPEDumped = FALSE;
+		}
+		ReleaseShadowLock(&TrackedRegion->ShadowLock);
+	}
+
+	return TRUE;
+}
+
+//**************************************************************************************
+static void SynthesizeHeaderlessPagedPE(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	SIZE_T PageSize, NumPages, p;
+	PIMAGE_DOS_HEADER pDos;
+	PIMAGE_NT_HEADERS pNt;
+	PIMAGE_SECTION_HEADER pSecs;
+	WORD SecCount = 0;
+	DWORD EntryPointRva = 0;
+
+	if (!TrackedRegion || !TrackedRegion->PagedPE || !TrackedRegion->AllocationBase ||
+		!TrackedRegion->ShadowImage || !TrackedRegion->ShadowPageBitmap)
+		return;
+
+	PageSize = SystemInfo.dwPageSize ? (SIZE_T)SystemInfo.dwPageSize : 0x1000;
+	NumPages = TrackedRegion->ShadowImageSize / PageSize;
+	if (NumPages < 2)
+		return;
+
+	AcquireShadowLock(&TrackedRegion->ShadowLock);
+	memset(TrackedRegion->ShadowImage, 0, PageSize);
+	pDos = (PIMAGE_DOS_HEADER)TrackedRegion->ShadowImage;
+	pDos->e_magic = IMAGE_DOS_SIGNATURE;
+	pDos->e_lfanew = 0x40;
+	pNt = (PIMAGE_NT_HEADERS)(TrackedRegion->ShadowImage + pDos->e_lfanew);
+	pNt->Signature = IMAGE_NT_SIGNATURE;
+#ifdef _WIN64
+	pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64;
+	pNt->FileHeader.Characteristics = IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE;
+	pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+#else
+	pNt->FileHeader.Machine = IMAGE_FILE_MACHINE_I386;
+	pNt->FileHeader.Characteristics = IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_32BIT_MACHINE;
+	pNt->OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR32_MAGIC;
+#endif
+	pNt->FileHeader.SizeOfOptionalHeader = sizeof(pNt->OptionalHeader);
+	pSecs = IMAGE_FIRST_SECTION(pNt);
+
+	for (p = 1; p < NumPages; p++)
+	{
+		MEMORY_BASIC_INFORMATION MemInfo;
+		DWORD Chars = IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ;
+
+		if (!(TrackedRegion->ShadowPageBitmap[p] & SHADOW_PAGE_EXEC))
+		{
+			if (VirtualQuery((PUCHAR)TrackedRegion->AllocationBase + (p * PageSize), &MemInfo, sizeof(MemInfo)) &&
+				MemInfo.State == MEM_COMMIT && !(MemInfo.Protect & (EXECUTABLE_FLAGS | PAGE_NOACCESS | PAGE_GUARD)))
+			{
+				if (MemInfo.Protect & PAGE_READONLY)
+					Chars = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
+				else if (MemInfo.Protect & (PAGE_READWRITE | PAGE_WRITECOPY))
+					Chars = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
+			}
+			else if (SecCount > 0)
+			{
+				Chars = pSecs[SecCount - 1].Characteristics;
+			}
+		}
+
+		if (SecCount > 0 && (pSecs[SecCount - 1].Characteristics == Chars || SecCount >= 16))
+		{
+			pSecs[SecCount - 1].Misc.VirtualSize += (DWORD)PageSize;
+			pSecs[SecCount - 1].SizeOfRawData = pSecs[SecCount - 1].Misc.VirtualSize;
+			pSecs[SecCount - 1].Characteristics |= Chars;
+		}
+		else
+		{
+			PIMAGE_SECTION_HEADER Sec = &pSecs[SecCount++];
+			const char *Name = (Chars & IMAGE_SCN_MEM_EXECUTE) ? ".text" : ((Chars & IMAGE_SCN_MEM_WRITE) ? ".data" : ".rdata");
+			memcpy(Sec->Name, Name, strlen(Name));
+			Sec->VirtualAddress = (DWORD)(p * PageSize);
+			Sec->Misc.VirtualSize = (DWORD)PageSize;
+			Sec->PointerToRawData = Sec->VirtualAddress;
+			Sec->SizeOfRawData = (DWORD)PageSize;
+			Sec->Characteristics = Chars;
+		}
+
+		if (!EntryPointRva && (TrackedRegion->ShadowPageBitmap[p] & SHADOW_PAGE_EXEC))
+			EntryPointRva = (DWORD)(p * PageSize);
+	}
+
+	if (TrackedRegion->FirstExecAddr &&
+		(ULONG_PTR)TrackedRegion->FirstExecAddr >= (ULONG_PTR)TrackedRegion->AllocationBase + PageSize &&
+		(ULONG_PTR)TrackedRegion->FirstExecAddr < (ULONG_PTR)TrackedRegion->AllocationBase + TrackedRegion->ShadowImageSize)
+	{
+		EntryPointRva = (DWORD)((ULONG_PTR)TrackedRegion->FirstExecAddr - (ULONG_PTR)TrackedRegion->AllocationBase);
+	}
+
+	pNt->FileHeader.NumberOfSections = SecCount;
+	pNt->OptionalHeader.AddressOfEntryPoint = EntryPointRva;
+	pNt->OptionalHeader.ImageBase = (ULONG_PTR)TrackedRegion->AllocationBase;
+	pNt->OptionalHeader.SectionAlignment = (DWORD)PageSize;
+	pNt->OptionalHeader.FileAlignment = 0x200;
+	pNt->OptionalHeader.MajorOperatingSystemVersion = 6;
+	pNt->OptionalHeader.MajorSubsystemVersion = 6;
+	pNt->OptionalHeader.SizeOfImage = (DWORD)TrackedRegion->ShadowImageSize;
+	pNt->OptionalHeader.SizeOfHeaders = (DWORD)PageSize;
+	pNt->OptionalHeader.Subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI;
+	pNt->OptionalHeader.NumberOfRvaAndSizes = IMAGE_NUMBEROF_DIRECTORY_ENTRIES;
+
+	TrackedRegion->ShadowPageBitmap[0] |= SHADOW_PAGE_HEADER;
+	ReleaseShadowLock(&TrackedRegion->ShadowLock);
+}
+
+//**************************************************************************************
+BOOL ApplyShadowPagesToRange(PVOID Address, SIZE_T Size, PBYTE Buffer)
+//**************************************************************************************
+{
+	PTRACKEDREGION Region;
+	SIZE_T PageSize;
+	ULONG_PTR ReqStart, ReqEnd;
+	BOOL Applied = FALSE;
+
+	if (!Address || !Buffer || !Size)
+		return FALSE;
+
+	PageSize = SystemInfo.dwPageSize ? (SIZE_T)SystemInfo.dwPageSize : 0x1000;
+	ReqStart = (ULONG_PTR)Address;
+	ReqEnd = ReqStart + Size;
+	if (ReqEnd < ReqStart)
+		return FALSE;
+
+	for (Region = TrackedRegionList; Region; Region = Region->NextTrackedRegion)
+	{
+		ULONG_PTR RegStart, RegEnd, OverlapStart, OverlapEnd;
+		SIZE_T FirstPage, LastPage, p;
+
+		if (!Region->PagedPE || !Region->AllocationBase || !Region->ShadowImage || !Region->ShadowPageBitmap)
+			continue;
+
+		RegStart = (ULONG_PTR)Region->AllocationBase;
+		RegEnd = RegStart + Region->ShadowImageSize;
+		if (ReqEnd <= RegStart || ReqStart >= RegEnd)
+			continue;
+
+		AcquireShadowLock(&Region->ShadowLock);
+		if (Region->PagedPE && Region->ShadowImage && Region->ShadowPageBitmap)
+		{
+			OverlapStart = (ReqStart > RegStart) ? ReqStart : RegStart;
+			OverlapEnd = (ReqEnd < RegEnd) ? ReqEnd : RegEnd;
+			FirstPage = (OverlapStart - RegStart) / PageSize;
+			LastPage = (OverlapEnd - RegStart + PageSize - 1) / PageSize;
+
+			for (p = FirstPage; p < LastPage; p++)
+			{
+				if (Region->ShadowPageBitmap[p])
+				{
+					ULONG_PTR PageStart = RegStart + (p * PageSize);
+					ULONG_PTR PageEnd = PageStart + PageSize;
+					ULONG_PTR CopyStart = (PageStart > OverlapStart) ? PageStart : OverlapStart;
+					ULONG_PTR CopyEnd = (PageEnd < OverlapEnd) ? PageEnd : OverlapEnd;
+
+					if (CopyEnd > CopyStart)
+					{
+						memcpy(Buffer + (CopyStart - ReqStart), Region->ShadowImage + (CopyStart - RegStart), CopyEnd - CopyStart);
+						Applied = TRUE;
+					}
+				}
+			}
+		}
+		ReleaseShadowLock(&Region->ShadowLock);
+	}
+
+	return Applied;
+}
+
+//**************************************************************************************
+BOOL DumpPagedPERegion(PTRACKEDREGION TrackedRegion)
+//**************************************************************************************
+{
+	SIZE_T PageSize, NumPages, p;
+	PVOID NewEP = NULL;
+	BOOL Dumped = FALSE;
+	unsigned int PagesAtStart, FaultCount = 0;
+
+	if (!TrackedRegion || !TrackedRegion->PagedPE || TrackedRegion->PagedPEDumped ||
+		!TrackedRegion->ShadowPagesCount || !TrackedRegion->AllocationBase)
+		return FALSE;
+
+	PageSize = SystemInfo.dwPageSize ? (SIZE_T)SystemInfo.dwPageSize : 0x1000;
+	NumPages = TrackedRegion->ShadowImageSize / PageSize;
+	TrackedRegion->PagedPEDumped = TRUE;
+
+	for (p = 1; p < NumPages; p++)
+	{
+		PVOID PageAddr = (PUCHAR)TrackedRegion->AllocationBase + (p * PageSize);
+		MEMORY_BASIC_INFORMATION MemInfo;
+		BYTE PageCopy[0x1000];
+		BOOL Copied = FALSE;
+
+		if (TrackedRegion->ShadowPageBitmap[p] & SHADOW_PAGE_EXEC)
+		{
+			if (IsAddressExecutable(PageAddr) && IsAddressAccessible(PageAddr))
+			{
+				__try
+				{
+					memcpy(PageCopy, PageAddr, PageSize);
+					Copied = TRUE;
+				}
+				__except(EXCEPTION_EXECUTE_HANDLER)
+				{
+				}
+				if (Copied)
+				{
+					AcquireShadowLock(&TrackedRegion->ShadowLock);
+					if (TrackedRegion->ShadowImage)
+						memcpy(TrackedRegion->ShadowImage + (p * PageSize), PageCopy, PageSize);
+					ReleaseShadowLock(&TrackedRegion->ShadowLock);
+				}
+			}
+			continue;
+		}
+
+		if (FaultCount >= 4 || !VirtualQuery(PageAddr, &MemInfo, sizeof(MemInfo)) ||
+			MemInfo.State != MEM_COMMIT || !(MemInfo.Protect & (PAGE_NOACCESS | PAGE_GUARD)))
+			continue;
+
+		// Probe unharvested PAGE_NOACCESS / PAGE_GUARD pages so active guest VEH crypters decrypt them in-place.
+		__try
+		{
+			volatile BYTE Probe = *(volatile BYTE *)PageAddr;
+			(void)Probe;
+			if (IsAddressAccessible(PageAddr))
+			{
+				memcpy(PageCopy, PageAddr, PageSize);
+				Copied = TRUE;
+			}
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			FaultCount++;
+		}
+
+		if (Copied)
+		{
+			AcquireShadowLock(&TrackedRegion->ShadowLock);
+			if (TrackedRegion->ShadowImage && TrackedRegion->ShadowPageBitmap)
+			{
+				memcpy(TrackedRegion->ShadowImage + (p * PageSize), PageCopy, PageSize);
+				if (!(TrackedRegion->ShadowPageBitmap[p] & SHADOW_PAGE_EXEC))
+				{
+					TrackedRegion->ShadowPageBitmap[p] |= SHADOW_PAGE_EXEC;
+					TrackedRegion->ShadowPagesCount++;
+				}
+			}
+			ReleaseShadowLock(&TrackedRegion->ShadowLock);
+		}
+	}
+
+	PagesAtStart = TrackedRegion->ShadowPagesCount;
+
+	if (TrackedRegion->HeaderlessPagedPE)
+		SynthesizeHeaderlessPagedPE(TrackedRegion);
+	else if (TrackedRegion->FirstExecAddr && TrackedRegion->ShadowImage && !GetEntryPoint(TrackedRegion->ShadowImage))
+		NewEP = TrackedRegion->FirstExecAddr;
+
+	SetCapeMetaData(UNPACKED_PE, 0, NULL, TrackedRegion->AllocationBase);
+	Dumped = (DumpProcess(GetCurrentProcess(), TrackedRegion->AllocationBase, NewEP, FALSE) != 0);
+
+	if (Dumped)
+	{
+		TrackedRegion->PagesDumped = TRUE;
+		if (TrackedRegion->ShadowPagesCount > PagesAtStart)
+			TrackedRegion->PagedPEDumped = FALSE;
+		DebugOutput("DumpPagedPERegion: Dumped paged PE image at 0x%p (%u harvested pages).\n", TrackedRegion->AllocationBase, TrackedRegion->ShadowPagesCount);
+	}
+	else
+	{
+		TrackedRegion->PagedPEDumped = FALSE;
+	}
+
+	return Dumped;
+}
+
+//**************************************************************************************
+void DumpPendingPagedPERegions(void)
+//**************************************************************************************
+{
+	PTRACKEDREGION Region;
+
+	hook_disable();
+	for (Region = TrackedRegionList; Region; Region = Region->NextTrackedRegion)
+	{
+		if (Region->PagedPE && !Region->PagedPEDumped && Region->ShadowPagesCount > 0)
+			DumpPagedPERegion(Region);
+	}
+	hook_enable();
+}
+
+//**************************************************************************************
 BOOL IsInTrackedRegion(PTRACKEDREGION TrackedRegion, PVOID Address)
 //**************************************************************************************
 {
@@ -1162,6 +1780,7 @@ BOOL DropTrackedRegion(PTRACKEDREGION TrackedRegion)
 				TrackedRegionList = NULL;
 			}
 
+			FreeTrackedRegionShadow(CurrentTrackedRegion);
 			free(CurrentTrackedRegion);
 
 			return TRUE;
@@ -1278,6 +1897,9 @@ void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion)
 		ProcessImageBase(TrackedRegion);
 		return;
 	}
+
+	if (IsPagedPERegion(TrackedRegion))
+		return;
 
 	if (!TrackedRegion->CanDump && !TrackedRegion->Caller && g_terminate_event_handle)
 		return;
@@ -1427,7 +2049,7 @@ BOOL TrackExecution(PVOID CIP)
 	}
 
 	PTRACKEDREGION TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
-	if (!TrackedRegion || (TrackedRegion && !TrackedRegion->Caller && !TrackedRegion->PagesDumped))
+	if (!TrackedRegion)
 	{
 		TrackedRegion = AddTrackedRegion((PVOID)AllocationBase, 0);
 		if (!TrackedRegion)
@@ -1437,8 +2059,24 @@ BOOL TrackExecution(PVOID CIP)
 			return FALSE;
 		}
 		DebugOutput("TrackExecution: Added region at 0x%p to tracked regions list (address 0x%p, thread %d).\n", AllocationBase, CIP, GetCurrentThreadId());
+	}
+
+	if (!TrackedRegion->FirstExecAddr)
+		TrackedRegion->FirstExecAddr = CIP;
+
+	if (!TrackedRegion->Caller && !TrackedRegion->PagesDumped)
+	{
 		TrackedRegion->Caller = CIP;
+		if (g_config.unpacker && HarvestPagedPEPages(TrackedRegion, CIP, 0, PAGE_EXECUTE_READ, 0))
+		{
+			hook_enable();
+			return TRUE;
+		}
 		ProcessTrackedRegion(TrackedRegion);
+	}
+	else if (g_config.unpacker && TrackedRegion->PagedPE)
+	{
+		HarvestPagedPEPages(TrackedRegion, CIP, 0, PAGE_EXECUTE_READ, 0);
 	}
 	hook_enable();
 	return TRUE;
@@ -3608,6 +4246,9 @@ int DoProcessDump()
 
 	// DumpCount limit no longer wanted at this stage
 	DumpCount = 0;
+
+	if (g_config.unpacker)
+		DumpPendingPagedPERegions();
 
 	if (g_config.procdump)
 	{

@@ -3,7 +3,7 @@ PTRACKEDREGION CurrentRegion;
 void UnpackerCallback();
 //void MapSectionViewHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect);
 void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
-void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtect);
+void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
 void FreeHandler(PVOID BaseAddress);
 void NewThreadHandler(PVOID StartAddress);
 BOOL ActivateBreakpoints(PTRACKEDREGION TrackedRegion, struct _EXCEPTION_POINTERS* ExceptionInfo);

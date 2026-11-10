@@ -802,12 +802,16 @@ bool PeParser::readSectionFrom(const DWORD_PTR readOffset, PeFileSection & peFil
 	}
 	currentOffset = readOffset + readSize - currentReadSize;
 
-	if (!IsAddressAccessible((PVOID)currentOffset))
+	if (isProcess && !IsAddressAccessible((PVOID)currentOffset))
 	{
+		BYTE probeBuf[1];
+		if (!ProcessAccessHelp::readMemoryPartlyFromProcess(currentOffset, 1, probeBuf))
+		{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("PeParser: readSectionFrom: address 0x%p inaccessible (base 0x%p, corrected size 0x%x).\n", currentOffset, readOffset, readSize);
+			DebugOutput("PeParser: readSectionFrom: address 0x%p inaccessible (base 0x%p, corrected size 0x%x).\n", currentOffset, readOffset, readSize);
 #endif
-		return false;
+			return false;
+		}
 	}
 
 #ifdef DEBUG_COMMENTS
@@ -1607,6 +1611,7 @@ DWORD_PTR PeParser::convertOffsetToRVAVector(DWORD_PTR dwOffset)
 BOOL PeParser::reBasePEImage(DWORD_PTR NewBase)
 {
 	PIMAGE_BASE_RELOCATION Relocations;
+	PBYTE relocBuffer = NULL;
 	PIMAGE_NT_HEADERS NtHeaders;
 	DWORD_PTR Delta;
 	ULONG RelocationSize = 0, Size = 0;
@@ -1636,8 +1641,18 @@ BOOL PeParser::reBasePEImage(DWORD_PTR NewBase)
 		return FALSE;
 	}
 
-	Relocations = (PIMAGE_BASE_RELOCATION)((PBYTE)NewBase + NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
 	RelocationSize = NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
+	if (RelocationSize < sizeof(IMAGE_BASE_RELOCATION) || RelocationSize > PE_MAX_SIZE)
+		return FALSE;
+
+	relocBuffer = new BYTE[RelocationSize];
+	if (!ProcessAccessHelp::readMemoryPartlyFromProcess(NewBase + NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress, RelocationSize, relocBuffer))
+	{
+		delete [] relocBuffer;
+		return FALSE;
+	}
+
+	Relocations = (PIMAGE_BASE_RELOCATION)relocBuffer;
 	Delta = NewBase - NtHeaders->OptionalHeader.ImageBase;
 #ifdef DEBUG_COMMENTS
 	DebugOutput("reBasePEImage: Relocations set to 0x%p, size 0x%x, Delta 0x%p, ImageBase 0x%p\n", Relocations, RelocationSize, Delta, NtHeaders->OptionalHeader.ImageBase);
@@ -1645,41 +1660,51 @@ BOOL PeParser::reBasePEImage(DWORD_PTR NewBase)
 
 	__try
 	{
-		while (RelocationSize > Size && Relocations->SizeOfBlock)
+		while (Size + sizeof(IMAGE_BASE_RELOCATION) <= RelocationSize && Relocations->SizeOfBlock >= sizeof(IMAGE_BASE_RELOCATION) && Relocations->SizeOfBlock <= RelocationSize - Size)
 		{
-			ULONG NumOfRelocs = (Relocations->SizeOfBlock - 8) / 2;
-			PUSHORT Reloc = (PUSHORT)((PUCHAR)Relocations + 8);
+			ULONG NumOfRelocs = (Relocations->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
+			PUSHORT Reloc = (PUSHORT)((PUCHAR)Relocations + sizeof(IMAGE_BASE_RELOCATION));
 
 #ifdef DEBUG_COMMENTS
 			DebugOutput("reBasePEImage: VirtualAddress: 0x%.8x; Number of Relocs: %d; Size: %d\n", Relocations->VirtualAddress, NumOfRelocs, Relocations->SizeOfBlock);
 #endif
 			for (ULONG i = 0; i < NumOfRelocs; i++)
 			{
-				if (Reloc[i] > 0)
+				WORD relocType = (Reloc[i] >> 12);
+				if (relocType == IMAGE_REL_BASED_HIGHLOW || relocType == IMAGE_REL_BASED_DIR64)
 				{
-					PUCHAR *RVA = (PUCHAR*)((PBYTE)(DWORD_PTR)Relocations->VirtualAddress + (Reloc[i] & 0x0FFF));
+					DWORD_PTR rva = (DWORD_PTR)Relocations->VirtualAddress + (Reloc[i] & 0x0FFF);
+					int secIdx = convertRVAToOffsetVectorIndex(rva);
+					if (secIdx < 0 || (size_t)secIdx >= listPeSection.size() || !listPeSection[secIdx].data)
+						continue;
+					DWORD_PTR relOff = convertRVAToOffsetRelative(rva);
+					SIZE_T elemSize = (relocType == IMAGE_REL_BASED_DIR64) ? sizeof(ULONGLONG) : sizeof(ULONG);
+					if (relOff > listPeSection[secIdx].dataSize || elemSize > listPeSection[secIdx].dataSize - relOff)
+						continue;
 #ifndef _WIN64
-					PUCHAR VA = (PUCHAR)*((PULONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA)));
+					PUCHAR VA = (PUCHAR)*((PULONG)(listPeSection[secIdx].data + relOff));
 					if ((unsigned int)VA - NewBase < (unsigned int)NtHeaders->OptionalHeader.SizeOfImage)
-						*((PULONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONG)((ULONGLONG)Delta);
+						*((PULONG)(listPeSection[secIdx].data + relOff)) -= (ULONG)((ULONGLONG)Delta);
 #else
-					PULONGLONG VA = (PULONGLONG)*((PULONGLONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA)));
+					PULONGLONG VA = (PULONGLONG)*((PULONGLONG)(listPeSection[secIdx].data + relOff));
 					if ((ULONGLONG)VA - NewBase < (ULONGLONG)NtHeaders->OptionalHeader.SizeOfImage)
-						*((PULONGLONG)(listPeSection[convertRVAToOffsetVectorIndex((DWORD_PTR)RVA)].data + convertRVAToOffsetRelative((DWORD_PTR)RVA))) -= (ULONGLONG)Delta;
+						*((PULONGLONG)(listPeSection[secIdx].data + relOff)) -= (ULONGLONG)Delta;
 #endif
 				}
 			}
 
-			Relocations = (PIMAGE_BASE_RELOCATION)((PUCHAR)Relocations + Relocations->SizeOfBlock);
 			Size += Relocations->SizeOfBlock;
+			Relocations = (PIMAGE_BASE_RELOCATION)((PUCHAR)Relocations + Relocations->SizeOfBlock);
 		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
+		delete [] relocBuffer;
 		DebugOutput("reBasePEImage: Exception rebasing image from 0x%p to 0x%p.\n", NewBase, NtHeaders->OptionalHeader.ImageBase);
 		return FALSE;
 	}
 
+	delete [] relocBuffer;
 	return TRUE;
 }
 
