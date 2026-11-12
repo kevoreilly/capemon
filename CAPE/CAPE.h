@@ -164,6 +164,10 @@ enum {
 	TYPE_STRING = 0x100,
 };
 
+#define SHADOW_IMAGE_MAX_SIZE ((SIZE_T)0x02000000)
+#define SHADOW_PAGE_HEADER    0x01
+#define SHADOW_PAGE_EXEC      0x02
+
 typedef struct TrackedRegion
 {
 	PVOID						AllocationBase;
@@ -185,6 +189,15 @@ typedef struct TrackedRegion
 	BOOL						BreakpointsSet;
 	BOOL						BreakpointsSaved;
 	struct ThreadBreakpoints	*TrackedRegionBreakpoints;
+	PBYTE						ShadowImage;
+	PBYTE						ShadowPageBitmap;
+	SIZE_T						ShadowImageSize;
+	unsigned int				ShadowPagesCount;
+	PVOID						FirstExecAddr;
+	BOOL						PagedPE;
+	BOOL						HeaderlessPagedPE;
+	BOOL						PagedPEDumped;
+	volatile LONG				ShadowLock;
 	struct TrackedRegion		*NextTrackedRegion;
 } TRACKEDREGION, *PTRACKEDREGION;
 
@@ -201,6 +214,12 @@ void ProcessImageBase(PTRACKEDREGION TrackedRegion);
 void ProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 void TestProcessTrackedRegion(PTRACKEDREGION TrackedRegion);
 BOOL TrackExecution(PVOID CIP);
+BOOL IsPagedPERegion(PTRACKEDREGION TrackedRegion);
+BOOL HarvestPagedPEPages(PTRACKEDREGION TrackedRegion, PVOID Address, SIZE_T Size, ULONG Protect, ULONG OldProtect);
+BOOL DumpPagedPERegion(PTRACKEDREGION TrackedRegion);
+void DumpPendingPagedPERegions(void);
+void FreeTrackedRegionShadow(PTRACKEDREGION TrackedRegion);
+BOOL ApplyShadowPagesToRange(PVOID Address, SIZE_T Size, PBYTE Buffer);
 
 #ifdef __cplusplus
 }

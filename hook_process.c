@@ -38,7 +38,8 @@ extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern struct TrackedRegion *TrackedRegionList;
 extern void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
 extern void DebuggerAllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect);
-extern void ProtectionHandler(PVOID BaseAddress, ULONG Protect, PULONG OldProtect);
+extern void ProtectionHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect);
+extern void DumpPendingPagedPERegions(void);
 extern void FreeHandler(PVOID BaseAddress), ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 extern void ProcessTrackedRegion(), DebuggerShutdown(), DumpStrings();
 extern LONG WINAPI mini_handler(__in struct _EXCEPTION_POINTERS *ExceptionInfo);
@@ -744,6 +745,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtTerminateProcess,
 	if (process_shutting_down && g_config.debugger)
 		DebuggerShutdown();
 
+	if (process_shutting_down && g_config.unpacker)
+		DumpPendingPagedPERegions();
+
 	if (process_shutting_down && g_config.procdump && !ProcessDumped) {
 		DebugOutput("NtTerminateProcess hook: Attempting to dump process %d\n", GetCurrentProcessId());
 		DoProcessDump();
@@ -1290,11 +1294,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		NewAccessProtection = OriginalNewAccessProtection;
 	}
 
-	if (NT_SUCCESS(ret) && BaseAddress && NtCurrentProcess() == ProcessHandle)
+	if (NT_SUCCESS(ret) && BaseAddress && *BaseAddress && NtCurrentProcess() == ProcessHandle)
 	{
-		PVOID AllocationBase = GetAllocationBase(*BaseAddress);
 		if (g_config.unpacker)
-			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
+			ProtectionHandler(*BaseAddress, NumberOfBytesToProtect ? *NumberOfBytesToProtect : 0, NewAccessProtection, OldAccessProtection ? *OldAccessProtection : 0);
 	}
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
@@ -1372,13 +1375,10 @@ HOOKDEF(BOOL, WINAPI, VirtualProtectEx,
 		flNewProtect = OriginalNewProtect;
 	}
 
-	if (NT_SUCCESS(ret) && NtCurrentProcess() == hProcess)
+	if (ret && lpAddress && NtCurrentProcess() == hProcess)
 	{
-		char ModulePath[MAX_PATH];
-		PVOID AllocationBase = GetAllocationBase(lpAddress);
-		BOOL MappedModule = GetMappedFileName(GetCurrentProcess(), AllocationBase, ModulePath, MAX_PATH);
 		if (g_config.unpacker)
-			ProtectionHandler(lpAddress, flNewProtect, lpflOldProtect);
+			ProtectionHandler(lpAddress, dwSize, flNewProtect, lpflOldProtect ? *lpflOldProtect : 0);
 	}
 
 	if (flNewProtect == PAGE_EXECUTE_READWRITE && NtCurrentProcess() == hProcess &&
@@ -1403,8 +1403,14 @@ HOOKDEF(NTSTATUS, WINAPI, NtFreeVirtualMemory,
 	IN OUT  PSIZE_T RegionSize,
 	IN	  ULONG FreeType
 ) {
-	if (g_config.unpacker && NtCurrentProcess() == ProcessHandle && RegionSize && *RegionSize == 0 && (FreeType & MEM_RELEASE))
-		FreeHandler(*BaseAddress);
+	if (g_config.unpacker && NtCurrentProcess() == ProcessHandle && BaseAddress && *BaseAddress && RegionSize && *RegionSize == 0 && (FreeType & MEM_RELEASE))
+	{
+		lasterror_t lasterrors;
+		get_lasterrors(&lasterrors);
+		if (*BaseAddress == GetAllocationBase(*BaseAddress))
+			FreeHandler(*BaseAddress);
+		set_lasterrors(&lasterrors);
+	}
 
 	NTSTATUS ret = Old_NtFreeVirtualMemory(ProcessHandle, BaseAddress,
 		RegionSize, FreeType);
