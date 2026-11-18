@@ -967,6 +967,21 @@ BOOL is_in_dll_range(ULONG_PTR addr)
 	return FALSE;
 }
 
+static BOOL base_dll_matches_coverage_module(const UNICODE_STRING *base_name, const wchar_t *cov_mod)
+{
+	size_t base_chars, cov_chars;
+
+	if (!base_name || !base_name->Buffer || !cov_mod)
+		return FALSE;
+	base_chars = base_name->Length / sizeof(WCHAR);
+	cov_chars = wcslen(cov_mod);
+	if (base_chars == cov_chars)
+		return !_wcsnicmp(base_name->Buffer, cov_mod, cov_chars);
+	if (base_chars == cov_chars + 4 && !_wcsnicmp(base_name->Buffer + cov_chars, L".dll", 4))
+		return !_wcsnicmp(base_name->Buffer, cov_mod, cov_chars);
+	return FALSE;
+}
+
 BOOL remove_dll_range(ULONG_PTR addr)
 {
 	LONG count = loaded_dlls;
@@ -1013,25 +1028,27 @@ void add_all_dlls_to_dll_ranges(void)
 		ModulePath.Buffer = calloc(ModulePath.Length + 1, sizeof(WCHAR));
 		memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length * sizeof(WCHAR));
 		// skip dlls in same directory as exe
-		if (!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
+		if ((!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, TRUE)) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
 			DebugOutput("add_all_dlls_to_dll_ranges: skipping %ws", ModulePath.Buffer);
 			free(ModulePath.Buffer);
 			continue;
 		}
+		BOOL skip_module = FALSE;
 		// skip dlls in 'coverage_modules'
 		for (unsigned int i = 0; i < ARRAYSIZE(g_config.coverage_modules); i++) {
 			if (!g_config.coverage_modules[i])
 				break;
-			if (!wcsnicmp(mod->BaseDllName.Buffer, g_config.coverage_modules[i], wcslen(g_config.coverage_modules[i]))) {
-				free(ModulePath.Buffer);
-				goto exit;
+			if (base_dll_matches_coverage_module(&mod->BaseDllName, g_config.coverage_modules[i])) {
+				skip_module = TRUE;
+				break;
 			}
 		}
 		free(ModulePath.Buffer);
+		if (skip_module)
+			continue;
 		add_dll_range((ULONG_PTR)mod->BaseAddress, (ULONG_PTR)mod->BaseAddress + mod->SizeOfImage);
 	}
 
-exit:
 	free(ProcessPath.Buffer);
 }
 
