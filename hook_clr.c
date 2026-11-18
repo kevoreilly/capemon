@@ -584,9 +584,11 @@ HOOKDEF(int, WINAPI, compileMethod,
 				"Class", className ? className : "UnknownClass", "Method", methodName);
 			// loq() calls hook_enable() on exit; re-disable for the remaining helpers.
 			hook_disable();
+#ifdef DEBUG_COMMENTS
 			DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
 				namespaceName ? namespaceName : "", namespaceName ? "." : "",
 				className ? className : "UnknownClass", methodName);
+#endif
 		}
 
 		PVOID nativeCode = NULL;
