@@ -475,8 +475,10 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptImportKey,
 	DWORD			  cbData,
 	DWORD			  dwFlags
 ) {
-	BOOL ret = Old_NCryptImportKey(hProvider, hImportKey, pszBlobType, pParameterList, phKey, pbData, cbData, dwFlags);
-	LOQ_bool("crypto", "bhp", "KeyBlob", cbData, pbData, "Flags", dwFlags,  "CryptKey", phKey ? *phKey : 0, "Length", cbData);
+	// SECURITY_STATUS, not BOOL: success is ERROR_SUCCESS (0), so LOQ_bool
+	// reported every successful call as a failure and vice versa
+	SECURITY_STATUS ret = Old_NCryptImportKey(hProvider, hImportKey, pszBlobType, pParameterList, phKey, pbData, cbData, dwFlags);
+	LOQ_zero("crypto", "bhp", "KeyBlob", cbData, pbData, "Flags", dwFlags,  "CryptKey", phKey ? *phKey : 0, "Length", cbData);
 	return ret;
 }
 
@@ -490,21 +492,30 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptDecrypt,
 	DWORD			 *pcbResult,
 	DWORD			 dwFlags
 ) {
-	BOOL ret = Old_NCryptDecrypt(hKey, pbInput, cbInput, pPaddingInfo, pbOutput, cbOutput, pcbResult, dwFlags);
-	if (ret && g_config.dump_crypto) {
+	SECURITY_STATUS ret = Old_NCryptDecrypt(hKey, pbInput, cbInput, pPaddingInfo, pbOutput, cbOutput, pcbResult, dwFlags);
+	// SECURITY_STATUS: success is ERROR_SUCCESS (0), so the dump paths
+	// below only ran when the decryption had failed
+	if (ret == ERROR_SUCCESS && g_config.dump_crypto) {
 		if (!CapeMetaData->DumpType)
 			CapeMetaData->DumpType = DATADUMP;
 		DumpMemoryRaw(pbInput, cbOutput);
 		DebugOutput("NCryptDecrypt hook: Dumped decrypted buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
 	}
-	if (ret && g_config.unpacker && IsDisguisedPEHeader((PVOID)pbInput)) {
+	if (ret == ERROR_SUCCESS && g_config.unpacker && IsDisguisedPEHeader((PVOID)pbInput)) {
 		if (!CapeMetaData->DumpType)
 			CapeMetaData->DumpType = UNPACKED_PE;
 		CapeMetaData->Address = pbInput;
 		if (DumpImageInCurrentProcess((PVOID)pbInput))
 			DebugOutput("NCryptDecrypt: Dumped decrypted PE image at 0x%p.\n", pbInput);
 	}
-	LOQ_bool("crypto", "bhpi", "Output", cbOutput, pbOutput, "Flags", dwFlags, "CryptKey", hKey, "Length", cbOutput);
+	// cbOutput is the caller's capacity; pcbResult is what was written
+	DWORD nc_out_len = 0;
+	if (ret == ERROR_SUCCESS && pbOutput) {
+		nc_out_len = pcbResult ? *pcbResult : cbOutput;
+		if (nc_out_len > cbOutput)
+			nc_out_len = cbOutput;
+	}
+	LOQ_zero("crypto", "bhpi", "Output", nc_out_len, pbOutput, "Flags", dwFlags, "CryptKey", hKey, "Length", nc_out_len);
 	return ret;
 }
 
@@ -524,8 +535,8 @@ HOOKDEF(SECURITY_STATUS, WINAPI, NCryptEncrypt,
 		DumpMemoryRaw(pbInput, cbInput);
 		DebugOutput("NCryptEncrypt hook: Dumped unencrypted buffer at 0x%p (size 0x%x).\n", pbInput, cbInput);
 	}	
-	BOOL ret = Old_NCryptEncrypt(hKey, pbInput, cbInput, pPaddingInfo, pbOutput, cbOutput, pcbResult, dwFlags);
-	LOQ_bool("crypto", "bhpi", "Output", cbInput, pbInput, "Flags", dwFlags, "CryptKey", hKey, "Length", cbInput);
+	SECURITY_STATUS ret = Old_NCryptEncrypt(hKey, pbInput, cbInput, pPaddingInfo, pbOutput, cbOutput, pcbResult, dwFlags);
+	LOQ_zero("crypto", "bhpi", "Output", cbInput, pbInput, "Flags", dwFlags, "CryptKey", hKey, "Length", cbInput);
 	return ret;
 }
 
@@ -578,7 +589,9 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 	ULONG				dwFlags
 ) {
 	NTSTATUS ret = Old_BCryptDecrypt(hKey, pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
-	if (ret && g_config.dump_crypto) {
+	// ret is an NTSTATUS: success is 0, so `if (ret && ...)` ran the dump
+	// only when the decryption had failed
+	if (NT_SUCCESS(ret) && g_config.dump_crypto) {
 		if (!CapeMetaData->DumpType)
 			CapeMetaData->DumpType = DATADUMP;
 		DumpMemoryRaw(pbInput, cbOutput);
@@ -591,7 +604,14 @@ HOOKDEF(NTSTATUS, WINAPI, BCryptDecrypt,
 		if (DumpImageInCurrentProcess((PVOID)pbInput))
 			DebugOutput("BCryptDecrypt: Dumped decrypted PE image at 0x%p.\n", pbInput);
 	}
-	LOQ_ntstatus("crypto", "bbhpi", "Output", cbOutput, pbOutput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey, "Length", cbOutput);
+	// cbOutput is the caller's capacity; pcbResult is what was written
+	ULONG out_len = 0;
+	if (NT_SUCCESS(ret) && pbOutput) {
+		out_len = pcbResult ? *pcbResult : cbOutput;
+		if (out_len > cbOutput)
+			out_len = cbOutput;
+	}
+	LOQ_ntstatus("crypto", "bbhpi", "Output", out_len, pbOutput, "IV", cbIV, pbIV, "Flags", dwFlags, "CryptKey", hKey, "Length", out_len);
 	return ret;
 }
 
@@ -761,7 +781,8 @@ HOOKDEF(NTSTATUS, WINAPI, SystemFunction040,
 
 	NTSTATUS ret = Old_SystemFunction040(Memory, MemorySize, OptionFlags);
 
-	LOQ_ntstatus("crypto", "pbII", "Address", Memory, "Buffer", pre_copy ? MemorySize : 0, pre_copy, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
+	// 'I' dereferences an int *; these are values, so 'i' is the specifier
+	LOQ_ntstatus("crypto", "pbii", "Address", Memory, "Buffer", pre_copy ? MemorySize : 0, pre_copy, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
 
 	free(pre_copy);
 	return ret;
@@ -774,7 +795,7 @@ HOOKDEF(NTSTATUS, WINAPI, SystemFunction041,
 ) {
 	NTSTATUS ret = Old_SystemFunction041(Memory, MemorySize, OptionFlags);
 
-	LOQ_ntstatus("crypto", "pbII", "Address", Memory, "Buffer", NT_SUCCESS(ret) ? MemorySize : 0, Memory, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
+	LOQ_ntstatus("crypto", "pbii", "Address", Memory, "Buffer", NT_SUCCESS(ret) ? MemorySize : 0, Memory, "MemorySize", MemorySize, "OptionFlags", OptionFlags);
 
 	return ret;
 }

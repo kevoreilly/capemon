@@ -577,7 +577,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtQuerySystemTime,
 	if (NT_SUCCESS(ret) && sleep_skip_active) {
 		SystemTime->QuadPart += time_skipped.QuadPart;
 	}
-	return 0;
+	// returning a literal 0 reported every failure as success
+	return ret;
 }
 
 HOOKDEF(DWORD, WINAPI, timeGetTime,
