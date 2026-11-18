@@ -988,6 +988,25 @@ BOOL remove_dll_range(ULONG_PTR addr)
 
 ULONG_PTR base_of_dll_of_interest;
 
+static BOOL copy_module_directory(const UNICODE_STRING *full, const UNICODE_STRING *base, UNICODE_STRING *directory)
+{
+    // UNICODE_STRING lengths are bytes, including on 64-bit Windows.
+    memset(directory, 0, sizeof(*directory));
+    if (!full->Buffer || !base->Buffer || full->Length < base->Length ||
+        full->Length % sizeof(WCHAR) || base->Length % sizeof(WCHAR))
+        return FALSE;
+    size_t bytes = full->Length - base->Length;
+    if (bytes > 0xffff - sizeof(WCHAR))
+        return FALSE;
+    directory->Buffer = calloc(1, bytes + sizeof(WCHAR));
+    if (!directory->Buffer)
+        return FALSE;
+    directory->Length = (USHORT)bytes;
+    directory->MaximumLength = (USHORT)(bytes + sizeof(WCHAR));
+    memcpy(directory->Buffer, full->Buffer, bytes);
+    return TRUE;
+}
+
 void add_all_dlls_to_dll_ranges(void)
 {
 	LDR_DATA_TABLE_ENTRY * mod;
@@ -999,9 +1018,8 @@ void add_all_dlls_to_dll_ranges(void)
 	pHeadEntry = &peb->LoaderData->InLoadOrderModuleList;
 	pListEntry = pHeadEntry->Flink;
 	mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
-	ProcessPath.MaximumLength = ProcessPath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
-	ProcessPath.Buffer = calloc(ProcessPath.Length + 1, sizeof(WCHAR));
-	memcpy(ProcessPath.Buffer, mod->FullDllName.Buffer, ProcessPath.Length * sizeof(WCHAR));
+	if (!copy_module_directory(&mod->FullDllName, &mod->BaseDllName, &ProcessPath))
+		return;
 
 	// skip the base image
 	for (pListEntry = pHeadEntry->Flink->Flink;
@@ -1009,9 +1027,8 @@ void add_all_dlls_to_dll_ranges(void)
 		pListEntry = pListEntry->Flink)
 	{
 		mod = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList);
-		ModulePath.MaximumLength = ModulePath.Length = mod->FullDllName.Length - mod->BaseDllName.Length;
-		ModulePath.Buffer = calloc(ModulePath.Length + 1, sizeof(WCHAR));
-		memcpy(ModulePath.Buffer, mod->FullDllName.Buffer, ModulePath.Length * sizeof(WCHAR));
+		if (!copy_module_directory(&mod->FullDllName, &mod->BaseDllName, &ModulePath))
+			continue;
 		// skip dlls in same directory as exe
 		if (!path_is_system(ModulePath.Buffer) && pRtlEqualUnicodeString(&ProcessPath, &ModulePath, FALSE) || (ULONG_PTR)mod->BaseAddress == base_of_dll_of_interest) {
 			DebugOutput("add_all_dlls_to_dll_ranges: skipping %ws", ModulePath.Buffer);
