@@ -103,6 +103,14 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
 	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
 		return;
+	// The hooked API was called from inside ntdll itself, e.g. by the heap manager committing
+	// pages with NtAllocateVirtualMemory while it holds the heap lock and the heap is mid-update.
+	// Processing the calling region here (debug output through the pipe, YARA scan, dumps)
+	// allocates from the process heap, re-entering it and corrupting it (seen as 0xC0000374
+	// during CRT startup of 32-bit processes). Leave the region untouched so that the next
+	// hooked call made from a safe context picks it up.
+	if (is_address_in_ntdll(hookinfo->return_address))
+		return;
 	PTRACKEDREGION TrackedRegion = NULL;
 	TrackedRegion = GetTrackedRegion((PVOID)AllocationBase);
 	if (TrackedRegion && (TrackedRegion->Caller || TrackedRegion->PagesDumped))
