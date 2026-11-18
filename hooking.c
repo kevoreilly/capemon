@@ -147,7 +147,10 @@ static int set_caller_info(void *_hook_info, ULONG_PTR addr)
 {
 	hook_info_t *hookinfo = _hook_info;
 
-	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr) && !InsideMonitor(NULL, (PVOID)addr)) {
+	// Frame-pointer walks can pick up stack data (e.g. /GS cookies, SEH scope tables) in place of
+	// return addresses when a frame omits or biases EBP. With DEP, a real return address must be in
+	// executable memory; without it, code can run from any page, so don't filter.
+	if (!is_in_dll_range(addr) && !inside_hook((PVOID)addr) && !InsideMonitor(NULL, (PVOID)addr) && (IsAddressExecutable((PVOID)addr) || !is_dep_enabled())) {
 		caller_dispatch(hookinfo, addr);
 		if (hookinfo->main_caller_retaddr == 0)
 			hookinfo->main_caller_retaddr = addr;

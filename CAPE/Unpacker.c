@@ -136,7 +136,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 		else
 			DebugOutput("AllocationHandler: Adding allocation to tracked region list: 0x%p, size: 0x%x.\n", BaseAddress, RegionSize);
 		TrackedRegion = AddTrackedRegion(BaseAddress, Protect);
-		if (!(AllocationType & MEM_RESERVE))
+		if (TrackedRegion && !(AllocationType & MEM_RESERVE))
 			TrackedRegion->SubAllocation = TRUE;
 	}
 

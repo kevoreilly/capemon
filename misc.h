@@ -320,6 +320,7 @@ char *num_to_hex(char *buf, unsigned int width, ULONG_PTR num);
 void uuid_to_string(IID id, char* idbuf);
 PUNICODE_STRING get_basename_of_module(HMODULE module_handle);
 BOOL loader_lock_held();
+BOOLEAN is_dep_enabled();
 void perform_create_time_fakery(FILETIME *createtime);
 wchar_t *ascii_to_unicode_dup(char *str);
 int is_stack_pivoted(void);
