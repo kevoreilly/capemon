@@ -95,13 +95,17 @@ static void caller_dispatch(hook_info_t *hookinfo, ULONG_PTR addr)
 {
 	if (g_config.tlsdump)
 		return;
-	if (filter_callers(hookinfo))
-		return;
 	if (!g_config.unpacker)
+		return;
+	if (!g_dll_main_complete || hookinfo->main_caller_retaddr)
+		return;
+	if (is_address_in_ntdll(hookinfo->return_address))
+		return;
+	if (filter_callers(hookinfo))
 		return;
 
 	PVOID AllocationBase = GetAllocationBase((PVOID)addr);
-	if (!AllocationBase || !g_dll_main_complete || hookinfo->main_caller_retaddr)
+	if (!AllocationBase)
 		return;
 	// The hooked API was called from inside ntdll itself, e.g. by the heap manager committing
 	// pages with NtAllocateVirtualMemory while it holds the heap lock and the heap is mid-update.
