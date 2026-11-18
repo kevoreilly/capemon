@@ -970,11 +970,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 
-	// The heap manager and the stack trace database call this from inside ntdll to commit or
-	// extend their own memory, holding ntdll locks; the stack trace database's SRW lock is not
-	// recursive. Logging allocates from the process heap, which under full page heap logs a
-	// stack trace again and waits on that lock forever (64-bit process hung on its first
-	// allocation). These calls are not the program's own.
+	// Ignore heap manager and stack trace database calls
 	if (is_address_in_ntdll(hook_info()->return_address))
 		return ret;
 
@@ -1003,11 +999,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemoryEx(ProcessHandle, BaseAddress, RegionSize, AllocationType, PageProtection, Parameters, ParameterCount);
 
-	// The heap manager and the stack trace database call this from inside ntdll to commit or
-	// extend their own memory, holding ntdll locks; the stack trace database's SRW lock is not
-	// recursive. Logging allocates from the process heap, which under full page heap logs a
-	// stack trace again and waits on that lock forever (64-bit process hung on its first
-	// allocation). These calls are not the program's own.
+	// Ignore heap manager and stack trace database calls
 	if (is_address_in_ntdll(hook_info()->return_address))
 		return ret;
 
