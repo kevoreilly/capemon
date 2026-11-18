@@ -970,6 +970,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemory,
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemory(ProcessHandle, BaseAddress, ZeroBits, RegionSize, AllocationType, Protect);
 
+	// Ignore heap manager and stack trace database calls
+	if (is_address_in_ntdll(hook_info()->return_address))
+		return ret;
+
 	if (NT_SUCCESS(ret) && NtCurrentProcess() == ProcessHandle) {
 		if (g_config.unpacker)
 			AllocationHandler(*BaseAddress, *RegionSize, AllocationType, Protect);
@@ -994,6 +998,10 @@ HOOKDEF(NTSTATUS, WINAPI, NtAllocateVirtualMemoryEx,
 	__in	 ULONG ParameterCount
 ) {
 	NTSTATUS ret = Old_NtAllocateVirtualMemoryEx(ProcessHandle, BaseAddress, RegionSize, AllocationType, PageProtection, Parameters, ParameterCount);
+
+	// Ignore heap manager and stack trace database calls
+	if (is_address_in_ntdll(hook_info()->return_address))
+		return ret;
 
 	if (NT_SUCCESS(ret) && NtCurrentProcess() == ProcessHandle) {
 		if (g_config.unpacker)
