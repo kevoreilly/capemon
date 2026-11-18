@@ -1358,17 +1358,20 @@ int CreateMonitorPipe(char* Name, char* Dll)
 			ReadFile(PipeHandle, buf, sizeof(buf), &bytes_read, NULL);
 			DebugOutput("%s\n", buf);
 			if (!strncmp(buf, "PROCESS:", 8)) {
-				int ProcessId = -1, ThreadId = -1;
+				int ProcessId = -1, ThreadId = 0;
 				char *p;
 				if ((p = strchr(buf, ','))) {
 					*p = '\0';
 					ProcessId = atoi(&buf[8]);
 					ThreadId = atoi(p + 1);
 				}
-				else {
+				else if (!strncmp(buf, "PROCESS:0:", 10)) {
 					ProcessId = atoi(&buf[10]);
 				}
-				if (ProcessId && ThreadId && ProcessId != LastPid)
+				else {
+					ProcessId = atoi(&buf[8]);
+				}
+				if (ProcessId > 0 && ThreadId >= 0 && ProcessId != LastPid)
 				{
 					DebugOutput("About to call InjectDll on process %d, thread %d.\n", ProcessId, ThreadId);
 					if (InjectDll(ProcessId, ThreadId, Dll))

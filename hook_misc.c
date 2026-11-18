@@ -45,6 +45,70 @@ extern BOOL Trace(struct _EXCEPTION_POINTERS* ExceptionInfo);
 LPTOP_LEVEL_EXCEPTION_FILTER TopLevelExceptionFilter;
 DWORD ExportAddress;
 
+static lookup_t g_remote_dup_handles;
+static volatile LONG g_remote_dup_lock;
+
+static void remote_handle_lock(void)
+{
+	while (InterlockedCompareExchange(&g_remote_dup_lock, 1, 0) != 0)
+		YieldProcessor();
+}
+
+static void remote_handle_unlock(void)
+{
+	InterlockedExchange(&g_remote_dup_lock, 0);
+}
+
+C_ASSERT(sizeof(LONG) == sizeof(DWORD));
+
+void remote_handle_set(HANDLE local_handle, DWORD remote_pid)
+{
+	volatile LONG *slot;
+
+	if (!local_handle || local_handle == INVALID_HANDLE_VALUE ||
+		!remote_pid || remote_pid == GetCurrentProcessId())
+		return;
+
+	remote_handle_lock();
+	slot = (volatile LONG *)lookup_get(&g_remote_dup_handles, (ULONG_PTR)local_handle, NULL);
+	if (!slot)
+		slot = (volatile LONG *)lookup_add(&g_remote_dup_handles, (ULONG_PTR)local_handle, sizeof(DWORD));
+	if (slot)
+		InterlockedExchange(slot, (LONG)remote_pid);
+	remote_handle_unlock();
+}
+
+void remote_handle_clear(HANDLE local_handle)
+{
+	volatile LONG *slot;
+
+	if (!local_handle || local_handle == INVALID_HANDLE_VALUE)
+		return;
+
+	if (!lookup_get(&g_remote_dup_handles, (ULONG_PTR)local_handle, NULL))
+		return;
+
+	remote_handle_lock();
+	slot = (volatile LONG *)lookup_get(&g_remote_dup_handles, (ULONG_PTR)local_handle, NULL);
+	if (slot)
+		InterlockedExchange(slot, 0);
+	remote_handle_unlock();
+}
+
+DWORD remote_handle_get_pid(HANDLE local_handle)
+{
+	volatile LONG *slot;
+
+	if (!local_handle || local_handle == INVALID_HANDLE_VALUE)
+		return 0;
+
+	slot = (volatile LONG *)lookup_get(&g_remote_dup_handles, (ULONG_PTR)local_handle, NULL);
+	if (!slot)
+		return 0;
+
+	return (DWORD)InterlockedCompareExchange(slot, 0, 0);
+}
+
 
 HOOKDEF(HHOOK, WINAPI, SetWindowsHookExA,
 	__in  int idHook,
@@ -474,6 +538,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtClose,
 	ret = Old_NtClose(Handle);
 	LOQ_ntstatus("system", "p", "Handle", Handle);
 	if(NT_SUCCESS(ret)) {
+		if (Handle)
+			remote_handle_clear(Handle);
 		remove_file_from_log_tracking(Handle);
 		DumpSectionViewsForHandle(Handle);
 		file_close(Handle);
@@ -498,6 +564,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtDuplicateObject,
 		LOQ_ntstatus("system", "pph", "SourceProcessHandle", SourceProcessHandle, "SourceHandle", SourceHandle, "Options", Options);
 
 	if (NT_SUCCESS(ret)) {
+		lasterror_t lasterror;
+		int saved_disable;
+
 		if (TargetProcessHandle == NtCurrentProcess() && TargetHandle) {
 			handle_duplicate(SourceHandle, *TargetHandle);
 			handle_duplicate(SourceHandle, *TargetHandle);
@@ -506,6 +575,32 @@ HOOKDEF(NTSTATUS, WINAPI, NtDuplicateObject,
 			remove_file_from_log_tracking(SourceHandle);
 			file_close(SourceHandle);
 		}
+
+		get_lasterrors(&lasterror);
+		saved_disable = hook_info()->disable_count;
+		hook_disable();
+
+		if (SourceProcessHandle && SourceProcessHandle != NtCurrentProcess()) {
+			DWORD src_pid = pid_from_process_handle(SourceProcessHandle);
+			if (src_pid && src_pid != GetCurrentProcessId()) {
+				if (g_config.injection)
+					OpenProcessHandler(SourceProcessHandle, src_pid);
+				if (TargetHandle && *TargetHandle &&
+					(TargetProcessHandle == NtCurrentProcess() ||
+					(TargetProcessHandle && pid_from_process_handle(TargetProcessHandle) == GetCurrentProcessId()))) {
+					remote_handle_set(*TargetHandle, src_pid);
+				}
+			}
+		}
+
+		if (TargetProcessHandle && TargetProcessHandle != NtCurrentProcess()) {
+			DWORD dst_pid = pid_from_process_handle(TargetProcessHandle);
+			if (dst_pid && dst_pid != GetCurrentProcessId() && g_config.injection)
+				OpenProcessHandler(TargetProcessHandle, dst_pid);
+		}
+
+		hook_info()->disable_count = saved_disable;
+		set_lasterrors(&lasterror);
 	}
 	return ret;
 }

@@ -172,6 +172,7 @@ hook_t full_hooks[] = {
 #endif
 	HOOK(ntdll, NtSuspendThread),
 	HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, NtAlertThread),
 	HOOK(ntdll, NtAlertResumeThread),
 	HOOK(ntdll, RtlCreateUserThread),
 	HOOK(ntdll, NtSetInformationThread),
@@ -396,6 +397,8 @@ hook_t full_hooks[] = {
 	HOOK(ntdll, TpSetTimer),
 	HOOK(ntdll, TpSetTimerEx),
 	HOOK(ntdll, TpAllocIoCompletion),
+	HOOK(ntdll, TpAllocAlpcCompletion),
+	HOOK(ntdll, TpAllocJobNotification),
 
 	// Misc Hooks
 	//HOOK(ntdll, RtlMoveMemory),
@@ -974,6 +977,8 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, TpSetTimer),
 	HOOK(ntdll, TpSetTimerEx),
 	HOOK(ntdll, TpAllocIoCompletion),
+	HOOK(ntdll, TpAllocAlpcCompletion),
+	HOOK(ntdll, TpAllocJobNotification),
 
 	// Process Hooks
 	HOOK(ntdll, NtAllocateVirtualMemory),
@@ -1021,6 +1026,7 @@ hook_t native_hooks[] = {
 	HOOK(ntdll, NtSetContextThread),
 	HOOK(ntdll, NtSuspendThread),
 	HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, NtAlertThread),
 	HOOK(ntdll, RtlCreateUserThread),
 	HOOK(ntdll, NtSetInformationThread),
 	HOOK(ntdll, NtQueryInformationThread),
@@ -1425,6 +1431,7 @@ hook_t office_hooks[] = {
 	HOOK(ntdll, NtSetContextThread),
 	HOOK(ntdll, NtSuspendThread),
 	HOOK(ntdll, NtResumeThread),
+	HOOK(ntdll, NtAlertThread),
 	HOOK(ntdll, RtlCreateUserThread),
 	HOOK(ntdll, NtSetInformationThread),
 	HOOK(ntdll, NtQueryInformationThread),

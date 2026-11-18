@@ -26,6 +26,132 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\Unpacker.h"
+#include "CAPE\Injection.h"
+
+#ifdef _WIN64
+#define TP_DIRECT_CALLBACK_OFFSET 0x38
+#else
+#define TP_DIRECT_CALLBACK_OFFSET 0x28
+#endif
+
+static BOOL ReadLocalPointerSafe(PVOID Addr, PVOID *OutPtr)
+{
+	lasterror_t lasterror;
+	int saved_disable;
+	ULONG_PTR start, end;
+	BOOL ok = TRUE;
+
+	if (OutPtr)
+		*OutPtr = NULL;
+	if (!Addr || !OutPtr)
+		return FALSE;
+
+	start = (ULONG_PTR)Addr;
+	end = start + sizeof(PVOID);
+	if (end < start)
+		return FALSE;
+
+	get_lasterrors(&lasterror);
+	saved_disable = hook_info()->disable_count;
+	hook_disable();
+
+	while (start < end) {
+		MEMORY_BASIC_INFORMATION mbi;
+		ULONG_PTR reg_end;
+
+		memset(&mbi, 0, sizeof(mbi));
+		if (VirtualQuery((LPCVOID)start, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+			mbi.State != MEM_COMMIT ||
+			(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) ||
+			!(mbi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+				PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+			ok = FALSE;
+			break;
+		}
+		reg_end = (ULONG_PTR)mbi.BaseAddress + mbi.RegionSize;
+		if (reg_end <= start) {
+			ok = FALSE;
+			break;
+		}
+		start = reg_end;
+	}
+
+	if (ok)
+		memcpy(OutPtr, Addr, sizeof(PVOID));
+
+	hook_info()->disable_count = saved_disable;
+	set_lasterrors(&lasterror);
+	return ok;
+}
+
+static void HandleIoCompletionDispatch(HANDLE IoCompletionHandle, PVOID KeyContext, PVOID ApcContext)
+{
+	DWORD remote_pid = remote_handle_get_pid(IoCompletionHandle);
+
+	if (remote_pid && remote_pid != GetCurrentProcessId()) {
+		if (!g_config.single_process)
+			ProcessMessage(remote_pid, 0);
+
+		if (g_config.injection) {
+			lasterror_t lasterror;
+			int saved_disable;
+			PINJECTIONINFO info;
+			HANDLE hProc = NULL;
+			HANDLE hOpened = NULL;
+
+			get_lasterrors(&lasterror);
+			saved_disable = hook_info()->disable_count;
+			hook_disable();
+
+			info = GetInjectionInfo(remote_pid);
+			if (info && info->ProcessHandle)
+				hProc = info->ProcessHandle;
+
+			if (KeyContext) {
+				PVOID RemoteCallback = NULL;
+				SIZE_T bytes_read = 0;
+				BOOL read_ok = FALSE;
+
+				if (hProc && ReadProcessMemory(hProc, (LPCVOID)((PBYTE)KeyContext + TP_DIRECT_CALLBACK_OFFSET),
+					&RemoteCallback, sizeof(RemoteCallback), &bytes_read) && bytes_read == sizeof(RemoteCallback))
+					read_ok = TRUE;
+				if (!read_ok) {
+					hOpened = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, remote_pid);
+					if (hOpened) {
+						hProc = hOpened;
+						bytes_read = 0;
+						if (ReadProcessMemory(hProc, (LPCVOID)((PBYTE)KeyContext + TP_DIRECT_CALLBACK_OFFSET),
+							&RemoteCallback, sizeof(RemoteCallback), &bytes_read) && bytes_read == sizeof(RemoteCallback))
+							read_ok = TRUE;
+					}
+				}
+
+				if (read_ok && RemoteCallback)
+					DumpRemoteExecutableRegion(remote_pid, hProc, RemoteCallback);
+				DumpRemoteExecutableRegion(remote_pid, hProc, KeyContext);
+			}
+			if (ApcContext)
+				DumpRemoteExecutableRegion(remote_pid, hProc, ApcContext);
+
+			if (hOpened)
+				CloseHandle(hOpened);
+
+			hook_info()->disable_count = saved_disable;
+			set_lasterrors(&lasterror);
+		}
+	}
+	else if (g_config.unpacker) {
+		if (KeyContext) {
+			PVOID LocalCallback = NULL;
+
+			NewThreadHandler(KeyContext);
+			if (ReadLocalPointerSafe((PBYTE)KeyContext + TP_DIRECT_CALLBACK_OFFSET, &LocalCallback) && LocalCallback)
+				NewThreadHandler(LocalCallback);
+		}
+		if (ApcContext)
+			NewThreadHandler(ApcContext);
+	}
+}
 
 
 HOOKDEF(NTSTATUS, WINAPI, NtCreateMutant,
@@ -202,12 +328,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletion,
 		"IoStatusInformation", IoStatusInformation);
 
 	if (NT_SUCCESS(ret)) {
-		if (g_config.unpacker) {
-			if (KeyContext)
-				NewThreadHandler(KeyContext);
-			if (ApcContext)
-				NewThreadHandler(ApcContext);
-		}
+		HandleIoCompletionDispatch(IoCompletionHandle, KeyContext, ApcContext);
 		disable_sleep_skip();
 	}
 
@@ -234,12 +355,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetIoCompletionEx,
 		"IoStatusInformation", IoStatusInformation);
 
 	if (NT_SUCCESS(ret)) {
-		if (g_config.unpacker) {
-			if (KeyContext)
-				NewThreadHandler(KeyContext);
-			if (ApcContext)
-				NewThreadHandler(ApcContext);
-		}
+		HandleIoCompletionDispatch(IoCompletionHandle, KeyContext, ApcContext);
 		disable_sleep_skip();
 	}
 
@@ -521,6 +637,76 @@ HOOKDEF(NTSTATUS, WINAPI, TpAllocIoCompletion,
 	LOQ_ntstatus("synchronization", "Pppppss",
 		"IoCompletion", IoReturn,
 		"FileHandle", File,
+		"Callback", Callback,
+		"Context", Context,
+		"CallbackEnviron", CallbackEnviron,
+		"Module", module_name,
+		"Name", function_name);
+
+	if (module_name)
+		free(module_name);
+
+	if (NT_SUCCESS(ret)) {
+		if (g_config.unpacker && Callback)
+			NewThreadHandler(Callback);
+		disable_sleep_skip();
+	}
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocAlpcCompletion,
+	__out		PVOID *AlpcReturn,
+	__in		HANDLE AlpcPort,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+) {
+	unsigned int offset = 0;
+	char *module_name = NULL, *function_name = NULL;
+	NTSTATUS ret = Old_TpAllocAlpcCompletion(AlpcReturn, AlpcPort, Callback, Context, CallbackEnviron);
+
+	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)Callback, &offset);
+	function_name = GetExportNameByAddress(Callback);
+
+	LOQ_ntstatus("synchronization", "Pppppss",
+		"Alpc", AlpcReturn,
+		"PortHandle", AlpcPort,
+		"Callback", Callback,
+		"Context", Context,
+		"CallbackEnviron", CallbackEnviron,
+		"Module", module_name,
+		"Name", function_name);
+
+	if (module_name)
+		free(module_name);
+
+	if (NT_SUCCESS(ret)) {
+		if (g_config.unpacker && Callback)
+			NewThreadHandler(Callback);
+		disable_sleep_skip();
+	}
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocJobNotification,
+	__out		PVOID *JobReturn,
+	__in		HANDLE Job,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+) {
+	unsigned int offset = 0;
+	char *module_name = NULL, *function_name = NULL;
+	NTSTATUS ret = Old_TpAllocJobNotification(JobReturn, Job, Callback, Context, CallbackEnviron);
+
+	module_name = convert_address_to_dll_name_and_offset((ULONG_PTR)Callback, &offset);
+	function_name = GetExportNameByAddress(Callback);
+
+	LOQ_ntstatus("synchronization", "Pppppss",
+		"Job", JobReturn,
+		"JobHandle", Job,
 		"Callback", Callback,
 		"Context", Context,
 		"CallbackEnviron", CallbackEnviron,
