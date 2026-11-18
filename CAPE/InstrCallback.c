@@ -4,6 +4,7 @@
 #include "..\ntapi.h"
 #include <psapi.h>
 #include "..\hooking.h"
+#include "..\log.h"
 #include "..\misc.h"
 #include "..\lookup.h"
 #include "..\config.h"
@@ -34,6 +35,9 @@ extern BOOL inside_hook(LPVOID Address);
 extern BOOL BreakpointOnReturn(PVOID Address);
 extern void DebuggerOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void log_syscall(PUNICODE_STRING module, const char *function, PVOID retaddr, DWORD retval);
+extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid);
+extern void disable_sleep_skip(void);
 extern int __called_by_hook(ULONG_PTR stack_pointer, ULONG_PTR frame_pointer);
 extern _NtSetInformationProcess pNtSetInformationProcess;
 extern ULONG_PTR ntdll_base;
@@ -1167,6 +1171,284 @@ static BOOL IsSafeSyscallCallbackContext(VOID)
 	return TRUE;
 }
 
+#ifdef _WIN64
+#ifndef PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON
+#define PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON (0x00000001ULL << 44)
+#endif
+#ifndef STATUS_BUFFER_TOO_SMALL
+#define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
+#endif
+#define SYSCALL_PROC_SNAPSHOT_INIT_SIZE 0x40000
+#define SYSCALL_PROC_SNAPSHOT_MAX_SIZE (16 * 1024 * 1024)
+#define SYSCALL_MAX_ATTRIBUTES 64
+#define SYSCALL_MAX_UNICODE_LEN 0x8000
+
+static lookup_t g_syscall_followed_children;
+static volatile LONG g_syscall_children_lock;
+static lookup_t g_syscall_followed_targets;
+static volatile LONG g_syscall_targets_lock;
+static _NtQuerySystemInformation s_pNtQuerySystemInformation;
+static volatile LONG s_create_proc_log_idx;
+
+static BOOL IsReadableRangeNoFault(PVOID Ptr, SIZE_T Size)
+{
+	ULONG_PTR cur, end;
+
+	if (!Ptr || (ULONG_PTR)Ptr < 0x10000 || Size == 0)
+		return FALSE;
+
+	cur = (ULONG_PTR)Ptr;
+	end = cur + Size;
+	if (end < cur)
+		return FALSE;
+
+	while (cur < end) {
+		ULONG_PTR reg_start = 0, reg_end = 0;
+		if (!QueryMemoryRange((PVOID)cur, &reg_start, &reg_end, NULL, NULL, FALSE))
+			return FALSE;
+		if (reg_end <= cur)
+			return FALSE;
+		cur = reg_end;
+	}
+
+	return TRUE;
+}
+
+static BOOL SyscallMarkSeenLocked(lookup_t *table, volatile LONG *lock, ULONG_PTR key)
+{
+	BOOL inserted = FALSE;
+
+	if (!key)
+		return FALSE;
+
+	if (lookup_get(table, key, NULL))
+		return FALSE;
+
+	while (InterlockedCompareExchange(lock, 1, 0) != 0)
+		YieldProcessor();
+
+	if (!lookup_get(table, key, NULL)) {
+		if (lookup_add(table, key, 0) != NULL)
+			inserted = TRUE;
+	}
+
+	InterlockedExchange(lock, 0);
+	return inserted;
+}
+
+static void CopySafeUnicodeString(PUNICODE_STRING Out, PUNICODE_STRING Src)
+{
+	static WCHAR empty_str[] = L"";
+	UNICODE_STRING tmp;
+
+	Out->Length = 0;
+	Out->MaximumLength = 0;
+	Out->Buffer = empty_str;
+
+	if (!Src)
+		return;
+
+	memcpy(&tmp, Src, sizeof(tmp));
+	if ((tmp.Length & 1) == 0 && tmp.Length <= tmp.MaximumLength && tmp.Length <= SYSCALL_MAX_UNICODE_LEN) {
+		if (tmp.Length == 0) {
+			return;
+		}
+		if (tmp.Buffer && IsReadableRangeNoFault(tmp.Buffer, tmp.Length)) {
+			*Out = tmp;
+		}
+	}
+}
+
+C_ASSERT(FIELD_OFFSET(PS_ATTRIBUTE_LIST, Attributes) == sizeof(SIZE_T));
+
+static void HandleSyscallCreateUserProcess(PCONTEXT Context, NTSTATUS Status)
+{
+	lasterror_t lasterror;
+	int saved_disable;
+	PRTL_USER_PROCESS_PARAMETERS ProcParams = NULL;
+	PPS_ATTRIBUTE_LIST AttrList = NULL;
+	UNICODE_STRING img_path, cmd_line;
+	BOOL child_has_cig = FALSE;
+	PHANDLE inherited_handles = NULL;
+	SIZE_T inherited_count = 0;
+	_NtQuerySystemInformation fn_qsi;
+	PVOID snap_buf = NULL;
+	SIZE_T snap_size = SYSCALL_PROC_SNAPSHOT_INIT_SIZE;
+	ULONG ret_len = 0;
+	DWORD current_pid;
+	DWORD last_new_child_pid = 0;
+	SIZE_T k;
+
+	if (!Context || g_config.single_process || !IsSafeSyscallCallbackContext() || loader_lock_held())
+		return;
+
+	get_lasterrors(&lasterror);
+	lasterror.Eflags = 0;
+	saved_disable = hook_info()->disable_count;
+	hook_disable();
+
+	CopySafeUnicodeString(&img_path, NULL);
+	CopySafeUnicodeString(&cmd_line, NULL);
+
+	if (!IsReadableRangeNoFault((PVOID)Context->Rsp, 0x60))
+		goto out;
+
+	memcpy(&ProcParams, (const BYTE *)Context->Rsp + 0x48, sizeof(ProcParams));
+	memcpy(&AttrList, (const BYTE *)Context->Rsp + 0x58, sizeof(AttrList));
+
+	if (ProcParams && IsReadableRangeNoFault(ProcParams, sizeof(RTL_USER_PROCESS_PARAMETERS))) {
+		CopySafeUnicodeString(&img_path, &ProcParams->ImagePathName);
+		CopySafeUnicodeString(&cmd_line, &ProcParams->CommandLine);
+	}
+
+	if (AttrList && IsReadableRangeNoFault(AttrList, sizeof(SIZE_T))) {
+		SIZE_T total_len = 0;
+		memcpy(&total_len, AttrList, sizeof(SIZE_T));
+		if (total_len >= sizeof(SIZE_T) &&
+			total_len <= (sizeof(SIZE_T) + SYSCALL_MAX_ATTRIBUTES * sizeof(PS_ATTRIBUTE)) &&
+			IsReadableRangeNoFault(AttrList, total_len)) {
+			SIZE_T attr_count = (total_len - sizeof(SIZE_T)) / sizeof(PS_ATTRIBUTE);
+			SIZE_T i;
+			for (i = 0; i < attr_count; i++) {
+				PS_ATTRIBUTE attr;
+				memcpy(&attr, (const BYTE *)AttrList + sizeof(SIZE_T) + (i * sizeof(PS_ATTRIBUTE)), sizeof(attr));
+				if (attr.Attribute == PsAttributeValue(PsAttributeMitigationOptions, FALSE, TRUE, FALSE) &&
+					attr.Size >= sizeof(ULONGLONG) && attr.ValuePtr &&
+					IsReadableRangeNoFault(attr.ValuePtr, sizeof(ULONGLONG))) {
+					ULONGLONG mitigation_flags = 0;
+					memcpy(&mitigation_flags, attr.ValuePtr, sizeof(mitigation_flags));
+					if (mitigation_flags & PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON)
+						child_has_cig = TRUE;
+				}
+				else if (attr.Attribute == PsAttributeValue(PsAttributeHandleList, FALSE, TRUE, FALSE) &&
+					attr.Size >= sizeof(HANDLE) &&
+					attr.Size <= (SYSCALL_MAX_ATTRIBUTES * sizeof(HANDLE)) &&
+					(attr.Size % sizeof(HANDLE)) == 0 &&
+					attr.ValuePtr &&
+					IsReadableRangeNoFault(attr.ValuePtr, attr.Size)) {
+					inherited_handles = (PHANDLE)attr.ValuePtr;
+					inherited_count = attr.Size / sizeof(HANDLE);
+				}
+			}
+		}
+	}
+
+	fn_qsi = (_NtQuerySystemInformation)InterlockedCompareExchangePointer(
+		(PVOID volatile *)&s_pNtQuerySystemInformation, NULL, NULL);
+
+	current_pid = GetCurrentProcessId();
+
+	if (fn_qsi) {
+		while (snap_size <= SYSCALL_PROC_SNAPSHOT_MAX_SIZE) {
+			NTSTATUS qsi_status;
+			snap_buf = VirtualAlloc(NULL, snap_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+			if (!snap_buf)
+				break;
+			ret_len = 0;
+			qsi_status = fn_qsi(SystemProcessInformation, snap_buf, (ULONG)snap_size, &ret_len);
+			if (NT_SUCCESS(qsi_status))
+				break;
+			VirtualFree(snap_buf, 0, MEM_RELEASE);
+			snap_buf = NULL;
+			if (qsi_status != STATUS_INFO_LENGTH_MISMATCH && qsi_status != STATUS_BUFFER_TOO_SMALL)
+				break;
+			if (ret_len > snap_size && ret_len <= SYSCALL_PROC_SNAPSHOT_MAX_SIZE)
+				snap_size = (SIZE_T)ret_len + 0x10000;
+			else
+				snap_size *= 2;
+			if (snap_size > SYSCALL_PROC_SNAPSHOT_MAX_SIZE)
+				break;
+		}
+	}
+
+	if (snap_buf) {
+		SIZE_T used_size = (ret_len > 0 && (SIZE_T)ret_len <= snap_size) ? (SIZE_T)ret_len : snap_size;
+		PBYTE cur = (PBYTE)snap_buf;
+		PBYTE buf_end = (PBYTE)snap_buf + used_size;
+
+		while (cur + sizeof(SYSTEM_PROCESS_INFORMATION) <= buf_end) {
+			PSYSTEM_PROCESS_INFORMATION spi = (PSYSTEM_PROCESS_INFORMATION)cur;
+			DWORD parent_pid = (DWORD)(ULONG_PTR)spi->InheritedFromUniqueProcessId;
+			DWORD child_pid = (DWORD)(ULONG_PTR)spi->UniqueProcessId;
+
+			if (parent_pid == current_pid && child_pid && child_pid != current_pid) {
+				if (SyscallMarkSeenLocked(&g_syscall_followed_children, &g_syscall_children_lock, (ULONG_PTR)child_pid)) {
+					DWORD child_tid = 0;
+					SIZE_T entry_limit = spi->NextEntryOffset ? spi->NextEntryOffset : (SIZE_T)(buf_end - cur);
+					LONG log_idx;
+
+					if (spi->NumberOfThreads > 0 &&
+						entry_limit >= sizeof(SYSTEM_PROCESS_INFORMATION) + sizeof(SYSTEM_THREAD) &&
+						(SIZE_T)(buf_end - cur) >= sizeof(SYSTEM_PROCESS_INFORMATION) + sizeof(SYSTEM_THREAD)) {
+						const SYSTEM_THREAD *first_thread = (const SYSTEM_THREAD *)(cur + sizeof(SYSTEM_PROCESS_INFORMATION));
+						child_tid = (DWORD)(ULONG_PTR)first_thread->ClientId.UniqueThread;
+					}
+
+					last_new_child_pid = child_pid;
+
+					log_idx = InterlockedCompareExchange(&s_create_proc_log_idx, 0, 0);
+					if (log_idx == 0) {
+						LONG next_idx = InterlockedIncrement(&g_log_index);
+						InterlockedCompareExchange(&s_create_proc_log_idx, next_idx, 0);
+						log_idx = InterlockedCompareExchange(&s_create_proc_log_idx, 0, 0);
+					}
+
+					loq((int)log_idx, "process", "NtCreateUserProcess", 1, (ULONG_PTR)Status, "ooiii",
+						"ImagePathName", &img_path,
+						"CommandLine", &cmd_line,
+						"ProcessId", (int)child_pid,
+						"ThreadId", (int)child_tid,
+						"BlockNonMicrosoftBinaries", (int)child_has_cig);
+					hook_disable();
+
+					if (!child_has_cig) {
+						ProcessMessage(child_pid, child_tid);
+						disable_sleep_skip();
+					}
+				}
+			}
+
+			if (spi->NextEntryOffset == 0)
+				break;
+			if (spi->NextEntryOffset < sizeof(SYSTEM_PROCESS_INFORMATION) ||
+				spi->NextEntryOffset > (SIZE_T)(buf_end - cur))
+				break;
+			cur += spi->NextEntryOffset;
+		}
+
+		VirtualFree(snap_buf, 0, MEM_RELEASE);
+	}
+
+	for (k = 0; k < inherited_count; k++) {
+		HANDLE h = NULL;
+		DWORD target_pid;
+		BOOL is_proc;
+
+		memcpy(&h, (const BYTE *)inherited_handles + (k * sizeof(HANDLE)), sizeof(HANDLE));
+		if (!h || h == NtCurrentProcess() || h == (HANDLE)(LONG_PTR)-2 || h == GetCurrentThread())
+			continue;
+
+		target_pid = pid_from_process_handle(h);
+		is_proc = (target_pid != 0);
+		if (!target_pid)
+			target_pid = pid_from_thread_handle(h);
+
+		if (target_pid && target_pid != current_pid && target_pid != last_new_child_pid) {
+			if (is_proc && g_config.injection)
+				OpenProcessHandler(h, target_pid);
+			if (SyscallMarkSeenLocked(&g_syscall_followed_targets, &g_syscall_targets_lock, (ULONG_PTR)target_pid)) {
+				ProcessMessage(target_pid, 0);
+				disable_sleep_skip();
+			}
+		}
+	}
+
+out:
+	hook_info()->disable_count = saved_disable;
+	set_lasterrors(&lasterror);
+}
+#endif
+
 static VOID TrackSyscallCallerRegion(PVOID AllocationBase, PVOID CallerAddress, BOOL IsIndirect)
 {
 	PTRACKEDREGION TrackedRegion;
@@ -1298,6 +1580,9 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 
 			TrackSyscallCallerRegion(AllocationBase, ReturnAddress, TRUE);
 
+			if (NT_SUCCESS((NTSTATUS)ReturnValue) && FunctionName && !strcmp(FunctionName, "NtCreateUserProcess"))
+				HandleSyscallCreateUserProcess(Context, (NTSTATUS)ReturnValue);
+
 			if (g_config.debugger && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
 			{
 				DebugOutput("Break-on-return: %s indirect syscall detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
@@ -1337,6 +1622,11 @@ VOID InstrumentationCallback(PVOID CIP, unsigned int ReturnValue)
 
 			TrackSyscallCallerRegion(AllocationBase, (PVOID)CIP, FALSE);
 
+#ifdef _WIN64
+			if (NT_SUCCESS((NTSTATUS)ReturnValue) && FunctionName && !strcmp(FunctionName, "NtCreateUserProcess"))
+				HandleSyscallCreateUserProcess(Context, (NTSTATUS)ReturnValue);
+#endif
+
 			if (g_config.debugger && g_config.break_on_return && FunctionName && !stricmp(FunctionName, g_config.break_on_return))
 			{
 				DebugOutput("Break-on-return: %s syscall detected in thread %d.\n", g_config.break_on_return, GetCurrentThreadId());
@@ -1364,6 +1654,16 @@ void NirvanaInit()
 #endif
 
 	InitializeFilteredDlls();
+#ifdef _WIN64
+	if (!s_pNtQuerySystemInformation) {
+		HMODULE hNtdll = GetModuleHandle("ntdll.dll");
+		if (hNtdll) {
+			_NtQuerySystemInformation resolved = (_NtQuerySystemInformation)GetProcAddress(hNtdll, "NtQuerySystemInformation");
+			if (resolved)
+				InterlockedCompareExchangePointer((PVOID volatile *)&s_pNtQuerySystemInformation, (PVOID)resolved, NULL);
+		}
+	}
+#endif
 	Nirvana.Callback = (PVOID)InstrHook;
 	Nirvana.Reserved = 0;
 #ifdef _WIN64
