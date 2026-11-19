@@ -85,8 +85,11 @@ void ErrorOutput(_In_ LPCTSTR lpOutputString, ...)
 //**************************************************************************************
 {
 	va_list args;
-	LPVOID lpMsgBuf;
+	LPVOID lpMsgBuf = NULL;
 	DWORD ErrorCode;
+
+	if (g_config.disable_logging)
+		return;
 
 	ErrorCode = GetLastError();
 	va_start(args, lpOutputString);
@@ -104,7 +107,9 @@ void ErrorOutput(_In_ LPCTSTR lpOutputString, ...)
 	_vsntprintf_s(DebugBuffer, BUFFER_SIZE, _TRUNCATE, lpOutputString, args);
 
 	memset(ErrorBuffer, 0, sizeof(ErrorBuffer));
-	_sntprintf_s(ErrorBuffer, BUFFER_SIZE, _TRUNCATE, "Error %u (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, (char*)lpMsgBuf);
+	_sntprintf_s(ErrorBuffer, BUFFER_SIZE, _TRUNCATE, "Error %u (0x%x) - %s: %s", ErrorCode, ErrorCode, DebugBuffer, lpMsgBuf ? (char*)lpMsgBuf : "");
+	if (lpMsgBuf)
+		LocalFree(lpMsgBuf);
 	if (g_config.standalone)
 		OutputDebugString(ErrorBuffer);
 	else

@@ -1014,6 +1014,7 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	BOOL PageAlreadyTracked = FALSE;
 	unsigned int NumberOfTrackedRegions = 0;
 	PTRACKEDREGION TrackedRegion, PreviousTrackedRegion = NULL;
+	MEMORY_BASIC_INFORMATION MemInfo;
 
 	if (!Address)
 		return NULL;
@@ -1036,6 +1037,13 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 	if (GetPageAddress(Address) == GetPageAddress(TrackedRegionList))
 	{
 		DebugOutput("AddTrackedRegion: Warning - attempting to track the page (0x%p) containing the tracked region list at 0x%p.\n", Address, TrackedRegionList);
+		return NULL;
+	}
+
+	// Query before touching the list so a failure doesn't leave an empty node linked in
+	if (!VirtualQuery(Address, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
+	{
+		ErrorOutput("AddTrackedRegion: unable to query memory region 0x%p", Address);
 		return NULL;
 	}
 
@@ -1067,11 +1075,7 @@ PTRACKEDREGION AddTrackedRegion(PVOID Address, ULONG Protect)
 #endif
 	}
 
-	if (!VirtualQuery(Address, &TrackedRegion->MemInfo, sizeof(MEMORY_BASIC_INFORMATION)))
-	{
-		ErrorOutput("AddTrackedRegion: unable to query memory region 0x%p", Address);
-		return NULL;
-	}
+	TrackedRegion->MemInfo = MemInfo;
 
 	TrackedRegion->AllocationBase = TrackedRegion->MemInfo.AllocationBase;
 

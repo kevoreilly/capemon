@@ -1238,6 +1238,20 @@ BOOL loader_lock_held()
 	return (HANDLE)(DWORD_PTR)GetCurrentThreadId() == peb->LoaderLock->OwningThread;
 }
 
+BOOLEAN is_dep_enabled()
+{
+#ifdef _WIN64
+	return TRUE;
+#else
+	// Queried on demand as a process can disable DEP at runtime (unless permanent)
+	DWORD Flags = 0;
+	BOOL Permanent = FALSE;
+	if (!GetProcessDEPPolicy(GetCurrentProcess(), &Flags, &Permanent))
+		return FALSE;
+	return (Flags & PROCESS_DEP_ENABLE) != 0;
+#endif
+}
+
 uint32_t path_from_handle(HANDLE handle,
 	wchar_t *path, uint32_t path_buffer_len)
 {
