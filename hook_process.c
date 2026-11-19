@@ -1304,6 +1304,17 @@ HOOKDEF(NTSTATUS, WINAPI, NtProtectVirtualMemory,
 		if (g_config.unpacker)
 			ProtectionHandler(*BaseAddress, NewAccessProtection, OldAccessProtection);
 	}
+	else if (NT_SUCCESS(ret) && BaseAddress && *BaseAddress && ProcessHandle &&
+		ProcessHandle != NtCurrentProcess() && (NewAccessProtection & EXECUTABLE_FLAGS))
+	{
+		DWORD pid = pid_from_process_handle(ProcessHandle);
+		if (pid && pid != GetCurrentProcessId()) {
+			if (!g_config.single_process)
+				ProcessMessage(pid, 0);
+			if (g_config.injection)
+				DumpRemoteExecutableRegion(pid, ProcessHandle, *BaseAddress);
+		}
+	}
 
 	if (NewAccessProtection == PAGE_EXECUTE_READWRITE &&
 		(ULONG_PTR)meminfo.AllocationBase >= get_stack_bottom() && (((ULONG_PTR)meminfo.AllocationBase + meminfo.RegionSize) <= get_stack_top())) {

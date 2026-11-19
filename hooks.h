@@ -1099,6 +1099,22 @@ HOOKDEF(NTSTATUS, WINAPI, TpAllocIoCompletion,
 	__in_opt	PVOID CallbackEnviron
 );
 
+HOOKDEF(NTSTATUS, WINAPI, TpAllocAlpcCompletion,
+	__out		PVOID *AlpcReturn,
+	__in		HANDLE AlpcPort,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
+HOOKDEF(NTSTATUS, WINAPI, TpAllocJobNotification,
+	__out		PVOID *JobReturn,
+	__in		HANDLE Job,
+	__in		PVOID Callback,
+	__inout_opt	PVOID Context,
+	__in_opt	PVOID CallbackEnviron
+);
+
 //
 // Process Hooks
 //
@@ -1768,6 +1784,10 @@ HOOKDEF(NTSTATUS, WINAPI, RtlWow64SetThreadContext,
 HOOKDEF(NTSTATUS, WINAPI, NtSuspendThread,
 	__in	   HANDLE ThreadHandle,
 	__out_opt  ULONG *PreviousSuspendCount
+);
+
+HOOKDEF(NTSTATUS, WINAPI, NtAlertThread,
+	__in		HANDLE ThreadHandle
 );
 
 HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
