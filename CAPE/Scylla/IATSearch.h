@@ -27,7 +27,7 @@ private:
 	DWORD_PTR findIATStartAddress( DWORD_PTR baseAddress, DWORD_PTR startAddress, BYTE * dataBuffer );
 	DWORD findIATSize( DWORD_PTR baseAddress, DWORD_PTR iatAddress, BYTE * dataBuffer, DWORD bufferSize );
 
-	void findIATPointers(std::set<DWORD_PTR> & iatPointers);
+	void findIATPointers(std::set<DWORD_PTR> & iatPointers, std::set<DWORD_PTR> * movPointers = 0);
 	void findExecutableMemoryPagesByStartAddress( DWORD_PTR startAddress, DWORD_PTR* baseAddress, SIZE_T* memorySize );
 	void filterIATPointersList( std::set<DWORD_PTR> & iatPointers );
 	void getMemoryBaseAndSizeForIat( DWORD_PTR address, DWORD_PTR* baseAddress, DWORD* baseSize );

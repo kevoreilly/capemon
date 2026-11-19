@@ -1763,6 +1763,121 @@ void PeParser::removeIatDirectory()
 	}
 }
 
+void PeParser::sanitizeUnrebuiltImportDirectory()
+{
+	DWORD importRva = 0;
+	DWORD importSize = 0;
+	DWORD sizeOfImage = 0;
+	bool pe32 = isPE32();
+
+	if (pe32)
+	{
+		importRva = pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+		importSize = pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
+		sizeOfImage = pNTHeader32->OptionalHeader.SizeOfImage;
+	}
+	else if (isPE64())
+	{
+		importRva = pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+		importSize = pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
+		sizeOfImage = pNTHeader64->OptionalHeader.SizeOfImage;
+	}
+	else
+	{
+		return;
+	}
+
+	(void)importSize;
+
+	if (!importRva || !sizeOfImage)
+	{
+		return;
+	}
+
+	int descSec = convertRVAToOffsetVectorIndex(importRva);
+	if (descSec == -1 || !listPeSection[descSec].data)
+	{
+		return;
+	}
+
+	DWORD descOffset = importRva - listPeSection[descSec].sectionHeader.VirtualAddress;
+	while (descOffset <= listPeSection[descSec].dataSize &&
+		(listPeSection[descSec].dataSize - descOffset) >= sizeof(IMAGE_IMPORT_DESCRIPTOR))
+	{
+		IMAGE_IMPORT_DESCRIPTOR desc;
+		memcpy(&desc, listPeSection[descSec].data + descOffset, sizeof(desc));
+
+		if (desc.OriginalFirstThunk == 0 && desc.Name == 0 && desc.FirstThunk == 0)
+		{
+			break;
+		}
+
+		if (desc.OriginalFirstThunk == 0 && desc.FirstThunk != 0)
+		{
+			bool stale = false;
+			if (desc.FirstThunk >= sizeOfImage)
+			{
+				stale = true;
+			}
+			else
+			{
+				int thunkSec = convertRVAToOffsetVectorIndex(desc.FirstThunk);
+				if (thunkSec == -1 || !listPeSection[thunkSec].data)
+				{
+					stale = true;
+				}
+				else
+				{
+					DWORD thunkOffset = desc.FirstThunk - listPeSection[thunkSec].sectionHeader.VirtualAddress;
+					DWORD thunkSize = pe32 ? (DWORD)sizeof(DWORD) : (DWORD)sizeof(ULONGLONG);
+					if (thunkOffset <= listPeSection[thunkSec].dataSize &&
+						(listPeSection[thunkSec].dataSize - thunkOffset) >= thunkSize)
+					{
+						if (pe32)
+						{
+							DWORD thunk = 0;
+							memcpy(&thunk, listPeSection[thunkSec].data + thunkOffset, sizeof(thunk));
+							if (thunk != 0 && !(thunk & IMAGE_ORDINAL_FLAG32) &&
+								(thunk >= sizeOfImage || convertRVAToOffsetVectorIndex(thunk) == -1))
+							{
+								stale = true;
+							}
+						}
+						else
+						{
+							ULONGLONG thunk = 0;
+							memcpy(&thunk, listPeSection[thunkSec].data + thunkOffset, sizeof(thunk));
+							if (thunk != 0 && !(thunk & IMAGE_ORDINAL_FLAG64) &&
+								(thunk >= sizeOfImage || convertRVAToOffsetVectorIndex((DWORD_PTR)thunk) == -1))
+							{
+								stale = true;
+							}
+						}
+					}
+				}
+			}
+
+			if (stale)
+			{
+				if (pe32)
+				{
+					pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress = 0;
+					pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size = 0;
+				}
+				else
+				{
+					pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress = 0;
+					pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size = 0;
+				}
+				DebugOutput("PeParser: Cleared stale OriginalFirstThunk=0 import directory at RVA 0x%x (FirstThunk RVA 0x%x).\n", importRva, desc.FirstThunk);
+				return;
+			}
+		}
+
+		descOffset += sizeof(IMAGE_IMPORT_DESCRIPTOR);
+	}
+}
+
 void PeParser::setDefaultFileAlignment()
 {
 	if (isPE32())
@@ -1848,6 +1963,8 @@ bool PeParser::dumpProcess(DWORD_PTR modBase, DWORD_PTR entryPoint, const CHAR *
 
 	fixPeHeader();
 
+	sanitizeUnrebuiltImportDirectory();
+
 	getFileOverlay();
 
 #ifdef DEBUG_COMMENTS
@@ -1901,6 +2018,8 @@ bool PeParser::dumpProcessToHandle(DWORD_PTR modBase, DWORD_PTR entryPoint, HAND
 	alignAllSectionHeaders();
 
 	fixPeHeader();
+
+	sanitizeUnrebuiltImportDirectory();
 
 	getFileOverlay();
 

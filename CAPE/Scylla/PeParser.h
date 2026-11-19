@@ -169,5 +169,6 @@ protected:
 	void setNumberOfSections(WORD numberOfSections);
 	
 	void removeIatDirectory();
+	void sanitizeUnrebuiltImportDirectory();
 	bool getFileOverlay();
 };
