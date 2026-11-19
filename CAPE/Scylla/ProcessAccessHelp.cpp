@@ -10,6 +10,7 @@
 
 extern "C" void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
+extern "C" BOOL ApplyShadowPagesToRange(PVOID Address, SIZE_T Size, PBYTE Buffer);
 
 HANDLE ProcessAccessHelp::hProcess = 0;
 
@@ -130,7 +131,7 @@ bool ProcessAccessHelp::readMemoryPartlyFromProcess(DWORD_PTR address, SIZE_T si
 
 		do 
 		{
-			if (!VirtualQueryEx(ProcessAccessHelp::hProcess,(LPCVOID)addressPart,&memBasic,sizeof(memBasic)))
+			if (!VirtualQueryEx(ProcessAccessHelp::hProcess,(LPCVOID)addressPart,&memBasic,sizeof(memBasic)) || !memBasic.RegionSize)
 			{
 #ifdef DEBUG_COMMENTS
 				DebugOutput("readMemoryPartlyFromProcess: Error VirtualQueryEx %X %X err: %u", addressPart,size, GetLastError());
@@ -138,18 +139,23 @@ bool ProcessAccessHelp::readMemoryPartlyFromProcess(DWORD_PTR address, SIZE_T si
 				break;
 			}
 
-			bytesToRead = memBasic.RegionSize;
+			DWORD_PTR regionBase = (DWORD_PTR)memBasic.BaseAddress;
+			SIZE_T regionOffset = (addressPart > regionBase) ? (SIZE_T)(addressPart - regionBase) : 0;
+			if (regionOffset >= memBasic.RegionSize)
+				break;
+
+			bytesToRead = memBasic.RegionSize - regionOffset;
 
 			if ( (readBytes+bytesToRead) > size)
 			{
 				bytesToRead = size - readBytes;
 			}
 
-			if (memBasic.State == MEM_COMMIT)
+			if (memBasic.State == MEM_COMMIT && !(memBasic.Protect & (PAGE_NOACCESS | PAGE_GUARD)))
 			{
 				if (!readMemoryFromProcess(addressPart, bytesToRead, (LPVOID)((DWORD_PTR)dataBuffer + readBytes)))
 				{
-					break;
+					ZeroMemory((LPVOID)((DWORD_PTR)dataBuffer + readBytes), bytesToRead);
 				}
 			}
 			else
@@ -160,7 +166,7 @@ bool ProcessAccessHelp::readMemoryPartlyFromProcess(DWORD_PTR address, SIZE_T si
 
 			readBytes += bytesToRead;
 
-			addressPart += memBasic.RegionSize;
+			addressPart += bytesToRead;
 
 		} while (readBytes < size);
 
@@ -174,6 +180,9 @@ bool ProcessAccessHelp::readMemoryPartlyFromProcess(DWORD_PTR address, SIZE_T si
 	{
 		returnValue = true;
 	}
+
+	if (hProcess == GetCurrentProcess() && ApplyShadowPagesToRange((PVOID)address, size, (PBYTE)dataBuffer))
+		returnValue = true;
 
 	return returnValue;
 }

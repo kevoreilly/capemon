@@ -190,7 +190,7 @@ void AllocationHandler(PVOID BaseAddress, SIZE_T RegionSize, ULONG AllocationTyp
 }
 
 //**************************************************************************************
-void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
+void ProtectionHandler(PVOID Address, SIZE_T RegionSize, ULONG Protect, ULONG OldProtect)
 //**************************************************************************************
 {
 	BOOL NewRegion = FALSE;
@@ -277,6 +277,12 @@ void ProtectionHandler(PVOID Address, ULONG Protect, PULONG OldProtect)
 		return;
 	}
 
+	if ((Protect & EXECUTABLE_FLAGS) && HarvestPagedPEPages(TrackedRegion, Address, RegionSize, Protect, OldProtect))
+	{
+		hook_enable();
+		return;
+	}
+
 	ProcessTrackedRegion(TrackedRegion);
 
 	if (g_config.unpacker > 1 && !TrackedRegion->PagesDumped)
@@ -314,6 +320,18 @@ void FreeHandler(PVOID BaseAddress)
 		return;
 
 	hook_disable();
+
+	if (IsPagedPERegion(TrackedRegion))
+	{
+		if (BaseAddress == TrackedRegion->AllocationBase)
+		{
+			DumpPagedPERegion(TrackedRegion);
+			FreeTrackedRegionShadow(TrackedRegion);
+			ClearTrackedRegion(TrackedRegion);
+		}
+		hook_enable();
+		return;
+	}
 
 	if (!TrackedRegion->PagesDumped && TrackedRegion->Committed == TRUE && TrackedRegion->MemInfo.Protect & EXECUTABLE_FLAGS && ScanForNonZero(TrackedRegion->AllocationBase, GetAccessibleSize(TrackedRegion->AllocationBase)))
 	{
