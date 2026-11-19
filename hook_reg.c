@@ -300,7 +300,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyW,
 
 		for (i = 0, j = 0; i < _countof(parent_keys); i += 1, j += 2) {
 			if (!wcsicmp(keypath, parent_keys[i]) && !wcsicmp(lpName, replace_subkeys[j])) {
-				wcscpy_s(lpName, sizeof(lpName), replace_subkeys[j + 1]);
+				wcscpy_s(lpName, cchName, replace_subkeys[j + 1]);
 				break;
 			}
 		}
@@ -323,6 +323,9 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 	__inout_opt  LPDWORD lpcClass,
 	__out_opt	PFILETIME lpftLastWriteTime
 ) {
+	// lpcName is in/out: on return it holds the length written, not the
+	// capacity, so the capacity has to be captured before the call
+	DWORD cchName_in = lpcName ? *lpcName : 0;
 	LONG ret = Old_RegEnumKeyExA(hKey, dwIndex, lpName, lpcName, lpReserved,
 		lpClass, lpcClass, lpftLastWriteTime);
 
@@ -348,7 +351,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExA,
 
 		for (i = 0, j = 0; i < _countof(parent_keys); i += 1, j += 2) {
 			if (!wcsicmp(keypath, parent_keys[i]) && !stricmp(lpName, replace_subkeys[j])) {
-				strcpy_s(lpName, sizeof(lpName), replace_subkeys[j + 1]);
+				strcpy_s(lpName, cchName_in, replace_subkeys[j + 1]);
 				break;
 			}
 		}
@@ -374,6 +377,9 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 	__inout_opt  LPDWORD lpcClass,
 	__out_opt	PFILETIME lpftLastWriteTime
 ) {
+	// lpcName is in/out: on return it holds the length written, not the
+	// capacity, so the capacity has to be captured before the call
+	DWORD cchName_in = lpcName ? *lpcName : 0;
 	LONG ret = Old_RegEnumKeyExW(hKey, dwIndex, lpName, lpcName, lpReserved,
 		lpClass, lpcClass, lpftLastWriteTime);
 
@@ -398,7 +404,7 @@ HOOKDEF(LONG, WINAPI, RegEnumKeyExW,
 
 		for (i = 0, j = 0; i < _countof(parent_keys); i += 1, j += 2) {
 			if (!wcsicmp(keypath, parent_keys[i]) && !wcsicmp(lpName, replace_subkeys[j])) {
-				wcscpy_s(lpName, sizeof(lpName), replace_subkeys[j + 1]);
+				wcscpy_s(lpName, cchName_in, replace_subkeys[j + 1]);
 				break;
 			}
 		}
