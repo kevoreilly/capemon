@@ -1511,40 +1511,32 @@ unsigned int FileOffsetFromRVA(PVOID ImageBase, DWORD RVA)
 		return 0;
 	}
 
-	if (IsDisguisedPEHeader(ImageBase) <= 0)
-		return 0;
-
-	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)ImageBase;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
+
+	if (IsDisguisedPEHeaderEx(ImageBase, 0, TRUE, FALSE, &pNtHeader) <= 0 || !pNtHeader)
+		return 0;
 
 	__try
 	{
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+		PIMAGE_SECTION_HEADER pSectionTable = IMAGE_FIRST_SECTION(pNtHeader);
+		SIZE_T AllocationSize = GetAllocationSize(ImageBase);
+
+		if (RVA < pSectionTable[0].VirtualAddress)
+			return (unsigned int)RVA;
+
+		for (int i = 0; i < pNtHeader->FileHeader.NumberOfSections; i++)
+		{
+			if (RVA >= pSectionTable[i].VirtualAddress && RVA < (pSectionTable[i].VirtualAddress + max(pSectionTable[i].SizeOfRawData, pSectionTable[i].Misc.VirtualSize)))
+			{
+				unsigned int FileOffset = RVA - pSectionTable[i].VirtualAddress + pSectionTable[i].PointerToRawData;
+				if (FileOffset < AllocationSize)
+					return FileOffset;
+			}
+		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("FileOffsetFromRVA: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
 		return 0;
-	}
-
-	if (!pNtHeader || !TestPERequirements(pNtHeader))
-		return 0;
-
-	PIMAGE_SECTION_HEADER pSectionTable = IMAGE_FIRST_SECTION(pNtHeader);
-	SIZE_T AllocationSize = GetAllocationSize(ImageBase);
-
-	if (RVA < pSectionTable[0].VirtualAddress)
-		return (unsigned int)RVA;
-
-	for (int i = 0; i < pNtHeader->FileHeader.NumberOfSections; i++)
-	{
-		if (RVA >= pSectionTable[i].VirtualAddress && RVA < (pSectionTable[i].VirtualAddress + max(pSectionTable[i].SizeOfRawData, pSectionTable[i].Misc.VirtualSize)))
-		{
-			unsigned int FileOffset = RVA - pSectionTable[i].VirtualAddress + pSectionTable[i].PointerToRawData;
-			if (FileOffset < AllocationSize)
-				return FileOffset;
-		}
 	}
 
 	return 0;
@@ -2374,10 +2366,7 @@ SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader)
 		if (!IsAddressAccessible(pDosHeader))
 			return 0;
 
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
-
-		if (!pNtHeader || !TestPERequirements(pNtHeader))
+		if (IsDisguisedPEHeaderEx(pDosHeader, 0, TRUE, FALSE, &pNtHeader) <= 0 || !pNtHeader)
 			return 0;
 
 		PIMAGE_SECTION_HEADER NtSection;
@@ -2424,30 +2413,40 @@ SIZE_T GetMinPESize(PIMAGE_DOS_HEADER pDosHeader)
 int IsDotNetImage(PVOID Buffer)
 //**************************************************************************************
 {
-	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
-	if (!IsAddressAccessible(Buffer) || IsDisguisedPEHeader(Buffer) <= 0)
+	if (!IsAddressAccessible(Buffer) || IsDisguisedPEHeaderEx(Buffer, 0, TRUE, FALSE, &pNtHeader) <= 0 || !pNtHeader)
 		return 0;
-
-	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
 
 	__try
 	{
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+		WORD magic = pNtHeader->OptionalHeader.Magic;
+		WORD optSize = pNtHeader->FileHeader.SizeOfOptionalHeader;
 
-		if (!pNtHeader || !TestPERequirements(pNtHeader))
-			return 0;
-
+		if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+		{
+			PIMAGE_NT_HEADERS32 nt32 = (PIMAGE_NT_HEADERS32)pNtHeader;
+			if (optSize >= FIELD_OFFSET(IMAGE_OPTIONAL_HEADER32, DataDirectory) +
+					((IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR + 1) * sizeof(IMAGE_DATA_DIRECTORY)) &&
+				nt32->OptionalHeader.NumberOfRvaAndSizes > IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR &&
+				(nt32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress ||
+				 nt32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].Size))
+				return 1;
+		}
+		else if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+		{
 #ifndef _WIN64
-		if (pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
 			return 0;
+#else
+			PIMAGE_NT_HEADERS64 nt64 = (PIMAGE_NT_HEADERS64)pNtHeader;
+			if (optSize >= FIELD_OFFSET(IMAGE_OPTIONAL_HEADER64, DataDirectory) +
+					((IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR + 1) * sizeof(IMAGE_DATA_DIRECTORY)) &&
+				nt64->OptionalHeader.NumberOfRvaAndSizes > IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR &&
+				(nt64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress ||
+				 nt64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].Size))
+				return 1;
 #endif
-
-		if (pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress || pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].Size)
-			return 1;
-
+		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -2457,47 +2456,226 @@ int IsDotNetImage(PVOID Buffer)
 	return 0;
 }
 
+static BOOL HasInnerDosHeader(const BYTE *Base, SIZE_T NtOffset)
+{
+	for (SIZE_T inner = sizeof(DWORD); inner + sizeof(IMAGE_DOS_HEADER) <= NtOffset; inner++)
+	{
+		const IMAGE_DOS_HEADER *innerDos = (const IMAGE_DOS_HEADER *)(Base + inner);
+		ULONG innerLfanew = (ULONG)innerDos->e_lfanew;
+		if (innerLfanew >= sizeof(IMAGE_DOS_HEADER) && (innerLfanew & 3) == 0 &&
+			(SIZE_T)innerLfanew == NtOffset - inner)
+			return TRUE;
+	}
+	return FALSE;
+}
+
 //**************************************************************************************
-int IsDisguisedPEHeader(PVOID Buffer)
+int IsDisguisedPEHeaderEx(PVOID Buffer, SIZE_T MaxBufferSize, BOOL AllowZeroedDos, BOOL AllowPartialSections, PIMAGE_NT_HEADERS *OutPEHeader)
 //**************************************************************************************
 {
 	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
+	if (OutPEHeader)
+		*OutPEHeader = NULL;
+
+	if (!Buffer)
+		return 0;
+
 	pDosHeader = (PIMAGE_DOS_HEADER)Buffer;
 
 	__try
 	{
-		if (!pDosHeader->e_lfanew || (ULONG)pDosHeader->e_lfanew > PE_HEADER_LIMIT)
-		{
-#ifdef DEBUG_COMMENTS
-			DebugOutput("IsDisguisedPEHeader: Bad e_lfanew value 0x%x", pDosHeader->e_lfanew);
-#endif
+		if (MaxBufferSize && MaxBufferSize < sizeof(IMAGE_DOS_HEADER))
 			return 0;
-		}
 
-		if (((ULONG)pDosHeader->e_lfanew & 3) != 0)
+		if (pDosHeader->e_lfanew)
 		{
+			ULONG lfanew = (ULONG)pDosHeader->e_lfanew;
+			if (lfanew > PE_HEADER_LIMIT || (lfanew & 3) != 0)
+			{
 #ifdef DEBUG_COMMENTS
-			DebugOutput("IsDisguisedPEHeader: Bad e_lfanew alignment 0x%x", pDosHeader->e_lfanew);
+				DebugOutput("IsDisguisedPEHeaderEx: Bad e_lfanew value/alignment 0x%x", lfanew);
 #endif
-			return 0;
-		}
+				return 0;
+			}
 
-		pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+			if (MaxBufferSize && (lfanew > MaxBufferSize || MaxBufferSize - lfanew < sizeof(IMAGE_NT_HEADERS32)))
+				return 0;
 
-		if (pNtHeader && TestPERequirements(pNtHeader))
+			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + lfanew);
+			WORD numSec = pNtHeader->FileHeader.NumberOfSections;
+			SIZE_T checkCount = numSec;
+			if (MaxBufferSize)
+			{
+				WORD magic = pNtHeader->OptionalHeader.Magic;
+				WORD optSize = pNtHeader->FileHeader.SizeOfOptionalHeader;
+				if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC && MaxBufferSize - lfanew < sizeof(IMAGE_NT_HEADERS64))
+					return 0;
+				SIZE_T secStart = (SIZE_T)lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS32, OptionalHeader) + optSize;
+				if (secStart > MaxBufferSize)
+					return 0;
+				SIZE_T maxFit = (MaxBufferSize - secStart) / sizeof(IMAGE_SECTION_HEADER);
+				if (AllowPartialSections)
+				{
+					if (!maxFit)
+						return 0;
+					if (checkCount > maxFit)
+						checkCount = maxFit;
+				}
+				else if (maxFit < numSec)
+					return 0;
+			}
+
+			if (checkCount == numSec)
+			{
+				if (TestPERequirements(pNtHeader))
+				{
+					if (OutPEHeader)
+						*OutPEHeader = pNtHeader;
+					return 1;
+				}
+				return 0;
+			}
+
+			if ((pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC &&
+				pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) ||
+				!numSec || numSec > PE_MAX_SECTIONS ||
+				!pNtHeader->OptionalHeader.SizeOfImage || pNtHeader->OptionalHeader.SizeOfImage > PE_MAX_SIZE)
+				return 0;
+
+			PIMAGE_SECTION_HEADER secCheck = IMAGE_FIRST_SECTION(pNtHeader);
+			for (SIZE_T i = 0; i < checkCount; i++)
+			{
+				if (secCheck[i].PointerToRawData > PE_MAX_SIZE || secCheck[i].SizeOfRawData > PE_MAX_SIZE ||
+					secCheck[i].VirtualAddress > PE_MAX_SIZE || secCheck[i].Misc.VirtualSize > PE_MAX_SIZE)
+					return 0;
+			}
+
+			if (OutPEHeader)
+				*OutPEHeader = pNtHeader;
 			return 1;
+		}
+
+		if (AllowZeroedDos)
+		{
+			SIZE_T limit = PE_HEADER_LIMIT;
+			if (MaxBufferSize)
+			{
+				if (MaxBufferSize <= sizeof(IMAGE_NT_HEADERS32))
+					return 0;
+				if (limit > MaxBufferSize - sizeof(IMAGE_NT_HEADERS32))
+					limit = MaxBufferSize - sizeof(IMAGE_NT_HEADERS32);
+			}
+
+			for (SIZE_T off = sizeof(IMAGE_DOS_HEADER); off <= limit; off += sizeof(DWORD))
+			{
+				PIMAGE_NT_HEADERS cand = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + off);
+				WORD machine = cand->FileHeader.Machine;
+				WORD magic = cand->OptionalHeader.Magic;
+				BOOL is32 = (machine == IMAGE_FILE_MACHINE_I386 && magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC);
+				BOOL is64 = (machine == IMAGE_FILE_MACHINE_AMD64 && magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
+				if (!is32 && !is64)
+					continue;
+				if (is64 && MaxBufferSize && (off > MaxBufferSize || MaxBufferSize - off < sizeof(IMAGE_NT_HEADERS64)))
+					continue;
+
+				WORD optSize = cand->FileHeader.SizeOfOptionalHeader;
+				if (optSize < (is64 ? 0x70 : 0x60) || optSize > 0x1000)
+					continue;
+
+				WORD numSec = cand->FileHeader.NumberOfSections;
+				DWORD sizeOfImage = cand->OptionalHeader.SizeOfImage;
+				if (!numSec || numSec > PE_MAX_SECTIONS || !sizeOfImage || sizeOfImage > PE_MAX_SIZE)
+					continue;
+
+				if (AllowPartialSections)
+				{
+					DWORD fileAlign = cand->OptionalHeader.FileAlignment;
+					DWORD secAlign = cand->OptionalHeader.SectionAlignment;
+					if (fileAlign < 0x200 || fileAlign > 0x10000 || (fileAlign & (fileAlign - 1)) != 0 ||
+						secAlign < fileAlign || secAlign > 0x10000 || (secAlign & (secAlign - 1)) != 0)
+						continue;
+				}
+
+				SIZE_T checkCount = numSec;
+				if (MaxBufferSize)
+				{
+					SIZE_T secStart = off + FIELD_OFFSET(IMAGE_NT_HEADERS32, OptionalHeader) + optSize;
+					if (secStart > MaxBufferSize)
+						continue;
+					SIZE_T maxFit = (MaxBufferSize - secStart) / sizeof(IMAGE_SECTION_HEADER);
+					if (AllowPartialSections)
+					{
+						if (!maxFit)
+							continue;
+						if (checkCount > maxFit)
+							checkCount = maxFit;
+					}
+					else if (maxFit < numSec)
+						continue;
+				}
+
+				if (checkCount == numSec)
+				{
+					if (!TestPERequirements(cand))
+						continue;
+				}
+				else
+				{
+					PIMAGE_SECTION_HEADER secCheck = IMAGE_FIRST_SECTION(cand);
+					BOOL validSecs = TRUE;
+					for (SIZE_T i = 0; i < checkCount; i++)
+					{
+						if (secCheck[i].PointerToRawData > PE_MAX_SIZE || secCheck[i].SizeOfRawData > PE_MAX_SIZE ||
+							secCheck[i].VirtualAddress > PE_MAX_SIZE || secCheck[i].Misc.VirtualSize > PE_MAX_SIZE)
+						{
+							validSecs = FALSE;
+							break;
+						}
+					}
+					if (!validSecs)
+						continue;
+				}
+
+				PIMAGE_SECTION_HEADER sec = IMAGE_FIRST_SECTION(cand);
+				BOOL hasSection = FALSE;
+				for (SIZE_T i = 0; i < checkCount; i++)
+				{
+					if (sec[i].VirtualAddress || sec[i].PointerToRawData)
+					{
+						hasSection = TRUE;
+						break;
+					}
+				}
+				if (!hasSection)
+					continue;
+
+				if (HasInnerDosHeader((const BYTE *)pDosHeader, off))
+					continue;
+
+				if (OutPEHeader)
+					*OutPEHeader = cand;
+				return 1;
+			}
+		}
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
 #ifdef DEBUG_COMMENTS
-		DebugOutput("IsDisguisedPEHeader: Exception checking PE header!");
+		DebugOutput("IsDisguisedPEHeaderEx: Exception checking PE header!");
 #endif
 		return -1;
 	}
 
 	return 0;
+}
+
+//**************************************************************************************
+int IsDisguisedPEHeader(PVOID Buffer)
+//**************************************************************************************
+{
+	return IsDisguisedPEHeaderEx(Buffer, 0, TRUE, FALSE, NULL) > 0 ? 1 : 0;
 }
 
 //**************************************************************************************
@@ -2529,7 +2707,9 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 	// we want to stop short of the minimum PE size we are interested in capturing
 	for (p=0; p <= Size - PE_MIN_SIZE; p++)
 	{
-		RetVal = IsDisguisedPEHeader((PVOID)((BYTE*)Buffer+p));
+		PVOID cand = (PVOID)((BYTE*)Buffer + p);
+		BOOL allowZeroedDos = (p == 0 || (((ULONG_PTR)cand & 0xFFF) == 0));
+		RetVal = IsDisguisedPEHeaderEx(cand, Size - p, allowZeroedDos, FALSE, NULL);
 
 		if (!RetVal)
 			continue;
@@ -2541,9 +2721,9 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 		}
 
 		if (Offset)
-			*Offset = (PVOID)((BYTE*)Buffer+p);
+			*Offset = cand;
 
-		DebugOutput("ScanForDisguisedPE: PE image located at: 0x%p\n", (BYTE*)Buffer+p);
+		DebugOutput("ScanForDisguisedPE: PE image located at: 0x%p\n", cand);
 
 		return 1;
 	}
@@ -2557,7 +2737,6 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset)
 DWORD GetEntryPoint(PVOID Address)
 //**************************************************************************************
 {
-	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 	if (!Address)
@@ -2566,33 +2745,23 @@ DWORD GetEntryPoint(PVOID Address)
 		return 0;
 	}
 
-	if (!IsAddressAccessible(Address) || IsDisguisedPEHeader(Address) <= 0)
+	if (!IsAddressAccessible(Address) || IsDisguisedPEHeaderEx(Address, 0, TRUE, FALSE, &pNtHeader) <= 0 || !pNtHeader)
 		return 0;
-
-	pDosHeader = (PIMAGE_DOS_HEADER)Address;
 
 	__try
 	{
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+		return pNtHeader->OptionalHeader.AddressOfEntryPoint;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("GetEntryPoint: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
 		return 0;
 	}
-
-	if (pNtHeader && TestPERequirements(pNtHeader))
-		return pNtHeader->OptionalHeader.AddressOfEntryPoint;
-
-	return 0;
 }
 
 //**************************************************************************************
 DWORD GetTimeStamp(PVOID Address)
 //**************************************************************************************
 {
-	PIMAGE_DOS_HEADER pDosHeader;
 	PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 	if (!Address)
@@ -2601,26 +2770,17 @@ DWORD GetTimeStamp(PVOID Address)
 		return 0;
 	}
 
-	if (IsDisguisedPEHeader(Address) <= 0)
+	if (IsDisguisedPEHeaderEx(Address, 0, TRUE, FALSE, &pNtHeader) <= 0 || !pNtHeader)
 		return 0;
-
-	pDosHeader = (PIMAGE_DOS_HEADER)Address;
 
 	__try
 	{
-		if (pDosHeader->e_lfanew && (ULONG)pDosHeader->e_lfanew < PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0)
-			pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
+		return pNtHeader->FileHeader.TimeDateStamp;
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		DebugOutput("GetTimeStamp: Exception occurred attempting to follow e_lfanew 0x%x\n", pDosHeader->e_lfanew);
 		return 0;
 	}
-
-	if (pNtHeader && TestPERequirements(pNtHeader))
-		return pNtHeader->FileHeader.TimeDateStamp;
-
-	return 0;
 }
 
 //**************************************************************************************
@@ -3391,10 +3551,28 @@ int DumpImageInCurrentProcess(PVOID Address)
 		return 1;
 	}
 
-	if (pDosHeader->e_magic != IMAGE_DOS_SIGNATURE || (*(DWORD*)((BYTE*)pDosHeader + pDosHeader->e_lfanew) != IMAGE_NT_SIGNATURE))
+	BOOL NeedsHeaderRepair = TRUE;
+	__try
+	{
+		if (pDosHeader->e_magic == IMAGE_DOS_SIGNATURE && pDosHeader->e_lfanew &&
+			(ULONG)pDosHeader->e_lfanew <= PE_HEADER_LIMIT && ((ULONG)pDosHeader->e_lfanew & 3) == 0 &&
+			(*(DWORD*)((BYTE*)pDosHeader + (ULONG)pDosHeader->e_lfanew) == IMAGE_NT_SIGNATURE))
+			NeedsHeaderRepair = FALSE;
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		return 0;
+	}
+
+	if (NeedsHeaderRepair)
 	{
 		// We want to fix the PE header in the dump (for e.g. disassembly etc)
 		SIZE_T RegionSize = GetAccessibleSize(Address);
+		if (RegionSize < sizeof(IMAGE_DOS_HEADER))
+		{
+			DebugOutput("DumpImageInCurrentProcess: Accessible region too small (0x%Ix) at 0x%p\n", RegionSize, Address);
+			return 0;
+		}
 
 		RegionCopy = calloc(RegionSize, sizeof(BYTE));
 
@@ -3422,29 +3600,20 @@ int DumpImageInCurrentProcess(PVOID Address)
 		if (!pDosHeader->e_lfanew)
 		{
 			// In case the header until and including 'PE' has been zeroed
-			WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-			{
-				if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-				{
-					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
-						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-				}
-				MachineProbe++;
-			}
-
-			if (pNtHeader)
+			if (IsDisguisedPEHeaderEx(pDosHeader, RegionSize, TRUE, FALSE, &pNtHeader) > 0 && pNtHeader)
 				pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
 		}
 
-		if (!pDosHeader->e_lfanew || pDosHeader->e_lfanew > PE_MAX_SIZE)
+		if (!pDosHeader->e_lfanew || (ULONG)pDosHeader->e_lfanew > PE_HEADER_LIMIT ||
+			((ULONG)pDosHeader->e_lfanew & 3) != 0 ||
+			(SIZE_T)(ULONG)pDosHeader->e_lfanew + sizeof(DWORD) > RegionSize)
 		{
 			DebugOutput("DumpImageInCurrentProcess: Bad e_lfanew 0x%x\n", pDosHeader->e_lfanew);
 			goto end;
 		}
 
 		*(WORD*)pDosHeader = IMAGE_DOS_SIGNATURE;
-		*(DWORD*)((PUCHAR)pDosHeader + pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
+		*(DWORD*)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
 	}
 
 

@@ -1128,8 +1128,19 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 		return;
 
 	// Check if we have a valid DOS and PE header at the beginning of Buffer
-	if (IsDisguisedPEHeader((PVOID)Buffer))
+	PIMAGE_NT_HEADERS pDisguisedNt = NULL;
+	if (IsDisguisedPEHeaderEx((PVOID)Buffer, NumberOfBytesWritten, TRUE, FALSE, &pDisguisedNt) > 0 && pDisguisedNt)
 	{
+		DWORD CachedSizeOfImage = 0;
+		__try
+		{
+			CachedSizeOfImage = pDisguisedNt->OptionalHeader.SizeOfImage;
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			CachedSizeOfImage = 0;
+		}
+
 		CurrentInjectionInfo->ImageBase = (DWORD_PTR)BaseAddress;
 		DebugOutput("WriteMemoryHandler: Executable binary injected from 0x%p (size 0x%x) into process %d at 0x%p.\n", Buffer, NumberOfBytesWritten, Pid, BaseAddress);
 
@@ -1141,10 +1152,8 @@ void WriteMemoryHandler(HANDLE ProcessHandle, LPVOID BaseAddress, LPCVOID Buffer
 
 			if (CurrentInjectionInfo->ImageDumped)
 			{
-				PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)((char*)Buffer);
-				PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((char*)Buffer + pDosHeader->e_lfanew);
 				CurrentInjectionInfo->BufferBase = (LPVOID)Buffer;
-				CurrentInjectionInfo->BufferSizeOfImage = pNtHeader->OptionalHeader.SizeOfImage;
+				CurrentInjectionInfo->BufferSizeOfImage = CachedSizeOfImage;
 				DebugOutput("WriteMemoryHandler: Dumped PE image from buffer at 0x%x, SizeOfImage 0x%x.\n", Buffer, CurrentInjectionInfo->BufferSizeOfImage);
 			}
 			else

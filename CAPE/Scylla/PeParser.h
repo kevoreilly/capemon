@@ -129,6 +129,8 @@ protected:
 	/************************************************************************/
 
 	BYTE *fileMemory, *headerMemory;
+	SIZE_T headerMemorySize;
+	bool sectionHeadersLoaded;
 
 	HANDLE hFile;
 	HANDLE hInfoFile;
