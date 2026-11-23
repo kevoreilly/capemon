@@ -1348,12 +1348,6 @@ bool PeParser::saveCompletePeToDisk(const CHAR *newFile)
 	{
 		retValue = false;
 	}
-	else if (pDosHeader && pDosHeader->e_lfanew > 0 && (DWORD)pDosHeader->e_lfanew + sizeof(DWORD) <= dwWriteSize)
-	{
-		ProcessAccessHelp::writeMemoryToFile(hFile, 0, sizeof(IMAGE_DOS_HEADER), pDosHeader);
-		if (pNTHeader32)
-			ProcessAccessHelp::writeMemoryToFile(hFile, (DWORD)pDosHeader->e_lfanew, sizeof(DWORD), &pNTHeader32->Signature);
-	}
 
 	SetEndOfFile(hFile);
 	dumpSize = dwWriteSize;
@@ -1425,13 +1419,6 @@ bool PeParser::saveCompletePeToHandle(HANDLE FileHandle)
 	{
 		DebugOutput("saveCompletePeToHandle: writeMemoryToFile failed.\n");
 		return false;
-	}
-
-	if (pDosHeader && pDosHeader->e_lfanew > 0 && (DWORD)pDosHeader->e_lfanew + sizeof(DWORD) <= dwWriteSize)
-	{
-		ProcessAccessHelp::writeMemoryToFile(FileHandle, 0, sizeof(IMAGE_DOS_HEADER), pDosHeader);
-		if (pNTHeader32)
-			ProcessAccessHelp::writeMemoryToFile(FileHandle, (DWORD)pDosHeader->e_lfanew, sizeof(DWORD), &pNTHeader32->Signature);
 	}
 
 	//SetEndOfFile(FileHandle);
