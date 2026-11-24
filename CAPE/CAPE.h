@@ -75,6 +75,7 @@ int ScanForDisguisedPE(PVOID Buffer, SIZE_T Size, PVOID* Offset);
 PCHAR ScanForExport(PVOID Address, SIZE_T ScanMax);
 PCHAR GetExportNameByAddress(PVOID Address);
 int IsDotNetImage(PVOID Buffer);
+int IsDisguisedPEHeaderEx(PVOID Buffer, SIZE_T MaxBufferSize, BOOL AllowZeroedDos, BOOL AllowPartialSections, PIMAGE_NT_HEADERS *OutPEHeader);
 int IsDisguisedPEHeader(PVOID Buffer);
 int DumpImageInCurrentProcess(PVOID ImageBase);
 void DumpSectionViewsForPid(DWORD Pid);

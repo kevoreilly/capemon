@@ -196,13 +196,18 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 				goto fail;
 			}
 	}
-	else if (IsDisguisedPEHeader((LPVOID)ModuleBase))
+	else if (IsDisguisedPEHeader((LPVOID)ModuleBase) > 0)
 	{
 		PIMAGE_NT_HEADERS pNtHeader = NULL;
 
 		DebugOutput("DumpProcess: Disguised PE image (bad MZ and/or PE headers) at 0x%p.\n", ModuleBase);
 
 		SIZE_T ImageSize = GetAccessibleSize((PVOID)ModuleBase);
+		if (ImageSize < sizeof(IMAGE_DOS_HEADER))
+		{
+			DebugOutput("DumpProcess: accessible region too small (0x%Ix) at 0x%p\n", ImageSize, ModuleBase);
+			goto fail;
+		}
 
 		PEImage = (BYTE*)calloc(ImageSize, sizeof(BYTE));
 		if (!PEImage)
@@ -218,49 +223,41 @@ extern "C" int ScyllaDumpProcess(HANDLE hProcess, DWORD_PTR ModuleBase, DWORD_PT
 		if (!pDosHeader->e_lfanew)
 		{
 			// In case the header until and including 'PE' has been zeroed
-			WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-			{
-				if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-				{
-					if ((PUCHAR)MachineProbe > (PUCHAR)pDosHeader + 3)
-						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-				}
-				MachineProbe++;
-			}
-
-			if (pNtHeader)
+			if (IsDisguisedPEHeaderEx(pDosHeader, ImageSize, TRUE, FALSE, &pNtHeader) > 0 && pNtHeader)
 				pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
 		}
 
-		if (!pDosHeader->e_lfanew)
+		if (!pDosHeader->e_lfanew && ImageSize > sizeof(IMAGE_DOS_HEADER) + sizeof(IMAGE_NT_HEADERS32))
 		{
-			// In case the header until and including 'PE' is missing
-			pNtHeader = NULL;
-			WORD* MachineProbe = (WORD*)pDosHeader;
-			while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (PE_HEADER_LIMIT - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+			// In case the header until and including 'PE' is missing (NT header starts at offset 0)
+			PIMAGE_NT_HEADERS cand = (PIMAGE_NT_HEADERS)pDosHeader;
+			WORD machine = cand->FileHeader.Machine;
+			WORD magic = cand->OptionalHeader.Magic;
+			BOOL is32 = (machine == IMAGE_FILE_MACHINE_I386 && magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC);
+			BOOL is64 = (machine == IMAGE_FILE_MACHINE_AMD64 && magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC &&
+				ImageSize >= sizeof(IMAGE_DOS_HEADER) + sizeof(IMAGE_NT_HEADERS64));
+			SIZE_T minHeaders = sizeof(IMAGE_DOS_HEADER) + (is64 ? sizeof(IMAGE_NT_HEADERS64) : sizeof(IMAGE_NT_HEADERS32));
+			if ((is32 || is64) && cand->FileHeader.NumberOfSections &&
+				cand->OptionalHeader.SizeOfImage && cand->OptionalHeader.SizeOfImage <= PE_MAX_SIZE &&
+				cand->OptionalHeader.SizeOfHeaders >= minHeaders &&
+				cand->OptionalHeader.SizeOfHeaders <= ImageSize)
 			{
-				if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-				{
-					if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4)
-					{
-						pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-						//break;
-					}
-				}
-				MachineProbe++;
-
-				if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader && pNtHeader->OptionalHeader.SizeOfHeaders)
-				{
-					SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
-					memmove(PEImage + HeaderShift, PEImage, pNtHeader->OptionalHeader.SizeOfHeaders - HeaderShift);
-					memset(PEImage, 0, HeaderShift);
-					pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
-					pNtHeader = (PIMAGE_NT_HEADERS)(PEImage + HeaderShift);
-					pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-					DebugOutput("DumpProcess: pNtHeader moved from 0x%x to 0x%x, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
-				}
+				SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
+				memmove(PEImage + HeaderShift, PEImage, cand->OptionalHeader.SizeOfHeaders - HeaderShift);
+				memset(PEImage, 0, HeaderShift);
+				pDosHeader = (PIMAGE_DOS_HEADER)PEImage;
+				pNtHeader = (PIMAGE_NT_HEADERS)(PEImage + HeaderShift);
+				pDosHeader->e_lfanew = (LONG)HeaderShift;
+				DebugOutput("DumpProcess: pNtHeader moved from 0x%p to 0x%p, e_lfanew 0x%x\n", pDosHeader, pNtHeader, pDosHeader->e_lfanew);
 			}
+		}
+
+		if (pDosHeader->e_lfanew > 0 && (ULONG)pDosHeader->e_lfanew <= PE_HEADER_LIMIT &&
+			((ULONG)pDosHeader->e_lfanew & 3) == 0 &&
+			(SIZE_T)(ULONG)pDosHeader->e_lfanew + sizeof(DWORD) <= ImageSize)
+		{
+			pDosHeader->e_magic = IMAGE_DOS_SIGNATURE;
+			*(DWORD*)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew) = IMAGE_NT_SIGNATURE;
 		}
 
 		delete peFile;

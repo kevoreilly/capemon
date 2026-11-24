@@ -14,6 +14,7 @@ extern "C" void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
 extern "C" void CapeOutputFile(LPCTSTR lpOutputFile);
 extern "C" void ProcessDumpOutputFile(LPCTSTR lpOutputFile);
 extern "C" int ReverseScanForNonZero(LPVOID Buffer, SIZE_T Size);
+extern "C" int IsDisguisedPEHeaderEx(PVOID Buffer, SIZE_T MaxBufferSize, BOOL AllowZeroedDos, BOOL AllowPartialSections, PIMAGE_NT_HEADERS *OutPEHeader);
 extern "C" int IsDisguisedPEHeader(LPVOID Buffer);
 extern "C" BOOL IsAddressAccessible(PVOID Address);
 extern "C" SIZE_T GetAllocationSize(PVOID Buffer);
@@ -82,6 +83,8 @@ void PeParser::initClass()
 {
 	fileMemory = 0;
 	headerMemory = 0;
+	headerMemorySize = 0;
+	sectionHeadersLoaded = false;
 
 	pDosHeader = 0;
 	pDosStub = 0;
@@ -90,6 +93,8 @@ void PeParser::initClass()
 	pNTHeader64 = 0;
 	overlayData = 0;
 	overlaySize = 0;
+	SlackData = 0;
+	SizeOfSlackData = 0;
 
 	filename = 0;
 	fileSize = 0;
@@ -147,10 +152,13 @@ bool PeParser::isValidPeHeader()
 
 bool PeParser::isValidPeFile()
 {
-	if (pDosHeader && IsDisguisedPEHeader((PVOID)pDosHeader))
-		return true;
+	if (!pDosHeader || !isValidPeHeader())
+		return false;
 
-	return false;
+	if (!sectionHeadersLoaded)
+		return getNumberOfSections() > 0;
+
+	return IsDisguisedPEHeaderEx((PVOID)pDosHeader, headerMemorySize, FALSE, FALSE, NULL) > 0;
 }
 
 bool PeParser::hasDirectory(const int directoryIndex)
@@ -230,6 +238,8 @@ bool PeParser::readPeHeaderFromProcess(bool readSectionHeaders)
 	DWORD readSize = getInitialHeaderReadSize(readSectionHeaders);
 
 	headerMemory = new BYTE[readSize];
+	headerMemorySize = readSize;
+	sectionHeadersLoaded = readSectionHeaders;
 
 	if (ProcessAccessHelp::readMemoryPartlyFromProcess(moduleBaseAddress, readSize, headerMemory))
 	{
@@ -249,6 +259,7 @@ bool PeParser::readPeHeaderFromProcess(bool readSectionHeaders)
 				readSize = correctSize;
 				delete [] headerMemory;
 				headerMemory = new BYTE[readSize];
+				headerMemorySize = readSize;
 
 				if (ProcessAccessHelp::readMemoryPartlyFromProcess(moduleBaseAddress, readSize, headerMemory))
 				{
@@ -272,6 +283,8 @@ bool PeParser::readPeHeaderFromFile(bool readSectionHeaders)
 	DWORD readSize = getInitialHeaderReadSize(readSectionHeaders);
 
 	headerMemory = new BYTE[readSize];
+	headerMemorySize = readSize;
+	sectionHeadersLoaded = readSectionHeaders;
 
 	if (openFileHandle())
 	{
@@ -301,6 +314,7 @@ bool PeParser::readPeHeaderFromFile(bool readSectionHeaders)
 
 					delete [] headerMemory;
 					headerMemory = new BYTE[readSize];
+					headerMemorySize = readSize;
 
 					SetFilePointer(hFile, 0, 0, FILE_BEGIN);
 
@@ -429,7 +443,48 @@ bool PeParser::readPeSectionsFromProcess()
 	DWORD_PTR ImageBase = getStandardImagebase();
 	if (moduleBaseAddress && moduleBaseAddress != ImageBase)
 	{
-		if (reBasePEImage(moduleBaseAddress))
+		DWORD relocRva = 0;
+		DWORD relocSize = 0;
+		if (isPE32())
+		{
+			relocRva = pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
+			relocSize = pNTHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
+		}
+		else if (isPE64())
+		{
+			relocRva = pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
+			relocSize = pNTHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size;
+		}
+
+		BOOL hasLiveRelocs = FALSE;
+		if (relocRva && relocSize >= sizeof(IMAGE_BASE_RELOCATION))
+		{
+			IMAGE_BASE_RELOCATION firstBlock = { 0 };
+			if (ProcessAccessHelp::readMemoryPartlyFromProcess(moduleBaseAddress + relocRva, sizeof(firstBlock), &firstBlock) &&
+				firstBlock.SizeOfBlock >= sizeof(IMAGE_BASE_RELOCATION) &&
+				firstBlock.SizeOfBlock <= relocSize)
+				hasLiveRelocs = TRUE;
+		}
+
+		if (!hasLiveRelocs)
+		{
+			if (!(moduleBaseAddress & 0xFFFF))
+			{
+				if (isPE32() && (ULONGLONG)moduleBaseAddress <= 0xFFFFFFFFULL)
+				{
+					pNTHeader32->OptionalHeader.ImageBase = (DWORD)moduleBaseAddress;
+					DebugOutput("readPeSectionsFromProcess: No live relocations; updated header ImageBase from 0x%p to 0x%p.\n", ImageBase, moduleBaseAddress);
+				}
+				else if (isPE64())
+				{
+					pNTHeader64->OptionalHeader.ImageBase = (ULONGLONG)moduleBaseAddress;
+					DebugOutput("readPeSectionsFromProcess: No live relocations; updated header ImageBase from 0x%p to 0x%p.\n", ImageBase, moduleBaseAddress);
+				}
+			}
+			else
+				DebugOutput("readPeSectionsFromProcess: No live relocations and unaligned base 0x%p; keeping header ImageBase 0x%p.\n", moduleBaseAddress, ImageBase);
+		}
+		else if (reBasePEImage(moduleBaseAddress))
 		{
 #ifdef DEBUG_COMMENTS
 			DebugOutput("readPeSectionsFromProcess: Image relocated back to header image base 0x%p.\n", ImageBase);
@@ -540,96 +595,88 @@ void PeParser::getDosAndNtHeader(BYTE* memory, LONG size)
 	pNTHeader64 = 0;
 	dosStubSize = 0;
 	pDosStub = 0;
+	SlackData = 0;
+	SizeOfSlackData = 0;
 
-	if (pDosHeader->e_lfanew > 0 && pDosHeader->e_lfanew < size) //malformed PE
-	{
-		pNTHeader32 = (PIMAGE_NT_HEADERS32)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
-		pNTHeader64 = (PIMAGE_NT_HEADERS64)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
+	if (!memory || size < (LONG)sizeof(IMAGE_DOS_HEADER))
+		return;
 
-		if (pDosHeader->e_lfanew >= sizeof(IMAGE_DOS_HEADER))
-		{
-			dosStubSize = pDosHeader->e_lfanew - sizeof(IMAGE_DOS_HEADER);
-			pDosStub = (BYTE *)((DWORD_PTR)pDosHeader + sizeof(IMAGE_DOS_HEADER));
-#ifdef DEBUG_COMMENTS
-			//DebugOutput("PeParser: getDosAndNtHeader: dosStubSize size 0x%x.\n", dosStubSize);
-#endif
-		}
-	}
+	SIZE_T bufSize = (SIZE_T)size;
 
-	if (!pDosHeader->e_lfanew)
+	if (!pDosHeader->e_lfanew && bufSize >= sizeof(IMAGE_DOS_HEADER) + sizeof(IMAGE_NT_HEADERS32))
 	{
 		// In case the header until and including 'PE' has been zeroed (e.g. Ursnif)
 		PIMAGE_NT_HEADERS pNtHeader = NULL;
-		WORD* MachineProbe = (WORD*)&pDosHeader->e_lfanew;
-		while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (size - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
-		{
-			if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
-				pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-			MachineProbe++;
-		}
-
-		if (pNtHeader)
+		if (IsDisguisedPEHeaderEx(pDosHeader, bufSize, TRUE, TRUE, &pNtHeader) > 0 && pNtHeader)
 			pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
 	}
 
-	if (!pDosHeader->e_lfanew)
+	if (!pDosHeader->e_lfanew && moduleBaseAddress && memory == headerMemory &&
+		bufSize > sizeof(IMAGE_DOS_HEADER) + sizeof(IMAGE_NT_HEADERS32))
 	{
-		// In case the header until and including 'PE' is missing
-		PIMAGE_NT_HEADERS pNtHeader = NULL;
-		WORD* MachineProbe = (WORD*)pDosHeader;
-		while ((PUCHAR)MachineProbe < (PUCHAR)pDosHeader + (size - offsetof(IMAGE_DOS_HEADER, e_lfanew)))
+		// In case the header until and including 'PE' is missing (NT header starts at offset 0)
+		PIMAGE_NT_HEADERS cand = (PIMAGE_NT_HEADERS)pDosHeader;
+		WORD machine = cand->FileHeader.Machine;
+		WORD magic = cand->OptionalHeader.Magic;
+		BOOL is32 = (machine == IMAGE_FILE_MACHINE_I386 && magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC);
+		BOOL is64 = (machine == IMAGE_FILE_MACHINE_AMD64 && magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC &&
+			bufSize >= sizeof(IMAGE_DOS_HEADER) + sizeof(IMAGE_NT_HEADERS64));
+		if ((is32 || is64) && cand->FileHeader.NumberOfSections &&
+			cand->OptionalHeader.SizeOfImage && cand->OptionalHeader.SizeOfImage <= PE_MAX_SIZE &&
+			cand->OptionalHeader.SizeOfHeaders)
 		{
-			if (*MachineProbe == IMAGE_FILE_MACHINE_I386 || *MachineProbe == IMAGE_FILE_MACHINE_AMD64)
+			SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
+			BYTE *newHeader = new BYTE[bufSize];
+			memset(newHeader, 0, bufSize);
+			if (ProcessAccessHelp::readMemoryPartlyFromProcess(moduleBaseAddress, (DWORD)(bufSize - HeaderShift), newHeader + HeaderShift))
 			{
-				if ((PUCHAR)MachineProbe >= (PUCHAR)pDosHeader + 4 && !pNtHeader)
-				{
-					pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)MachineProbe - 4);
-				}
-			}
-			MachineProbe++;
-
-			if (pNtHeader && (PUCHAR)pNtHeader == (PUCHAR)pDosHeader)
-			{
-				SIZE_T HeaderShift = sizeof(IMAGE_DOS_HEADER);
 				delete [] headerMemory;
-				headerMemory = new BYTE[size];
-				memset(headerMemory, 0, size);
-				if (ProcessAccessHelp::readMemoryPartlyFromProcess(moduleBaseAddress, size - HeaderShift, headerMemory + HeaderShift))
-				{
-					pDosHeader = (PIMAGE_DOS_HEADER)headerMemory;
-					pNtHeader = (PIMAGE_NT_HEADERS)(headerMemory + HeaderShift);
-					pDosHeader->e_lfanew = (LONG)((PUCHAR)pNtHeader - (PUCHAR)pDosHeader);
-				}
+				headerMemory = newHeader;
+				headerMemorySize = bufSize;
+				pDosHeader = (PIMAGE_DOS_HEADER)headerMemory;
+				pDosHeader->e_lfanew = (LONG)HeaderShift;
 #ifdef DEBUG_COMMENTS
-				DebugOutput("PeParser: getDosAndNtHeader: Corrected: DOS header 0x%x, lfanew 0x%x, NT header 0x%x.\n", pDosHeader, pDosHeader->e_lfanew, pNtHeader);
+				DebugOutput("PeParser: getDosAndNtHeader: Corrected: DOS header 0x%p, lfanew 0x%x, NT header 0x%p.\n", pDosHeader, pDosHeader->e_lfanew, headerMemory + HeaderShift);
 #endif
+			}
+			else
+			{
+				delete [] newHeader;
 			}
 		}
 	}
 
-	if (pDosHeader->e_lfanew)
+	if (pDosHeader->e_lfanew > 0 && ((ULONG)pDosHeader->e_lfanew & 3) == 0 &&
+		(SIZE_T)(ULONG)pDosHeader->e_lfanew + sizeof(IMAGE_NT_HEADERS32) <= bufSize)
 	{
-		PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + (ULONG)pDosHeader->e_lfanew);
-
-		if ((pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) || (pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC))
+		ULONG lfanew = (ULONG)pDosHeader->e_lfanew;
+		PIMAGE_NT_HEADERS pNtHeader = (PIMAGE_NT_HEADERS)((PUCHAR)pDosHeader + lfanew);
+		WORD magic = pNtHeader->OptionalHeader.Magic;
+		if ((magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) ||
+			(magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC && (SIZE_T)lfanew + sizeof(IMAGE_NT_HEADERS64) <= bufSize))
 		{
 			pDosHeader->e_magic = IMAGE_DOS_SIGNATURE;
 			pNtHeader->Signature = IMAGE_NT_SIGNATURE;
-		}
-	}
 
-	if (pDosHeader->e_lfanew)
-	{
-		pNTHeader32 = (PIMAGE_NT_HEADERS32)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
-		pNTHeader64 = (PIMAGE_NT_HEADERS64)((DWORD_PTR)pDosHeader + pDosHeader->e_lfanew);
+			if (lfanew >= sizeof(IMAGE_DOS_HEADER))
+			{
+				dosStubSize = (DWORD)(lfanew - sizeof(IMAGE_DOS_HEADER));
+				pDosStub = (BYTE *)((DWORD_PTR)pDosHeader + sizeof(IMAGE_DOS_HEADER));
+			}
 
-		// data in slack
-		DWORD SlackOffset = pDosHeader->e_lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + pNTHeader32->FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * (pNTHeader32->FileHeader.NumberOfSections)); 
-		if ((DWORD)size > SlackOffset)
-		{
-			SlackData = (BYTE*)pDosHeader + SlackOffset;
-			SizeOfSlackData = size - SlackOffset;
-			SizeOfSlackData = ReverseScanForNonZero(SlackData, SizeOfSlackData);
+			pNTHeader32 = (PIMAGE_NT_HEADERS32)pNtHeader;
+			pNTHeader64 = (PIMAGE_NT_HEADERS64)pNtHeader;
+
+			// data in slack
+			SIZE_T SlackOffset = (SIZE_T)lfanew + FIELD_OFFSET(IMAGE_NT_HEADERS32, OptionalHeader) +
+				pNTHeader32->FileHeader.SizeOfOptionalHeader +
+				((SIZE_T)pNTHeader32->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
+			if (bufSize > SlackOffset)
+			{
+				SlackData = (BYTE*)pDosHeader + SlackOffset;
+				SizeOfSlackData = (SIZE_T)(bufSize - SlackOffset);
+				SizeOfSlackData = ReverseScanForNonZero(SlackData, SizeOfSlackData);
+			}
 		}
 	}
 }
