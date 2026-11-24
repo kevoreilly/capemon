@@ -1014,8 +1014,14 @@ typedef enum _THREADINFOCLASS {
 	ThreadCounterProfiling,
 	ThreadIdealProcessorEx,
 	ThreadCpuAccountingInformation,
+	ThreadSuspendCount,
+	ThreadHeterogeneousCpuPolicy,
+	ThreadContainerId,
+	ThreadNameInformation,
 	MaxThreadInfoClass
 } THREADINFOCLASS;
+
+C_ASSERT(ThreadNameInformation == 0x26);
 
 typedef struct _FILE_FS_VOLUME_INFORMATION {
 	LARGE_INTEGER VolumeCreationTime;

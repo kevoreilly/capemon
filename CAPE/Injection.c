@@ -49,6 +49,142 @@ extern void hook_enable();
 
 void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
 
+#define REMOTE_EXEC_DUMP_CAP 16
+#define REMOTE_EXEC_MAX_BYTES 0x100000
+static lookup_t g_remote_exec_dumped;
+static volatile LONG g_remote_exec_dump_lock;
+static volatile LONG g_remote_exec_dump_count;
+
+BOOL DumpRemoteExecutableRegion(DWORD TargetPid, HANDLE OptProcessHandle, PVOID RemoteAddr)
+{
+	lasterror_t lasterror;
+	int saved_disable;
+	HANDLE hProc = OptProcessHandle;
+	HANDLE hOpened = NULL;
+	PINJECTIONINFO info;
+	MEMORY_BASIC_INFORMATION mbi;
+	ULONG_PTR dedup_key;
+	SIZE_T dump_size;
+	SIZE_T bytes_read = 0;
+	PBYTE buf = NULL;
+	BOOL result = FALSE;
+	BOOL claimed = FALSE;
+
+	if (!g_config.injection || !TargetPid || TargetPid == GetCurrentProcessId() || !RemoteAddr)
+		return FALSE;
+
+	get_lasterrors(&lasterror);
+	saved_disable = hook_info()->disable_count;
+	hook_disable();
+
+	if (!hProc) {
+		info = GetInjectionInfo(TargetPid);
+		if (info)
+			hProc = info->ProcessHandle;
+	}
+
+	memset(&mbi, 0, sizeof(mbi));
+	if (!hProc || VirtualQueryEx(hProc, RemoteAddr, &mbi, sizeof(mbi)) != sizeof(mbi)) {
+		hOpened = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, TargetPid);
+		if (!hOpened)
+			goto out;
+		hProc = hOpened;
+		memset(&mbi, 0, sizeof(mbi));
+		if (VirtualQueryEx(hProc, RemoteAddr, &mbi, sizeof(mbi)) != sizeof(mbi))
+			goto out;
+	}
+
+	if (mbi.State != MEM_COMMIT ||
+		(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) ||
+		!(mbi.Protect & EXECUTABLE_FLAGS) ||
+		mbi.Type == MEM_IMAGE ||
+		mbi.RegionSize <= 0x10)
+		goto out;
+
+	dedup_key = ((ULONG_PTR)mbi.BaseAddress) ^ ((ULONG_PTR)TargetPid * (ULONG_PTR)2654435761U);
+	if (lookup_get(&g_remote_exec_dumped, dedup_key, NULL))
+		goto out;
+
+	if (InterlockedCompareExchange(&g_remote_exec_dump_count, 0, 0) >= REMOTE_EXEC_DUMP_CAP)
+		goto out;
+
+	dump_size = (mbi.RegionSize > REMOTE_EXEC_MAX_BYTES) ? REMOTE_EXEC_MAX_BYTES : mbi.RegionSize;
+	buf = (PBYTE)malloc(dump_size);
+	if (!buf)
+		goto out;
+
+	if (!ReadProcessMemory(hProc, mbi.BaseAddress, buf, dump_size, &bytes_read)) {
+		if (!hOpened) {
+			hOpened = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, TargetPid);
+			if (hOpened) {
+				hProc = hOpened;
+				bytes_read = 0;
+				if (!ReadProcessMemory(hProc, mbi.BaseAddress, buf, dump_size, &bytes_read))
+					goto out;
+			} else {
+				goto out;
+			}
+		} else {
+			goto out;
+		}
+	}
+
+	if (bytes_read <= 0x10 || !ScanForNonZero(buf, bytes_read))
+		goto out;
+
+	while (InterlockedCompareExchange(&g_remote_exec_dump_lock, 1, 0) != 0)
+		YieldProcessor();
+	if (!lookup_get(&g_remote_exec_dumped, dedup_key, NULL) &&
+		InterlockedCompareExchange(&g_remote_exec_dump_count, 0, 0) < REMOTE_EXEC_DUMP_CAP) {
+		if (lookup_add(&g_remote_exec_dumped, dedup_key, 0) != NULL) {
+			InterlockedIncrement(&g_remote_exec_dump_count);
+			claimed = TRUE;
+		}
+	}
+	InterlockedExchange(&g_remote_exec_dump_lock, 0);
+
+	if (!claimed)
+		goto out;
+
+	if (CapeMetaData && !CapeMetaData->TargetProcess) {
+		char DevicePath[MAX_PATH];
+		PCHAR translated = NULL;
+		if (GetProcessImageFileName(hProc, DevicePath, MAX_PATH))
+			translated = TranslatePathFromDeviceToLetter(DevicePath);
+		if (translated)
+			CapeMetaData->TargetProcess = translated;
+		else {
+			CapeMetaData->TargetProcess = (char *)calloc(MAX_PATH, sizeof(BYTE));
+			if (CapeMetaData->TargetProcess)
+				_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Unknown");
+		}
+	}
+
+	if (IsDisguisedPEHeader(buf)) {
+		SetCapeMetaData(INJECTION_PE, TargetPid, hProc, mbi.BaseAddress);
+		if (DumpImageInCurrentProcess(buf)) {
+			result = TRUE;
+		} else {
+			SetCapeMetaData(INJECTION_SHELLCODE, TargetPid, hProc, mbi.BaseAddress);
+			if (DumpMemory(buf, bytes_read))
+				result = TRUE;
+		}
+	} else {
+		SetCapeMetaData(INJECTION_SHELLCODE, TargetPid, hProc, mbi.BaseAddress);
+		if (DumpMemory(buf, bytes_read))
+			result = TRUE;
+	}
+
+out:
+	if (buf)
+		free(buf);
+	if (hOpened)
+		CloseHandle(hOpened);
+	hook_info()->disable_count = saved_disable;
+	set_lasterrors(&lasterror);
+	return result;
+}
+
 //**************************************************************************************
 PINJECTIONINFO GetInjectionInfo(DWORD ProcessId)
 //**************************************************************************************

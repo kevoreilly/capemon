@@ -177,6 +177,9 @@ DWORD parent_process_id(); // By Napalm @ NetCore2K (rohitab.com)
 DWORD pid_from_process_handle(HANDLE process_handle);
 DWORD pid_from_thread_handle(HANDLE thread_handle);
 DWORD tid_from_thread_handle(HANDLE thread_handle);
+void remote_handle_set(HANDLE local_handle, DWORD remote_pid);
+void remote_handle_clear(HANDLE local_handle);
+DWORD remote_handle_get_pid(HANDLE local_handle);
 DWORD random();
 void raw_sleep(int msecs);
 DWORD randint(DWORD min, DWORD max);

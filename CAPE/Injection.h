@@ -80,3 +80,5 @@ void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW64_CONTEXT Context);
 void ResumeThreadHandler(DWORD Pid);
 void CreateRemoteThreadHandler(DWORD Pid);
 void TerminateHandler();
+void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+BOOL DumpRemoteExecutableRegion(DWORD TargetPid, HANDLE OptProcessHandle, PVOID RemoteAddr);

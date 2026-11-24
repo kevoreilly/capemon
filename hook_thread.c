@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdio.h>
 #include "ntapi.h"
+#include <psapi.h>
 #include "hooking.h"
 #include "hooks.h"
 #include "log.h"
@@ -48,6 +49,180 @@ static __inline BOOL go_runtime_thread_op(DWORD pid, DWORD tid)
 }
 
 static lookup_t g_ignored_threads;
+
+#define TNC_MAX_DUMP_CAP 16
+static lookup_t g_tnc_dumped_hashes;
+static volatile LONG g_tnc_dump_lock;
+static volatile LONG g_tnc_dump_count;
+
+static BOOL IsSuspiciousThreadNameBuffer(const BYTE *buf, USHORT byte_len)
+{
+	USHORT wchar_count, i;
+
+	if (!buf || byte_len <= 0x10)
+		return FALSE;
+
+	if ((byte_len & 1) != 0 || byte_len >= 256)
+		return TRUE;
+
+	wchar_count = byte_len / sizeof(WCHAR);
+	for (i = 0; i < wchar_count; i++) {
+		USHORT ch = (USHORT)buf[i * 2] | (USHORT)((USHORT)buf[i * 2 + 1] << 8);
+
+		if (ch == 0)
+			return TRUE;
+		if (ch < 0x20 && ch != '\t' && ch != '\r' && ch != '\n')
+			return TRUE;
+		if (ch == 0xFFFE || ch == 0xFFFF)
+			return TRUE;
+		if (ch >= 0xD800 && ch <= 0xDBFF) {
+			USHORT low;
+			if (i + 1 >= wchar_count)
+				return TRUE;
+			low = (USHORT)buf[(i + 1) * 2] | (USHORT)((USHORT)buf[(i + 1) * 2 + 1] << 8);
+			if (low < 0xDC00 || low > 0xDFFF)
+				return TRUE;
+			i++;
+		} else if (ch >= 0xDC00 && ch <= 0xDFFF) {
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+static BOOL IsReadableLocalBuffer(const void *ptr, SIZE_T len)
+{
+	lasterror_t lasterror;
+	int saved_disable;
+	ULONG_PTR cur, end;
+	BOOL ok = TRUE;
+
+	if (!ptr || !len)
+		return FALSE;
+
+	cur = (ULONG_PTR)ptr;
+	end = cur + len;
+	if (end < cur)
+		return FALSE;
+
+	get_lasterrors(&lasterror);
+	saved_disable = hook_info()->disable_count;
+	hook_disable();
+
+	while (cur < end) {
+		MEMORY_BASIC_INFORMATION mbi;
+		ULONG_PTR reg_end;
+
+		memset(&mbi, 0, sizeof(mbi));
+		if (VirtualQuery((LPCVOID)cur, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+			mbi.State != MEM_COMMIT ||
+			(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) ||
+			!(mbi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+				PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+			ok = FALSE;
+			break;
+		}
+		reg_end = (ULONG_PTR)mbi.BaseAddress + mbi.RegionSize;
+		if (reg_end <= cur) {
+			ok = FALSE;
+			break;
+		}
+		cur = reg_end;
+	}
+
+	hook_info()->disable_count = saved_disable;
+	set_lasterrors(&lasterror);
+	return ok;
+}
+
+static ULONG_PTR ComputeTncFnv1a(DWORD target_pid, const BYTE *buf, USHORT byte_len)
+{
+	ULONG_PTR hash = (ULONG_PTR)0x811c9dc5U;
+	USHORT i;
+
+	for (i = 0; i < byte_len; i++) {
+		hash ^= (ULONG_PTR)buf[i];
+		hash *= (ULONG_PTR)0x01000193U;
+	}
+	hash ^= (ULONG_PTR)(target_pid ? target_pid : 0);
+	hash *= (ULONG_PTR)0x01000193U;
+	return hash ? hash : 1;
+}
+
+static void DumpThreadNameBuffer(DWORD target_pid, const BYTE *buf, USHORT byte_len)
+{
+	lasterror_t lasterror;
+	int saved_disable;
+	ULONG_PTR hash;
+	BOOL claimed = FALSE;
+	BOOL cross_proc;
+
+	if (!buf || byte_len <= 0x10)
+		return;
+
+	get_lasterrors(&lasterror);
+	saved_disable = hook_info()->disable_count;
+	hook_disable();
+
+	if (!ScanForNonZero((PVOID)buf, byte_len))
+		goto out;
+
+	cross_proc = (target_pid != 0 && target_pid != GetCurrentProcessId());
+	hash = ComputeTncFnv1a(cross_proc ? target_pid : 0, buf, byte_len);
+
+	if (lookup_get(&g_tnc_dumped_hashes, hash, NULL))
+		goto out;
+	if (InterlockedCompareExchange(&g_tnc_dump_count, 0, 0) >= TNC_MAX_DUMP_CAP)
+		goto out;
+
+	while (InterlockedCompareExchange(&g_tnc_dump_lock, 1, 0) != 0)
+		YieldProcessor();
+	if (!lookup_get(&g_tnc_dumped_hashes, hash, NULL) &&
+		InterlockedCompareExchange(&g_tnc_dump_count, 0, 0) < TNC_MAX_DUMP_CAP) {
+		if (lookup_add(&g_tnc_dumped_hashes, hash, 0) != NULL) {
+			InterlockedIncrement(&g_tnc_dump_count);
+			claimed = TRUE;
+		}
+	}
+	InterlockedExchange(&g_tnc_dump_lock, 0);
+
+	if (!claimed)
+		goto out;
+
+	if (cross_proc) {
+		if (CapeMetaData && !CapeMetaData->TargetProcess) {
+			HANDLE hTarget = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, target_pid);
+			PCHAR translated = NULL;
+			if (hTarget) {
+				char DevicePath[MAX_PATH];
+				if (GetProcessImageFileName(hTarget, DevicePath, MAX_PATH))
+					translated = TranslatePathFromDeviceToLetter(DevicePath);
+				CloseHandle(hTarget);
+			}
+			if (translated)
+				CapeMetaData->TargetProcess = translated;
+			else {
+				CapeMetaData->TargetProcess = (char *)calloc(MAX_PATH, sizeof(BYTE));
+				if (CapeMetaData->TargetProcess)
+					_snprintf(CapeMetaData->TargetProcess, MAX_PATH, "Unknown");
+			}
+		}
+		if (CapeMetaData) {
+			CapeMetaData->DumpType = INJECTION_SHELLCODE;
+			CapeMetaData->TargetPid = target_pid;
+		}
+	} else if (CapeMetaData) {
+		CapeMetaData->DumpType = UNPACKED_SHELLCODE;
+		CapeMetaData->Address = (PVOID)buf;
+	}
+
+	DumpMemory((LPVOID)buf, byte_len);
+
+out:
+	hook_info()->disable_count = saved_disable;
+	set_lasterrors(&lasterror);
+}
 
 DWORD LastInjected;
 
@@ -107,7 +282,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	unsigned int offset;
 	NTSTATUS ret;
 
-	if (pid != GetCurrentProcessId())
+	if (pid && pid != GetCurrentProcessId() && !g_config.single_process)
 		ProcessMessage(pid, 0);
 
 	ret = Old_NtQueueApcThread(ThreadHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
@@ -116,11 +291,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThread,
 	function_name = GetExportNameByAddress((PVOID)ApcRoutine);
 
 	if (function_name && module_name)
-		LOQ_ntstatus("threading", "iippss", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name);
+		LOQ_ntstatus("threading", "iippssppp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name, "ApcArgument1", ApcRoutineContext, "ApcArgument2", ApcStatusBlock, "ApcArgument3", ApcReserved);
 	else if (module_name)
-		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
+		LOQ_ntstatus("threading", "iippsppp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "ApcArgument1", ApcRoutineContext, "ApcArgument2", ApcStatusBlock, "ApcArgument3", ApcReserved);
 	else
-		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
+		LOQ_ntstatus("threading", "iippppp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "ApcArgument1", ApcRoutineContext, "ApcArgument2", ApcStatusBlock, "ApcArgument3", ApcReserved);
 
 	if (module_name)
 		free(module_name);
@@ -145,7 +320,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	unsigned int offset;
 	NTSTATUS ret;
 
-	if (pid != GetCurrentProcessId())
+	if (pid && pid != GetCurrentProcessId() && !g_config.single_process)
 		ProcessMessage(pid, 0);
 
 	ret = Old_NtQueueApcThreadEx(ThreadHandle, UserApcReserveHandle, ApcRoutine, ApcRoutineContext, ApcStatusBlock, ApcReserved);
@@ -154,11 +329,11 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueueApcThreadEx,
 	function_name = GetExportNameByAddress((PVOID)ApcRoutine);
 
 	if (function_name && module_name)
-		LOQ_ntstatus("threading", "iippss", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name);
+		LOQ_ntstatus("threading", "iippssppp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "Name", function_name, "ApcArgument1", ApcRoutineContext, "ApcArgument2", ApcStatusBlock, "ApcArgument3", ApcReserved);
 	else if (module_name)
-		LOQ_ntstatus("threading", "iipps", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name);
+		LOQ_ntstatus("threading", "iippsppp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "Module", module_name, "ApcArgument1", ApcRoutineContext, "ApcArgument2", ApcStatusBlock, "ApcArgument3", ApcReserved);
 	else
-		LOQ_ntstatus("threading", "iipp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine);
+		LOQ_ntstatus("threading", "iippppp", "ProcessId", pid, "ThreadId", tid, "ThreadHandle", ThreadHandle, "ApcRoutine", ApcRoutine, "ApcArgument1", ApcRoutineContext, "ApcArgument2", ApcStatusBlock, "ApcArgument3", ApcReserved);
 
 	if (module_name)
 		free(module_name);
@@ -1037,8 +1212,39 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationThread,
 	IN ULONG ThreadInformationLength
 ) {
 	NTSTATUS ret;
+	DWORD tid = 0, pid = 0;
+	UNICODE_STRING us;
+	PBYTE name_copy = NULL;
+	BOOL cross_proc = FALSE, suspicious = FALSE;
+	lasterror_t lasterror;
+	int saved_disable;
+
 	ENSURE_HANDLE(ThreadHandle);
-	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	memset(&us, 0, sizeof(us));
+
+	get_lasterrors(&lasterror);
+	saved_disable = hook_info()->disable_count;
+	hook_disable();
+
+	pid = pid_from_thread_handle(ThreadHandle);
+	tid = tid_from_thread_handle(ThreadHandle);
+
+	if (ThreadInformationClass == ThreadNameInformation) {
+		if (ThreadInformation && ThreadInformationLength >= sizeof(UNICODE_STRING) &&
+			IsReadableLocalBuffer(ThreadInformation, sizeof(UNICODE_STRING))) {
+			us = *(PUNICODE_STRING)ThreadInformation;
+			if (us.Length > 0 && IsReadableLocalBuffer(us.Buffer, us.Length)) {
+				name_copy = (PBYTE)malloc(us.Length);
+				if (name_copy)
+					memcpy(name_copy, us.Buffer, us.Length);
+			}
+		}
+		if (pid && pid != GetCurrentProcessId() && !g_config.single_process)
+			ProcessMessage(pid, 0);
+	}
+
+	hook_info()->disable_count = saved_disable;
+	set_lasterrors(&lasterror);
 
 	ret = Old_NtSetInformationThread(ThreadHandle, ThreadInformationClass, ThreadInformation, ThreadInformationLength);
 
@@ -1046,6 +1252,29 @@ HOOKDEF(NTSTATUS, WINAPI, NtSetInformationThread,
 		LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle,
 			"ThreadInformationClass", ThreadInformationClass,
 			"ThreadId", tid);
+	else if (ThreadInformationClass == ThreadNameInformation) {
+		cross_proc = (pid != 0 && pid != GetCurrentProcessId());
+		suspicious = (name_copy != NULL && IsSuspiciousThreadNameBuffer(name_copy, us.Length));
+		if (cross_proc || suspicious || g_config.full_logs)
+			LOQ_ntstatus("threading", "piiib", "ThreadHandle", ThreadHandle,
+				"ThreadInformationClass", ThreadInformationClass,
+				"ProcessId", pid,
+				"ThreadId", tid,
+				"ThreadName", (size_t)(name_copy ? us.Length : 0), name_copy ? (const char *)name_copy : "");
+		if (NT_SUCCESS(ret) && name_copy && us.Length > 0x10 && (cross_proc || suspicious) && (g_config.injection || g_config.unpacker)) {
+			DumpThreadNameBuffer(pid, name_copy, us.Length);
+			disable_sleep_skip();
+		}
+	}
+
+	if (name_copy) {
+		get_lasterrors(&lasterror);
+		saved_disable = hook_info()->disable_count;
+		hook_disable();
+		free(name_copy);
+		hook_info()->disable_count = saved_disable;
+		set_lasterrors(&lasterror);
+	}
 
 	return ret;
 }
@@ -1067,6 +1296,28 @@ HOOKDEF(NTSTATUS, WINAPI, NtQueryInformationThread,
 		"ThreadInformationClass", ThreadInformationClass,
 		"ThreadInformation", ThreadInformationLength, ThreadInformation,
 		"ThreadId", tid);
+
+	if (NT_SUCCESS(ret) && ThreadInformationClass == ThreadNameInformation &&
+		ThreadInformation && ThreadInformationLength >= sizeof(UNICODE_STRING) &&
+		(g_config.unpacker || g_config.injection)) {
+		lasterror_t lasterror;
+		int saved_disable;
+
+		get_lasterrors(&lasterror);
+		saved_disable = hook_info()->disable_count;
+		hook_disable();
+
+		if (IsReadableLocalBuffer(ThreadInformation, sizeof(UNICODE_STRING))) {
+			UNICODE_STRING us = *(PUNICODE_STRING)ThreadInformation;
+			if (us.Length > 0x10 && IsReadableLocalBuffer(us.Buffer, us.Length) &&
+				IsSuspiciousThreadNameBuffer((const BYTE *)us.Buffer, us.Length)) {
+				DumpThreadNameBuffer(GetCurrentProcessId(), (const BYTE *)us.Buffer, us.Length);
+			}
+		}
+
+		hook_info()->disable_count = saved_disable;
+		set_lasterrors(&lasterror);
+	}
 
 	return ret;
 }
@@ -1148,6 +1399,24 @@ HOOKDEF(BOOL, WINAPI, SetThreadStackGuarantee,
 	else {
 		LOQ_bool("threading", "i", "InputSize", inputSize);
 	}
+
+	return ret;
+}
+
+HOOKDEF(NTSTATUS, WINAPI, NtAlertThread,
+	__in		HANDLE ThreadHandle
+) {
+	DWORD pid = pid_from_thread_handle(ThreadHandle);
+	DWORD tid = tid_from_thread_handle(ThreadHandle);
+	NTSTATUS ret;
+
+	if (pid && pid != GetCurrentProcessId() && !g_config.single_process)
+		ProcessMessage(pid, 0);
+
+	ret = Old_NtAlertThread(ThreadHandle);
+	LOQ_ntstatus("threading", "pii", "ThreadHandle", ThreadHandle, "ProcessId", pid, "ThreadId", tid);
+	if (NT_SUCCESS(ret))
+		disable_sleep_skip();
 
 	return ret;
 }
