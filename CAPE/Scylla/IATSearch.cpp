@@ -56,11 +56,12 @@ bool IATSearch::findIATAdvanced( DWORD_PTR startAddress, DWORD_PTR* addressIAT, 
 	}
 
 	std::set<DWORD_PTR> iatPointers;
+	std::set<DWORD_PTR> movPointers;
 	DWORD_PTR next;
 	BYTE * tempBuf = dataBuffer;
 	while(decomposeMemory(tempBuf, memorySize, (DWORD_PTR)baseAddress) && decomposerInstructionsCount != 0)
 	{
-		findIATPointers(iatPointers);
+		findIATPointers(iatPointers, &movPointers);
 
 		next = (DWORD_PTR)(decomposerResult[decomposerInstructionsCount - 1].addr - baseAddress);
 		next += decomposerResult[decomposerInstructionsCount - 1].size;
@@ -75,10 +76,126 @@ bool IATSearch::findIATAdvanced( DWORD_PTR startAddress, DWORD_PTR* addressIAT, 
 		baseAddress += next;
 	}
 
-	if (iatPointers.size() == 0)
-		return false;
+	delete [] dataBuffer;
+	dataBuffer = 0;
 
-	filterIATPointersList(iatPointers);
+	if (iatPointers.size() > 0)
+	{
+		filterIATPointersList(iatPointers);
+	}
+
+	if (iatPointers.empty() && !movPointers.empty())
+	{
+		std::set<DWORD_PTR> validMovPointers;
+		for (std::set<DWORD_PTR>::const_iterator it = movPointers.begin(); it != movPointers.end(); ++it)
+		{
+			if (isIATPointerValid(*it, false))
+			{
+				validMovPointers.insert(*it);
+			}
+		}
+
+		if (!validMovPointers.empty())
+		{
+			std::set<DWORD_PTR>::const_iterator it = validMovPointers.begin();
+			DWORD_PTR curStart = *it;
+			DWORD_PTR curEnd = *it;
+			DWORD_PTR prev = *it;
+			size_t curCount = 1;
+
+			DWORD_PTR bestStart = curStart;
+			DWORD_PTR bestEnd = curEnd;
+			size_t bestCount = curCount;
+
+			for (++it; it != validMovPointers.end(); ++it)
+			{
+				if ((*it - prev) <= 0x100)
+				{
+					curEnd = *it;
+					curCount++;
+				}
+				else
+				{
+					if (curCount > bestCount || (curCount == bestCount && (curEnd - curStart) > (bestEnd - bestStart)))
+					{
+						bestStart = curStart;
+						bestEnd = curEnd;
+						bestCount = curCount;
+					}
+					curStart = *it;
+					curEnd = *it;
+					curCount = 1;
+				}
+				prev = *it;
+			}
+			if (curCount > bestCount || (curCount == bestCount && (curEnd - curStart) > (bestEnd - bestStart)))
+			{
+				bestStart = curStart;
+				bestEnd = curEnd;
+				bestCount = curCount;
+			}
+
+			if (bestCount >= 2)
+			{
+				while (bestStart >= targetImageBase + sizeof(DWORD_PTR))
+				{
+					if (isIATPointerValid(bestStart - sizeof(DWORD_PTR), false))
+					{
+						bestStart -= sizeof(DWORD_PTR);
+					}
+					else if (bestStart >= targetImageBase + 2 * sizeof(DWORD_PTR))
+					{
+						DWORD_PTR sep = 0;
+						if (readMemoryFromProcess(bestStart - sizeof(DWORD_PTR), sizeof(DWORD_PTR), &sep) &&
+							sep == 0 &&
+							isIATPointerValid(bestStart - 2 * sizeof(DWORD_PTR), false))
+						{
+							bestStart -= 2 * sizeof(DWORD_PTR);
+						}
+						else
+						{
+							break;
+						}
+					}
+					else
+					{
+						break;
+					}
+				}
+
+				while (targetSizeOfImage >= 2 * sizeof(DWORD_PTR) &&
+					(bestEnd - targetImageBase) <= targetSizeOfImage - 2 * sizeof(DWORD_PTR))
+				{
+					if (isIATPointerValid(bestEnd + sizeof(DWORD_PTR), false))
+					{
+						bestEnd += sizeof(DWORD_PTR);
+					}
+					else if (targetSizeOfImage >= 3 * sizeof(DWORD_PTR) &&
+						(bestEnd - targetImageBase) <= targetSizeOfImage - 3 * sizeof(DWORD_PTR))
+					{
+						DWORD_PTR sep = 0;
+						if (readMemoryFromProcess(bestEnd + sizeof(DWORD_PTR), sizeof(DWORD_PTR), &sep) &&
+							sep == 0 &&
+							isIATPointerValid(bestEnd + 2 * sizeof(DWORD_PTR), false))
+						{
+							bestEnd += 2 * sizeof(DWORD_PTR);
+						}
+						else
+						{
+							break;
+						}
+					}
+					else
+					{
+						break;
+					}
+				}
+
+				iatPointers.insert(bestStart);
+				iatPointers.insert(bestEnd);
+			}
+		}
+	}
 
 	if (iatPointers.size() == 0)
 		return false;
@@ -97,8 +214,6 @@ bool IATSearch::findIATAdvanced( DWORD_PTR startAddress, DWORD_PTR* addressIAT, 
 #ifdef DEBUG_COMMENTS
 	DebugOutput("IAT Search: Found %d possible IAT entries: first " PRINTF_DWORD_PTR_FULL " last " PRINTF_DWORD_PTR_FULL ".", iatPointers.size(), *(iatPointers.begin()), *(--iatPointers.end()));
 #endif
-
-	delete [] dataBuffer;
 
 	return true;
 }
@@ -358,7 +473,7 @@ DWORD IATSearch::findIATSize(DWORD_PTR baseAddress, DWORD_PTR iatAddress, BYTE *
 	return bufferSize;
 }
 
-void IATSearch::findIATPointers(std::set<DWORD_PTR> & iatPointers)
+void IATSearch::findIATPointers(std::set<DWORD_PTR> & iatPointers, std::set<DWORD_PTR> * movPointers)
 {
 #ifdef DEBUG_COMMENTS
 	_DecodedInst inst;
@@ -391,6 +506,35 @@ void IATSearch::findIATPointers(std::set<DWORD_PTR> & iatPointers)
 						iatPointers.insert((DWORD_PTR)decomposerResult[i].disp);
 					}
 #endif
+				}
+			}
+			else if (movPointers && decomposerResult[i].opcode == I_MOV && decomposerResult[i].size >= 5 && decomposerResult[i].ops[0].type == O_REG)
+			{
+				BYTE seg = SEGMENT_GET(decomposerResult[i].segment);
+				if (seg == R_NONE || seg == R_DS)
+				{
+					DWORD_PTR target = 0;
+					bool hasTarget = false;
+#ifdef _WIN64
+					if (decomposerResult[i].flags & FLAG_RIP_RELATIVE)
+					{
+						target = (DWORD_PTR)INSTRUCTION_GET_RIP_TARGET(&decomposerResult[i]);
+						hasTarget = true;
+					}
+#else
+					if (decomposerResult[i].ops[1].type == O_DISP)
+					{
+						target = (DWORD_PTR)decomposerResult[i].disp;
+						hasTarget = true;
+					}
+#endif
+					if (hasTarget && targetImageBase && target >= targetImageBase &&
+						targetSizeOfImage >= sizeof(DWORD_PTR) &&
+						(target - targetImageBase) <= (targetSizeOfImage - sizeof(DWORD_PTR)) &&
+						(target % sizeof(DWORD_PTR)) == 0)
+					{
+						movPointers->insert(target);
+					}
 				}
 			}
 		}
