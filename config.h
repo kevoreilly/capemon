@@ -355,6 +355,7 @@ struct _g_config {
 	char bios_serial[128];
 	int sleep_skip_seconds;
 	int go_hooks;
+	int crypto_hooks;
 	int watchdog;
 	int watchdog_interval;
 };

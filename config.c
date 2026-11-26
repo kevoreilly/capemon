@@ -1535,6 +1535,14 @@ void parse_config_line(char* line)
 				DebugOutput("Config: Go symbol recovery and breakpoint hooks enabled.\n");
 			}
 		}
+		else if (!stricmp(key, "crypto-hooks") || !stricmp(key, "crypto_hooks")) {
+			g_config.crypto_hooks = value[0] == '1';
+			if (g_config.crypto_hooks) {
+				g_config.debugger = 1;
+				g_config.yarascan = 1;
+				DebugOutput("Config: Static crypto/TLS primitive hooks enabled.\n");
+			}
+		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
 			if (!pid && !stricmp(value, "explorer"))
@@ -1591,6 +1599,7 @@ void read_config(void)
 	strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), "System Serial Number", _TRUNCATE);
 	g_config.sleep_skip_seconds = 10;
 	g_config.go_hooks = 0;
+	g_config.crypto_hooks = 0;
 	g_config.watchdog = 0;
 	g_config.watchdog_interval = 5000;
 
@@ -1660,7 +1669,7 @@ void read_config(void)
 
 	if (g_config.tlsdump) {
 		g_config.syscall = 0;
-		if (!g_config.go_hooks)
+		if (!g_config.go_hooks && !g_config.crypto_hooks)
 			g_config.debugger = 0;
 		g_config.procdump = 0;
 		g_config.procmemdump = 0;
@@ -1669,7 +1678,7 @@ void read_config(void)
 		g_config.injection = 0;
 		g_config.unpacker = 0;
 		g_config.api_rate_cap = 0;
-		if (!g_config.go_hooks)
+		if (!g_config.go_hooks && !g_config.crypto_hooks)
 			g_config.yarascan = 0;
 		g_config.amsidump = 0;
 		g_config.bp0 = 0;

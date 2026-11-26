@@ -162,3 +162,4 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | :--- | :--- | :--- |
 | `wowmon` | Boolean | Enable Heaven's Gate monitoring in wow64 processes |
 | `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, and breakpoint tracing (beta, off by default). Triggered by the internal `golang` YARA rule on the main image and on every region scanned by the unpacking engine (e.g. UPX-unpacked images); requires `yarascan` (default on) and the debugger. |
+| `crypto-hooks` | Boolean | Enable breakpoint hooking for statically linked BoringSSL, Rust `ring` / `aws-lc-rs` (`rustls`), and OpenSSL 1.1/3.x Windows assembly crypto primitives (AES key schedules, AES-CBC, AES-GCM/VAES-GCM, ChaCha20, ChaCha20-Poly1305) (beta, off by default). Triggered by the internal `static_crypto` YARA rule on the main image and unpacked/reflective regions; implies `debugger` and `yarascan`. |

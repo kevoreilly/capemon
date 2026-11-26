@@ -24,6 +24,7 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 #include "YaraHarness.h"
 #include "..\config.h"
 #include "..\alloc.h"
+#include "..\hook_static_crypto.h"
 
 extern void DebugOutput(_In_ LPCTSTR lpOutputString, ...);
 extern void ErrorOutput(_In_ LPCTSTR lpOutputString, ...);
@@ -114,6 +115,47 @@ char InternalYara[] =
 	"strings:$pclntab = {(F0|F1|FA|FB) FF FF FF 00 00 (01|02|04) 08 [3] 00}"
 	"$stub = {(49 89 CA|4C 8B D1) [0-24] 0F 05}"
 	"condition:$pclntab and $stub}";
+
+// Hand-written Windows assembly primitives from BoringSSL, Rust ring / aws-lc-rs (rustls), and OpenSSL 1.1/3.x.
+// Compiled in a separate string literal to stay well below MSVC's 16 KB C2026 string literal limit.
+// Condition is PE-independent so unpacked/reflective images and wiped-header regions are matched automatically;
+// hooks are only armed when the user opted in via crypto-hooks=1.
+static const char StaticCryptoYara[] =
+	"rule static_crypto"
+	"{meta:cape_options = \"static_crypto\""
+	"strings:"
+#ifdef _WIN64
+	"$bssl_aes_set_enc = {48 83 EC 08 0F 10 01 0F 57 E4 49 8D 40 10 81 FA 00 01 00 00 0F 84 [4] 81 FA C0 00 00 00 0F 84 [4] 81 FA 80 00 00 00 0F 85}"
+	"$ossl_aes_set_enc = {48 83 EC 08 48 C7 C0 FF FF FF FF 48 85 C9 0F 84 [4] 4D 85 C0 0F 84 [4] 41 BA 00 08 00 10 0F 10 01 0F 57 E4 44 23 15 [4] 49 8D 40 10 81 FA 00 01 00 00 0F 84}"
+	"$vpaes_set_enc = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) [0-4] 48 8D A4 24 48 FF FF FF 0F 29 74 24 10 0F 29 7C 24 20 [55-68] (89 F0|8B C6) C1 E8 05 83 C0 05 89 82 F0 00 00 00 B9 00 00 00 00 41 B8 30 00 00 00 E8}"
+	"$vpaes_set_dec = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) [0-4] 48 8D A4 24 48 FF FF FF 0F 29 74 24 10 0F 29 7C 24 20 [55-68] (89 F0|8B C6) C1 E8 05 83 C0 05 89 82 F0 00 00 00 C1 E0 04 48 8D 54 02 10 B9 01 00 00 00}"
+	"$aesni_cbc = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 48 85 D2 0F 84 [4] 44 8B 91 F0 00 00 00 (49 89 CB|4C 8B D9) 45 85 C9 0F 84 [4] 41 0F 10 10}"
+	"$bssl_gcm_enc = {48 (31|33) C0 49 81 F8 20 01 00 00 0F 82 [4] 55 48 (89 E5|8B EC) 53 41 54 41 55 41 56 41 57 48 8D A4 24 58 FF FF FF 48 89 7D 10 48 89 75 18 48 8B 7D 30}"
+	"$bssl_gcm_dec = {48 (31|33) C0 49 83 F8 60 0F 82 [4] 55 48 (89 E5|8B EC) 53 41 54 41 55 41 56 41 57 48 8D A4 24 58 FF FF FF 48 89 7D 10 48 89 75 18 48 8B 7D 30}"
+	"$ossl_gcm_enc = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 4D (31|33) D2 48 81 FA 20 01 00 00 0F 82 [4] 48 8D 04 24 53 55 41 54 41 55 41 56 41 57 48 8D A4 24 58 FF FF FF}"
+	"$ossl_gcm_dec = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 4D (31|33) D2 48 83 FA 60 0F 82 [4] 48 8D 04 24 53 55 41 54 41 55 41 56 41 57 48 8D A4 24 58 FF FF FF}"
+	"$vaes_gcm_enc = {56 57 41 54 48 8B 74 24 40 48 8B 7C 24 48 4C 8B 64 24 50 48 81 EC A0 00 00 00 C5 F9 7F 34 24 C5 F9 7F 7C 24 10 [185-235] 49 8D 41 10 C4 E2 7D 5A 10 C4 62 1D DC E2}"
+	"$vaes_gcm_dec = {56 57 41 54 48 8B 74 24 40 48 8B 7C 24 48 4C 8B 64 24 50 48 81 EC A0 00 00 00 C5 F9 7F 34 24 C5 F9 7F 7C 24 10 [185-245] 41 83 FA 18 0F 8C [4] 0F 84 [4] C4 C2 7D 5A 93 30 FF FF FF C4 62 1D DC E2}"
+	"$bssl_chacha_nohw = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 [0-4] 53 55 41 54 41 55 41 56 41 57 48 83 EC 58 F3 0F 6F 09 F3 0F 6F 51 10 F3 41 0F 6F 18}"
+	"$bssl_chacha_ssse3 = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 [0-4] (49 89 E1|4C 8B CC) 48 83 EC 68 41 0F 29 71 D8 41 0F 29 79 E8 66 0F 6F 05 [4] F3 0F 6F 09 F3 0F 6F 51 10}"
+	"$bssl_chacha_ssse3_4x = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 [0-4] (49 89 E1|4C 8B CC) 48 81 EC E8 01 00 00 41 0F 29 B1 58 FF FF FF 41 0F 29 B9 68 FF FF FF}"
+	"$bssl_chacha_avx2 = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 [0-4] (49 89 E1|4C 8B CC) 48 81 EC 28 03 00 00 48 83 E4 E0 41 0F 29 B1 58 FF FF FF 41 0F 29 B9 68 FF FF FF}"
+	"$ossl_chacha = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 [0-4] 48 83 FA 00 0F 84 [4] 4C 8B 15 [4] 41 F7 C2 00 02 00 00 0F 85 [4] 53 55 41 54 41 55 41 56 41 57 48 83 EC 58}"
+	"$cc20p1305_open_sse41 = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 55 53 41 54 41 55 41 56 41 57 41 51 48 81 EC E0 01 00 00 48 8D 6C 24 20 48 83 E5 E0 [50-58] (48 89 D3|48 8B DA) 4C 89 85 C0 00 00 00 48 89 9D C8 00 00 00 48 81 FB 80 00 00 00}"
+	"$cc20p1305_seal_sse41 = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 55 53 41 54 41 55 41 56 41 57 41 51 48 81 EC E0 01 00 00 48 8D 6C 24 20 48 83 E5 E0 [50-58] 49 8B 59 38 (48 01 D3|48 03 DA) 4C 89 85 C0 00 00 00 48 89 9D C8 00 00 00 (48 89 D3|48 8B DA) 48 81 FB 80 00 00 00}"
+	"$cc20p1305_open_avx2 = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 55 53 41 54 41 55 41 56 41 57 41 51 48 81 EC E0 01 00 00 48 8D 6C 24 20 48 83 E5 E0 [50-58] (48 89 D3|48 8B DA) 4C 89 85 C0 00 00 00 48 89 9D C8 00 00 00 C5 F8 77}"
+	"$cc20p1305_seal_avx2 = {48 89 7C 24 08 48 89 74 24 10 (48 89 E0|48 8B C4) (48 89 CF|48 8B F9) (48 89 D6|48 8B F2) (4C 89 C2|49 8B D0) (4C 89 C9|49 8B C9) 4C 8B 44 24 28 4C 8B 4C 24 30 [0-4] 55 53 41 54 41 55 41 56 41 57 41 51 48 81 EC E0 01 00 00 48 8D 6C 24 20 48 83 E5 E0 [50-58] 49 8B 59 38 (48 01 D3|48 03 DA) 4C 89 85 C0 00 00 00 48 89 9D C8 00 00 00 (48 89 D3|48 8B DA) C5 F8 77}"
+#else
+	"$bssl_aes_set_enc_32 = {8B 44 24 04 8B 4C 24 08 8B 54 24 0C 53 E8 00 00 00 00 5B 8D 9B [4] 0F 10 00 0F 57 E4 8D 52 10 81 F9 00 01 00 00 0F 84 [4] 81 F9 C0 00 00 00 0F 84 [4] 81 F9 80 00 00 00 0F 85}"
+	"$ossl_aes_set_enc_32 = {55 53 85 C0 0F 84 [4] 85 D2 0F 84 [4] E8 00 00 00 00 5B 8D 9B [4] 8D 2D [4] 0F 10 00 0F 57 E4 8B 6D 04 8D 52 10 81 E5 00 08 00 10 81 F9 00 01 00 00 0F 84}"
+	"$vpaes_set_enc_32 = {55 53 56 57 8B 74 24 14 8D 5C 24 C8 8B 44 24 18 83 E3 F0 8B 54 24 1C 87 (E3|DC) 89 5C 24 30 (89 C3|8B D8) C1 EB 05 83 C3 05 89 9A F0 00 00 00 B9 30 00 00 00 BF 00 00 00 00}"
+	"$vpaes_set_dec_32 = {55 53 56 57 8B 74 24 14 8D 5C 24 C8 8B 44 24 18 83 E3 F0 8B 54 24 1C 87 (E3|DC) 89 5C 24 30 (89 C3|8B D8) C1 EB 05 83 C3 05 89 9A F0 00 00 00 C1 E3 04 8D 54 1A 10 BF 01 00 00 00}"
+	"$aesni_cbc_32 = {55 53 56 57 8B 74 24 14 (89 E3|8B DC) 8B 7C 24 18 83 EB 18 8B 44 24 1C 83 E3 F0 8B 54 24 20 8B 6C 24 24 85 C0 0F 84 [4] 83 7C 24 28 00 87 (E3|DC) 0F 10 7D 00 8B 8A F0 00 00 00}"
+	"$bssl_chacha_nohw_32 = {55 53 56 57 8B 74 24 20 8B 7C 24 24 81 EC 84 00 00 00 8B 06 8B 5E 04 8B 4E 08 8B 56 0C 89 44 24 50 89 5C 24 54 89 4C 24 58 89 54 24 5C}"
+	"$bssl_chacha_ssse3_32 = {55 53 56 57 E8 00 00 00 00 58 8B 7C 24 14 8B 74 24 18 8B 4C 24 1C 8B 54 24 20 8B 5C 24 24 (89 E5|8B EC) 81 EC 0C 02 00 00 83 E4 C0 89 AC 24 00 02 00 00}"
+	"$ossl_chacha_32 = {55 53 56 57 (31|33) C0 3B 44 24 1C 0F 84 [4] 8B 74 24 20 8B 7C 24 24 81 EC 84 00 00 00 8B 06 8B 5E 04 8B 4E 08 8B 56 0C 89 44 24 50}"
+#endif
+	"condition:any of them}";
 
 void ScannerError(int Error)
 {
@@ -258,13 +300,16 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 		case CALLBACK_MSG_IMPORT_MODULE:
 			return CALLBACK_CONTINUE;
 		case CALLBACK_MSG_RULE_MATCHING:
-			BOOL SetBreakpoints = FALSE, SetGoHooks = FALSE, DoDumpRegion = FALSE;
+			BOOL SetBreakpoints = FALSE, SetGoHooks = FALSE, SetStaticCryptoHooks = FALSE, DoDumpRegion = FALSE;
 			YR_MATCH* Match;
 			YR_STRING* String;
 			YR_META* Meta;
 			YR_RULE* Rule = (YR_RULE*)message_data;
 
 			if (!strcmp(Rule->identifier, "capemon"))
+				return CALLBACK_CONTINUE;
+
+			if (!strcmp(Rule->identifier, "static_crypto") && !g_config.crypto_hooks)
 				return CALLBACK_CONTINUE;
 
 			DebugOutput("YaraScan hit: %s\n", Rule->identifier);
@@ -308,6 +353,8 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 							SetBreakpoints = TRUE;
 						if (!_stricmp(OptionLine, "golang"))
 							SetGoHooks = TRUE;
+						if (!_stricmp(OptionLine, "static_crypto"))
+							SetStaticCryptoHooks = TRUE;
 						if (!_stricmp("dump", OptionLine))
 						{
 							DebugOutput("YaraScan: Dump of region at 0x%p triggered by Yara.", user_data);
@@ -374,6 +421,19 @@ int YaraCallback(YR_SCAN_CONTEXT* context, int message, void* message_data, void
 				}
 				if (Pclntab)
 					GoRecoverSymbols(user_data, Pclntab, Buildinfo);
+			}
+
+			// Statically linked BoringSSL / Rust ring / aws-lc-rs / OpenSSL assembly crypto primitives detected:
+			// hand match addresses to hook_static_crypto when the user opted in (crypto-hooks=1).
+			if (SetStaticCryptoHooks && g_config.crypto_hooks)
+			{
+				yr_rule_strings_foreach(Rule, String)
+				{
+					yr_string_matches_foreach(context, String, Match)
+					{
+						StaticCryptoRegisterMatch(user_data, (PBYTE)user_data + Match->offset, String->identifier);
+					}
+				}
 			}
 
 			return CALLBACK_CONTINUE;
@@ -714,6 +774,9 @@ BOOL YaraInit()
 		// Add 'internal' yara first
 		if (yr_compiler_add_string(Compiler, InternalYara, NULL) != 0)
 			DebugOutput("YaraInit: Failed to add internal yara rules.\n", compiled_rules);
+
+		if (yr_compiler_add_string(Compiler, StaticCryptoYara, NULL) != 0)
+			DebugOutput("YaraInit: Failed to add static_crypto yara rules.\n");
 
 		unsigned int count = 0;
 

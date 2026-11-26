@@ -300,6 +300,9 @@
     <ClCompile Include="hook_go.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hook_static_crypto.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hook_lang.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -327,6 +330,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hook_dotnet_api.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hook_static_crypto.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hook_file.h">
