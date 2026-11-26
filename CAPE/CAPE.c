@@ -3948,6 +3948,12 @@ void CAPE_post_init()
 				extern void GoProcessPending(void);
 				GoProcessPending();
 			}
+
+			// Statically linked crypto primitives found during init-time YARA scan (internal 'static_crypto' rule)
+			if (g_config.crypto_hooks) {
+				extern void StaticCryptoProcessPending(void);
+				StaticCryptoProcessPending();
+			}
 		}
 	}
 #ifdef DEBUG_COMMENTS
