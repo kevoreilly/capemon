@@ -122,7 +122,7 @@ static ULONG_PTR GoGetArgWord(PCONTEXT Context, BOOL RegAbi, DWORD idx) {
 #ifdef _WIN64
     if (RegAbi) {
         // Go x86-64 ABIInternal integer argument registers:
-        // RAX, RBX, RCX, RDI, RSI, R8, R9, R10, R11
+        // RAX, RBX, RCX, RDI, RSI, R8, R9, R10, R11; further words spill to [RSP + 8], [RSP + 16], ...
         switch (idx) {
             case 0: return Context->Rax;
             case 1: return Context->Rbx;
@@ -133,7 +133,13 @@ static ULONG_PTR GoGetArgWord(PCONTEXT Context, BOOL RegAbi, DWORD idx) {
             case 6: return Context->R9;
             case 7: return Context->R10;
             case 8: return Context->R11;
-            default: return 0;
+            default: {
+                PULONG_PTR pStack = (PULONG_PTR)Context->Rsp;
+                DWORD stackIdx = idx - 8;
+                if (IsAddressAccessible(&pStack[stackIdx]))
+                    return pStack[stackIdx];
+                return 0;
+            }
         }
     } else {
         PULONG_PTR pStack = (PULONG_PTR)Context->Rsp;
@@ -1491,21 +1497,33 @@ static BOOL GoPkgFunc(const char* name, const char* pkgFragment, const char* suf
     return strstr(name, pkgFragment) != NULL && GoNameEndsWith(name, suffix);
 }
 
-// Compiler-generated closure (".func1", ".func2.1") or deferwrap (".deferwrap1") name component
-static BOOL GoIsGeneratedName(const char* name) {
+static BOOL GoHasIndexedSuffix(const char* name, const char* prefix) {
+    size_t prefixLen = strlen(prefix);
     const char* p = name;
-    while ((p = strstr(p, ".func")) != NULL) {
-        if (p[5] >= '0' && p[5] <= '9')
+    while ((p = strstr(p, prefix)) != NULL) {
+        if (p[prefixLen] >= '0' && p[prefixLen] <= '9')
             return TRUE;
-        p += 5;
-    }
-    p = name;
-    while ((p = strstr(p, ".deferwrap")) != NULL) {
-        if (p[10] >= '0' && p[10] <= '9')
-            return TRUE;
-        p += 10;
+        p += prefixLen;
     }
     return FALSE;
+}
+
+// Compiler-generated closure (".func1", ".func2.1") or deferwrap (".deferwrap1") name component
+static BOOL GoIsGeneratedName(const char* name) {
+    return GoHasIndexedSuffix(name, ".func") || GoHasIndexedSuffix(name, ".deferwrap");
+}
+
+// Compiler-generated ABI wrappers, defer wrappers, init tasks, and synthetic runtime/type symbols
+// whose prologues do not reflect the module's normal Go function calling convention
+static BOOL GoIsCompilerWrapperSymbol(const char* funcName) {
+    return GoNameEndsWith(funcName, ".abi0") ||
+           GoNameEndsWith(funcName, ".abiinternal") ||
+           GoHasIndexedSuffix(funcName, ".deferwrap") ||
+           strstr(funcName, "..inittask") != NULL ||
+           strncmp(funcName, "type:", 5) == 0 ||
+           strncmp(funcName, "type..", 6) == 0 ||
+           strncmp(funcName, "go:", 3) == 0 ||
+           strncmp(funcName, "go..", 4) == 0;
 }
 
 // Filter for high-signal Go functions/methods, skipping ABI wrappers, package initializers, and closures
@@ -1516,16 +1534,10 @@ static BOOL ShouldHookGoFunction(const char* funcName) {
     // Skip compiler-generated ABI0/ABIInternal wrappers, defer wrappers, closures, package init routines
     // (pkg.init, pkg.init.0) and synthetic symbols. User functions such as main.initConfig or
     // main.funcDecrypt are not excluded.
-    if (GoNameEndsWith(funcName, ".abi0") ||
-        GoNameEndsWith(funcName, ".abiinternal") ||
+    if (GoIsCompilerWrapperSymbol(funcName) ||
         GoIsGeneratedName(funcName) ||
         GoNameEndsWith(funcName, ".init") ||
-        strstr(funcName, ".init.") ||
-        strstr(funcName, "..inittask") ||
-        strncmp(funcName, "type:", 5) == 0 ||
-        strncmp(funcName, "type..", 6) == 0 ||
-        strncmp(funcName, "go:", 3) == 0 ||
-        strncmp(funcName, "go..", 4) == 0) {
+        strstr(funcName, ".init.")) {
         return FALSE;
     }
 
@@ -1888,9 +1900,9 @@ void GoRecoverSymbols(PVOID RegionBase, PBYTE Pclntab, PBYTE Buildinfo) {
             const char* funcName = (const char*)pName;
 
 #ifdef _WIN64
-            // Sample prologues across the function table, skipping compiler-generated ABI wrappers
+            // Sample prologues across the function table, skipping compiler-generated wrappers and synthetic symbols
             if (!modInfo->AbiResolved && (i % abiSampleStride) == 0) {
-                if (!GoNameEndsWith(funcName, ".abi0") && !GoNameEndsWith(funcName, ".abiinternal"))
+                if (!GoIsCompilerWrapperSymbol(funcName))
                     GoVoteAbiPrologue((PBYTE)funcAddress, &abiRegVotes, &abiStackVotes);
             }
 #endif
