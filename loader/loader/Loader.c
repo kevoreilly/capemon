@@ -1265,7 +1265,10 @@ static int InjectDll(int ProcessId, int ThreadId, const char *DllPath)
 			if (ThreadHandle == NULL)
 				DebugOutput("InjectDll: No thread ID supplied, OpenThread on initial thread ID %d failed", InitialThreadId);
 			else
+			{
+				ThreadId = InitialThreadId;
 				DebugOutput("InjectDll: No thread ID supplied, initial thread ID %d, handle 0x%x\n", InitialThreadId, ThreadHandle);
+			}
 		}
 	}
 	else if (ThreadId)

@@ -751,7 +751,226 @@ __declspec(noinline) void Wow64SetThreadContextHandler(HANDLE ThreadHandle, PWOW
 }
 #endif
 
-BOOL CheckDontMonitorList(WCHAR* TargetProcess)
+static lookup_t g_last_created_pid;
+
+void ClearLastNotifiedCreatedPid(void)
+{
+	DWORD *slot = (DWORD *)lookup_get(&g_last_created_pid, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (slot)
+		*slot = 0;
+}
+
+void SetLastNotifiedCreatedPid(DWORD ProcessId)
+{
+	lasterror_t lasterror;
+	DWORD *slot;
+
+	if (!ProcessId)
+		return;
+
+	get_lasterrors(&lasterror);
+	slot = LOOKUP_THREAD(&g_last_created_pid, DWORD);
+	if (slot)
+		*slot = ProcessId;
+	set_lasterrors(&lasterror);
+}
+
+BOOL WasProcessNotifiedOnCreate(DWORD ProcessId)
+{
+	DWORD *slot;
+
+	if (!ProcessId)
+		return FALSE;
+
+	slot = (DWORD *)lookup_get(&g_last_created_pid, (ULONG_PTR)GetCurrentThreadId(), NULL);
+	if (slot && *slot == ProcessId)
+	{
+		*slot = 0;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL ShouldNotifyProcess(DWORD ProcessId)
+{
+	PINJECTIONINFO CurrentInjectionInfo;
+
+	if (!ProcessId || ProcessId == GetCurrentProcessId() || g_config.single_process)
+		return FALSE;
+
+	CurrentInjectionInfo = GetInjectionInfo(ProcessId);
+	if (CurrentInjectionInfo && CurrentInjectionInfo->DontMonitor)
+		return FALSE;
+
+	return TRUE;
+}
+
+static BOOL IsWideSpace(WCHAR ch)
+{
+	return ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n';
+}
+
+static WCHAR NormalizePathChar(WCHAR ch)
+{
+	if (ch == L'/')
+		return L'\\';
+	if (ch >= L'A' && ch <= L'Z')
+		return (WCHAR)(ch - L'A' + L'a');
+	return ch;
+}
+
+static BOOL WideEqInsensitivePath(const WCHAR *a, const WCHAR *b, size_t len)
+{
+	for (size_t i = 0; i < len; i++)
+	{
+		if (NormalizePathChar(a[i]) != NormalizePathChar(b[i]))
+			return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL IsDcomLaunchProcess(void)
+{
+	const WCHAR *p;
+
+	if (!our_process_name || _stricmp(our_process_name, "svchost.exe") != 0 || !our_commandline)
+		return FALSE;
+
+	p = our_commandline;
+	while (*p)
+	{
+		if ((p == our_commandline || IsWideSpace(*(p - 1))) && (p[0] == L'-' || p[0] == L'/') &&
+			(p[1] == L'k' || p[1] == L'K') && IsWideSpace(p[2]))
+		{
+			const WCHAR *svc = p + 3;
+			while (IsWideSpace(*svc))
+				svc++;
+			if (_wcsnicmp(svc, L"DcomLaunch", 10) == 0 && (svc[10] == L'\0' || IsWideSpace(svc[10])))
+				return TRUE;
+		}
+		p++;
+	}
+	return FALSE;
+}
+
+static BOOL IsWindowsDllHostPath(const WCHAR *TargetProcess)
+{
+	WCHAR winDir[MAX_PATH];
+	const WCHAR *winRel = L"windows";
+	size_t winRelLen = 7;
+	const WCHAR *p;
+	UINT dirLen;
+
+	if (!TargetProcess || !TargetProcess[0])
+		return FALSE;
+
+	dirLen = GetSystemWindowsDirectoryW(winDir, MAX_PATH);
+	if (dirLen > 0 && dirLen < MAX_PATH)
+	{
+		WCHAR *start = winDir;
+		WCHAR *end;
+		if (((start[0] >= L'A' && start[0] <= L'Z') || (start[0] >= L'a' && start[0] <= L'z')) && start[1] == L':')
+			start += 2;
+		while (*start == L'\\' || *start == L'/')
+			start++;
+		end = start + wcslen(start);
+		while (end > start && (*(end - 1) == L'\\' || *(end - 1) == L'/'))
+			*(--end) = L'\0';
+		if (end > start)
+		{
+			winRel = start;
+			winRelLen = (size_t)(end - start);
+		}
+	}
+
+	p = TargetProcess;
+	if ((NormalizePathChar(p[0]) == L'\\' && NormalizePathChar(p[1]) == L'\\' && p[2] == L'?' && NormalizePathChar(p[3]) == L'\\') ||
+		(NormalizePathChar(p[0]) == L'\\' && p[1] == L'?' && p[2] == L'?' && NormalizePathChar(p[3]) == L'\\'))
+	{
+		p += 4;
+	}
+
+	if (((p[0] >= L'A' && p[0] <= L'Z') || (p[0] >= L'a' && p[0] <= L'z')) && p[1] == L':' && NormalizePathChar(p[2]) == L'\\')
+	{
+		p += 3;
+	}
+	else if (wcslen(p) > 8 && WideEqInsensitivePath(p, L"\\device\\", 8))
+	{
+		p += 8;
+		if (!*p || NormalizePathChar(*p) == L'\\')
+			return FALSE;
+		while (*p && NormalizePathChar(*p) != L'\\')
+			p++;
+		if (NormalizePathChar(*p) != L'\\')
+			return FALSE;
+		p++;
+	}
+	else
+	{
+		return FALSE;
+	}
+
+	if (wcslen(p) < winRelLen + 1 || !WideEqInsensitivePath(p, winRel, winRelLen) || NormalizePathChar(p[winRelLen]) != L'\\')
+		return FALSE;
+	p += winRelLen + 1;
+
+	if (wcslen(p) == 20 && WideEqInsensitivePath(p, L"system32\\dllhost.exe", 20))
+		return TRUE;
+	if (wcslen(p) == 20 && WideEqInsensitivePath(p, L"syswow64\\dllhost.exe", 20))
+		return TRUE;
+
+	return FALSE;
+}
+
+static BOOL IsUiaSurrogateCommandLine(const WCHAR *CommandLine)
+{
+	static const WCHAR *UiaSurrogateAppIds[] =
+	{
+		L"{49f171dd-b51a-40d3-9a6c-52d674cc729d}", // UIAutomationCrossBitnessHook64 (UIAutomationCore.dll)
+		L"{60a90a2f-858d-42af-8929-82be9d99e8a1}", // UIAutomationCrossBitnessHook32 (UIAutomationCore.dll)
+		L"{53362c64-a296-4f2d-a2f8-fd984d08340b}", // RemoteProxyFactory64 (oleacc.dll)
+		L"{53362c32-a296-4f2d-a2f8-fd984d08340b}", // RemoteProxyFactory32 (oleacc.dll)
+	};
+	const WCHAR *p;
+
+	if (!CommandLine || !CommandLine[0])
+		return FALSE;
+
+	p = CommandLine;
+	while (*p)
+	{
+		if ((p == CommandLine || IsWideSpace(*(p - 1))) && (p[0] == L'/' || p[0] == L'-') && _wcsnicmp(p + 1, L"processid:", 10) == 0)
+		{
+			const WCHAR *guid = p + 11;
+			size_t guidLen = 38;
+			const WCHAR *tail;
+			if (wcslen(guid) < guidLen)
+				return FALSE;
+			tail = guid + guidLen;
+			while (*tail)
+			{
+				if (!IsWideSpace(*tail))
+					return FALSE;
+				tail++;
+			}
+			for (unsigned int i = 0; i < ARRAYSIZE(UiaSurrogateAppIds); i++)
+			{
+				if (_wcsnicmp(guid, UiaSurrogateAppIds[i], guidLen) == 0)
+					return TRUE;
+			}
+			return FALSE;
+		}
+		p++;
+	}
+	return FALSE;
+}
+
+static BOOL IsDcomLaunchUiaSurrogate(const WCHAR *TargetProcess, const WCHAR *CommandLine)
+{
+	return IsDcomLaunchProcess() && IsWindowsDllHostPath(TargetProcess) && IsUiaSurrogateCommandLine(CommandLine);
+}
+
+BOOL CheckDontMonitorList(const WCHAR* TargetProcess, const WCHAR* CommandLine)
 {
 	const wchar_t *DontMonitorList[] =
 	{
@@ -777,7 +996,7 @@ BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 		{g_config.iexplore, L"Internet Explorer\\iexplore.exe"},
 	};
 
-	for (int i = 0; i < ARRAYSIZE(browsers); i++)
+	for (unsigned int i = 0; i < ARRAYSIZE(browsers); i++)
 	{
 		if (browsers[i].config_flag)
 		{
@@ -792,7 +1011,10 @@ BOOL CheckDontMonitorList(WCHAR* TargetProcess)
 		}
 	}
 
-	if (!_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k WerSvcGroup"))
+	if (our_process_name && our_commandline && !_stricmp(our_process_name, "svchost.exe") && wcsstr(our_commandline, L"-k WerSvcGroup"))
+		return TRUE;
+
+	if (IsDcomLaunchUiaSurrogate(TargetProcess, CommandLine))
 		return TRUE;
 
 	if (!g_config.file_of_interest || !g_config.suspend_logging)
@@ -812,10 +1034,24 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 	WCHAR TargetProcess[MAX_PATH];
 	struct InjectionInfo *CurrentInjectionInfo;
 
-	if (GetInjectionInfo(lpProcessInformation->dwProcessId))
-		return;
-
-	CurrentInjectionInfo = CreateInjectionInfo(lpProcessInformation->dwProcessId);
+	CurrentInjectionInfo = GetInjectionInfo(lpProcessInformation->dwProcessId);
+	if (CurrentInjectionInfo)
+	{
+		if (CurrentInjectionInfo->ProcessHandle == lpProcessInformation->hProcess &&
+			CurrentInjectionInfo->InitialThreadId == lpProcessInformation->dwThreadId)
+			return;
+		// PID reused by a newly created process: reset stale per-process state
+		// (including DontMonitor) before populating the new child's metadata.
+		CurrentInjectionInfo->BufferBase = NULL;
+		CurrentInjectionInfo->StackPointer = NULL;
+		CurrentInjectionInfo->BufferSizeOfImage = 0;
+		CurrentInjectionInfo->SectionHandle = NULL;
+		CurrentInjectionInfo->DontMonitor = FALSE;
+	}
+	else
+	{
+		CurrentInjectionInfo = CreateInjectionInfo(lpProcessInformation->dwProcessId);
+	}
 
 	if (CurrentInjectionInfo == NULL)
 	{
@@ -831,12 +1067,12 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 
 	memset(TargetProcess, 0, MAX_PATH*sizeof(WCHAR));
 
-	if (lpApplicationName)
+	if (lpApplicationName && lpApplicationName[0])
 	{
 #ifdef DEBUG_COMMENTS
 		DebugOutput("CreateProcessHandler: using lpApplicationName: %ws.\n", lpApplicationName);
 #endif
-		_snwprintf(TargetProcess, MAX_PATH, L"%ws", lpApplicationName);
+		_snwprintf(TargetProcess, MAX_PATH - 1, L"%ws", lpApplicationName);
 	}
 	else if (lpCommandLine)
 	{
@@ -844,17 +1080,24 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 		DebugOutput("CreateProcessHandler: using lpCommandLine: %ws.\n", lpCommandLine);
 #endif
 		if (*lpCommandLine == L'\"')
-			wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine+1, (rsize_t)((wcschr(lpCommandLine+1, '\"') - lpCommandLine)-1));
+		{
+			const WCHAR *endQuote = wcschr(lpCommandLine + 1, L'\"');
+			if (endQuote)
+				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine + 1, (rsize_t)(endQuote - (lpCommandLine + 1)));
+			else
+				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine + 1, _TRUNCATE);
+		}
 		else
 		{
-			if (wcschr(lpCommandLine, ' '))
-				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine, (rsize_t)((wcschr(lpCommandLine, ' ') - lpCommandLine)+1));
+			const WCHAR *space = wcschr(lpCommandLine, L' ');
+			if (space)
+				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine, (rsize_t)(space - lpCommandLine));
 			else
-				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine, wcslen(lpCommandLine)+1);
+				wcsncpy_s(TargetProcess, MAX_PATH, lpCommandLine, _TRUNCATE);
 		}
 	}
 
-	CurrentInjectionInfo->DontMonitor = CheckDontMonitorList(TargetProcess);
+	CurrentInjectionInfo->DontMonitor = CheckDontMonitorList(TargetProcess, lpCommandLine);
 
 	if (lpApplicationName || lpCommandLine)
 	{
@@ -869,6 +1112,58 @@ void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROC
 	}
 	else
 		DebugOutput("CreateProcessHandler: Injection info set for new process %d, ImageBase: 0x%p", CurrentInjectionInfo->ProcessId, CurrentInjectionInfo->ImageBase);
+}
+
+void CreateProcessHandlerEx(PUNICODE_STRING ImagePathName, PUNICODE_STRING CommandLine, LPPROCESS_INFORMATION lpProcessInformation)
+{
+	WCHAR imageBuf[MAX_PATH];
+	WCHAR cmdStack[1024];
+	LPWSTR imagePtr = NULL;
+	LPWSTR cmdPtr = NULL;
+	LPWSTR cmdHeap = NULL;
+
+	if (!lpProcessInformation)
+		return;
+
+	if (ImagePathName && ImagePathName->Buffer && ImagePathName->Length >= sizeof(WCHAR) &&
+		is_valid_address_range((ULONG_PTR)ImagePathName->Buffer, ImagePathName->Length))
+	{
+		size_t chars = ImagePathName->Length / sizeof(WCHAR);
+		if (chars >= MAX_PATH)
+			chars = MAX_PATH - 1;
+		memcpy(imageBuf, ImagePathName->Buffer, chars * sizeof(WCHAR));
+		imageBuf[chars] = L'\0';
+		imagePtr = imageBuf;
+	}
+
+	if (CommandLine && CommandLine->Buffer && CommandLine->Length >= sizeof(WCHAR) &&
+		is_valid_address_range((ULONG_PTR)CommandLine->Buffer, CommandLine->Length))
+	{
+		size_t chars = CommandLine->Length / sizeof(WCHAR);
+		if (chars >= MAX_UNICODE_PATH)
+			chars = MAX_UNICODE_PATH - 1;
+		if (chars < ARRAYSIZE(cmdStack))
+		{
+			memcpy(cmdStack, CommandLine->Buffer, chars * sizeof(WCHAR));
+			cmdStack[chars] = L'\0';
+			cmdPtr = cmdStack;
+		}
+		else
+		{
+			cmdHeap = (LPWSTR)calloc(chars + 1, sizeof(WCHAR));
+			if (cmdHeap)
+			{
+				memcpy(cmdHeap, CommandLine->Buffer, chars * sizeof(WCHAR));
+				cmdHeap[chars] = L'\0';
+				cmdPtr = cmdHeap;
+			}
+		}
+	}
+
+	CreateProcessHandler(imagePtr, cmdPtr, lpProcessInformation);
+
+	if (cmdHeap)
+		free(cmdHeap);
 }
 
 PCHAR OpenProcessHandler(HANDLE ProcessHandle, DWORD Pid)
