@@ -754,7 +754,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeThread,
 	if (pid != GetCurrentProcessId()) {
 		if (g_config.injection)
 			ResumeThreadHandler(pid);
-		pipe("RESUME:%d,0", pid);
+		if (ShouldNotifyProcess(pid))
+			pipe("RESUME:%d,0", pid);
 		ret = Old_NtResumeThread(ThreadHandle, SuspendCount);
 		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	}
@@ -777,7 +778,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtAlertResumeThread,
 	if (pid != GetCurrentProcessId()) {
 		if (g_config.injection)
 			ResumeThreadHandler(pid);
-		pipe("RESUME:%d,0", pid);
+		if (ShouldNotifyProcess(pid))
+			pipe("RESUME:%d,0", pid);
 		ret = Old_NtAlertResumeThread(ThreadHandle, SuspendCount);
 		LOQ_ntstatus("threading", "pIii", "ThreadHandle", ThreadHandle, "SuspendCount", SuspendCount, "ThreadId", tid, "ProcessId", pid);
 	}

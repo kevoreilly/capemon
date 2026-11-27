@@ -331,6 +331,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcess,
 		"FileName", ObjectAttributes, "ProcessId", pid);
 	if (!g_config.single_process && NT_SUCCESS(ret)) {
 		ProcessMessage(pid, 0);
+		SetLastNotifiedCreatedPid(pid);
 		disable_sleep_skip();
 	}
 	return ret;
@@ -355,6 +356,7 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateProcessEx,
 		"FileName", ObjectAttributes, "Flags", Flags, "SectionHandle", SectionHandle, "ProcessId", pid);
 	if (!g_config.single_process && NT_SUCCESS(ret)) {
 		ProcessMessage(pid, 0);
+		SetLastNotifiedCreatedPid(pid);
 		disable_sleep_skip();
 	}
 	return ret;
@@ -427,8 +429,9 @@ HOOKDEF(NTSTATUS, WINAPI, NtCreateUserProcess,
 			ProcessInformation.dwThreadId = tid;
 			ProcessInformation.hProcess = (*ProcessHandle);
 			ProcessInformation.hThread = (*ThreadHandle);
-			CreateProcessHandler(ProcessParameters->ImagePathName.Buffer, NULL, &ProcessInformation);
+			CreateProcessHandlerEx(&ProcessParameters->ImagePathName, &ProcessParameters->CommandLine, &ProcessInformation);
 			ProcessMessage(pid, tid);
+			SetLastNotifiedCreatedPid(pid);
 		}
 		if (!(ThreadFlags & 1))
 			ResumeThread(*ThreadHandle);
@@ -473,8 +476,12 @@ HOOKDEF(NTSTATUS, WINAPI, RtlCreateUserProcess,
 			WinProcessInformation.dwThreadId = (DWORD)(DWORD_PTR)ProcessInformation->ClientId.UniqueThread;
 			WinProcessInformation.hProcess = ProcessInformation->ProcessHandle;
 			WinProcessInformation.hThread = ProcessInformation->ThreadHandle;
-			CreateProcessHandler(ProcessParameters->ImagePathName.Buffer, NULL, &WinProcessInformation);
+			CreateProcessHandlerEx(
+				ProcessParameters ? &ProcessParameters->ImagePathName : NULL,
+				ProcessParameters ? &ProcessParameters->CommandLine : NULL,
+				&WinProcessInformation);
 			ProcessMessage(pid, tid);
+			SetLastNotifiedCreatedPid(pid);
 		}
 		disable_sleep_skip();
 	}
@@ -660,7 +667,8 @@ HOOKDEF(NTSTATUS, WINAPI, NtResumeProcess,
 	DWORD pid = pid_from_process_handle(ProcessHandle);
 	if (g_config.injection)
 		ResumeProcessHandler(ProcessHandle, pid);
-	pipe("RESUME:%d,0", pid);
+	if (ShouldNotifyProcess(pid))
+		pipe("RESUME:%d,0", pid);
 	ret = Old_NtResumeProcess(ProcessHandle);
 	LOQ_ntstatus("process", "pl", "ProcessHandle", ProcessHandle, "ProcessId", pid);
 	return ret;

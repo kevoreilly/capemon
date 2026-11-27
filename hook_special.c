@@ -36,6 +36,8 @@ extern ULONG_PTR base_of_dll_of_interest;
 extern BOOL BreakpointsHit, SetInitialBreakpoints(PVOID ImageBase), set_hooks_dll(const wchar_t *library);
 extern void CreateProcessHandler(LPWSTR lpApplicationName, LPWSTR lpCommandLine, LPPROCESS_INFORMATION lpProcessInformation);
 extern void ProcessMessage(DWORD ProcessId, DWORD ThreadId);
+extern void ClearLastNotifiedCreatedPid(void);
+extern BOOL WasProcessNotifiedOnCreate(DWORD ProcessId);
 extern void set_hooks();
 extern void notify_successful_load(void);
 extern BOOL ProcessDumped;
@@ -232,6 +234,7 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 	BOOL ret;
 	hook_info_t saved_hookinfo;
 
+	ClearLastNotifiedCreatedPid();
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
 	ret = Old_CreateProcessInternalW(lpUnknown1, lpApplicationName,
 		lpCommandLine, lpProcessAttributes, lpThreadAttributes,
@@ -240,8 +243,10 @@ HOOKDEF(BOOL, WINAPI, CreateProcessInternalW,
 	memcpy(hook_info(), &saved_hookinfo, sizeof(saved_hookinfo));
 
 	if (ret != FALSE) {
-		CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
-		ProcessMessage(lpProcessInformation->dwProcessId, lpProcessInformation->dwThreadId);
+		if (!g_config.single_process && !WasProcessNotifiedOnCreate(lpProcessInformation->dwProcessId)) {
+			CreateProcessHandler(lpApplicationName, lpCommandLine, lpProcessInformation);
+			ProcessMessage(lpProcessInformation->dwProcessId, lpProcessInformation->dwThreadId);
+		}
 
 		// if the CREATE_SUSPENDED flag was not set, then we have to resume the main thread ourself
 		if ((dwCreationFlags & CREATE_SUSPENDED) == 0) {
