@@ -791,7 +791,11 @@ BOOL YaraInit()
 					LdrpInvertedFunctionTableSRWLock = resolved;
 					DebugOutput("RtlInsertInvertedFunctionTable 0x%p, LdrpInvertedFunctionTableSRWLock 0x%p", RtlInsertInvertedFunctionTable, LdrpInvertedFunctionTableSRWLock);
 				}
+				else
+					DebugOutput("YaraInit: RtlInsertInvertedFunctionTable at 0x%p resolved lock 0x%p outside ntdll [0x%p, 0x%p)", RtlInsertInvertedFunctionTable, resolved, ntdll_base, ntdll_end);
 			}
+			else
+				DebugOutput("YaraInit: RtlInsertInvertedFunctionTable pattern did not match ntdll (0x%p)", hNtdll);
 			LdrProtectMrdata = GetAddressByYara(hNtdll, "LdrProtectMrdata");
 			if (LdrProtectMrdata)
 			{
@@ -801,7 +805,11 @@ BOOL YaraInit()
 					LdrpMrdataLock = resolved;
 					DebugOutput("LdrProtectMrdata 0x%p, LdrpMrdataLock 0x%p", LdrProtectMrdata, LdrpMrdataLock);
 				}
+				else
+					DebugOutput("YaraInit: LdrProtectMrdata at 0x%p resolved lock 0x%p outside ntdll [0x%p, 0x%p)", LdrProtectMrdata, resolved, ntdll_base, ntdll_end);
 			}
+			else
+				DebugOutput("YaraInit: LdrProtectMrdata pattern did not match ntdll (0x%p)", hNtdll);
 		}
 	}
 #endif

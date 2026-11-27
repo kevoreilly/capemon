@@ -455,7 +455,8 @@ HOOKDEF(HRESULT, WINAPI, CoCreateInstanceEx,
 			set_com_hooks(rclsid, pResults->pIID, pResults->pItf);
 
 		get_lasterrors(&lasterror);
-		pProgIDFromCLSID(&id1, &resolv);
+		if (pProgIDFromCLSID)
+			pProgIDFromCLSID(&id1, &resolv);
 
 		LOQ_hresult("com", "shuu", "rclsid", idbuf1, "ClsContext", dwClsContext, "ServerName", pServerInfo ? pServerInfo->pwszName : NULL, "ProgID", resolv);
 
@@ -510,12 +511,6 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	disable_sleep_skip();
 
-	if (!called_by_hook()) {
-		inspect_clsid(&id1);
-	}
-
-	disable_sleep_skip();
-
 	set_lasterrors(&lasterror);
 
 	memcpy(&saved_hookinfo, hook_info(), sizeof(saved_hookinfo));
@@ -524,7 +519,8 @@ HOOKDEF(HRESULT, WINAPI, CoGetClassObject,
 
 	get_lasterrors(&lasterror);
 
-	pProgIDFromCLSID(&id1, &resolv);
+	if (pProgIDFromCLSID)
+		pProgIDFromCLSID(&id1, &resolv);
 
 	LOQ_hresult("com", "shsu", "rclsid", idbuf1, "ClsContext", dwClsContext, "riid", idbuf2, "ProgID", resolv);
 
