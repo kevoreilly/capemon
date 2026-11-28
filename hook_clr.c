@@ -6,6 +6,7 @@
 #include "log.h"
 #include "pipe.h"
 #include "misc.h"
+#include "config.h"
 #include "CAPE\CAPE.h"
 #include "CAPE\Debugger.h"
 #include "CAPE\YaraHarness.h"
@@ -556,7 +557,6 @@ HOOKDEF(int, WINAPI, compileMethod,
 	if (methodInfo && !our_isbadreadptr(methodInfo, sizeof(CORINFO_METHOD_INFO_REDUCED))) {
 		info = (CORINFO_METHOD_INFO_REDUCED *)methodInfo;
 	}
-
 	int ret = Old_compileMethod(this, compHnd, methodInfo, flags, entryAddress, nativeSizeOfCode);
 	if (ret == 0) {
 		lasterror_t lasterror;
@@ -579,16 +579,39 @@ HOOKDEF(int, WINAPI, compileMethod,
 		const char* methodName = SafeGetMethodName(compHnd, info ? info->ftn : NULL, &className, &namespaceName);
 		BOOL isSystemMethod = IsSystemDotNetMethod(info, namespaceName, className);
 
-		if (!isSystemMethod && methodName != NULL) {
-			LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
-				"Class", className ? className : "UnknownClass", "Method", methodName);
-			// loq() calls hook_enable() on exit; re-disable for the remaining helpers.
-			hook_disable();
+		if (methodName != NULL) {
+			if (!isSystemMethod && g_config.jit_trace_all) {
+				LOQ_void("dotnet", "sss", "Namespace", namespaceName ? namespaceName : "",
+					"Class", className ? className : "UnknownClass", "Method", methodName);
 #ifdef DEBUG_COMMENTS
-			DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
-				namespaceName ? namespaceName : "", namespaceName ? "." : "",
-				className ? className : "UnknownClass", methodName);
+				DebugOutput("compileMethod: Translated .NET JIT API: %s%s%s.%s\n",
+					namespaceName ? namespaceName : "", namespaceName ? "." : "",
+					className ? className : "UnknownClass", methodName);
 #endif
+			}
+
+			// High-Signal Callstack Correlation Alerts
+			// We check the resolved class and method names for critical capability triggers (Network, Cryptography, Assembly Loading)
+			if (className != NULL) {
+				if (strstr(className, "System.Net.WebClient") ||
+					strstr(className, "System.Net.Http.HttpClient") ||
+					strstr(className, "System.Net.Sockets.Socket")) {
+					LOQ_void("behavior", "ss", "Event", "Initiating .NET Network Capability", "Details", className);
+					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Network Capability inside %s.%s\n", className, methodName);
+				}
+				else if (strstr(className, "System.Security.Cryptography") ||
+						 strstr(className, "Rijndael") ||
+						 strstr(className, "AesManaged")) {
+					LOQ_void("behavior", "ss", "Event", "Initiating .NET Cryptographic Operation", "Details", className);
+					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Cryptographic Operation inside %s.%s\n", className, methodName);
+				}
+				else if (strstr(className, "System.Reflection.Assembly") ||
+						 strstr(className, "System.Reflection.Emit") ||
+						 strstr(className, "System.Diagnostics.Process")) {
+					LOQ_void("behavior", "ss", "Event", "Initiating .NET Process/Payload Injection", "Details", className);
+					DebugOutput("compileMethod: Behavioral Event - Initiating .NET Process/Payload Injection inside %s.%s\n", className, methodName);
+				}
+			}
 		}
 
 		PVOID nativeCode = NULL;
@@ -657,4 +680,54 @@ HOOKDEF(int, WINAPI, compileMethod,
 		set_lasterrors(&lasterror);
 	}
 	return ret;
+}
+
+
+#ifdef _WIN64
+#define ARRAY_LENGTH_OFFSET 8
+#define ARRAY_DATA_OFFSET 16
+#else
+#define ARRAY_LENGTH_OFFSET 4
+#define ARRAY_DATA_OFFSET 8
+#endif
+
+#define NLOAD_MAX_DUMP_SIZE 0x4000000
+
+HOOKDEF(PVOID, WINAPI, nLoadImage,
+	_In_     PVOID        pArrayObject,
+	_In_opt_ PVOID        pAppDomain,
+	_Inout_  PVOID*       pAssembly
+) {
+	if (pArrayObject != NULL && g_config.procdump && g_config.dotnet_nload) {
+		lasterror_t lasterror;
+		hook_info_t *hookinfo = hook_info();
+		unsigned int saved_disable_count = hookinfo->disable_count;
+
+		get_lasterrors(&lasterror);
+		hook_disable();
+		__try {
+			if (!our_isbadreadptr(pArrayObject, ARRAY_DATA_OFFSET)) {
+				DWORD len = *(PDWORD)((PBYTE)pArrayObject + ARRAY_LENGTH_OFFSET);
+				PBYTE pRawData = (PBYTE)pArrayObject + ARRAY_DATA_OFFSET;
+
+				if (len >= 2 && len <= NLOAD_MAX_DUMP_SIZE && !our_isbadreadptr(pRawData, len)) {
+					DebugOutput("nLoadImage: Intercepted in-memory assembly byte array loading of size %u at 0x%p (Inspired by ExtremeDumper)\n", len, pRawData);
+
+					CapeMetaData->ModulePath = NULL;
+					CapeMetaData->DumpType = 0;
+					CapeMetaData->TypeString = ".NET Reflective Load PE";
+					CapeMetaData->Address = pRawData;
+
+					DumpMemoryRaw(pRawData, (SIZE_T)len);
+				}
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) {
+			DebugOutput("nLoadImage: Exception occurred parsing managed U1Array.\n");
+		}
+		hookinfo->disable_count = saved_disable_count;
+		set_lasterrors(&lasterror);
+	}
+
+	return Old_nLoadImage(pArrayObject, pAppDomain, pAssembly);
 }

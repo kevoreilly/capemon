@@ -162,3 +162,6 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | :--- | :--- | :--- |
 | `wowmon` | Boolean | Enable Heaven's Gate monitoring in wow64 processes |
 | `go-hooks` | Boolean | Enable Go dynamic pclntab symbol recovery, buildinfo extraction, and breakpoint tracing (beta, off by default). Triggered by the internal `golang` YARA rule on the main image and on every region scanned by the unpacking engine (e.g. UPX-unpacked images); requires `yarascan` (default on) and the debugger. |
+| `jit-trace-all` | Boolean | Enable verbose per-method JIT logging instead of high-signal triggers only (default: 0). |
+| `dotnet-heal` | Boolean | Enable in-memory Scylla PE header and BSJB metadata healing for anti-dumped .NET binaries (default: 0). |
+| `dotnet-nload` | Boolean | Enable interception and dumping of reflectively loaded in-memory .NET assemblies (default: 0). |

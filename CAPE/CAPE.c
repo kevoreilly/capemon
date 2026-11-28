@@ -162,6 +162,27 @@ extern void UnpackerInit();
 extern BOOL SetInitialBreakpoints(PVOID ImageBase);
 extern BOOL BreakpointsSet, TraceRunning;
 extern lookup_t g_dotnet_jit;
+
+static lookup_t g_dotnet_modules;
+
+void CacheDotNetModule(ULONG_PTR ModuleBase, DWORD MetadataRVA, DWORD MetadataSize) {
+	dotnet_module_cache_t *entry;
+	if (!ModuleBase || lookup_get(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t)))
+		return;
+	entry = (dotnet_module_cache_t *)lookup_add(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t));
+	if (!entry)
+		return;
+	entry->ModuleBase = ModuleBase;
+	entry->MetadataRVA = MetadataRVA;
+	entry->MetadataSize = MetadataSize;
+	DebugOutput("CacheDotNetModule: Cached module base 0x%p (Metadata RVA 0x%x, Size 0x%x).\n", (PVOID)ModuleBase, MetadataRVA, MetadataSize);
+}
+
+dotnet_module_cache_t* FindCachedDotNetModule(ULONG_PTR ModuleBase) {
+	if (!ModuleBase)
+		return NULL;
+	return (dotnet_module_cache_t *)lookup_get(&g_dotnet_modules, ModuleBase, sizeof(dotnet_module_cache_t));
+}
 extern char* StringsFile;
 extern HANDLE Strings;
 
@@ -832,7 +853,7 @@ PVOID GetFunctionAddress(HMODULE ModuleBase, PCHAR FunctionName)
 	}
 
 
-	if (!FunctionAddress && ModuleBase == GetModuleHandle("clr"))
+	if (!FunctionAddress && (ModuleBase == GetModuleHandle("clr") || ModuleBase == GetModuleHandle("mscorwks") || ModuleBase == GetModuleHandle("coreclr")))
 		return GetCLRAddress(ModuleBase, FunctionName);
 
 	if (!FunctionAddress && ModuleBase == GetModuleHandle("clrjit"))
