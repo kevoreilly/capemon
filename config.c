@@ -1514,6 +1514,18 @@ void parse_config_line(char* line)
 			strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), value, _TRUNCATE);
 			DebugOutput("Config: WMI BIOS serial set to %s.\n", g_config.bios_serial);
 		}
+		else if (!stricmp(key, "wmi-cache-size")) {
+			g_config.wmi_cache_size = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: WMI cache size set to %d.\n", g_config.wmi_cache_size);
+		}
+		else if (!stricmp(key, "wmi-voltage-reading")) {
+			g_config.wmi_voltage_reading = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: WMI voltage reading set to %d.\n", g_config.wmi_voltage_reading);
+		}
+		else if (!stricmp(key, "wmi-temperature-reading")) {
+			g_config.wmi_temperature_reading = (int)strtoul(value, NULL, 10);
+			DebugOutput("Config: WMI temperature reading set to %d.\n", g_config.wmi_temperature_reading);
+		}
 		else if (!stricmp(key, "watchdog")) {
 			g_config.watchdog = value[0] == '1';
 			if (g_config.watchdog)
@@ -1589,6 +1601,9 @@ void read_config(void)
 	strncpy_s(g_config.disk_serial, _countof(g_config.disk_serial), "S3Y1NX0K412941X", _TRUNCATE);
 	strncpy_s(g_config.bios_vendor, _countof(g_config.bios_vendor), "American Megatrends Inc.", _TRUNCATE);
 	strncpy_s(g_config.bios_serial, _countof(g_config.bios_serial), "System Serial Number", _TRUNCATE);
+	g_config.wmi_cache_size = 32768;
+	g_config.wmi_voltage_reading = 12000;
+	g_config.wmi_temperature_reading = 3000;
 	g_config.sleep_skip_seconds = 10;
 	g_config.go_hooks = 0;
 	g_config.watchdog = 0;

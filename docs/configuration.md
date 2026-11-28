@@ -85,6 +85,9 @@ They are typically defined in the analysis configuration file (e.g., `config.ini
 | `wmi-disk-serial` | String | Spoof the physical disk drive serial number returned via WMI Win32_DiskDrive queries (default: "S3Y1NX0K412941X"). |
 | `wmi-bios-vendor` | String | Spoof the BIOS manufacturer returned via WMI Win32_BIOS queries (default: "American Megatrends Inc."). |
 | `wmi-bios-serial` | String | Spoof the BIOS serial number returned via WMI Win32_BIOS queries (default: "System Serial Number"). |
+| `wmi-cache-size` | Integer | Spoof the L1/L2/L3 cache memory size in bytes returned via Win32_CacheMemory queries (default: 32768). |
+| `wmi-voltage-reading` | Integer | Spoof the voltage reading in millivolts returned via Win32_VoltageProbe queries (default: 12000). |
+| `wmi-temperature-reading` | Integer | Spoof the thermal zone sensor temperature in tenths of Kelvins returned via Win32_ThermalZoneInfo queries (default: 3000). |
 | `ntdll-protect` | Boolean | Enable write protection on `ntdll.dll` code (enabled by default). |
 | `ntdll-unhook` | Boolean | Enable protection against `ntdll` unhooking (via `NtReadFile`). |
 | `ntdll-remap` | Boolean | Enable `ntdll` remapping protection. |
