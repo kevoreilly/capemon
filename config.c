@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.h"
 #include "misc.h"
 #include "log.h"
+#include "log_serializer.h"
 #include "hooking.h"
 #include "hook_sleep.h"
 #include "unhook.h"
@@ -1534,6 +1535,13 @@ void parse_config_line(char* line)
 				g_config.yarascan = 1;
 				DebugOutput("Config: Go symbol recovery and breakpoint hooks enabled.\n");
 			}
+		}
+		else if (!stricmp(key, "log-format")) {
+			g_config.log_format = (int)strtoul(value, NULL, 10);
+			if (g_config.log_format == LOG_FORMAT_PROTOBUF)
+				DebugOutput("Config: Log format set to Protocol Buffers.\n");
+			else
+				DebugOutput("Config: Log format set to BSON.\n");
 		}
 		else if (!stricmp(key, "monitor")) {
 			DWORD pid = (unsigned int)strtoul(value, NULL, 10);
